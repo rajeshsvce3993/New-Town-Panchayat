@@ -1,0 +1,8 @@
+{
+  "name": "Town Panchayat Management System V.16",
+  "description": "Comprehensive Tamil-English employee management system featuring role-based access, dynamic modules, hierarchical administration, and secure S3/MongoDB data storage for town panchayats.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

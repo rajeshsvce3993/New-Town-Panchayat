@@ -1,0 +1,1554 @@
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as FileSystem from 'expo-file-system/legacy';
+import { StatusBar } from 'expo-status-bar';
+import * as Sharing from 'expo-sharing';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  ToastAndroid,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ViewShot, { captureRef, type ViewShotRef } from 'react-native-view-shot';
+import { resolveMediaUrl } from '../api/client';
+import { SAMPLE_PHOTO } from '../constants/config';
+import { BrandImage } from './BrandImage';
+import { getPaletteById, type AppPalette } from '../theme/palettes';
+import type { FieldDefinition, InspectionWork, PortalState } from '../types/models';
+import { portalFields } from '../types/models';
+import { formatTo12Hr } from '../utils/dates';
+import { fieldOrderIndex } from '../utils/fieldVisibility';
+
+const EXPORT_W = Math.max(960, Math.round(Dimensions.get('window').width * 1.7));
+const EXPORT_FIT_SCALE = Math.min(1, Dimensions.get('window').width / EXPORT_W);
+const GOOGLE_STATIC_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+
+function locationMapUris(latitude: number, longitude: number) {
+  const lat = Number(latitude || 0);
+  const lon = Number(longitude || 0);
+  const q = `${lat},${lon}`;
+  return {
+    google: `https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(q)}&zoom=18&size=200x200&scale=2&maptype=hybrid&markers=color:red%7Csize:mid%7C${encodeURIComponent(q)}&key=${GOOGLE_STATIC_MAPS_KEY}`,
+    osm: `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lon}&zoom=18&size=200x200&maptype=mapnik&markers=${lat},${lon},red-pushpin`,
+  };
+}
+const EXPORT_PHOTO_H = 440;
+const EXPORT_PHOTO_PAD = 10;
+const EXPORT_PHOTO_GAP = 8;
+const EXPORT_CAPTION_H = 28;
+const EXPORT_CAPTION_H_SINGLE = 34;
+const REPORT_AMBER = '#FBBF24';
+const CAPTION_BORDER = '#F59E0B';
+const CAPTION_BROWN = '#800000';
+const REPORT_GREEN = '#288C46';
+/** Page header: light green → brand green → deep green. */
+const REPORT_HEADER_GRADIENT = ['#4CB86A', REPORT_GREEN, '#1B6B34'] as const;
+const REPORT_HEADER_GRADIENT_LOCATIONS = [0, 0.52, 1] as const;
+const REPORT_HEADER_STRIPE_COUNT = 32;
+const SUMMARY_NAVY = '#1A3D66';
+
+function hexToRgb(hex: string) {
+  const h = hex.replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function rgbToHex(r: number, g: number, b: number) {
+  const c = (v: number) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+function lerpHex(a: string, b: string, t: number) {
+  const A = hexToRgb(a);
+  const B = hexToRgb(b);
+  return rgbToHex(A.r + (B.r - A.r) * t, A.g + (B.g - A.g) * t, A.b + (B.b - A.b) * t);
+}
+
+function reportHeaderGradientColor(t: number) {
+  const stops = REPORT_HEADER_GRADIENT;
+  const locs = REPORT_HEADER_GRADIENT_LOCATIONS;
+  if (t <= locs[0]) return stops[0];
+  if (t >= locs[locs.length - 1]) return stops[stops.length - 1];
+  for (let i = 0; i < locs.length - 1; i++) {
+    const lo = locs[i];
+    const hi = locs[i + 1];
+    if (t >= lo && t <= hi) {
+      return lerpHex(stops[i], stops[i + 1], (t - lo) / (hi - lo));
+    }
+  }
+  return stops[stops.length - 1];
+}
+
+const REPORT_HEADER_STRIPE_COLORS = Array.from({ length: REPORT_HEADER_STRIPE_COUNT }, (_, i) =>
+  reportHeaderGradientColor((i + 0.5) / REPORT_HEADER_STRIPE_COUNT),
+);
+
+/** On-screen report detail header + table header only. */
+function ReportHeaderSurface({
+  style,
+  children,
+}: {
+  style?: object;
+  children: ReactNode;
+}) {
+  return (
+    <View style={[styles.reportHeaderSurface, style]}>
+      <View style={styles.reportHeaderBands} pointerEvents="none">
+        <View style={[styles.reportHeaderBand, { backgroundColor: REPORT_HEADER_GRADIENT[0] }]} />
+        <View style={[styles.reportHeaderBand, { backgroundColor: REPORT_HEADER_GRADIENT[1] }]} />
+        <View style={[styles.reportHeaderBand, { backgroundColor: REPORT_HEADER_GRADIENT[2] }]} />
+      </View>
+      <LinearGradient
+        colors={[...REPORT_HEADER_GRADIENT]}
+        locations={[0, 0.52, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      {children}
+    </View>
+  );
+}
+
+/** Download/share JPEG only — pixel stripes so ViewShot captures the same light→dark header. */
+function ExportReportHeaderSurface({
+  style,
+  defaultHeight,
+  children,
+}: {
+  style?: object;
+  defaultHeight: number;
+  children: ReactNode;
+}) {
+  const [height, setHeight] = useState(defaultHeight);
+  const stripeHeight = height / REPORT_HEADER_STRIPE_COUNT;
+
+  return (
+    <View
+      collapsable={false}
+      removeClippedSubviews={false}
+      style={[styles.reportHeaderSurface, style]}
+      onLayout={(e) => {
+        const next = Math.ceil(e.nativeEvent.layout.height);
+        if (next > 0 && next !== height) setHeight(next);
+      }}
+    >
+      <View
+        collapsable={false}
+        pointerEvents="none"
+        style={[styles.exportHeaderStripeWrap, { height }]}
+      >
+        {REPORT_HEADER_STRIPE_COLORS.map((color, i) => (
+          <View
+            key={`export-header-stripe-${i}`}
+            collapsable={false}
+            style={{ height: stripeHeight, width: '100%', backgroundColor: color }}
+          />
+        ))}
+      </View>
+      {children}
+    </View>
+  );
+}
+const SUMMARY_TEXT = '#475569';
+const SUMMARY_MUTED = '#64748B';
+
+function toast(msg: string) {
+  if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.LONG);
+  else Alert.alert('', msg);
+}
+
+function unwrapMediaUrl(raw: string): string {
+  const v = String(raw || '').trim();
+  if (!v) return '';
+  if (v.includes('/api/media')) {
+    try {
+      const parsed = new URL(v, 'http://localhost');
+      const inner = parsed.searchParams.get('url');
+      if (inner) return unwrapMediaUrl(inner);
+    } catch {
+      /* keep original */
+    }
+  }
+  return v;
+}
+
+function mediaFingerprint(raw: string): string {
+  const v = unwrapMediaUrl(raw);
+  if (!v) return '';
+  if (v.startsWith('data:image/')) return `data:${v.length}:${v.slice(-80)}`;
+  try {
+    const parsed = new URL(v, 'http://localhost');
+    const path = decodeURIComponent(parsed.pathname).replace(/\/+$/, '').toLowerCase();
+    const host = parsed.hostname.toLowerCase();
+    if (host && host !== 'localhost') return `${host}${path}`;
+    return path || v.replace(/\?.*$/, '').toLowerCase();
+  } catch {
+    return v.replace(/\?.*$/, '').toLowerCase();
+  }
+}
+
+function displayImageUri(url: string, fieldKey: string) {
+  const resolved = resolveMediaUrl(url);
+  const mark = encodeURIComponent(fieldKey || 'photo');
+  return resolved.includes('#') ? `${resolved}-${mark}` : `${resolved}#${mark}`;
+}
+
+function isImageValue(v: string) {
+  const s = String(v || '').trim();
+  if (!s || s === SAMPLE_PHOTO) return false;
+  if (/^captured_photo_/i.test(s) && !s.startsWith('http') && !s.startsWith('file:') && !s.includes('/')) return false;
+  return (
+    s.startsWith('http') ||
+    s.startsWith('/uploads') ||
+    s.startsWith('data:image/') ||
+    s.startsWith('file:') ||
+    s.includes('offline_images') ||
+    /\.(jpg|jpeg|png|webp)$/i.test(s)
+  );
+}
+
+function matchWorkField(fields: FieldDefinition[], key: string, categoryId?: string): FieldDefinition | undefined {
+  const k = String(key || '').trim().toLowerCase();
+  if (!k) return undefined;
+  const matches = (f: FieldDefinition) =>
+    [f.id, f.fieldName, f.nameEn, f.nameTa, f.fieldNameTa].some((x) => String(x || '').trim().toLowerCase() === k);
+  const inCat = categoryId ? fields.filter((f) => !f.categoryId || f.categoryId === categoryId) : fields;
+  return inCat.find(matches) || fields.find(matches);
+}
+
+function localizedFieldLabel(field: FieldDefinition | undefined, isTamil: boolean, fallback: string): string {
+  if (isTamil && field) {
+    const ta = String(field.nameTa || field.fieldNameTa || '').trim();
+    if (ta) return prettyLabel(ta) || ta;
+  }
+  if (field) {
+    const en = String(field.nameEn || field.fieldName || '').trim();
+    if (en) return prettyLabel(en) || en;
+  }
+  return prettyLabel(fallback) || fallback;
+}
+
+function prettyLabel(raw: string) {
+  return raw.replace(/[_-]/g, ' ').replace(/photo field\s*:?\s*/i, '').trim();
+}
+
+function formatWardLabel(isTamil: boolean, wardNumber: string | number) {
+  const raw = String(wardNumber ?? '').trim();
+  if (!raw) return isTamil ? 'வார்டு —' : 'Ward —';
+  const stripped = raw
+    .replace(/^(ward|w)\s*[#:]?\s*/i, '')
+    .replace(/^வார்டு\s*[#:]?\s*/i, '')
+    .trim();
+  const num = stripped || raw;
+  return isTamil ? `வார்டு ${num}` : `Ward ${num}`;
+}
+
+function safeFilePart(raw: string) {
+  return String(raw || 'report').replace(/[^a-zA-Z0-9._-]+/g, '_');
+}
+
+async function materializeFile(url: string, filename: string) {
+  const dest = `${FileSystem.cacheDirectory}${filename}`;
+  if (url.startsWith('file:')) return url;
+  if (url.startsWith('data:image/')) {
+    const b64 = url.split(',')[1] || '';
+    await FileSystem.writeAsStringAsync(dest, b64, { encoding: FileSystem.EncodingType.Base64 });
+    return dest;
+  }
+  const resolved = resolveMediaUrl(url);
+  const result = await FileSystem.downloadAsync(resolved, dest);
+  return result.uri;
+}
+
+type MediaLibraryLegacy = typeof import('expo-media-library/legacy');
+
+let mediaLibraryMod: MediaLibraryLegacy | null | undefined;
+
+function getMediaLibrary(): MediaLibraryLegacy | null {
+  if (mediaLibraryMod !== undefined) return mediaLibraryMod;
+  try {
+    // Load the legacy native module only. `expo-media-library` default export is
+    // ExpoMediaLibraryNext, which is not in Expo Go and crashes on import.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    mediaLibraryMod = require('expo-media-library/build/legacy/MediaLibrary') as MediaLibraryLegacy;
+  } catch {
+    mediaLibraryMod = null;
+  }
+  return mediaLibraryMod;
+}
+
+async function saveToGallery(uri: string): Promise<'saved' | 'denied' | 'unavailable'> {
+  const MediaLibrary = getMediaLibrary();
+  if (!MediaLibrary) return 'unavailable';
+  try {
+    if (MediaLibrary.requestPermissionsAsync) {
+      const perm = await MediaLibrary.requestPermissionsAsync(true);
+      if (!perm?.granted) return 'denied';
+    }
+    if (MediaLibrary.saveToLibraryAsync) {
+      await MediaLibrary.saveToLibraryAsync(uri);
+      return 'saved';
+    }
+    if (MediaLibrary.createAssetAsync) {
+      await MediaLibrary.createAssetAsync(uri);
+      return 'saved';
+    }
+    return 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+async function copyToExports(uri: string, filename: string) {
+  const dir = `${FileSystem.documentDirectory}exports`;
+  const info = await FileSystem.getInfoAsync(dir);
+  if (!info.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  const dest = `${dir}/${filename}`;
+  const exists = await FileSystem.getInfoAsync(dest);
+  if (exists.exists) await FileSystem.deleteAsync(dest, { idempotent: true });
+  await FileSystem.copyAsync({ from: uri, to: dest });
+  return dest;
+}
+
+async function shareOrSave(uri: string, mimeType: string, filename: string, save: boolean, isTamil: boolean) {
+  if (save) {
+    const result = await saveToGallery(uri);
+    if (result === 'saved') {
+      toast(isTamil ? 'படம் தொலைபேசி கேலரியில் சேமிக்கப்பட்டது' : 'Saved to phone gallery');
+      return;
+    }
+    if (result === 'denied') {
+      toast(isTamil ? 'கேலரியில் சேமிக்க அனுமதி தேவை' : 'Permission is required to save to the photo gallery');
+      return;
+    }
+    await copyToExports(uri, filename);
+    toast(isTamil ? `பதிவிறக்கம் சேமிக்கப்பட்டது: ${filename}` : `Downloaded: ${filename}`);
+    return;
+  }
+  if (!(await Sharing.isAvailableAsync())) {
+    toast(isTamil ? 'பகிர்வு இந்த சாதனத்தில் இல்லை' : 'Sharing is not available on this device');
+    return;
+  }
+  await Sharing.shareAsync(uri, {
+    mimeType,
+    dialogTitle: filename,
+    UTI: mimeType === 'image/png' ? 'public.png' : 'public.jpeg',
+  });
+}
+
+function ImageCaption({ label, count }: { label: string; count?: string }) {
+  return (
+    <View style={styles.captionBar}>
+      <Text style={styles.captionText} numberOfLines={2}>
+        {count ? `${label}  ${count}` : label}
+      </Text>
+    </View>
+  );
+}
+
+function ExportPhotoTile({
+  item,
+  captionHeight,
+  imageCount,
+  index,
+  onImageLoad,
+}: {
+  item: { url: string; name: string; fieldKey: string };
+  captionHeight: number;
+  imageCount: number;
+  index: number;
+  onImageLoad: () => void;
+}) {
+  return (
+    <View style={styles.exportTile}>
+      <View style={styles.exportTileWell}>
+        <Image
+          key={`tile-${item.fieldKey}-${mediaFingerprint(item.url)}`}
+          source={{ uri: displayImageUri(item.url, item.fieldKey) }}
+          style={styles.exportTileImg}
+          resizeMode="contain"
+          fadeDuration={0}
+          onLoad={onImageLoad}
+          onError={onImageLoad}
+        />
+      </View>
+      <View style={[styles.exportTileCaption, { height: captionHeight }]}>
+        <Text style={styles.exportTileCaptionTxt} numberOfLines={1}>
+          {imageCount > 1 ? `${item.name}  ${index + 1}/${imageCount}` : item.name}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function ExportPhotoRow({
+  items,
+  startIndex,
+  imageCount,
+  onImageLoad,
+  captionHeight,
+  centerSingle,
+}: {
+  items: { url: string; name: string; fieldKey: string }[];
+  startIndex: number;
+  imageCount: number;
+  onImageLoad: () => void;
+  captionHeight: number;
+  centerSingle?: boolean;
+}) {
+  if (items.length === 1 && centerSingle) {
+    return (
+      <View style={styles.exportRow}>
+        <View style={styles.exportRowSide} />
+        <View style={styles.exportRowMain}>
+          <ExportPhotoTile
+            item={items[0]}
+            index={startIndex}
+            imageCount={imageCount}
+            captionHeight={captionHeight}
+            onImageLoad={onImageLoad}
+          />
+        </View>
+        <View style={styles.exportRowSide} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.exportRow}>
+      {items.map((item, i) => (
+        <View key={`export-${item.fieldKey}-${startIndex + i}`} style={styles.exportRowSlot}>
+          <ExportPhotoTile
+            item={item}
+            index={startIndex + i}
+            imageCount={imageCount}
+            captionHeight={captionHeight}
+            onImageLoad={onImageLoad}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Download/share report only — fixed-height grid, two photos per row. */
+function ExportPhotoFrame({
+  images,
+  isTamil,
+  onImageLoad,
+}: {
+  images: { url: string; name: string; fieldKey: string }[];
+  isTamil: boolean;
+  onImageLoad: () => void;
+}) {
+  if (!images.length) {
+    return (
+      <View style={[styles.exportPhotoFrame, styles.exportPhotoFrameEmpty]}>
+        <Text style={styles.emptyTxt}>{isTamil ? 'புகைப்படம் இல்லை' : 'No photo attached'}</Text>
+      </View>
+    );
+  }
+
+  const captionH = images.length === 1 ? EXPORT_CAPTION_H_SINGLE : EXPORT_CAPTION_H;
+
+  if (images.length === 1) {
+    return (
+      <View style={styles.exportPhotoFrame}>
+        <ExportPhotoTile item={images[0]} index={0} imageCount={1} captionHeight={captionH} onImageLoad={onImageLoad} />
+      </View>
+    );
+  }
+
+  if (images.length === 2) {
+    return (
+      <View style={styles.exportPhotoFrame}>
+        <ExportPhotoRow items={images} startIndex={0} imageCount={2} captionHeight={captionH} onImageLoad={onImageLoad} />
+      </View>
+    );
+  }
+
+  if (images.length === 3) {
+    return (
+      <View style={styles.exportPhotoFrame}>
+        <View style={styles.exportStack}>
+          <ExportPhotoRow
+            items={[images[0], images[1]]}
+            startIndex={0}
+            imageCount={3}
+            captionHeight={captionH}
+            onImageLoad={onImageLoad}
+          />
+          <ExportPhotoRow
+            items={[images[2]]}
+            startIndex={2}
+            imageCount={3}
+            captionHeight={captionH}
+            onImageLoad={onImageLoad}
+            centerSingle
+          />
+        </View>
+      </View>
+    );
+  }
+
+  const pairs: { url: string; name: string; fieldKey: string }[][] = [];
+  for (let i = 0; i < images.length; i += 2) {
+    pairs.push(images.slice(i, i + 2));
+  }
+
+  return (
+    <View style={styles.exportPhotoFrame}>
+      <View style={styles.exportStack}>
+        {pairs.map((row, ri) => (
+          <ExportPhotoRow
+            key={`export-pair-${row.map((x) => x.fieldKey).join('-')}`}
+            items={row}
+            startIndex={ri * 2}
+            imageCount={images.length}
+            captionHeight={captionH}
+            onImageLoad={onImageLoad}
+            centerSingle={row.length === 1}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function DetailSummaryBody({
+  isTamil,
+  place,
+  wardNumber,
+  streetLabel,
+  subjectName,
+  categoryName,
+  submitted,
+  gps,
+  variant = 'screen',
+}: {
+  isTamil: boolean;
+  place: string;
+  wardNumber: number | string;
+  streetLabel: string;
+  subjectName: string;
+  categoryName: string;
+  submitted: string;
+  gps: string;
+  variant?: 'screen' | 'brandHeader';
+}) {
+  const isBrandHeader = variant === 'brandHeader';
+  const wardLabel = formatWardLabel(isTamil, wardNumber);
+  const street = streetLabel?.trim() || '';
+  const subjectCategory = [subjectName?.trim(), categoryName?.trim()].filter(Boolean).join(' · ');
+  const wardLine = street ? `${wardLabel} · ${street}` : wardLabel;
+  const metaLine = `${submitted} · ${gps}`;
+
+  const headerRow = (line: 1 | 2 | 3 | 4) => {
+    if (!isBrandHeader) return undefined;
+    if (line === 1) return styles.sumHeaderRow1;
+    if (line === 2) return styles.sumHeaderRow2;
+    if (line === 3) return styles.sumHeaderRow3;
+    return styles.sumHeaderRow4;
+  };
+
+  if (isBrandHeader) {
+    return (
+      <View style={[styles.detailSummaryBody, styles.detailSummaryBodyTight]}>
+        {!!subjectCategory && (
+          <Text style={headerRow(1)} numberOfLines={1}>
+            {subjectCategory}
+          </Text>
+        )}
+        {!!place && (
+          <Text style={headerRow(2)} numberOfLines={1}>
+            {place}
+          </Text>
+        )}
+        <Text style={headerRow(3)} numberOfLines={1}>
+          {wardLine}
+          {!!metaLine && <Text style={headerRow(4)}>{`  ·  ${metaLine}`}</Text>}
+        </Text>
+      </View>
+    );
+  }
+
+  const subLine = subjectCategory;
+  const wardStreet = wardLine;
+
+  return (
+    <View style={styles.detailSummaryBody}>
+      {!!place && (
+        <Text style={styles.sumPlace} numberOfLines={2}>
+          {place}
+        </Text>
+      )}
+      <Text style={styles.sumPrimary} numberOfLines={3}>
+        {wardStreet}
+      </Text>
+      {!!subLine && (
+        <Text style={styles.sumSecondary} numberOfLines={2}>
+          {subLine}
+        </Text>
+      )}
+      <Text style={styles.sumMeta} numberOfLines={1}>
+        {metaLine}
+      </Text>
+    </View>
+  );
+}
+
+function ExportLocationMapThumb({
+  latitude,
+  longitude,
+  onLoad,
+}: {
+  latitude: number;
+  longitude: number;
+  onLoad: () => void;
+}) {
+  const uris = locationMapUris(latitude, longitude);
+  const [src, setSrc] = useState(uris.google);
+
+  return (
+    <View style={styles.exportHeaderMapWrap} collapsable={false}>
+      <Image
+        source={{ uri: src }}
+        style={styles.exportHeaderMapImg}
+        resizeMode="cover"
+        onLoad={onLoad}
+        onError={() => {
+          if (src !== uris.osm) setSrc(uris.osm);
+          else onLoad();
+        }}
+      />
+    </View>
+  );
+}
+
+/** Download/share report header only (ViewShot capture). */
+function ExportReportHeader({
+  isTamil,
+  place,
+  wardNumber,
+  streetLabel,
+  subjectName,
+  categoryName,
+  submitted,
+  latitude,
+  longitude,
+  onMapLoad,
+}: {
+  isTamil: boolean;
+  place: string;
+  wardNumber: number | string;
+  streetLabel: string;
+  subjectName: string;
+  categoryName: string;
+  submitted: string;
+  latitude: number;
+  longitude: number;
+  onMapLoad: () => void;
+}) {
+  const wardLabel = formatWardLabel(isTamil, wardNumber);
+  const street = streetLabel?.trim() || '';
+  const wardLine = street ? `${wardLabel} · ${street}` : wardLabel;
+  const subjectCategory = [subjectName?.trim(), categoryName?.trim()].filter(Boolean).join(' · ');
+  const latText = Number(latitude || 0).toFixed(5);
+  const lonText = Number(longitude || 0).toFixed(5);
+  const dateGpsLine = [submitted, `${latText}, ${lonText}`].filter(Boolean).join('  ·  ');
+
+  return (
+    <ExportReportHeaderSurface style={styles.exportSummaryHeader} defaultHeight={78}>
+      <View style={styles.exportHeaderRow} collapsable={false}>
+        <View style={styles.exportHeaderLogoPlate} collapsable={false}>
+          <BrandImage kind="icon" style={styles.exportHeaderLogo} />
+        </View>
+        <View style={styles.exportHeaderContentCentered} collapsable={false}>
+          {!!subjectCategory && (
+            <Text style={styles.exportHeadLine1} numberOfLines={2}>
+              {subjectCategory}
+            </Text>
+          )}
+          {!!place && (
+            <Text style={styles.exportHeadLine2} numberOfLines={2}>
+              {place}
+            </Text>
+          )}
+          <Text style={styles.exportHeadLine3} numberOfLines={1}>
+            {wardLine}
+            {!!dateGpsLine && <Text style={styles.exportHeadLine4}>{`  ·  ${dateGpsLine}`}</Text>}
+          </Text>
+        </View>
+        <View style={styles.exportHeaderGps} collapsable={false}>
+          <ExportLocationMapThumb latitude={latitude} longitude={longitude} onLoad={onMapLoad} />
+        </View>
+      </View>
+    </ExportReportHeaderSurface>
+  );
+}
+
+function ReportFooterBar({
+  isTamil,
+  busy,
+  palette,
+  onDownload,
+  onShare,
+}: {
+  isTamil: boolean;
+  busy: 'image' | 'report' | null;
+  palette?: AppPalette;
+  onDownload: () => void;
+  onShare: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const theme = (palette ?? getPaletteById('royal_gold')).primary;
+
+  return (
+    <View style={[styles.reportFooter, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+      <Pressable
+        onPress={onDownload}
+        style={({ pressed }) => [
+          styles.reportFooterBtn,
+          styles.reportFooterBtnOutline,
+          { borderColor: theme },
+          pressed && styles.reportFooterBtnPressed,
+        ]}
+        disabled={!!busy}
+      >
+        {busy === 'report' ? (
+          <ActivityIndicator size="small" color={theme} />
+        ) : (
+          <>
+            <Ionicons name="download-outline" size={14} color={theme} />
+            <Text
+              style={[styles.reportFooterBtnTextOutline, { color: theme }, isTamil && styles.reportFooterBtnTextTa]}
+              numberOfLines={1}
+            >
+              {isTamil ? 'அறிக்கை பதிவிறக்கம்' : 'Download report'}
+            </Text>
+          </>
+        )}
+      </Pressable>
+      <Pressable
+        onPress={onShare}
+        style={({ pressed }) => [
+          styles.reportFooterBtn,
+          styles.reportFooterBtnPrimary,
+          { backgroundColor: theme },
+          pressed && styles.reportFooterBtnPressed,
+        ]}
+        disabled={!!busy}
+      >
+        <Ionicons name="share-outline" size={14} color="#fff" />
+        <Text style={[styles.reportFooterBtnTextPrimary, isTamil && styles.reportFooterBtnTextTa]} numberOfLines={1}>
+          {isTamil ? 'அறிக்கை பகிர்வு' : 'Share report'}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+export function WorkDetailModal({
+  work,
+  portal,
+  isTamil,
+  palette,
+  streetLabel,
+  onClose,
+}: {
+  work: InspectionWork;
+  portal: PortalState;
+  isTamil: boolean;
+  palette?: AppPalette;
+  streetLabel: string;
+  onClose: () => void;
+}) {
+  const resolvedPalette = palette ?? getPaletteById('royal_gold');
+  const insets = useSafeAreaInsets();
+  const exportRef = useRef<ViewShotRef>(null);
+  const exportLoadedCount = useRef(0);
+  const exportLaidOut = useRef<(() => void) | null>(null);
+  const [busy, setBusy] = useState<'image' | 'report' | null>(null);
+  const [idx, setIdx] = useState(0);
+  const [photoReady, setPhotoReady] = useState(false);
+  const [exportReady, setExportReady] = useState(false);
+  const [exportCapturing, setExportCapturing] = useState(false);
+
+  const images = useMemo(() => {
+    const list: { url: string; name: string; fieldKey: string }[] = [];
+    const fields = portalFields(portal);
+    const resolveName = (key: string) => localizedFieldLabel(matchWorkField(fields, key, work.categoryId), isTamil, key);
+    Object.entries(work.fieldsData || {}).forEach(([key, value]) => {
+      const v = String(value || '');
+      if (isImageValue(v)) list.push({ url: v, name: resolveName(key), fieldKey: key });
+    });
+    if (work.imageUrl && isImageValue(String(work.imageUrl))) {
+      const primaryKey = mediaFingerprint(work.imageUrl);
+      const i = list.findIndex((x) => mediaFingerprint(x.url) === primaryKey);
+      if (i < 0) {
+        list.push({
+          url: work.imageUrl,
+          name: isTamil ? 'கள ஆய்வு புகைப்படம்' : 'Field photo',
+          fieldKey: '__imageUrl__',
+        });
+      }
+    }
+    const unique = list.filter((x, i, a) => a.findIndex((y) => mediaFingerprint(y.url) === mediaFingerprint(x.url)) === i);
+    return unique
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => {
+        const rank = fieldOrderIndex(fields, a.item.fieldKey, work.categoryId) - fieldOrderIndex(fields, b.item.fieldKey, work.categoryId);
+        return rank !== 0 ? rank : a.index - b.index;
+      })
+      .map((x) => x.item);
+  }, [work, portal, isTamil]);
+
+  const fieldRows = useMemo(() => {
+    const fields = portalFields(portal);
+    return Object.entries(work.fieldsData || {})
+      .map(([key, value], index) => {
+        const v = String(value ?? '').trim();
+        if (!v || isImageValue(v)) return null;
+        const label = localizedFieldLabel(matchWorkField(fields, key, work.categoryId), isTamil, key);
+        return { key, label, value: v, index };
+      })
+      .filter((row): row is { key: string; label: string; value: string; index: number } => !!row)
+      .sort((a, b) => {
+        const rank = fieldOrderIndex(fields, a.key, work.categoryId) - fieldOrderIndex(fields, b.key, work.categoryId);
+        return rank !== 0 ? rank : a.index - b.index;
+      })
+      .map(({ key, label, value }) => ({ key, label, value }));
+  }, [work, portal, isTamil]);
+
+  const current = images[idx];
+  const locTp = isTamil ? work.tpNameTa || work.tpNameEn : work.tpNameEn;
+  const locZone = isTamil ? work.zoneNameTa || work.zoneNameEn : work.zoneNameEn;
+  const locDistrict = isTamil ? work.districtNameTa || work.districtNameEn : work.districtNameEn;
+  const subjectName = isTamil ? work.subjectNameTa || work.subjectNameEn : work.subjectNameEn;
+  const categoryName = isTamil ? work.categoryNameTa || work.categoryNameEn : work.categoryNameEn;
+  const submitted = formatTo12Hr(work.submittedAt);
+  const gps = `${Number(work.latitude || 0).toFixed(5)}, ${Number(work.longitude || 0).toFixed(5)}`;
+  const workRef = work.workId || work.id;
+  const photoLabel = current?.name || (isTamil ? 'கள ஆய்வு புகைப்படம்' : 'Field photo');
+  const headerPlace = [locTp, locZone, locDistrict].filter(Boolean).join(' · ');
+  const resolvedStreet = streetLabel?.trim() || String(work.streetName || '').trim();
+
+  const markExportImageLoaded = useCallback(() => {
+    exportLoadedCount.current += 1;
+    if (exportLoadedCount.current >= images.length) setExportReady(true);
+  }, [images.length]);
+
+  useEffect(() => {
+    exportLoadedCount.current = 0;
+    setExportReady(images.length === 0);
+  }, [images]);
+
+  const run = async (kind: 'image' | 'report', save: boolean) => {
+    try {
+      setBusy(kind);
+      if (kind === 'image') {
+        if (!current) {
+          toast(isTamil ? 'பகிர புகைப்படம் இல்லை' : 'No photo to share');
+          return;
+        }
+        const ext = /\.png$/i.test(current.url) ? 'png' : 'jpg';
+        const filename = `inspection_${safeFilePart(workRef)}_photo_${idx + 1}.${ext}`;
+        const uri = await materializeFile(current.url, filename);
+        await shareOrSave(uri, ext === 'png' ? 'image/png' : 'image/jpeg', filename, save, isTamil);
+        return;
+      }
+
+      const stamp = Date.now();
+      exportLoadedCount.current = 0;
+      const laidOut = new Promise<void>((resolve) => {
+        exportLaidOut.current = resolve;
+      });
+      setExportCapturing(true);
+      await Promise.race([laidOut, new Promise<void>((r) => setTimeout(r, 900))]);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      {
+        const needed = images.length + 1;
+        const started = Date.now();
+        while (exportLoadedCount.current < needed && Date.now() - started < 2000) {
+          await new Promise((r) => setTimeout(r, 80));
+        }
+      }
+      await new Promise((r) => setTimeout(r, 120));
+      let captured: string;
+      try {
+        captured = await captureRef(exportRef, {
+          format: 'jpg',
+          quality: 0.95,
+          result: 'tmpfile',
+          fileName: `inspection_${stamp}`,
+          width: EXPORT_W,
+        });
+      } finally {
+        exportLaidOut.current = null;
+        setExportCapturing(false);
+      }
+      const filename = `inspection_${safeFilePart(workRef)}_${stamp}.jpg`;
+      const dest = `${FileSystem.cacheDirectory}${filename}`;
+      const exists = await FileSystem.getInfoAsync(dest);
+      if (exists.exists) await FileSystem.deleteAsync(dest, { idempotent: true });
+      await FileSystem.copyAsync({ from: captured, to: dest });
+      await shareOrSave(dest, 'image/jpeg', filename, save, isTamil);
+    } catch {
+      toast(isTamil ? 'செயல் தோல்வியுற்றது. மீண்டும் முயலவும்.' : 'Could not complete that action. Please try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Modal
+      visible
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={styles.screen}>
+        <StatusBar style="dark" />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.body}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
+        >
+          <View style={styles.sheet}>
+            <ReportHeaderSurface style={[styles.detailHeader, { paddingTop: insets.top }]}>
+              <DetailSummaryBody
+                variant="brandHeader"
+                isTamil={isTamil}
+                place={headerPlace}
+                wardNumber={work.wardNumber}
+                streetLabel={resolvedStreet}
+                subjectName={subjectName || ''}
+                categoryName={categoryName || ''}
+                submitted={submitted}
+                gps={gps}
+              />
+            </ReportHeaderSurface>
+
+            <View style={styles.photoWrap}>
+              {current ? (
+                <View style={styles.photoCard}>
+                  <View style={styles.photoFrame}>
+                    {images.map((img, i) =>
+                      i === idx ? (
+                        <Image
+                          key={`detail-${img.fieldKey}-${mediaFingerprint(img.url)}`}
+                          source={{ uri: displayImageUri(img.url, img.fieldKey) }}
+                          style={styles.photo}
+                          resizeMode="contain"
+                          fadeDuration={0}
+                          onLoad={() => setPhotoReady(true)}
+                          onError={() => setPhotoReady(true)}
+                        />
+                      ) : null,
+                    )}
+                    <View style={styles.photoActions}>
+                      <Pressable
+                        onPress={() => void run('image', true)}
+                        style={styles.photoActionBtn}
+                        disabled={!!busy}
+                        hitSlop={6}
+                      >
+                        {busy === 'image' ? (
+                          <ActivityIndicator size="small" color="#1A3D66" />
+                        ) : (
+                          <Ionicons name="download-outline" size={13} color="#1A3D66" />
+                        )}
+                      </Pressable>
+                      <Pressable
+                        onPress={() => void run('image', false)}
+                        style={styles.photoActionBtn}
+                        disabled={!!busy}
+                        hitSlop={6}
+                      >
+                        <Ionicons name="share-outline" size={13} color="#1A3D66" />
+                      </Pressable>
+                    </View>
+                    {images.length > 1 && (
+                      <>
+                        <Pressable
+                          style={[styles.nav, { left: 8 }]}
+                          onPress={() => {
+                            setPhotoReady(false);
+                            setIdx((i) => (i - 1 + images.length) % images.length);
+                          }}
+                        >
+                          <Ionicons name="chevron-back" color="#fff" size={18} />
+                        </Pressable>
+                        <Pressable
+                          style={[styles.nav, { right: 8 }]}
+                          onPress={() => {
+                            setPhotoReady(false);
+                            setIdx((i) => (i + 1) % images.length);
+                          }}
+                        >
+                          <Ionicons name="chevron-forward" color="#fff" size={18} />
+                        </Pressable>
+                      </>
+                    )}
+                    <ImageCaption
+                      label={photoLabel}
+                      count={images.length > 1 ? `${idx + 1}/${images.length}` : undefined}
+                    />
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.photoCard}>
+                  <View style={styles.photoEmpty}>
+                    <Ionicons name="image-outline" size={32} color="#CBD5E1" />
+                    <Text style={styles.emptyTxt}>{isTamil ? 'புகைப்படம் இல்லை' : 'No photo attached'}</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.tablePad}>
+              <Text style={styles.tableTitle}>{isTamil ? 'விவரங்கள் அட்டவணை' : 'DETAILS TABLE'}</Text>
+              <View style={styles.table}>
+                <View style={styles.thead}>
+                  <Text style={[styles.th, { flex: 1.65 }]}>{isTamil ? 'தலைப்புகள்' : 'HEADINGS'}</Text>
+                  <View style={styles.colSplit} />
+                  <Text style={[styles.th, { flex: 1 }]}>{isTamil ? 'விவரங்கள்' : 'DETAILS'}</Text>
+                </View>
+                {fieldRows.length ? (
+                  fieldRows.map((r, i) => (
+                    <View key={r.key} style={[styles.tr, i % 2 === 1 && styles.trAlt]}>
+                      <Text style={[styles.tdL, { flex: 1.65 }]}>{r.label}</Text>
+                      <View style={styles.colSplit} />
+                      <Text style={[styles.tdR, { flex: 1 }]}>{r.value}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.emptyTxt}>
+                    {isTamil ? 'புலங்களின் தகவல்கள் எதுவும் பதிவு செய்யப்படவில்லை' : 'No custom field inputs recorded'}
+                  </Text>
+                )}
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+        <ReportFooterBar
+          isTamil={isTamil}
+          busy={busy}
+          palette={resolvedPalette}
+          onDownload={() => void run('report', true)}
+          onShare={() => void run('report', false)}
+        />
+        {exportCapturing ? (
+          <>
+            <View pointerEvents="none" style={styles.exportCaptureMask} />
+            <View pointerEvents="none" style={styles.exportCaptureStage}>
+              <ViewShot
+                ref={exportRef}
+                options={{ format: 'jpg', quality: 0.95 }}
+                style={styles.landscapeSheet}
+              >
+          <View
+            collapsable={false}
+            style={styles.exportSheet}
+            removeClippedSubviews={false}
+            onLayout={() => {
+              exportLaidOut.current?.();
+              exportLaidOut.current = null;
+            }}
+          >
+            <ExportReportHeader
+              key={`export-header-${work.id}-${resolvedStreet}`}
+              isTamil={isTamil}
+              place={headerPlace}
+              wardNumber={work.wardNumber}
+              streetLabel={resolvedStreet}
+              subjectName={subjectName || ''}
+              categoryName={categoryName || ''}
+              submitted={submitted}
+              latitude={Number(work.latitude || 0)}
+              longitude={Number(work.longitude || 0)}
+              onMapLoad={markExportImageLoaded}
+            />
+            <View style={styles.landBody}>
+              <View style={styles.landPhotoExport}>
+                <ExportPhotoFrame images={images} isTamil={isTamil} onImageLoad={markExportImageLoaded} />
+              </View>
+              <View style={styles.exportSplit} />
+              <View style={styles.landTable}>
+                <Text style={styles.tableTitle}>{isTamil ? 'விவரங்கள் அட்டவணை' : 'DETAILS TABLE'}</Text>
+                <View style={styles.table}>
+                  <View style={styles.thead}>
+                    <Text style={[styles.th, { flex: 1.65 }]}>{isTamil ? 'தலைப்புகள்' : 'HEADINGS'}</Text>
+                    <View style={styles.colSplit} />
+                    <Text style={[styles.th, { flex: 1 }]}>{isTamil ? 'விவரங்கள்' : 'DETAILS'}</Text>
+                  </View>
+                  {fieldRows.length ? (
+                    fieldRows.map((r, i) => (
+                      <View key={`ex-${r.key}`} style={[styles.tr, i % 2 === 1 && styles.trAlt]}>
+                        <Text style={[styles.tdL, { flex: 1.65 }]}>{r.label}</Text>
+                        <View style={styles.colSplit} />
+                        <Text style={[styles.tdR, { flex: 1 }]}>{r.value}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.emptyTxt}>
+                      {isTamil ? 'புலங்களின் தகவல்கள் எதுவும் பதிவு செய்யப்படவில்லை' : 'No custom field inputs recorded'}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </View>
+          </View>
+              </ViewShot>
+            </View>
+          </>
+        ) : null}
+      </View>
+    </Modal>
+  );
+}
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#EEF2F6' },
+  scroll: { flex: 1 },
+  body: { paddingHorizontal: 0, paddingBottom: 8, flexGrow: 1 },
+  reportHeaderSurface: { overflow: 'hidden', position: 'relative' },
+  reportHeaderBands: { ...StyleSheet.absoluteFill, flexDirection: 'column' },
+  reportHeaderBand: { flex: 1 },
+  detailHeader: {
+    paddingHorizontal: 8,
+    paddingBottom: 4,
+    borderBottomWidth: 2,
+    borderBottomColor: CAPTION_BORDER,
+  },
+  detailSummaryBody: {
+    width: '100%',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+    gap: 3,
+  },
+  detailSummaryBodyTight: {
+    gap: 0,
+    paddingHorizontal: 0,
+  },
+  reportFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    backgroundColor: '#fff',
+    zIndex: 20,
+    elevation: 12,
+  },
+  reportFooterBtn: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    minHeight: 36,
+  },
+  reportFooterBtnPressed: { opacity: 0.88 },
+  reportFooterBtnOutline: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+  },
+  reportFooterBtnPrimary: {},
+  reportFooterBtnTextOutline: {
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+    flexShrink: 1,
+  },
+  reportFooterBtnTextPrimary: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+    textAlign: 'center',
+    flexShrink: 1,
+  },
+  reportFooterBtnTextTa: {
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  sheet: {
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+  landscapeSheet: {
+    width: EXPORT_W,
+    backgroundColor: '#fff',
+    transformOrigin: 'top left',
+    transform: [{ scale: EXPORT_FIT_SCALE }],
+  },
+  exportCaptureStage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    zIndex: 1,
+  },
+  exportCaptureMask: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#EEF2F6',
+    zIndex: 40,
+  },
+  exportHeaderStripeWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 0,
+  },
+  exportSheet: {
+    width: '100%',
+    backgroundColor: '#fff',
+  },
+  exportSummaryHeader: {
+    position: 'relative',
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    minHeight: 78,
+    width: '100%',
+    justifyContent: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: CAPTION_BORDER,
+  },
+  exportHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    gap: 10,
+    zIndex: 1,
+  },
+  exportHeaderLogoPlate: {
+    width: 58,
+    height: 58,
+    borderRadius: 11,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 5,
+  },
+  exportHeaderLogo: {
+    width: 48,
+    height: 48,
+  },
+  exportHeaderContentCentered: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  exportHeadLine1: {
+    width: '100%',
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '900',
+    color: '#fff',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  exportHeadLine2: {
+    width: '100%',
+    marginTop: 3,
+    marginBottom: 1,
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '900',
+    color: REPORT_AMBER,
+    letterSpacing: 0.25,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.28)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  exportHeadLine3: {
+    width: '100%',
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '900',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  exportHeadLine4: {
+    width: '100%',
+    marginTop: 2,
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.92)',
+    letterSpacing: 0.15,
+    textAlign: 'center',
+  },
+  exportHeaderGps: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 3,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.9)',
+  },
+  exportHeaderMapWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 7,
+    overflow: 'hidden',
+    backgroundColor: '#1B3A1A',
+    borderWidth: 1,
+    borderColor: '#C5D0C2',
+  },
+  exportHeaderMapImg: {
+    width: 54,
+    height: 54,
+  },
+  landBody: { flexDirection: 'row', alignItems: 'stretch', backgroundColor: '#fff' },
+  landPhotoExport: {
+    width: '58%',
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+  exportSplit: {
+    width: 3,
+    alignSelf: 'stretch',
+    backgroundColor: REPORT_GREEN,
+  },
+  exportPhotoFrame: {
+    height: EXPORT_PHOTO_H,
+    padding: EXPORT_PHOTO_PAD,
+    backgroundColor: '#fff',
+    flexDirection: 'column',
+  },
+  exportPhotoFrameEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exportStack: { flex: 1, gap: EXPORT_PHOTO_GAP },
+  exportRow: { flex: 1, flexDirection: 'row', gap: EXPORT_PHOTO_GAP, alignItems: 'stretch' },
+  exportRowSlot: { flex: 1, minWidth: 0 },
+  exportRowSide: { flex: 0.5, minWidth: 0 },
+  exportRowMain: { flex: 2, minWidth: 0 },
+  exportTile: {
+    flex: 1,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  exportTileWell: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 6,
+    minHeight: 0,
+  },
+  exportTileImg: { width: '100%', height: '100%' },
+  exportTileCaption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: REPORT_AMBER,
+    paddingHorizontal: 8,
+    borderTopWidth: 1,
+    borderTopColor: CAPTION_BORDER,
+  },
+  exportTileCaptionTxt: {
+    width: '100%',
+    fontSize: 9,
+    fontWeight: '800',
+    color: CAPTION_BROWN,
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  landTable: { width: '42%', padding: 10, backgroundColor: '#F8FAFC' },
+  sumPlace: {
+    width: '100%',
+    fontSize: 13,
+    fontWeight: '800',
+    color: SUMMARY_NAVY,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  sumPrimary: {
+    width: '100%',
+    fontSize: 13,
+    fontWeight: '800',
+    color: SUMMARY_NAVY,
+    lineHeight: 17,
+    textAlign: 'center',
+    paddingHorizontal: 2,
+  },
+  sumSecondary: {
+    width: '100%',
+    fontSize: 12,
+    fontWeight: '700',
+    color: SUMMARY_TEXT,
+    lineHeight: 16,
+    textAlign: 'center',
+    paddingHorizontal: 2,
+  },
+  sumMeta: {
+    width: '100%',
+    marginTop: 1,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '700',
+    color: SUMMARY_MUTED,
+    textAlign: 'center',
+  },
+  sumHeaderRow1: {
+    width: '100%',
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '900',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  sumHeaderRow2: {
+    width: '100%',
+    marginTop: 1,
+    marginBottom: 0,
+    fontSize: 14,
+    lineHeight: 17,
+    fontWeight: '900',
+    color: REPORT_AMBER,
+    letterSpacing: 0.2,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.28)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  sumHeaderRow3: {
+    width: '100%',
+    marginTop: 1,
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '900',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  sumHeaderRow4: {
+    width: '100%',
+    marginTop: 0,
+    fontSize: 8,
+    lineHeight: 10,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.88)',
+    textAlign: 'center',
+  },
+  photoWrap: { paddingHorizontal: 10, paddingTop: 4, paddingBottom: 6 },
+  photoCard: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#fff',
+  },
+  photoFrame: { position: 'relative', overflow: 'hidden', backgroundColor: '#0B1220' },
+  photoActions: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  photoActionBtn: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: REPORT_AMBER,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(26, 61, 102, 0.12)',
+  },
+  captionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: REPORT_AMBER,
+    borderTopWidth: 1,
+    borderTopColor: CAPTION_BORDER,
+  },
+  captionText: {
+    width: '100%',
+    fontSize: 11,
+    fontWeight: '800',
+    color: CAPTION_BROWN,
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  photo: { width: '100%', height: 260, backgroundColor: '#0B1220' },
+  photoEmpty: { height: 120, alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#F8FAFC' },
+  emptyTxt: { color: '#94A3B8', fontSize: 12, fontWeight: '600', textAlign: 'center', padding: 12 },
+  nav: { position: 'absolute', top: 112, backgroundColor: 'rgba(15,23,42,0.5)', borderRadius: 14, padding: 5 },
+  tablePad: { paddingHorizontal: 10, paddingTop: 6, paddingBottom: 8, backgroundColor: '#F8FAFC' },
+  tableTitle: { fontSize: 10, fontWeight: '800', color: '#334155', letterSpacing: 0.5, marginBottom: 6 },
+  table: { backgroundColor: '#fff', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0' },
+  thead: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingVertical: 8,
+    paddingHorizontal: 0,
+    backgroundColor: REPORT_AMBER,
+    borderBottomWidth: 2,
+    borderBottomColor: CAPTION_BORDER,
+  },
+  colSplit: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: '#C2410C',
+  },
+  th: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: CAPTION_BROWN,
+    letterSpacing: 0.4,
+    textAlign: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  tr: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingVertical: 8,
+    paddingHorizontal: 0,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  trAlt: { backgroundColor: '#F8FAFC' },
+  tdL: { fontSize: 12, fontWeight: '700', color: '#1E3A5F', paddingHorizontal: 8 },
+  tdR: { fontSize: 12, fontWeight: '700', color: '#0F172A', paddingHorizontal: 8 },
+});
+

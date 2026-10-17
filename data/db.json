@@ -1,0 +1,2439 @@
+{
+  "settings": {
+    "mongodbUri": "mongodb://127.0.0.1:27018/dtp_enterprise",
+    "mongodbPoolSize": 50,
+    "s3Bucket": "tms-2026",
+    "s3Region": "ap-south-1",
+    "s3AccessKeyId": "",
+    "s3SecretAccessKey": "",
+    "s3PoolSize": 50,
+    "port": "3000",
+    "googleMapsApiKey": "",
+    "currentLanguage": "en",
+    "theme": "sunset-aurora"
+  },
+  "zones": [],
+  "districts": [],
+  "townPanchayats": [],
+  "employeeGroups": [
+    {
+      "id": "A",
+      "nameEn": "Group A",
+      "nameTa": "குழு ஏ"
+    },
+    {
+      "id": "B",
+      "nameEn": "Group B",
+      "nameTa": "குழு பி"
+    },
+    {
+      "id": "C",
+      "nameEn": "Group C",
+      "nameTa": "குழு சி"
+    },
+    {
+      "id": "D",
+      "nameEn": "Group D",
+      "nameTa": "குழு டி"
+    }
+  ],
+  "employeeCategories": [
+    {
+      "id": "admin",
+      "nameEn": "Administration",
+      "nameTa": "நிர்வாகம்"
+    },
+    {
+      "id": "eng",
+      "nameEn": "Engineering",
+      "nameTa": "பொறியியல்"
+    },
+    {
+      "id": "health",
+      "nameEn": "Public Health",
+      "nameTa": "பொது சுகாதாரம்"
+    }
+  ],
+  "postNatures": [
+    {
+      "id": "prov",
+      "nameEn": "Provincialised",
+      "nameTa": "மாநில அளவிலானது"
+    },
+    {
+      "id": "non-prov",
+      "nameEn": "Non Provincialised",
+      "nameTa": "மாநில அளவில்லாதது"
+    }
+  ],
+  "payLevels": [
+    {
+      "id": "pb1",
+      "nameEn": "PB 1 (15700 - 50000)",
+      "nameTa": "பிபி 1 (15700 - 50000)",
+      "minPay": 15700,
+      "maxPay": 50000
+    },
+    {
+      "id": "pb2",
+      "nameEn": "PB 2 (20600 - 65500)",
+      "nameTa": "பிபி 2 (20600 - 65500)",
+      "minPay": 20600,
+      "maxPay": 65500
+    }
+  ],
+  "posts": [
+    {
+      "id": "director",
+      "nameEn": "Director",
+      "nameTa": "இயக்குனர்"
+    },
+    {
+      "id": "ad",
+      "nameEn": "Assistant Director",
+      "nameTa": "உதவி இயக்குனர்"
+    },
+    {
+      "id": "eo",
+      "nameEn": "Executive Officer",
+      "nameTa": "செயல் அலுவலர்"
+    },
+    {
+      "id": "ja",
+      "nameEn": "Junior Assistant",
+      "nameTa": "இளநிலை உதவியாளர்"
+    },
+    {
+      "id": "bc",
+      "nameEn": "Bill Collector",
+      "nameTa": "வரி வசூலிப்பவர்"
+    },
+    {
+      "id": "oa",
+      "nameEn": "Office Assistant",
+      "nameTa": "அலுவலக உதவியாளர்"
+    }
+  ],
+  "officeCategories": [
+    {
+      "id": "dtp",
+      "nameEn": "DTP (Directorate of Town Panchayats)",
+      "nameTa": "பேரூராட்சிகளின் இயக்ககம் (DTP)",
+      "type": "DTP",
+      "sanctions": {
+        "director": 1,
+        "ad": 2,
+        "eo": 1,
+        "ja": 10,
+        "bc": 0,
+        "oa": 5
+      }
+    },
+    {
+      "id": "adtp",
+      "nameEn": "ADTP (Assistant Director of Town Panchayats)",
+      "nameTa": "பேரூராட்சிகளின் உதவி இயக்குனர் அலுவலகம் (ADTP)",
+      "type": "ADTP",
+      "sanctions": {
+        "ad": 1,
+        "eo": 1,
+        "ja": 5,
+        "bc": 0,
+        "oa": 3
+      }
+    },
+    {
+      "id": "tp",
+      "nameEn": "TP (Town Panchayat)",
+      "nameTa": "பேரூராட்சி (TP)",
+      "type": "TP",
+      "sanctions": {
+        "eo": 1,
+        "ja": 3,
+        "bc": 2,
+        "oa": 1
+      }
+    }
+  ],
+  "roles": [
+    {
+      "id": "admin",
+      "nameEn": "Admin / Director (HOD)",
+      "nameTa": "நிர்வாகி / இயக்குனர் (தலைமையகம்)",
+      "permissions": [
+        "all"
+      ]
+    },
+    {
+      "id": "ad",
+      "nameEn": "Assistant Director (Zone)",
+      "nameTa": "உதவி இயக்குனர் (மண்டலம்)",
+      "permissions": [
+        "zone_control"
+      ]
+    },
+    {
+      "id": "eo",
+      "nameEn": "Executive Officer (TP)",
+      "nameTa": "செயல் அலுவலர் (பேரூராட்சி)",
+      "permissions": [
+        "tp_control"
+      ]
+    },
+    {
+      "id": "zonal",
+      "nameEn": "Zonal User (Zone)",
+      "nameTa": "மண்டல பயனர் (மண்டலம்)",
+      "permissions": [
+        "zone_control"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "u1",
+      "username": "dtpadmin",
+      "passwordHash": "dtp123",
+      "roleId": "admin",
+      "scopeType": "HOD",
+      "scopeId": "all",
+      "status": "Active",
+      "nameEn": "DTP Director Head Office",
+      "nameTa": "இயக்குநர் தலைமையகம்"
+    },
+    {
+      "id": "u4",
+      "username": "zonal",
+      "passwordHash": "zonal123",
+      "roleId": "zonal",
+      "scopeType": "Zone",
+      "scopeId": "z1",
+      "status": "Active",
+      "nameEn": "Zonal User Kanchipuram",
+      "nameTa": "மண்டல பயனர் காஞ்சிபுரம்"
+    },
+    {
+      "id": "u2",
+      "username": "ad_kanchi",
+      "passwordHash": "ad123",
+      "roleId": "ad",
+      "scopeType": "Zone",
+      "scopeId": "z1",
+      "status": "Active",
+      "nameEn": "AD Kanchipuram Zone",
+      "nameTa": "உதவி இயக்குநர் காஞ்சிபுரம்"
+    },
+    {
+      "id": "u3",
+      "username": "eo_thiruporur",
+      "passwordHash": "eo123",
+      "roleId": "eo",
+      "scopeType": "TownPanchayat",
+      "scopeId": "tp1",
+      "status": "Active",
+      "nameEn": "EO Thiruporur Town Panchayat",
+      "nameTa": "செயல் அலுவலர் திருப்போரூர்"
+    },
+    {
+      "id": "u_admin",
+      "username": "admin",
+      "passwordHash": "admin123",
+      "roleId": "admin",
+      "scopeType": "HOD",
+      "scopeId": "all",
+      "status": "Active",
+      "nameEn": "Administrator",
+      "nameTa": "நிர்வாகி"
+    },
+    {
+      "id": "u_tp",
+      "username": "tp",
+      "passwordHash": "tp123",
+      "roleId": "eo",
+      "scopeType": "TownPanchayat",
+      "scopeId": "tp1",
+      "status": "Active",
+      "nameEn": "Town Panchayat Executive Officer",
+      "nameTa": "பேரூராட்சி செயல் அலுவலர்"
+    }
+  ],
+  "modules": [
+    {
+      "id": "m1",
+      "nameEn": "Basic Employee Details",
+      "nameTa": "அடிப்படை ஊழியர் விவரங்கள்",
+      "applicablePosts": [
+        "director",
+        "ad",
+        "eo",
+        "ja",
+        "bc",
+        "oa"
+      ]
+    },
+    {
+      "id": "m2",
+      "nameEn": "Probation Details",
+      "nameTa": "தகுதிகாண் பருவம் விவரங்கள்",
+      "applicablePosts": [
+        "eo",
+        "ja",
+        "bc"
+      ]
+    },
+    {
+      "id": "m3",
+      "nameEn": "Leave Details",
+      "nameTa": "விடுப்பு விவரங்கள்",
+      "applicablePosts": [
+        "director",
+        "ad",
+        "eo",
+        "ja",
+        "bc",
+        "oa"
+      ]
+    }
+  ],
+  "fields": [
+    {
+      "id": "f1",
+      "moduleId": "m1",
+      "nameEn": "Father's Name",
+      "nameTa": "தந்தையின் பெயர்",
+      "type": "text",
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "id": "f2",
+      "moduleId": "m1",
+      "nameEn": "Date of Birth",
+      "nameTa": "பிறந்த தேதி",
+      "type": "date",
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "id": "f3",
+      "moduleId": "m1",
+      "nameEn": "Blood Group",
+      "nameTa": "இரத்த வகை",
+      "type": "text",
+      "validations": {
+        "required": false
+      }
+    },
+    {
+      "id": "f4",
+      "moduleId": "m2",
+      "nameEn": "Probation Declaration Date",
+      "nameTa": "தகுதிகாண் பருவம் அறிவிக்கப்பட்ட தேதி",
+      "type": "date",
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "id": "f5",
+      "moduleId": "m2",
+      "nameEn": "Declaration Order Reference",
+      "nameTa": "ஆணை குறிப்பு எண்",
+      "type": "text",
+      "validations": {
+        "required": true
+      }
+    },
+    {
+      "id": "f6",
+      "moduleId": "m3",
+      "nameEn": "Earned Leave Balance",
+      "nameTa": "ஈட்டிய விடுப்பு இருப்பு",
+      "type": "number",
+      "validations": {
+        "required": true,
+        "min": 0
+      }
+    }
+  ],
+  "employees": [
+    {
+      "id": "emp1",
+      "employeeId": "EMP001",
+      "createdBy": "dtpadmin",
+      "nameEn": "Subramanian K",
+      "nameTa": "சுப்பிரமணியன் கே",
+      "username": "EMP001",
+      "passwordHash": "pass001",
+      "zoneId": "z1",
+      "districtId": "d2",
+      "townPanchayatId": "tp1",
+      "officeCategoryType": "TP",
+      "roleId": "eo",
+      "postId": "eo",
+      "groupId": "B",
+      "categoryId": "admin",
+      "postNatureId": "prov",
+      "payLevelId": "pb2",
+      "status": "Active",
+      "profileImage": "",
+      "documents": [
+        {
+          "name": "Appointment_Order.pdf",
+          "url": "/uploads/appointment_order_demo.pdf",
+          "category": "Appointment"
+        }
+      ],
+      "dynamicData": {
+        "f1": "Karuppiah",
+        "f2": "1985-05-15",
+        "f3": "O+ve"
+      }
+    },
+    {
+      "id": "emp2",
+      "employeeId": "EMP002",
+      "createdBy": "dtpadmin",
+      "nameEn": "Rajendran M",
+      "nameTa": "ராஜேந்திரன் எம்",
+      "username": "EMP002",
+      "passwordHash": "pass002",
+      "zoneId": "z1",
+      "districtId": "d2",
+      "townPanchayatId": "tp1",
+      "officeCategoryType": "TP",
+      "roleId": "eo",
+      "postId": "ja",
+      "groupId": "C",
+      "categoryId": "admin",
+      "postNatureId": "prov",
+      "payLevelId": "pb1",
+      "status": "Active",
+      "profileImage": "",
+      "documents": [],
+      "dynamicData": {
+        "f1": "Munusamy",
+        "f2": "1990-08-20",
+        "f3": "A+ve",
+        "f4": "2023-01-10",
+        "f5": "DTP/2023/A1"
+      }
+    }
+  ],
+  "transferRequests": [
+    {
+      "id": "tr1",
+      "employeeId": "EMP001",
+      "currentTPId": "tp1",
+      "requestedTPId": "tp2",
+      "reasonEn": "Family reasons and proximity to hometown",
+      "reasonTa": "குடும்ப சூழ்நிலை மற்றும் சொந்த ஊருக்கு அருகில் செல்லுதல்",
+      "status": "Pending",
+      "createdAt": "2026-07-15T10:00:00.000Z"
+    }
+  ],
+  "transferReasons": [
+    {
+      "id": "tr_reason_1",
+      "nameEn": "Medical Grounds",
+      "nameTa": "மருத்துவ காரணங்கள்"
+    },
+    {
+      "id": "tr_reason_2",
+      "nameEn": "Spouse Employment / Co-location",
+      "nameTa": "துணைவர் பணிபுரிதல் / ஒன்றிணைப்பு"
+    },
+    {
+      "id": "tr_reason_3",
+      "nameEn": "Mutual Transfer",
+      "nameTa": "பரஸ்பர இடமாற்றம்"
+    },
+    {
+      "id": "tr_reason_4",
+      "nameEn": "Compassionate Grounds",
+      "nameTa": "கருணை அடிப்படை"
+    },
+    {
+      "id": "tr_reason_5",
+      "nameEn": "Seniority / Promotion Posting",
+      "nameTa": "முதுநிலை / பதவி உயர்வு நியமனம்"
+    }
+  ],
+  "activityLogs": [
+    {
+      "id": "log1",
+      "employeeId": "EMP001",
+      "employeeName": "Subramanian K",
+      "changedBy": "DTP Director Head Office (dtpadmin)",
+      "action": "Profile Updated",
+      "details": "Updated Father's Name to Karuppiah and blood group to O+ve",
+      "timestamp": "2026-07-18T10:30:00.000Z"
+    },
+    {
+      "id": "log2",
+      "employeeId": "EMP002",
+      "employeeName": "Rajendran M",
+      "changedBy": "AD Kanchipuram Zone (ad_kanchi)",
+      "action": "Document Uploaded",
+      "details": "Uploaded Appointment_Order.pdf to secure storage",
+      "timestamp": "2026-07-18T11:15:00.000Z"
+    }
+  ],
+  "pendingIssues": [
+    {
+      "id": "pi_1787213992449_ssgn2",
+      "issueId": "#TP0006",
+      "townPanchayatId": "tp1",
+      "zoneId": "z1",
+      "districtId": "d2",
+      "category": "establishment",
+      "subcategory": "Employee Benefits",
+      "status": "Active",
+      "createdAt": "2026-08-20T08:19:52.449Z",
+      "fieldsData": {
+        "est_f1": "323",
+        "est_f2": "45"
+      },
+      "comments": []
+    },
+    {
+      "id": "pi_1787213980547_5t0ah",
+      "issueId": "#TP0005",
+      "townPanchayatId": "tp1",
+      "zoneId": "z1",
+      "districtId": "d2",
+      "category": "establishment",
+      "subcategory": "Employee Benefits",
+      "status": "Active",
+      "createdAt": "2026-08-20T08:19:40.547Z",
+      "fieldsData": {
+        "est_f1": "dsad",
+        "est_f2": "2"
+      },
+      "comments": []
+    },
+    {
+      "id": "pi_1787213963040_eksr3",
+      "issueId": "#TP0004",
+      "townPanchayatId": "tp1",
+      "zoneId": "z1",
+      "districtId": "d2",
+      "category": "establishment",
+      "subcategory": "Employee Benefits",
+      "status": "Active",
+      "createdAt": "2026-08-20T08:19:23.040Z",
+      "fieldsData": {
+        "est_f1": "312",
+        "est_f2": "15"
+      },
+      "comments": []
+    },
+    {
+      "id": "pi_1787211709419_neb4q",
+      "issueId": "#TP0003",
+      "townPanchayatId": "tp1",
+      "zoneId": "z1",
+      "districtId": "d2",
+      "category": "online_services",
+      "subcategory": "Tax & Non tax",
+      "status": "Active",
+      "createdAt": "2026-08-20T07:41:49.419Z",
+      "fieldsData": {
+        "os_f1": "5fasf",
+        "os_f2": "205"
+      },
+      "comments": []
+    },
+    {
+      "id": "pi_1787211663452_1bzut",
+      "issueId": "#TP0002",
+      "townPanchayatId": "tp1",
+      "zoneId": "z1",
+      "districtId": "d2",
+      "category": "works",
+      "subcategory": "Roads",
+      "status": "Active",
+      "createdAt": "2026-08-20T07:41:03.452Z",
+      "fieldsData": {
+        "ws_f1": "sdgsdff",
+        "ws_f3": "2026-08-18",
+        "ws_f2": "154"
+      },
+      "comments": []
+    },
+    {
+      "id": "pi1",
+      "issueId": "#TP0001",
+      "townPanchayatId": "tp1",
+      "zoneId": "z1",
+      "districtId": "d2",
+      "category": "works",
+      "subcategory": "Roads",
+      "status": "Active",
+      "createdAt": "2026-08-19T10:00:00.000Z",
+      "fieldsData": {
+        "ws_f1": "Thiruporur Main Road Repair Work",
+        "ws_f2": 45.5,
+        "ws_f3": "2026-10-31",
+        "ws_f4": {
+          "fileName": "road_sanction_order.pdf",
+          "url": "/uploads/appointment_order_demo.pdf"
+        }
+      },
+      "comments": [
+        {
+          "id": "upd_1",
+          "status": "Active",
+          "notes": "Issue registered by Town Panchayat. Detailed estimate submitted.",
+          "userName": "EO Thiruporur Town Panchayat",
+          "userNameTa": "செயல் அலுவலர் திருப்போரூர்",
+          "userRole": "eo",
+          "userDesignation": "Executive Officer (Thiruporur TP)",
+          "date": "2026-08-19T10:05:00.000Z"
+        }
+      ]
+    }
+  ],
+  "officePfSetup": [
+    {
+      "id": "office_setup_central",
+      "openingDate": "2023-04-01",
+      "officeOpeningBalance": 50000,
+      "retiredEmployeeAmount": 200,
+      "deathEmployeeAmount": 0,
+      "otherIneligibleAmount": 0,
+      "actualEligibleAmount": 49800,
+      "breakups": [
+        {
+          "employeeId": "EMP001",
+          "amount": 29800
+        },
+        {
+          "employeeId": "EMP002",
+          "amount": 20000
+        }
+      ]
+    }
+  ],
+  "pfEmployees": [
+    {
+      "id": "pfe_1788629872804_dobaj",
+      "employeeId": "EMP001",
+      "openingBalance": 29800,
+      "openingDate": "2023-04-01",
+      "withdrawals": []
+    },
+    {
+      "id": "pfe_1788629872805_u1r83",
+      "employeeId": "EMP002",
+      "openingBalance": 20000,
+      "openingDate": "2023-04-01",
+      "withdrawals": []
+    }
+  ],
+  "pfInterestRates": [
+    {
+      "id": "rate_9",
+      "sNo": 9,
+      "financialYear": "1970-71",
+      "fromDate": "1970-04-01",
+      "toDate": "1971-03-31",
+      "rate": 5.5,
+      "authority": "1217, 07.10.1970",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_10",
+      "sNo": 10,
+      "financialYear": "1971-72",
+      "fromDate": "1971-04-01",
+      "toDate": "1972-03-31",
+      "rate": 5.7,
+      "authority": "871, 16.06.1971",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_11",
+      "sNo": 11,
+      "financialYear": "1972-73",
+      "fromDate": "1972-04-01",
+      "toDate": "1973-03-31",
+      "rate": 6,
+      "authority": "869, 10.07.1973",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_12",
+      "sNo": 12,
+      "financialYear": "1973-74",
+      "fromDate": "1973-04-01",
+      "toDate": "1974-03-31",
+      "rate": 6,
+      "authority": "940, 30.07.1973",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_13",
+      "sNo": 13,
+      "financialYear": "1974-75",
+      "fromDate": "1974-04-01",
+      "toDate": "1975-03-31",
+      "rate": 7.2,
+      "authority": "283, 22.03.1975",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_14",
+      "sNo": 14,
+      "financialYear": "1975-76",
+      "fromDate": "1975-04-01",
+      "toDate": "1976-03-31",
+      "rate": 7.5,
+      "authority": "571, 18.06.1975",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_15",
+      "sNo": 15,
+      "financialYear": "1976-77",
+      "fromDate": "1976-04-01",
+      "toDate": "1977-03-31",
+      "rate": 7.5,
+      "authority": "665, 23.06.1976",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_16",
+      "sNo": 16,
+      "financialYear": "1977-78",
+      "fromDate": "1977-04-01",
+      "toDate": "1978-03-31",
+      "rate": 7.5,
+      "authority": "637, 07.7.1977",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_17",
+      "sNo": 17,
+      "financialYear": "1978-79",
+      "fromDate": "1978-04-01",
+      "toDate": "1979-03-31",
+      "rate": 7.5,
+      "authority": "968, 07.09.1978",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_18",
+      "sNo": 18,
+      "financialYear": "1979-80",
+      "fromDate": "1979-04-01",
+      "toDate": "1980-03-31",
+      "rate": 8,
+      "authority": "1368, 06.10.1979",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_19",
+      "sNo": 19,
+      "financialYear": "1980-81",
+      "fromDate": "1980-04-01",
+      "toDate": "1981-03-31",
+      "rate": 8.5,
+      "authority": "923, 29.09.1980",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_20",
+      "sNo": 20,
+      "financialYear": "1981-82",
+      "fromDate": "1981-04-01",
+      "toDate": "1982-03-31",
+      "rate": 9,
+      "authority": "497, 20.07.1981",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_21",
+      "sNo": 21,
+      "financialYear": "1982-83",
+      "fromDate": "1982-04-01",
+      "toDate": "1983-03-31",
+      "rate": 9,
+      "authority": "589, 07.09.1982",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_22",
+      "sNo": 22,
+      "financialYear": "1983-84",
+      "fromDate": "1983-04-01",
+      "toDate": "1984-03-31",
+      "rate": 9.5,
+      "authority": "1041, 22.12.1983",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_23",
+      "sNo": 23,
+      "financialYear": "1984-85",
+      "fromDate": "1984-04-01",
+      "toDate": "1985-03-31",
+      "rate": 10,
+      "authority": "476, 05.07.1984",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_24",
+      "sNo": 24,
+      "financialYear": "1985-86",
+      "fromDate": "1985-04-01",
+      "toDate": "1986-03-31",
+      "rate": 10.5,
+      "authority": "802, 24.07.1985",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_25",
+      "sNo": 25,
+      "financialYear": "1986-87",
+      "fromDate": "1986-04-01",
+      "toDate": "1987-03-31",
+      "rate": 12,
+      "authority": "678, 08.08.1986",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_26",
+      "sNo": 26,
+      "financialYear": "1987-88",
+      "fromDate": "1987-04-01",
+      "toDate": "1988-03-31",
+      "rate": 12,
+      "authority": "758, 26.08.1987",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_27",
+      "sNo": 27,
+      "financialYear": "1988-89",
+      "fromDate": "1988-04-01",
+      "toDate": "1989-03-31",
+      "rate": 12,
+      "authority": "319, 06.05.1988",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_28",
+      "sNo": 28,
+      "financialYear": "1989-90",
+      "fromDate": "1989-04-01",
+      "toDate": "1990-03-31",
+      "rate": 12,
+      "authority": "688, 05.7.1989",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_29",
+      "sNo": 29,
+      "financialYear": "1990-91",
+      "fromDate": "1990-04-01",
+      "toDate": "1991-03-31",
+      "rate": 12,
+      "authority": "712, 28.06.1990",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_30",
+      "sNo": 30,
+      "financialYear": "1991-92",
+      "fromDate": "1991-04-01",
+      "toDate": "1992-03-31",
+      "rate": 12,
+      "authority": "632, 28.08.1991",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_31",
+      "sNo": 31,
+      "financialYear": "1992-93",
+      "fromDate": "1992-04-01",
+      "toDate": "1993-03-31",
+      "rate": 12,
+      "authority": "863, 09.11.1992",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_32",
+      "sNo": 32,
+      "financialYear": "1993-94",
+      "fromDate": "1993-04-01",
+      "toDate": "1994-03-31",
+      "rate": 12,
+      "authority": "462, 02.07.1993",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_33",
+      "sNo": 33,
+      "financialYear": "1994-95",
+      "fromDate": "1994-04-01",
+      "toDate": "1995-03-31",
+      "rate": 12,
+      "authority": "499, 15.06.1994",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_34",
+      "sNo": 34,
+      "financialYear": "1995-96",
+      "fromDate": "1995-04-01",
+      "toDate": "1996-03-31",
+      "rate": 12,
+      "authority": "681, 21.08.1995",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_35",
+      "sNo": 35,
+      "financialYear": "1996-97",
+      "fromDate": "1996-04-01",
+      "toDate": "1997-03-31",
+      "rate": 12,
+      "authority": "664, 18.11.1996",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_36",
+      "sNo": 36,
+      "financialYear": "1997-98",
+      "fromDate": "1997-04-01",
+      "toDate": "1998-03-31",
+      "rate": 12,
+      "authority": "167, 20.04.1998",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_37",
+      "sNo": 37,
+      "financialYear": "1998-99",
+      "fromDate": "1998-04-01",
+      "toDate": "1999-03-31",
+      "rate": 12,
+      "authority": "164, 22.04.1999",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_38",
+      "sNo": 38,
+      "financialYear": "1999-2000",
+      "fromDate": "1999-04-01",
+      "toDate": "2000-03-31",
+      "rate": 12,
+      "authority": "414, 08.09.2000",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_39",
+      "sNo": 39,
+      "financialYear": "2000-01",
+      "fromDate": "2000-04-01",
+      "toDate": "2001-03-31",
+      "rate": 11,
+      "authority": "207, 18.05.2000",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_40",
+      "sNo": 40,
+      "financialYear": "2001-02",
+      "fromDate": "2001-04-01",
+      "toDate": "2002-03-31",
+      "rate": 9.5,
+      "authority": "224, 07.06.2001",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_41",
+      "sNo": 41,
+      "financialYear": "2002-03",
+      "fromDate": "2002-04-01",
+      "toDate": "2003-03-31",
+      "rate": 9,
+      "authority": "151, 06.05.2002",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_42",
+      "sNo": 42,
+      "financialYear": "2003-04",
+      "fromDate": "2003-04-01",
+      "toDate": "2004-03-31",
+      "rate": 8,
+      "authority": "125, 17.04.2003",
+      "cpsAuthority": "222, 03.06.2008"
+    },
+    {
+      "id": "rate_43",
+      "sNo": 43,
+      "financialYear": "2004-05",
+      "fromDate": "2004-04-01",
+      "toDate": "2005-03-31",
+      "rate": 8,
+      "authority": "441, 16.08.2004",
+      "cpsAuthority": "38, 11.02.2013"
+    },
+    {
+      "id": "rate_44",
+      "sNo": 44,
+      "financialYear": "2005-06",
+      "fromDate": "2005-04-01",
+      "toDate": "2006-03-31",
+      "rate": 8,
+      "authority": "",
+      "cpsAuthority": "38, 11.02.2013"
+    },
+    {
+      "id": "rate_45",
+      "sNo": 45,
+      "financialYear": "2006-07",
+      "fromDate": "2006-04-01",
+      "toDate": "2007-03-31",
+      "rate": 8,
+      "authority": "",
+      "cpsAuthority": "38, 11.02.2013"
+    },
+    {
+      "id": "rate_46",
+      "sNo": 46,
+      "financialYear": "2007-08",
+      "fromDate": "2007-04-01",
+      "toDate": "2008-03-31",
+      "rate": 8,
+      "authority": "",
+      "cpsAuthority": "38, 11.02.2013"
+    },
+    {
+      "id": "rate_47",
+      "sNo": 47,
+      "financialYear": "2008-09",
+      "fromDate": "2008-04-01",
+      "toDate": "2009-03-31",
+      "rate": 8,
+      "authority": "530, 09.11.2009",
+      "cpsAuthority": "38, 11.02.2013"
+    },
+    {
+      "id": "rate_48",
+      "sNo": 48,
+      "financialYear": "2009-10",
+      "fromDate": "2009-04-01",
+      "toDate": "2010-03-31",
+      "rate": 8,
+      "authority": "530, 09.11.2009",
+      "cpsAuthority": "38, 11.02.2013"
+    },
+    {
+      "id": "rate_49",
+      "sNo": 49,
+      "financialYear": "2010-11",
+      "fromDate": "2010-04-01",
+      "toDate": "2011-03-31",
+      "rate": 8,
+      "authority": "",
+      "cpsAuthority": "38, 11.02.2013"
+    },
+    {
+      "id": "rate_50",
+      "sNo": 50,
+      "financialYear": "04/2011-11/2011",
+      "fromDate": "2011-04-01",
+      "toDate": "2011-11-30",
+      "rate": 8,
+      "authority": "",
+      "cpsAuthority": "38, 11.02.2013"
+    },
+    {
+      "id": "rate_51",
+      "sNo": 51,
+      "financialYear": "12/2011-03/2012",
+      "fromDate": "2011-12-01",
+      "toDate": "2012-03-31",
+      "rate": 8.6,
+      "authority": "106, 30.03.2012",
+      "cpsAuthority": "38, 11.02.2013"
+    },
+    {
+      "id": "rate_52",
+      "sNo": 52,
+      "financialYear": "2012-13",
+      "fromDate": "2012-04-01",
+      "toDate": "2013-03-31",
+      "rate": 8.8,
+      "authority": "127, 19.04.2013",
+      "cpsAuthority": "115, 09.05.2013"
+    },
+    {
+      "id": "rate_53",
+      "sNo": 53,
+      "financialYear": "2013-14",
+      "fromDate": "2013-04-01",
+      "toDate": "2014-03-31",
+      "rate": 8.7,
+      "authority": "127, 19.04.2013",
+      "cpsAuthority": "115, 09.05.2013"
+    },
+    {
+      "id": "rate_54",
+      "sNo": 54,
+      "financialYear": "2014-15",
+      "fromDate": "2014-04-01",
+      "toDate": "2015-03-31",
+      "rate": 8.7,
+      "authority": "106, 28.04.2014",
+      "cpsAuthority": "183, 26.06.2015"
+    },
+    {
+      "id": "rate_55",
+      "sNo": 55,
+      "financialYear": "2015-16",
+      "fromDate": "2015-04-01",
+      "toDate": "2016-03-31",
+      "rate": 8.7,
+      "authority": "129, 27.04.2015",
+      "cpsAuthority": "183, 26.06.2015"
+    },
+    {
+      "id": "rate_56",
+      "sNo": 56,
+      "financialYear": "04/2016-06/2016",
+      "fromDate": "2016-04-01",
+      "toDate": "2016-06-30",
+      "rate": 8.1,
+      "authority": "209, 15.07.2016",
+      "cpsAuthority": "219, 27.07.2016"
+    },
+    {
+      "id": "rate_57",
+      "sNo": 57,
+      "financialYear": "07/2016-09/2016",
+      "fromDate": "2016-07-01",
+      "toDate": "2016-09-30",
+      "rate": 8.1,
+      "authority": "231, 09.08.2016",
+      "cpsAuthority": "234, 11.08.2016"
+    },
+    {
+      "id": "rate_58",
+      "sNo": 58,
+      "financialYear": "10/2016-12/2016",
+      "fromDate": "2016-10-01",
+      "toDate": "2016-12-31",
+      "rate": 8,
+      "authority": "276, 24.10.2016",
+      "cpsAuthority": "279, 27.10.2016"
+    },
+    {
+      "id": "rate_59",
+      "sNo": 59,
+      "financialYear": "01/2017-03/2017",
+      "fromDate": "2017-01-01",
+      "toDate": "2017-03-31",
+      "rate": 8,
+      "authority": "35, 25.04.2017",
+      "cpsAuthority": "54, 06.03.2017"
+    },
+    {
+      "id": "rate_60",
+      "sNo": 60,
+      "financialYear": "04/2017-06/2017",
+      "fromDate": "2017-04-01",
+      "toDate": "2017-06-30",
+      "rate": 7.9,
+      "authority": "102, 25.04.2017",
+      "cpsAuthority": "125, 08.05.2017"
+    },
+    {
+      "id": "rate_61",
+      "sNo": 61,
+      "financialYear": "07/2017-09/2017",
+      "fromDate": "2017-07-01",
+      "toDate": "2017-09-30",
+      "rate": 7.8,
+      "authority": "227, 28.07.2017",
+      "cpsAuthority": "240, 08.08.2017"
+    },
+    {
+      "id": "rate_62",
+      "sNo": 62,
+      "financialYear": "10/2017-12/2017",
+      "fromDate": "2017-10-01",
+      "toDate": "2017-12-31",
+      "rate": 7.8,
+      "authority": "320, 27.10.2017",
+      "cpsAuthority": "330, 01.11.2017"
+    },
+    {
+      "id": "rate_63",
+      "sNo": 63,
+      "financialYear": "01/2018-03/2018",
+      "fromDate": "2018-01-01",
+      "toDate": "2018-03-31",
+      "rate": 7.6,
+      "authority": "11, 10.01.2018",
+      "cpsAuthority": "16, 18.01.2018"
+    },
+    {
+      "id": "rate_64",
+      "sNo": 64,
+      "financialYear": "04/2018-06/2018",
+      "fromDate": "2018-04-01",
+      "toDate": "2018-06-30",
+      "rate": 7.6,
+      "authority": "135, 23.04.2018",
+      "cpsAuthority": "152, 02.05.2018"
+    },
+    {
+      "id": "rate_65",
+      "sNo": 65,
+      "financialYear": "07/2018-09/2018",
+      "fromDate": "2018-07-01",
+      "toDate": "2018-09-30",
+      "rate": 7.6,
+      "authority": "252, 26.07.2018",
+      "cpsAuthority": "271, 13.08.2018"
+    },
+    {
+      "id": "rate_66",
+      "sNo": 66,
+      "financialYear": "10/2018-12/2018",
+      "fromDate": "2018-10-01",
+      "toDate": "2018-12-31",
+      "rate": 8,
+      "authority": "337, 12.10.2018",
+      "cpsAuthority": "352, 30.10.2018"
+    },
+    {
+      "id": "rate_67",
+      "sNo": 67,
+      "financialYear": "01/2019-03/2019",
+      "fromDate": "2019-01-01",
+      "toDate": "2019-03-31",
+      "rate": 8,
+      "authority": "25, 21.01.2019",
+      "cpsAuthority": "50, 06.02.2019"
+    },
+    {
+      "id": "rate_68",
+      "sNo": 68,
+      "financialYear": "04/2019-06/2019",
+      "fromDate": "2019-04-01",
+      "toDate": "2019-06-30",
+      "rate": 8,
+      "authority": "126, 24.04.2019",
+      "cpsAuthority": "150, 15.05.2019"
+    },
+    {
+      "id": "rate_69",
+      "sNo": 69,
+      "financialYear": "07/2019-09/2019",
+      "fromDate": "2019-07-01",
+      "toDate": "2019-09-30",
+      "rate": 7.9,
+      "authority": "223, 18.07.2019",
+      "cpsAuthority": "263, 14.08.2019"
+    },
+    {
+      "id": "rate_70",
+      "sNo": 70,
+      "financialYear": "10/2019-12/2019",
+      "fromDate": "2019-10-01",
+      "toDate": "2019-12-31",
+      "rate": 7.9,
+      "authority": "334, 24.10.2019",
+      "cpsAuthority": "361, 08.11.2019"
+    },
+    {
+      "id": "rate_71",
+      "sNo": 71,
+      "financialYear": "01/2020-03/2020",
+      "fromDate": "2020-01-01",
+      "toDate": "2020-03-31",
+      "rate": 7.9,
+      "authority": "14, 27.01.2020",
+      "cpsAuthority": "29, 19.02.2020"
+    },
+    {
+      "id": "rate_72",
+      "sNo": 72,
+      "financialYear": "04/2020-06/2020",
+      "fromDate": "2020-04-01",
+      "toDate": "2020-06-30",
+      "rate": 7.1,
+      "authority": "231, 23.04.2020",
+      "cpsAuthority": "236, 04.05.2020"
+    },
+    {
+      "id": "rate_73",
+      "sNo": 73,
+      "financialYear": "07/2020-09/2020",
+      "fromDate": "2020-07-01",
+      "toDate": "2020-09-30",
+      "rate": 7.1,
+      "authority": "306, 27.07.2020",
+      "cpsAuthority": "350, 24.09.2020"
+    },
+    {
+      "id": "rate_74",
+      "sNo": 74,
+      "financialYear": "10/2020-12/2020",
+      "fromDate": "2020-10-01",
+      "toDate": "2020-12-31",
+      "rate": 7.1,
+      "authority": "386, 02.11.2020",
+      "cpsAuthority": "394, 10.11.2020"
+    },
+    {
+      "id": "rate_75",
+      "sNo": 75,
+      "financialYear": "01/2021-03/2021",
+      "fromDate": "2021-01-01",
+      "toDate": "2021-03-31",
+      "rate": 7.1,
+      "authority": "30, 22.01.2021",
+      "cpsAuthority": "51, 22.02.2021"
+    },
+    {
+      "id": "rate_76",
+      "sNo": 76,
+      "financialYear": "04/2021-06/2021",
+      "fromDate": "2021-04-01",
+      "toDate": "2021-06-30",
+      "rate": 7.1,
+      "authority": "125, 28.04.2021",
+      "cpsAuthority": "132, 24.05.2021"
+    },
+    {
+      "id": "rate_77",
+      "sNo": 77,
+      "financialYear": "07/2021-09/2021",
+      "fromDate": "2021-07-01",
+      "toDate": "2021-09-30",
+      "rate": 7.1,
+      "authority": "173, 19.07.2021",
+      "cpsAuthority": "183, 03.08.2021"
+    },
+    {
+      "id": "rate_78",
+      "sNo": 78,
+      "financialYear": "10/2021-12/2021",
+      "fromDate": "2021-10-01",
+      "toDate": "2021-12-31",
+      "rate": 7.1,
+      "authority": "238, 26.10.2021",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_79",
+      "sNo": 79,
+      "financialYear": "01/2022-03/2022",
+      "fromDate": "2022-01-01",
+      "toDate": "2022-03-31",
+      "rate": 7.1,
+      "authority": "29, 27.01.2022",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_80",
+      "sNo": 80,
+      "financialYear": "04/2022-06/2022",
+      "fromDate": "2022-04-01",
+      "toDate": "2022-06-30",
+      "rate": 7.1,
+      "authority": "109, 19.04.2022",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_81",
+      "sNo": 81,
+      "financialYear": "07/2022-09/2022",
+      "fromDate": "2022-07-01",
+      "toDate": "2022-09-30",
+      "rate": 7.1,
+      "authority": "227, 26.07.2022",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_82",
+      "sNo": 82,
+      "financialYear": "10/2022-12/2022",
+      "fromDate": "2022-10-01",
+      "toDate": "2022-12-31",
+      "rate": 7.1,
+      "authority": "335, 22.10.2022",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_83",
+      "sNo": 83,
+      "financialYear": "01/2023-03/2023",
+      "fromDate": "2023-01-01",
+      "toDate": "2023-03-31",
+      "rate": 7.1,
+      "authority": "21, 23.01.2023",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_84",
+      "sNo": 84,
+      "financialYear": "04/2023-06/2023",
+      "fromDate": "2023-04-01",
+      "toDate": "2023-06-30",
+      "rate": 7.1,
+      "authority": "115, 25.04.2023",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_85",
+      "sNo": 85,
+      "financialYear": "07/2023-09/2023",
+      "fromDate": "2023-07-01",
+      "toDate": "2023-09-30",
+      "rate": 7.1,
+      "authority": "225, 17.07.2023",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_86",
+      "sNo": 86,
+      "financialYear": "10/2023-12/2023",
+      "fromDate": "2023-10-01",
+      "toDate": "2023-12-31",
+      "rate": 7.1,
+      "authority": "229, 12.10.2023",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_87",
+      "sNo": 87,
+      "financialYear": "01/2024-06/2024",
+      "fromDate": "2024-01-01",
+      "toDate": "2024-06-30",
+      "rate": 7.1,
+      "authority": "13, 08.01.2024",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_88",
+      "sNo": 88,
+      "financialYear": "07/2024-09/2024",
+      "fromDate": "2024-07-01",
+      "toDate": "2024-09-30",
+      "rate": 7.1,
+      "authority": "260, 06.08.2024",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_89",
+      "sNo": 89,
+      "financialYear": "10/2024-12/2024",
+      "fromDate": "2024-10-01",
+      "toDate": "2024-12-31",
+      "rate": 7.1,
+      "authority": "325, 25.10.2024",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_90",
+      "sNo": 90,
+      "financialYear": "01/2025-03/2025",
+      "fromDate": "2025-01-01",
+      "toDate": "2025-03-31",
+      "rate": 7.1,
+      "authority": "10, 21.01.2025",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_91",
+      "sNo": 91,
+      "financialYear": "04/2025-06/2025",
+      "fromDate": "2025-04-01",
+      "toDate": "2025-06-30",
+      "rate": 7.1,
+      "authority": "83, 07.04.2025",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_92",
+      "sNo": 92,
+      "financialYear": "07/2025-09/2025",
+      "fromDate": "2025-07-01",
+      "toDate": "2025-09-30",
+      "rate": 7.1,
+      "authority": "163, 15.07.2025",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_93",
+      "sNo": 93,
+      "financialYear": "10/2025-03/2026",
+      "fromDate": "2025-10-01",
+      "toDate": "2026-03-31",
+      "rate": 7.1,
+      "authority": "13, 19.01.2026",
+      "cpsAuthority": ""
+    },
+    {
+      "id": "rate_94",
+      "sNo": 94,
+      "financialYear": "04/2026-09/2026",
+      "fromDate": "2026-04-01",
+      "toDate": "2026-09-30",
+      "rate": 7.1,
+      "authority": "145, 24.07.2026",
+      "cpsAuthority": ""
+    }
+  ],
+  "deletedEmployees": [],
+  "wardsAndStreets": [],
+  "inspectionSubjects": [
+    {
+      "id": "subj_swm",
+      "nameEn": "SWM Management",
+      "nameTa": "திடக்கழிவு மேலாண்மை (SWM)",
+      "code": "SWM",
+      "descriptionEn": "Solid Waste Management and sanitation inspections",
+      "descriptionTa": "திடக்கழிவு மேலாண்மை மற்றும் தூய்மை பணிகள் ஆய்வு"
+    },
+    {
+      "id": "subj_water",
+      "nameEn": "Water Supply Management",
+      "nameTa": "குடிநீர் விநியோக மேலாண்மை",
+      "code": "WSM",
+      "descriptionEn": "Drinking water pipeline, chlorination and distribution checks",
+      "descriptionTa": "குடிநீர் குழாய், குளோரினேஷன் மற்றும் விநியோக ஆய்வுகள்"
+    },
+    {
+      "id": "subj_public_health",
+      "nameEn": "Public Health & Sanitation",
+      "nameTa": "பொது சுகாதாரம் மற்றும் துப்புரவு",
+      "code": "PHS",
+      "descriptionEn": "Mosquito control, DBC vector inspections",
+      "descriptionTa": "கொசு கட்டுப்பாடு மற்றும் டெங்கு ஒழிப்பு ஆய்வுகள்"
+    }
+  ],
+  "inspectionCategories": [
+    {
+      "id": "cat_d2d",
+      "subjectId": "subj_swm",
+      "nameEn": "Door to Door Survey",
+      "nameTa": "வீடு வீடாக சென்று கணக்கெடுப்பு",
+      "code": "D2D",
+      "descriptionEn": "Waste segregation collection inspection at household doorsteps",
+      "descriptionTa": "வீட்டு வாசலில் குப்பை தரம் பிரித்தல் ஆய்வு"
+    },
+    {
+      "id": "cat_commercial",
+      "subjectId": "subj_swm",
+      "nameEn": "Commercial Establishment Waste Check",
+      "nameTa": "வணிக நிறுவன கழிவு ஆய்வு",
+      "code": "CEW",
+      "descriptionEn": "Checks at hotels, markets and commercial shops",
+      "descriptionTa": "ஹோட்டல்கள் மற்றும் கடைகளில் ஆய்வு"
+    },
+    {
+      "id": "cat_dbc",
+      "subjectId": "subj_public_health",
+      "nameEn": "Dengue Vector Breeding Check",
+      "nameTa": "டெங்கு கொசுப்புழு உற்பத்தி ஆய்வு",
+      "code": "DBC",
+      "descriptionEn": "Household water container larval inspection",
+      "descriptionTa": "வீட்டு நீர் சேமிப்பு தொட்டிகள் கொசுப்புழு ஆய்வு"
+    },
+    {
+      "id": "cat_secondary_collection",
+      "subjectId": "subj_swm",
+      "nameEn": "Secondary collection",
+      "nameTa": "இரண்டாம் நிலை குப்பை சேகரிப்பு",
+      "code": "SEC",
+      "descriptionEn": "Secondary collection point waste clearance and bin inspection",
+      "descriptionTa": "இரண்டாம் நிலை சேகரிப்பு குப்பை தொட்டி ஆய்வு"
+    }
+  ],
+  "inspectionFields": [
+    {
+      "id": "if_1",
+      "categoryId": "cat_d2d",
+      "nameEn": "Door / Assessment Number",
+      "nameTa": "கதவு / வரி மதிப்பீட்டு எண்",
+      "type": "text",
+      "isMandatory": true,
+      "isUnique": true,
+      "options": []
+    },
+    {
+      "id": "if_2",
+      "categoryId": "cat_d2d",
+      "nameEn": "Citizen Mobile Number",
+      "nameTa": "குடிமகன் அலைபேசி எண்",
+      "type": "mobile",
+      "isMandatory": true,
+      "isUnique": false,
+      "options": []
+    },
+    {
+      "id": "if_3",
+      "categoryId": "cat_d2d",
+      "nameEn": "Household Members Count",
+      "nameTa": "குடும்ப உறுப்பினர்கள் எண்ணிக்கை",
+      "type": "number",
+      "isMandatory": false,
+      "isUnique": false,
+      "options": []
+    },
+    {
+      "id": "if_4",
+      "categoryId": "cat_d2d",
+      "nameEn": "Segregating Waste at Source?",
+      "nameTa": "குப்பை தரம் பிரிக்கப்படுகிறதா?",
+      "type": "yes_no",
+      "isMandatory": true,
+      "isUnique": false,
+      "options": [
+        "ஆம் (Yes)",
+        "இல்லை (No)"
+      ]
+    },
+    {
+      "id": "if_5",
+      "categoryId": "cat_d2d",
+      "nameEn": "Waste Generation Category",
+      "nameTa": "கழிவு உருவாக்க வகை",
+      "type": "dropdown",
+      "isMandatory": true,
+      "isUnique": false,
+      "options": [
+        "Residential (குடியிருப்பு)",
+        "Commercial (வணிகம்)",
+        "Institution (நிறுவனம்)",
+        "Bulk Generator (மொத்த கழிவு)"
+      ]
+    },
+    {
+      "id": "if_6",
+      "categoryId": "cat_d2d",
+      "nameEn": "Doorstep Geo-tagged Photo",
+      "nameTa": "வீட்டு வாசல் புகைப்பட ஆதாரம்",
+      "type": "camera",
+      "isMandatory": true,
+      "isUnique": false,
+      "options": []
+    },
+    {
+      "id": "if_7",
+      "categoryId": "cat_d2d",
+      "nameEn": "Inspection Date",
+      "nameTa": "ஆய்வு செய்யப்பட்ட தேதி",
+      "type": "date",
+      "isMandatory": true,
+      "isUnique": false,
+      "options": []
+    },
+    {
+      "id": "if_8",
+      "categoryId": "cat_d2d",
+      "nameEn": "Survey Summary Document",
+      "nameTa": "கள ஆய்வு ஆவண அறிக்கை",
+      "type": "file",
+      "isMandatory": false,
+      "isUnique": false,
+      "options": []
+    },
+    {
+      "id": "if_sec_1",
+      "categoryId": "cat_secondary_collection",
+      "nameEn": "Bin / Collection Point Number",
+      "nameTa": "குப்பை தொட்டி / சேகரிப்பு எண்",
+      "type": "text",
+      "isMandatory": true,
+      "isUnique": false,
+      "options": []
+    },
+    {
+      "id": "if_sec_2",
+      "categoryId": "cat_secondary_collection",
+      "nameEn": "Overflow Status",
+      "nameTa": "குப்பை வழிந்த நிலை",
+      "type": "dropdown",
+      "isMandatory": true,
+      "isUnique": false,
+      "options": [
+        "No Overflow (வழிதல் இல்லை)",
+        "Mild Overflow (குறைந்த வழிதல்)",
+        "Heavy Overflow (அதிக வழிதல்)"
+      ]
+    },
+    {
+      "id": "if_sec_3",
+      "categoryId": "cat_secondary_collection",
+      "nameEn": "Collection Point Geo-tagged Photo",
+      "nameTa": "சேகரிப்பு இடம் புகைப்பட ஆதாரம்",
+      "type": "camera",
+      "isMandatory": true,
+      "isUnique": false,
+      "options": []
+    }
+  ],
+  "inspectionRoles": [
+    {
+      "id": "role_single_tp",
+      "nameEn": "Single TP Worker",
+      "nameTa": "ஒற்றை பேரூராட்சி பணியாளர்",
+      "code": "SINGLE_TP",
+      "scopeType": "single_tp",
+      "descriptionEn": "Assigned to one specific Town Panchayat",
+      "descriptionTa": "குறிப்பிட்ட ஒரு பேரூராட்சிக்கான களப்பணியாளர்"
+    },
+    {
+      "id": "role_multi_tp",
+      "nameEn": "Multi TP Supervisor",
+      "nameTa": "பல பேரூராட்சி மேற்பார்வையாளர்",
+      "code": "MULTI_TP",
+      "scopeType": "multi_tp",
+      "descriptionEn": "Oversees multiple Town Panchayats within a district",
+      "descriptionTa": "ஒரு மாவட்டத்தின் பல பேரூராட்சிகளை மேற்பார்வையிடுபவர்"
+    },
+    {
+      "id": "role_zonal",
+      "nameEn": "Zonal Inspector",
+      "nameTa": "மண்டல ஆய்வாளர்",
+      "code": "ZONAL",
+      "scopeType": "zonal",
+      "descriptionEn": "Zonal level inspection across the whole zone",
+      "descriptionTa": "மண்டல அளவிலான ஆய்வு அதிகாரி"
+    },
+    {
+      "id": "role_field_worker",
+      "nameEn": "Ward Field Worker",
+      "nameTa": "வார்டு களப்பணியாளர்",
+      "code": "FIELD_WORKER",
+      "scopeType": "field_workers",
+      "descriptionEn": "Field worker assigned to specific ward(s) inside a TP",
+      "descriptionTa": "பேரூராட்சியின் குறிப்பிட்ட வார்டுகளுக்கான களப்பணியாளர்"
+    }
+  ],
+  "inspectionDesignations": [
+    {
+      "id": "desig_animator",
+      "nameEn": "Animators (அனிமேட்டர்)",
+      "nameTa": "அனிமேட்டர்கள்",
+      "roleId": "role_single_tp",
+      "subjectIds": [
+        "subj_swm"
+      ],
+      "descriptionEn": "Community mobilization and awareness animators",
+      "descriptionTa": "சமூக விழிப்புணர்வு மற்றும் அனிமேஷன் பணிகள்",
+      "categoryIds": [
+        "cat_d2d",
+        "cat_commercial"
+      ]
+    },
+    {
+      "id": "desig_dbc",
+      "nameEn": "DBC Workers (டெங்கு தடுப்பு பணியாளர்)",
+      "nameTa": "டெங்கு கொசுப்புழு தடுப்பு பணியாளர்கள்",
+      "roleId": "role_field_worker",
+      "subjectIds": [
+        "subj_public_health"
+      ],
+      "descriptionEn": "Dengue breeding control ward-level staff",
+      "descriptionTa": "வார்டு வாரியாக டெங்கு தடுப்பு களப்பணி",
+      "categoryIds": [
+        "cat_dbc"
+      ]
+    },
+    {
+      "id": "desig_water",
+      "nameEn": "Water Supply Workers (குடிநீர் பணியாளர்)",
+      "nameTa": "குடிநீர் விநியோக பணியாளர்கள்",
+      "roleId": "role_single_tp",
+      "subjectIds": [
+        "subj_water"
+      ],
+      "descriptionEn": "Drinking water pipeline and valve operations",
+      "descriptionTa": "குடிநீர் விநியோகம் மற்றும் வால்வு இயக்கம்",
+      "categoryIds": [
+        "cat_d2d"
+      ]
+    },
+    {
+      "id": "desig_zonal_sanitary",
+      "nameEn": "Zonal Sanitation Officer",
+      "nameTa": "மண்டல சுகாதார அலுவலர்",
+      "roleId": "role_zonal",
+      "subjectIds": [
+        "subj_swm",
+        "subj_public_health"
+      ],
+      "descriptionEn": "Zonal level sanitation supervisor",
+      "descriptionTa": "மண்டல சுகாதார மேற்பார்வை",
+      "categoryIds": [
+        "cat_d2d",
+        "cat_commercial",
+        "cat_dbc"
+      ]
+    },
+    {
+      "id": "desig_si",
+      "nameEn": "Sanitary Inspector / Field Officer",
+      "nameTa": "துப்புரவு ஆய்வாளர் / கள அலுவலர்",
+      "roleId": "role_single_tp",
+      "subjectIds": [
+        "subj_swm",
+        "subj_water",
+        "subj_public_health"
+      ],
+      "categoryIds": [
+        "cat_d2d",
+        "cat_commercial",
+        "cat_dbc"
+      ],
+      "descriptionEn": "Field Sanitary Inspector for municipal inspection works",
+      "descriptionTa": "நகராட்சி மற்றும் பேரூராட்சி கள ஆய்வு பணிகள்"
+    }
+  ],
+  "inspectionUsers": [
+    {
+      "id": "iu_thirumazhisai",
+      "username": "insp_thirumazhisai",
+      "password": "password123",
+      "passwordHash": "password123",
+      "nameEn": "Thirumazhisai Field Officer",
+      "nameTa": "திருமழிசை கள அலுவலர்",
+      "mobile": "9442723067",
+      "designationId": "desig_si",
+      "roleId": "role_single_tp",
+      "zoneId": "z1",
+      "districtId": "d3",
+      "tpId": "tp_thirumazhisai",
+      "selectedTpIds": [
+        "tp_thirumazhisai"
+      ],
+      "selectedWards": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15"
+      ],
+      "status": "Active",
+      "createdAt": "2026-09-28T07:25:29.797Z",
+      "subjectIds": [
+        "subj_swm",
+        "subj_water",
+        "subj_public_health"
+      ],
+      "assignedSubjects": [
+        "subj_swm",
+        "subj_water",
+        "subj_public_health"
+      ],
+      "categoryIds": [
+        "cat_d2d",
+        "cat_commercial",
+        "cat_dbc"
+      ],
+      "assignedCategories": [
+        "cat_d2d",
+        "cat_commercial",
+        "cat_dbc"
+      ],
+      "assignedWards": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15"
+      ]
+    },
+    {
+      "id": "iu_arani",
+      "username": "insp_arani",
+      "password": "password123",
+      "nameEn": "Karthik S",
+      "nameTa": "கார்த்திக் எஸ்",
+      "mobile": "9840112233",
+      "designationId": "desig_animator",
+      "roleId": "role_single_tp",
+      "zoneId": "z1",
+      "districtId": "d3",
+      "tpId": "tp_arani",
+      "selectedTpIds": [
+        "tp_arani"
+      ],
+      "selectedWards": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "status": "Active",
+      "createdAt": "2026-09-10T10:00:00.000Z",
+      "passwordHash": "password123",
+      "subjectIds": [
+        "subj_swm",
+        "subj_public_health"
+      ],
+      "assignedSubjects": [
+        "subj_swm",
+        "subj_public_health"
+      ],
+      "categoryIds": [
+        "cat_d2d",
+        "cat_commercial",
+        "cat_dbc"
+      ],
+      "assignedCategories": [
+        "cat_d2d",
+        "cat_commercial",
+        "cat_dbc"
+      ],
+      "assignedWards": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    },
+    {
+      "id": "iu_1",
+      "username": "insp_animator_01",
+      "password": "password123",
+      "nameEn": "Priya R",
+      "nameTa": "பிரியா ஆர்",
+      "mobile": "9845012345",
+      "designationId": "desig_animator",
+      "roleId": "role_single_tp",
+      "zoneId": "z1",
+      "districtId": "d2",
+      "tpId": "tp1",
+      "selectedTpIds": [
+        "tp1"
+      ],
+      "selectedWards": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "status": "Active",
+      "createdAt": "2026-09-01T10:00:00.000Z",
+      "subjectIds": [
+        "subj_swm"
+      ],
+      "assignedSubjects": [
+        "subj_swm"
+      ],
+      "categoryIds": [
+        "cat_d2d",
+        "cat_commercial"
+      ],
+      "assignedCategories": [
+        "cat_d2d",
+        "cat_commercial"
+      ],
+      "assignedWards": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    },
+    {
+      "id": "iu_2",
+      "username": "insp_dbc_01",
+      "password": "password123",
+      "nameEn": "Murugan S",
+      "nameTa": "முருகன் எஸ்",
+      "mobile": "9876543210",
+      "designationId": "desig_dbc",
+      "roleId": "role_field_worker",
+      "zoneId": "z1",
+      "districtId": "d2",
+      "tpId": "tp1",
+      "selectedTpIds": [
+        "tp1"
+      ],
+      "selectedWards": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "status": "Active",
+      "createdAt": "2026-09-05T10:00:00.000Z",
+      "subjectIds": [
+        "subj_public_health"
+      ],
+      "assignedSubjects": [
+        "subj_public_health"
+      ],
+      "categoryIds": [
+        "cat_dbc"
+      ],
+      "assignedCategories": [
+        "cat_dbc"
+      ],
+      "assignedWards": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    },
+    {
+      "id": "iu_3",
+      "username": "insp_zonal_01",
+      "password": "password123",
+      "nameEn": "Ganesan K",
+      "nameTa": "கணேசன் கே",
+      "mobile": "9443322110",
+      "designationId": "desig_zonal_sanitary",
+      "roleId": "role_zonal",
+      "zoneId": "z1",
+      "districtId": "",
+      "tpId": "tp1",
+      "selectedTpIds": [
+        "tp1",
+        "tp2",
+        "tp_thirumazhisai",
+        "tp_arani"
+      ],
+      "selectedWards": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "status": "Active",
+      "createdAt": "2026-09-10T10:00:00.000Z",
+      "subjectIds": [
+        "subj_swm",
+        "subj_water",
+        "subj_public_health"
+      ],
+      "assignedSubjects": [
+        "subj_swm",
+        "subj_water",
+        "subj_public_health"
+      ],
+      "categoryIds": [
+        "cat_d2d",
+        "cat_commercial",
+        "cat_dbc"
+      ],
+      "assignedCategories": [
+        "cat_d2d",
+        "cat_commercial",
+        "cat_dbc"
+      ],
+      "assignedWards": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    },
+    {
+      "id": "iu_6382490912",
+      "username": "6382490912",
+      "password": "pass123",
+      "nameEn": "Field Inspection Officer",
+      "nameTa": "கள ஆய்வு அலுவலர்",
+      "mobile": "6382490912",
+      "designationId": "desig_si",
+      "roleId": "role_single_tp",
+      "zoneId": "z1",
+      "districtId": "d3",
+      "tpId": "tp_thirumazhisai",
+      "selectedTpIds": [
+        "tp_thirumazhisai",
+        "tp_arani"
+      ],
+      "selectedWards": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15"
+      ],
+      "status": "Active",
+      "createdAt": "2026-09-24T19:02:10.511Z",
+      "passwordHash": "pass123",
+      "subjectIds": [
+        "subj_swm",
+        "subj_water",
+        "subj_public_health"
+      ],
+      "assignedSubjects": [
+        "subj_swm",
+        "subj_water",
+        "subj_public_health"
+      ],
+      "categoryIds": [
+        "cat_d2d",
+        "cat_commercial",
+        "cat_dbc"
+      ],
+      "assignedCategories": [
+        "cat_d2d",
+        "cat_commercial",
+        "cat_dbc"
+      ],
+      "assignedWards": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15"
+      ]
+    }
+  ],
+  "inspectionWorks": [
+    {
+      "id": "iw_today_sec_001",
+      "workId": "WRK-SWM-SEC-001",
+      "subjectId": "subj_swm",
+      "subjectNameEn": "SWM Management",
+      "subjectNameTa": "திடக்கழிவு மேலாண்மை",
+      "categoryId": "cat_secondary_collection",
+      "categoryNameEn": "Secondary collection",
+      "categoryNameTa": "இரண்டாம் நிலை குப்பை சேகரிப்பு",
+      "tpId": "tp_1",
+      "tpNameEn": "Thiruporur TP",
+      "tpNameTa": "திருப்போரூர் பேரூராட்சி",
+      "districtId": "dist_1",
+      "districtNameEn": "Chengalpattu Dist",
+      "districtNameTa": "செங்கல்பட்டு மாவட்டம்",
+      "zoneId": "zone_1",
+      "zoneNameEn": "Kanchipuram Zone",
+      "zoneNameTa": "காஞ்சிபுரம் மண்டலம்",
+      "wardNumber": "1",
+      "streetName": "Bazaar Street",
+      "latitude": 12.7234,
+      "longitude": 80.1945,
+      "submittedByUserId": "emp_1",
+      "submittedByUserName": "M. Kumar",
+      "submittedByUserDesignation": "Sanitary Inspector",
+      "submittedAt": "2026-10-03T08:30:00.000Z",
+      "status": "Completed",
+      "fieldsData": {
+        "if_sec_1": "BIN-BZ-04",
+        "if_sec_2": "No Overflow (வழிதல் இல்லை)"
+      }
+    },
+    {
+      "id": "iw_today_d2d_002",
+      "workId": "WRK-SWM-D2D-002",
+      "subjectId": "subj_swm",
+      "subjectNameEn": "SWM Management",
+      "subjectNameTa": "திடக்கழிவு மேலாண்மை",
+      "categoryId": "cat_d2d",
+      "categoryNameEn": "Door to Door Survey",
+      "categoryNameTa": "வீடு வீடாக சென்று கணக்கெடுப்பு",
+      "tpId": "tp_1",
+      "tpNameEn": "Thiruporur TP",
+      "tpNameTa": "திருப்போரூர் பேரூராட்சி",
+      "districtId": "dist_1",
+      "districtNameEn": "Chengalpattu Dist",
+      "districtNameTa": "செங்கல்பட்டு மாவட்டம்",
+      "zoneId": "zone_1",
+      "zoneNameEn": "Kanchipuram Zone",
+      "zoneNameTa": "காஞ்சிபுரம் மண்டலம்",
+      "wardNumber": "2",
+      "streetName": "Anna Street",
+      "latitude": 12.7245,
+      "longitude": 80.1956,
+      "submittedByUserId": "emp_2",
+      "submittedByUserName": "S. Priya",
+      "submittedByUserDesignation": "Sanitary Supervisor",
+      "submittedAt": "2026-10-03T09:15:00.000Z",
+      "status": "Completed",
+      "fieldsData": {
+        "if_1": "Door 42/B",
+        "if_4": "ஆம் (Yes)"
+      }
+    },
+    {
+      "submittedByUserName": "insp_thirumazhisai",
+      "submittedByUserId": "insp_thirumazhisai",
+      "subjectId": "subj_swm",
+      "categoryId": "cat_d2d",
+      "wardNumber": "04",
+      "streetName": "Bazaar Street",
+      "imageUrl": "https://tms-2026.s3.ap-south-1.amazonaws.com/inspection/insp_thirumazhisai/swm_field_photo.jpg",
+      "fieldsData": {
+        "evidence": "https://tms-2026.s3.ap-south-1.amazonaws.com/inspection/insp_thirumazhisai/swm_field_photo.jpg",
+        "segregation_rating": "Good"
+      },
+      "id": "iw_1790660276914_p8ifut",
+      "username": "insp_thirumazhisai",
+      "documentUrl": null,
+      "submittedAt": "2026-09-29T05:37:56.914Z",
+      "status": "Completed",
+      "workId": "WRK-INSPTHIRUM-0003",
+      "userSequence": 3,
+      "categoryNameEn": "Door to Door Survey",
+      "subjectNameEn": "SWM Management"
+    },
+    {
+      "submittedByUserName": "insp_thirumazhisai",
+      "submittedByUserId": "insp_thirumazhisai",
+      "subjectId": "subj_swm",
+      "categoryId": "cat_d2d",
+      "wardNumber": "4",
+      "streetName": "North Mada Street",
+      "imageUrl": "https://tms-2026.s3.ap-south-1.amazonaws.com/inspection/insp_thirumazhisai/inspection_evidence_test.jpg",
+      "fieldsData": {
+        "d2d_segregation_score": "85",
+        "evidence_photo": "https://tms-2026.s3.ap-south-1.amazonaws.com/inspection/insp_thirumazhisai/inspection_evidence_test.jpg"
+      },
+      "id": "iw_1790660227757_dd5f5z",
+      "username": "insp_thirumazhisai",
+      "documentUrl": null,
+      "submittedAt": "2026-09-29T05:37:07.757Z",
+      "status": "Completed",
+      "workId": "WRK-INSPTHIRUM-0002",
+      "userSequence": 2,
+      "categoryNameEn": "Door to Door Survey",
+      "subjectNameEn": "SWM Management"
+    },
+    {
+      "submittedByUserName": "rajesh",
+      "submittedByUserId": "rajesh",
+      "subjectId": "subj_water",
+      "subjectNameEn": "Water Supply Management",
+      "categoryId": "cat_water_check",
+      "wardNumber": "3",
+      "streetName": "Bazaar Street",
+      "fieldsData": {
+        "Valve Status": "Operational"
+      },
+      "id": "iw_1790654893215_iqr571",
+      "username": "rajesh",
+      "imageUrl": null,
+      "documentUrl": null,
+      "submittedAt": "2026-09-29T04:08:13.215Z",
+      "status": "Completed",
+      "workId": "WRK-RAJESH-0003",
+      "userSequence": 3
+    },
+    {
+      "submittedByUserName": "rajesh",
+      "submittedByUserId": "rajesh",
+      "subjectId": "subj_water",
+      "subjectNameEn": "Water Supply Management",
+      "categoryId": "cat_water_check",
+      "wardNumber": "3",
+      "streetName": "Bazaar Street",
+      "fieldsData": {
+        "Valve Status": "Operational"
+      },
+      "id": "iw_1790654892658_nbiwrd",
+      "username": "rajesh",
+      "imageUrl": null,
+      "documentUrl": null,
+      "submittedAt": "2026-09-29T04:08:12.658Z",
+      "status": "Completed",
+      "workId": "WRK-RAJESH-0002",
+      "userSequence": 2
+    },
+    {
+      "submittedByUserName": "dtpadmin",
+      "submittedByUserId": "dtpadmin",
+      "subjectId": "subj_swm",
+      "subjectNameEn": "SWM Management",
+      "categoryId": "cat_d2d",
+      "categoryNameEn": "Door to Door Survey",
+      "wardNumber": "1",
+      "streetName": "Anna Street",
+      "latitude": 13.0827,
+      "longitude": 80.2707,
+      "imageUrl": "https://tms-2026.s3.ap-south-1.amazonaws.com/inspection/dtpadmin/test_field_work.jpg",
+      "fieldsData": {
+        "Door / Assessment Number": "D-101",
+        "Citizen Mobile Number": "9876543210"
+      },
+      "id": "iw_1790654872662_baa215",
+      "username": "dtpadmin",
+      "documentUrl": null,
+      "submittedAt": "2026-09-29T04:07:52.662Z",
+      "status": "Completed",
+      "workId": "WRK-DTPADMIN-0003",
+      "userSequence": 3
+    },
+    {
+      "submittedByUserName": "dtpadmin",
+      "submittedByUserId": "dtpadmin",
+      "subjectId": "subj_swm",
+      "subjectNameEn": "SWM Management",
+      "categoryId": "cat_d2d",
+      "categoryNameEn": "Door to Door Survey",
+      "wardNumber": "1",
+      "streetName": "Anna Street",
+      "latitude": 13.0827,
+      "longitude": 80.2707,
+      "imageUrl": "https://tms-2026.s3.ap-south-1.amazonaws.com/inspection/dtpadmin/test_field_work.jpg",
+      "fieldsData": {
+        "Door / Assessment Number": "D-101",
+        "Citizen Mobile Number": "9876543210"
+      },
+      "id": "iw_1790654871943_ypebyk",
+      "username": "dtpadmin",
+      "documentUrl": null,
+      "submittedAt": "2026-09-29T04:07:51.943Z",
+      "status": "Completed",
+      "workId": "WRK-DTPADMIN-0002",
+      "userSequence": 2
+    },
+    {
+      "subjectId": "sub1",
+      "subjectNameEn": "Road Inspection",
+      "categoryId": "cat1",
+      "categoryNameEn": "Roads & Drains",
+      "districtId": "d3",
+      "districtCode": "01",
+      "districtNameEn": "Thiruvallur",
+      "tpId": "tp_thirumazhisai",
+      "tpCode": "07",
+      "tpNameEn": "Thirumazhisai",
+      "wardNumber": "6",
+      "streetName": "Sannathi Street",
+      "imageUrl": "https://tms-2026.s3.ap-south-1.amazonaws.com/TP01070600002/photo.jpg",
+      "submittedByUserName": "Field Inspector",
+      "status": "Completed",
+      "id": "iw_1790580457328_99ccwg",
+      "workId": "TP01070600002",
+      "ward": "6",
+      "wardNo": "6",
+      "submittedAt": "2026-09-28T07:27:37.328Z"
+    },
+    {
+      "subjectId": "sub1",
+      "subjectNameEn": "Sanitation Inspection",
+      "categoryId": "cat1",
+      "categoryNameEn": "Solid Waste Management",
+      "districtId": "d3",
+      "districtCode": "01",
+      "districtNameEn": "Thiruvallur",
+      "tpId": "tp_thirumazhisai",
+      "tpCode": "07",
+      "tpNameEn": "Thirumazhisai",
+      "wardNumber": "6",
+      "streetName": "Bazaar Street",
+      "imageUrl": "https://tms-2026.s3.ap-south-1.amazonaws.com/TP01070600001/photo.jpg",
+      "submittedByUserName": "Field Inspector",
+      "status": "Completed",
+      "id": "iw_1790580443158_u6jrxp",
+      "workId": "TP01070600001",
+      "ward": "6",
+      "wardNo": "6",
+      "submittedAt": "2026-09-28T07:27:23.158Z"
+    }
+  ],
+  "counters": {
+    "TP010706": 2,
+    "user_work_seq_dtpadmin": 3,
+    "user_work_seq_rajesh": 3,
+    "user_work_seq_insp_thirumazhisai": 3
+  },
+  "user_activity": [
+    {
+      "activityId": "act_1791226150822_nl8x7",
+      "userId": "u1",
+      "username": "dtpadmin",
+      "name": "DTP Director Head Office",
+      "role": "admin",
+      "roleId": "admin",
+      "designation": "Field Inspector",
+      "townPanchayat": "Town Panchayat",
+      "tpId": "tp1",
+      "status": "LOGGED_IN",
+      "loginTime": "2026-10-05T18:49:10.822Z",
+      "logoutTime": null,
+      "lastActiveAt": "2026-10-05T18:49:10.822Z",
+      "logoutReason": null,
+      "ipAddress": "120.60.240.38",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
+    }
+  ],
+  "userActivities": [
+    {
+      "activityId": "act_1791226150822_nl8x7",
+      "userId": "u1",
+      "username": "dtpadmin",
+      "name": "DTP Director Head Office",
+      "role": "admin",
+      "roleId": "admin",
+      "designation": "Field Inspector",
+      "townPanchayat": "Town Panchayat",
+      "tpId": "tp1",
+      "status": "LOGGED_IN",
+      "loginTime": "2026-10-05T18:49:10.822Z",
+      "logoutTime": null,
+      "lastActiveAt": "2026-10-05T18:49:10.822Z",
+      "logoutReason": null,
+      "ipAddress": "120.60.240.38",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
+    }
+  ]
+}

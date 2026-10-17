@@ -1,0 +1,23 @@
+node_modules/
+.next/
+coverage/
+.DS_Store
+*.log
+kotlin_app/
+
+# Secrets — never commit real credentials
+.env
+.env.*
+!.env.example
+mobile/.env
+mobile/.env.*
+!mobile/.env.example
+
+# Local runtime data / scratch (can contain keys saved from settings)
+tmp/
+
+# Expo / editor scratch
+mobile/.expo/
+mobile/.expo-bundle-check/
+mobile/.expo-tmp-bundle-test/
+mobile/.claude/
