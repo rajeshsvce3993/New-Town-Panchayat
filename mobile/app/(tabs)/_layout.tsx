@@ -1,5 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Redirect, Tabs, useRouter } from 'expo-router';
+/** Eagerly include tab screens in the main bundle (no per-tab lazy bundle in dev). */
+import './index';
+import './add-work';
+import './reports';
+import './settings';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { View } from 'react-native';

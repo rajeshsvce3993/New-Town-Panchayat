@@ -117,7 +117,7 @@ export default function PendingIssuesView({
   onSaveCollection,
   theme
 }: PendingIssuesViewProps) {
-  const currentTheme = themesConfig[theme] || themesConfig['sunset-aurora'];
+  const currentTheme = themesConfig[theme] || themesConfig.light;
   
   const CATEGORIES = (state?.issueCategories && state.issueCategories.length > 0) ? state.issueCategories : STATIC_CATEGORIES;
   

@@ -55,6 +55,7 @@ import {
   exportMultiSheetExcel, 
   sanitizeSheetName 
 } from '@/lib/inspectionReportExport';
+import { extractWorksFromInspectionApiPayload } from '@/lib/inspectionWorksQueryFilters';
 import MapViewReport from './MapViewReport';
 import html2canvas from 'html2canvas-pro';
 
@@ -448,6 +449,8 @@ interface InspectionReportsViewProps {
   defaultActiveTab?: 'abstract' | 'detailed' | 'mapview';
   hideTabsHeader?: boolean;
   hideTopTitle?: boolean;
+  /** Dashboard embed: no global refresh hooks; user applies filters explicitly */
+  embedMode?: boolean;
   onSaveCollection?: (key: string, data: any[]) => Promise<void>;
 }
 
@@ -459,6 +462,7 @@ export default function InspectionReportsView({
   defaultActiveTab,
   hideTabsHeader = false,
   hideTopTitle = false,
+  embedMode = false,
   onSaveCollection
 }: InspectionReportsViewProps) {
   // Current active sub-tab: 'abstract' | 'detailed' | 'mapview'
@@ -880,13 +884,24 @@ export default function InspectionReportsView({
     }).format(new Date());
   };
 
-  // Filter States - Default to today's date as requested
+  const getDefaultFromDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(d);
+  };
+
+  // Filter States — default last 30 days (live API ignores date params; server proxy filters)
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [selectedTpId, setSelectedTpId] = useState<string>('all');
   const [selectedWard, setSelectedWard] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [fromDate, setFromDate] = useState<string>(() => getTodayYmd());
+  const [fromDate, setFromDate] = useState<string>(() => getDefaultFromDate());
   const [toDate, setToDate] = useState<string>(() => getTodayYmd());
 
   // Admin dynamic field filter states
@@ -1086,10 +1101,13 @@ export default function InspectionReportsView({
   const [editingWork, setEditingWork] = useState<any | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
-  const currentTheme = themesConfig[theme] || themesConfig['sunset-aurora'];
+  const currentTheme = themesConfig[theme] || themesConfig.light;
 
   // Real-time works data and live refresh
   const [fetchedWorks, setFetchedWorks] = useState<any[] | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [apiCategoryCounts, setApiCategoryCounts] = useState<Record<string, number>>({});
+  const [apiTotalWithoutCategory, setApiTotalWithoutCategory] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<string>(() => new Date().toLocaleTimeString());
 
@@ -1137,7 +1155,11 @@ export default function InspectionReportsView({
   const [exportStatusText, setExportStatusText] = useState('');
 
   const isFetchingRef = React.useRef(false);
+  const fetchSeqRef = React.useRef(0);
   const lastUserActivityRef = React.useRef(Date.now());
+  /** Increment to load report rows from API (Apply / Refresh — not dashboard auto-refresh). */
+  const [filtersLoadToken, setFiltersLoadToken] = React.useState(0);
+  const filterQueryRef = React.useRef<Record<string, string>>({});
 
   // Listen to user interactions to detect active vs idle state
   React.useEffect(() => {
@@ -1160,93 +1182,6 @@ export default function InspectionReportsView({
     };
   }, []);
 
-  // Fetch works from MongoDB endpoint for instant view without manual page reload
-  const fetchWorks = React.useCallback(async (force = false, customFromDate = fromDate, customToDate = toDate, customTpId = selectedTpId, customDistrictId = selectedDistrictId, customZoneId = selectedZoneId, customWard = selectedWard) => {
-    if (isFetchingRef.current) return;
-    if (typeof document !== 'undefined') {
-      if (document.hidden || document.visibilityState !== 'visible') return;
-    }
-    // Idle restriction: if user is inactive for more than 2 minutes (120,000ms), STOP auto-polling
-    if (!force && Date.now() - lastUserActivityRef.current > 120000) {
-      return;
-    }
-
-    isFetchingRef.current = true;
-    setIsRefreshing(true);
-    try {
-      const qParams = new URLSearchParams();
-      if (customFromDate) qParams.set('fromDate', customFromDate);
-      if (customToDate) qParams.set('toDate', customToDate);
-      if (customTpId && customTpId !== 'all') qParams.set('tpId', customTpId);
-      if (customDistrictId && customDistrictId !== 'all') qParams.set('districtId', customDistrictId);
-      if (customZoneId && customZoneId !== 'all') qParams.set('zoneId', customZoneId);
-      if (customWard && customWard !== 'all') qParams.set('ward', customWard);
-
-      const res = await fetch(`/api/inspection-works?${qParams.toString()}`, { cache: 'no-store' });
-      const json = await res.json();
-      if (json.success && Array.isArray(json.works)) {
-        setFetchedWorks(json.works);
-        setLastRefreshed(new Date().toLocaleTimeString());
-      }
-    } catch (err) {
-      console.warn('Instant view fetch error:', err);
-    } finally {
-      setIsRefreshing(false);
-      isFetchingRef.current = false;
-    }
-  }, [fromDate, toDate, selectedTpId, selectedDistrictId, selectedZoneId, selectedWard]);
-
-  // Automatically trigger backend fetch when filters change to reload on demand as requested
-  useEffect(() => {
-    fetchWorks(true);
-  }, [fromDate, toDate, selectedTpId, selectedDistrictId, selectedZoneId, selectedWard]);
-
-  // Instant view live polling: auto-refresh every 30 seconds only when tab is visible and active
-  useEffect(() => {
-    let isMounted = true;
-    const loadInitial = async () => {
-      if (typeof document !== 'undefined' && (document.hidden || document.visibilityState !== 'visible')) return;
-      try {
-        const qParams = new URLSearchParams();
-        if (fromDate) qParams.set('fromDate', fromDate);
-        if (toDate) qParams.set('toDate', toDate);
-        if (selectedTpId && selectedTpId !== 'all') qParams.set('tpId', selectedTpId);
-        if (selectedDistrictId && selectedDistrictId !== 'all') qParams.set('districtId', selectedDistrictId);
-        if (selectedZoneId && selectedZoneId !== 'all') qParams.set('zoneId', selectedZoneId);
-        if (selectedWard && selectedWard !== 'all') qParams.set('ward', selectedWard);
-
-        const res = await fetch(`/api/inspection-works?${qParams.toString()}`, { cache: 'no-store' });
-        const json = await res.json();
-        if (isMounted && json.success && Array.isArray(json.works)) {
-          setFetchedWorks(json.works);
-          setLastRefreshed(new Date().toLocaleTimeString());
-        }
-      } catch (err) {
-        console.warn('Instant view fetch error:', err);
-      }
-    };
-    loadInitial();
-
-    // Listen to visibility changes: refresh immediately when returning to the tab
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        lastUserActivityRef.current = Date.now();
-        fetchWorks(true);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    const interval = setInterval(() => {
-      fetchWorks(false);
-    }, 30000); // 30s interval with inactivity guard prevents unnecessary server polling
-
-    return () => {
-      isMounted = false;
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      clearInterval(interval);
-    };
-  }, [fetchWorks, fromDate, toDate, selectedTpId, selectedDistrictId, selectedZoneId, selectedWard]);
-
   const t = (key: keyof typeof translations['en']) => {
     return translations[lang][key] || translations['en'][key] || key;
   };
@@ -1267,36 +1202,6 @@ export default function InspectionReportsView({
 
     for (const rawItem of list) {
       const w = resolveWorkSubjectAndCategory(rawItem, subjects, categories, fields);
-
-      // Exclude Fallback (General Inspection / Field Check) as requested:
-      // "In reports page shows all categories need show only created subject & categories only. no need to show Fallback (General Inspection Field Check)"
-      const sName = String(w.subjectNameEn || '').trim().toLowerCase();
-      const cName = String(w.categoryNameEn || '').trim().toLowerCase();
-      const sNameTa = String(w.subjectNameTa || '').trim();
-      const cNameTa = String(w.categoryNameTa || '').trim();
-      const sId = String(w.subjectId || '').trim().toLowerCase();
-      const cId = String(w.categoryId || '').trim().toLowerCase();
-
-      const isDummyFallback = 
-        sName === 'general inspection' || 
-        sName === 'general' ||
-        sName.includes('fallback') ||
-        cName === 'field check' ||
-        cName === 'general category' ||
-        cName === 'general inspection' ||
-        cName.includes('fallback') ||
-        sNameTa === 'பொது ஆய்வு' ||
-        cNameTa === 'கள ஆய்வு' ||
-        cNameTa === 'பொது வகை' ||
-        sId === 'subj_general' ||
-        sId === 'general_inspection' ||
-        cId === 'cat_field_check' ||
-        cId === 'cat_general' ||
-        cId === 'field_check';
-
-      if (isDummyFallback) {
-        continue;
-      }
 
       const key = (w.workId || w.id || '').trim();
       if (!key) {
@@ -1397,10 +1302,6 @@ export default function InspectionReportsView({
         );
         if (araniTp) return araniTp.id;
       }
-      // If Town Panchayat role user has at least one town panchayat in state, default to first town panchayat
-      if ((state.townPanchayats || []).length > 0) {
-        return state.townPanchayats[0].id;
-      }
     }
     return null;
   }, [currentUser, isAdminOrDirector, state.townPanchayats]);
@@ -1499,18 +1400,155 @@ export default function InspectionReportsView({
     return null;
   }, [currentUser, userTpId, userDistrictId, isAdminOrDirector, state.townPanchayats, state.districts, state.zones]);
 
-  // Apply restricted pre-selection automatically
+  const lastAutoLoadKeyRef = React.useRef('');
+
+  filterQueryRef.current = {
+    fromDate,
+    toDate,
+    selectedTpId,
+    selectedDistrictId,
+    selectedZoneId,
+    selectedWard,
+    selectedSubjectId,
+    selectedCategoryId,
+    selectedStreetName,
+    searchQuery,
+    adminFilterFieldId,
+    adminFilterValue,
+    scopeTpId: userTpId || '',
+    scopeZoneId: userZoneId || '',
+    scopeDistrictId: userDistrictId || '',
+  };
+
+  const requestInspectionWorks = React.useCallback(async () => {
+    const seq = ++fetchSeqRef.current;
+    isFetchingRef.current = true;
+    setIsRefreshing(true);
+    try {
+      const p = filterQueryRef.current;
+      const qParams = new URLSearchParams();
+      if (p.fromDate) qParams.set('fromDate', p.fromDate);
+      if (p.toDate) qParams.set('toDate', p.toDate);
+      if (p.selectedTpId && p.selectedTpId !== 'all') qParams.set('tpId', p.selectedTpId);
+      if (p.selectedDistrictId && p.selectedDistrictId !== 'all') qParams.set('districtId', p.selectedDistrictId);
+      if (p.selectedZoneId && p.selectedZoneId !== 'all') qParams.set('zoneId', p.selectedZoneId);
+      if (p.selectedWard && p.selectedWard !== 'all') qParams.set('ward', p.selectedWard);
+      if (p.selectedSubjectId && p.selectedSubjectId !== 'all') qParams.set('subjectId', p.selectedSubjectId);
+      if (p.selectedCategoryId && p.selectedCategoryId !== 'all') qParams.set('categoryId', p.selectedCategoryId);
+      if (p.selectedStreetName && p.selectedStreetName !== 'all') qParams.set('street', p.selectedStreetName);
+      if (p.searchQuery?.trim()) qParams.set('q', p.searchQuery.trim());
+      if (p.adminFilterFieldId) qParams.set('adminFieldId', p.adminFilterFieldId);
+      if (p.adminFilterValue) qParams.set('adminFieldValue', p.adminFilterValue);
+      if (p.scopeTpId) qParams.set('scopeTpId', p.scopeTpId);
+      else if (p.scopeZoneId) qParams.set('scopeZoneId', p.scopeZoneId);
+      else if (p.scopeDistrictId) qParams.set('scopeDistrictId', p.scopeDistrictId);
+      qParams.set('lite', '1');
+
+      const res = await fetch(`/api/inspection-works?${qParams.toString()}`, { cache: 'no-store' });
+      if (seq !== fetchSeqRef.current) return;
+
+      const json = await res.json().catch(() => ({}));
+      const works = extractWorksFromInspectionApiPayload(json);
+      if (res.ok && json.success !== false && Array.isArray(works)) {
+        setFetchedWorks(works);
+        if (json.categoryCounts && typeof json.categoryCounts === 'object') {
+          setApiCategoryCounts(json.categoryCounts);
+        }
+        if (typeof json.totalWithoutCategoryFilter === 'number') {
+          setApiTotalWithoutCategory(json.totalWithoutCategoryFilter);
+        }
+        setLastRefreshed(new Date().toLocaleTimeString());
+        if (seq === fetchSeqRef.current) setFetchError(null);
+      } else if (!res.ok) {
+        console.warn('Inspection works fetch failed:', res.status, json?.message || '');
+        if (seq === fetchSeqRef.current) {
+          setFetchError(json?.message || (lang === 'ta' ? 'தரவு பெற முடியவில்லை' : 'Could not load inspection works'));
+        }
+      } else if (json.success === false && seq === fetchSeqRef.current) {
+        setFetchError(json?.message || (lang === 'ta' ? 'தரவு இல்லை' : 'No data returned'));
+      }
+    } catch (err) {
+      console.warn('Instant view fetch error:', err);
+      if (seq === fetchSeqRef.current) {
+        setFetchError(lang === 'ta' ? 'பிணையம் / சேவையகப் பிழை' : 'Network or server error while loading works');
+      }
+    } finally {
+      if (seq === fetchSeqRef.current) {
+        setIsRefreshing(false);
+        isFetchingRef.current = false;
+      }
+    }
+  }, [lang]);
+
+  const applyFiltersAndLoad = React.useCallback(() => {
+    setFiltersLoadToken((t) => t + 1);
+  }, []);
+
   useEffect(() => {
-    if (userZoneId) {
-      setSelectedZoneId(userZoneId);
-    }
-    if (userDistrictId) {
-      setSelectedDistrictId(userDistrictId);
-    }
-    if (userTpId) {
-      setSelectedTpId(userTpId);
-    }
+    if (filtersLoadToken === 0) return;
+    void requestInspectionWorks();
+  }, [filtersLoadToken, requestInspectionWorks]);
+
+  useEffect(() => {
+    if (embedMode) return;
+    const onReportsRefresh = () => {
+      applyFiltersAndLoad();
+    };
+    window.addEventListener('portal:inspection-reports-refresh', onReportsRefresh);
+    return () => window.removeEventListener('portal:inspection-reports-refresh', onReportsRefresh);
+  }, [embedMode, applyFiltersAndLoad]);
+
+  // Apply restricted scope to filter dropdowns (does not fetch)
+  useEffect(() => {
+    if (userZoneId) setSelectedZoneId(userZoneId);
+    if (userDistrictId) setSelectedDistrictId(userDistrictId);
+    if (userTpId) setSelectedTpId(userTpId);
   }, [userZoneId, userDistrictId, userTpId]);
+
+  // Auto-load when portal masters / user scope are ready (bootstrap often arrives after first paint)
+  useEffect(() => {
+    const mastersReady =
+      isAdminOrDirector ||
+      (state.townPanchayats?.length ?? 0) > 0 ||
+      (state.zones?.length ?? 0) > 0;
+    if (!mastersReady) return;
+
+    const loadKey = [
+      isAdminOrDirector ? 'admin' : 'scoped',
+      userTpId || '',
+      userZoneId || '',
+      userDistrictId || '',
+      state.townPanchayats?.length ?? 0,
+    ].join('|');
+    if (lastAutoLoadKeyRef.current === loadKey) return;
+    lastAutoLoadKeyRef.current = loadKey;
+    queueMicrotask(() => applyFiltersAndLoad());
+  }, [
+    isAdminOrDirector,
+    userTpId,
+    userZoneId,
+    userDistrictId,
+    state.townPanchayats?.length,
+    state.zones?.length,
+    applyFiltersAndLoad,
+  ]);
+
+  const resolveCategoryCountFromApi = React.useCallback(
+    (cat: any) => {
+      const id = String(cat.id || '').trim();
+      const name = String(cat.nameEn || '').trim().toLowerCase();
+      const code = String(cat.code || '').trim().toLowerCase();
+      if (id && apiCategoryCounts[id] != null) return apiCategoryCounts[id];
+      if (code && apiCategoryCounts[code] != null) return apiCategoryCounts[code];
+      if (name && apiCategoryCounts[name] != null) return apiCategoryCounts[name];
+      return Object.entries(apiCategoryCounts).reduce((sum, [key, n]) => {
+        const k = key.toLowerCase();
+        if (k === id.toLowerCase() || k === name || k === code) return sum + n;
+        return sum;
+      }, 0);
+    },
+    [apiCategoryCounts]
+  );
 
   // Reset pages to 1 when filters change
   useEffect(() => {
@@ -1529,218 +1567,9 @@ export default function InspectionReportsView({
     searchQuery
   ]);
 
-  // Works matching all filters EXCEPT selectedCategoryId (used for accurate category badge counts)
-  const worksMatchingOtherFilters = useMemo(() => {
-    return rawWorks.filter((w) => {
-      // 1. Strict Town Panchayat scope enforcement (Arani TP user can only ever see Arani TP data)
-      if (userTpId) {
-        const uTp = String(userTpId).toLowerCase();
-        const targetTp = (state.townPanchayats || []).find((t: any) => 
-          String(t.id).toLowerCase() === uTp || 
-          String(t.nameEn || '').toLowerCase() === uTp
-        );
-        const targetTpId = targetTp ? String(targetTp.id).toLowerCase() : uTp;
-        const targetTpName = targetTp ? String(targetTp.nameEn || '').toLowerCase() : '';
-
-        const wTp = String(w.tpId || w.townPanchayatId || w.tpCode || '').toLowerCase();
-        const wTpName = String(w.tpNameEn || w.townPanchayat || '').toLowerCase();
-
-        const matchesTp = (wTp && (wTp === targetTpId || wTp === uTp)) ||
-                          (targetTpName && (wTpName === targetTpName || wTpName.includes(targetTpName) || targetTpName.includes(wTpName)));
-        if (!matchesTp) return false;
-      } else if (userZoneId) {
-        // 2. Strict Zonal scope enforcement (Zonal user can only ever see their assigned zone data)
-        const uZone = String(userZoneId).toLowerCase();
-        const targetZone = (state.zones || []).find((z: any) => 
-          String(z.id).toLowerCase() === uZone || 
-          String(z.nameEn || '').toLowerCase() === uZone
-        );
-        const targetZoneId = targetZone ? String(targetZone.id).toLowerCase() : uZone;
-        const targetZoneName = targetZone ? String(targetZone.nameEn || '').toLowerCase() : '';
-
-        const wZone = String(w.zoneId || '').toLowerCase();
-        const wZoneName = String(w.zoneNameEn || w.zone || '').toLowerCase();
-
-        // Also check if work TP belongs to this zone
-        let wCalculatedZoneId = '';
-        if (w.tpId || w.townPanchayatId) {
-          const wTpObj = (state.townPanchayats || []).find((t: any) => 
-            String(t.id).toLowerCase() === String(w.tpId || w.townPanchayatId).toLowerCase()
-          );
-          if (wTpObj?.districtId) {
-            const wDistObj = (state.districts || []).find((d: any) => 
-              String(d.id).toLowerCase() === String(wTpObj.districtId).toLowerCase()
-            );
-            if (wDistObj?.zoneId) wCalculatedZoneId = String(wDistObj.zoneId).toLowerCase();
-          }
-        }
-
-        const matchesZone = (wZone && (wZone === targetZoneId || wZone === uZone)) ||
-                            (wCalculatedZoneId && wCalculatedZoneId === targetZoneId) ||
-                            (targetZoneName && (wZoneName === targetZoneName || wZoneName.includes(targetZoneName)));
-        if (!matchesZone) return false;
-      }
-
-      if (selectedSubjectId !== 'all') {
-        const sSubj = String(selectedSubjectId).toLowerCase();
-        const matchedSubject = (state.inspectionSubjects || []).find((s: any) => 
-          String(s.id).toLowerCase() === sSubj || 
-          String(s.code || '').toLowerCase() === sSubj || 
-          String(s.nameEn || '').toLowerCase() === sSubj
-        );
-        const subjId = matchedSubject ? String(matchedSubject.id).toLowerCase() : sSubj;
-        const subjCode = matchedSubject?.code ? String(matchedSubject.code).toLowerCase() : '';
-        const subjName = matchedSubject ? String(matchedSubject.nameEn || '').toLowerCase() : sSubj;
-        const subjNameTa = matchedSubject ? String(matchedSubject.nameTa || '').toLowerCase() : '';
-
-        const wSubj = String(w.subjectId || '').toLowerCase();
-        const wSubjName = String(w.subjectNameEn || '').toLowerCase();
-        const wSubjNameTa = String(w.subjectNameTa || '').toLowerCase();
-
-        const match = wSubj === subjId || 
-                      (subjCode && wSubj === subjCode) || 
-                      wSubjName === subjName || 
-                      (subjNameTa && wSubjNameTa === subjNameTa) || 
-                      wSubj === sSubj || 
-                      wSubjName === sSubj;
-        if (!match) return false;
-      }
-      if (selectedTpId !== 'all') {
-        const sTp = String(selectedTpId).toLowerCase();
-        const wTp = String(w.tpId || w.tpCode || '').toLowerCase();
-        const wTpName = String(w.tpNameEn || '').toLowerCase();
-        const matchedTp = (state.townPanchayats || []).find((t: any) => String(t.id).toLowerCase() === sTp);
-        const sTpName = matchedTp ? String(matchedTp.nameEn).toLowerCase() : sTp;
-        const isTpMatch = wTp === sTp || wTpName === sTpName || (sTpName && wTpName.includes(sTpName)) || (sTpName && sTpName.includes(wTpName));
-        if (!isTpMatch) return false;
-      }
-      if (selectedWard !== 'all') {
-        const normWorkWard = String(w.wardNumber || w.wardNo || '').trim().replace(/^0+/, '') || '0';
-        const normSelWard = String(selectedWard || '').trim().replace(/^0+/, '') || '0';
-        if (normWorkWard !== normSelWard) return false;
-      }
-
-      // Zone filter
-      if (selectedZoneId !== 'all' && w.zoneId && String(w.zoneId).toLowerCase() !== String(selectedZoneId).toLowerCase()) return false;
-
-      // District filter
-      if (selectedDistrictId !== 'all' && w.districtId && String(w.districtId).toLowerCase() !== String(selectedDistrictId).toLowerCase()) return false;
-
-      // Street filter
-      if (selectedStreetName !== 'all') {
-        const sStreet = String(selectedStreetName).trim().toLowerCase();
-        const wStreet = String(w.streetName || '').trim().toLowerCase();
-        if (wStreet !== sStreet && !wStreet.includes(sStreet) && !sStreet.includes(wStreet)) return false;
-      }
-
-      // Accurate calendar date filtering with extractCalendarDateYMD
-      const itemYmd = extractCalendarDateYMD(
-        w.submittedAt || 
-        w.createdAt || 
-        w.date || 
-        w.inspectionDate || 
-        (w.fieldsData && (w.fieldsData['if_7'] || w.fieldsData['Inspection Date']))
-      );
-
-      if (fromDate) {
-        if (itemYmd) {
-          if (itemYmd < fromDate) return false;
-        } else {
-          return false;
-        }
-      }
-      if (toDate) {
-        if (itemYmd) {
-          if (itemYmd > toDate) return false;
-        } else {
-          return false;
-        }
-      }
-
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchId = (w.workId || '').toLowerCase().includes(q);
-        const matchStreet = (w.streetName || '').toLowerCase().includes(q);
-        const matchInspector = (w.submittedByUserName || '').toLowerCase().includes(q);
-        const matchCaption = (w.imageCaption || '').toLowerCase().includes(q);
-        const matchSubj = (w.subjectNameEn || '').toLowerCase().includes(q) || (w.subjectNameTa || '').toLowerCase().includes(q);
-        if (!matchId && !matchStreet && !matchInspector && !matchCaption && !matchSubj) {
-          return false;
-        }
-      }
-
-      // Admin Dynamic Field Data filter
-      if (adminFilterFieldId) {
-        const matchedField = (state.inspectionFields || []).find((f: any) => f.id === adminFilterFieldId);
-        const fieldName = matchedField?.fieldName || matchedField?.nameEn || '';
-        const val = w.fieldsData?.[adminFilterFieldId] ?? w.fieldsData?.[fieldName] ?? '';
-        if (adminFilterValue) {
-          const q = adminFilterValue.toLowerCase().trim();
-          const vStr = String(val).toLowerCase().trim();
-          if (q === 'yes' || q === 'ஆம்') {
-            if (vStr !== 'yes' && vStr !== 'ஆம்') return false;
-          } else if (q === 'no' || q === 'இல்லை') {
-            if (vStr !== 'no' && vStr !== 'இல்லை') return false;
-          } else {
-            if (!vStr.includes(q)) return false;
-          }
-        } else {
-          if (!val) return false;
-        }
-      }
-
-      return true;
-    });
-  }, [
-    rawWorks,
-    selectedSubjectId,
-    selectedTpId,
-    selectedWard,
-    selectedZoneId,
-    selectedDistrictId,
-    selectedStreetName,
-    fromDate,
-    toDate,
-    searchQuery,
-    userZoneId,
-    userDistrictId,
-    userTpId,
-    adminFilterFieldId,
-    adminFilterValue,
-    state.inspectionFields
-  ]);
-
-  // Filtered inspection works strictly applying selectedCategoryId and sorting (default: recent works on top)
+  // Rows returned from GET /api/inspection-works (all filtering is server-side)
   const filteredWorks = useMemo(() => {
-    let baseList = worksMatchingOtherFilters;
-    if (selectedCategoryId !== 'all') {
-      const sCat = String(selectedCategoryId).trim().toLowerCase();
-      const matchedCategory = (state.inspectionCategories || []).find((c: any) => 
-        String(c.id).trim().toLowerCase() === sCat || 
-        String(c.nameEn || '').trim().toLowerCase() === sCat ||
-        String(c.code || '').trim().toLowerCase() === sCat ||
-        String(c.nameTa || '').trim().toLowerCase() === sCat
-      );
-      const catId = matchedCategory ? String(matchedCategory.id).trim().toLowerCase() : sCat;
-      const catName = matchedCategory ? String(matchedCategory.nameEn || '').trim().toLowerCase() : sCat;
-      const catCode = matchedCategory?.code ? String(matchedCategory.code).trim().toLowerCase() : '';
-      const catNameTa = matchedCategory ? String(matchedCategory.nameTa || '').trim().toLowerCase() : '';
-
-      baseList = worksMatchingOtherFilters.filter((w) => {
-        const wCat = String(w.categoryId || '').trim().toLowerCase();
-        const wCatName = String(w.categoryNameEn || '').trim().toLowerCase();
-        const wCatNameTa = String(w.categoryNameTa || '').trim().toLowerCase();
-        return wCat === catId || 
-               (catCode && wCat === catCode) || 
-               wCatName === catName || 
-               (catNameTa && wCatNameTa === catNameTa) || 
-               wCat === sCat || 
-               wCatName === sCat;
-      });
-    }
-
-    // Apply sorting (by default, newest/recent works are on top)
-    const sorted = [...baseList].sort((a: any, b: any) => {
+    const sorted = [...rawWorks].sort((a: any, b: any) => {
       let valA: any = '';
       let valB: any = '';
       if (detailedSortField === 'submittedAt') {
@@ -1784,7 +1613,7 @@ export default function InspectionReportsView({
     });
 
     return sorted;
-  }, [worksMatchingOtherFilters, selectedCategoryId, state.inspectionCategories, detailedSortField, detailedSortDirection, lang]);
+  }, [rawWorks, detailedSortField, detailedSortDirection, lang]);
 
   // Paginated detailed works
   const paginatedDetailedWorks = useMemo(() => {
@@ -1918,12 +1747,11 @@ export default function InspectionReportsView({
 
       // Also extract wards from inspection works of this specific Town Panchayat
       (rawWorks || []).forEach((w: any) => {
-        const wTp = String(w.tpId || '').toLowerCase().trim();
+        const wTp = String(w.tpId || w.tpCode || '').toLowerCase().trim();
         const wTpName = String(w.tpNameEn || '').toLowerCase().trim();
-        const matchTp = (
+        const matchTp =
           (wTp && wTp === activeTpIdLower) ||
-          (activeTpNameEnLower && wTpName && wTpName === activeTpNameEnLower)
-        );
+          (activeTpNameEnLower && wTpName && wTpName === activeTpNameEnLower);
         if (matchTp) {
           const wNo = w.wardNumber || w.wardNo;
           if (wNo) {
@@ -4699,33 +4527,56 @@ export default function InspectionReportsView({
             <Filter className="w-4 h-4 text-indigo-600" />
             <span>{lang === 'ta' ? 'வடிகட்டி விருப்பங்கள்' : 'Dynamic Filter Controls'}</span>
           </div>
-          <button
-            onClick={() => {
-              setSelectedSubjectId('all');
-              setSelectedCategoryId('all');
-              setSelectedZoneId(userZoneId || 'all');
-              setSelectedDistrictId(userDistrictId || 'all');
-              setSelectedTpId(userTpId || 'all');
-              setSelectedWard('all');
-              setSelectedStreetName('all');
-              setSearchQuery('');
-              setFromDate(getTodayYmd());
-              setToDate(getTodayYmd());
-              setUserCols({ subject: false, category: false });
-              setLocCols({
-                district: false,
-                tp: false,
-                ward: false,
-                street: false,
-                subject: false,
-                category: false
-              });
-            }}
-            className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold cursor-pointer"
-          >
-            {lang === 'ta' ? 'அனைத்தையும் மீட்டமை' : 'Reset Filters'}
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {fetchError && (
+              <span className="max-w-md text-right text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                {fetchError}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => applyFiltersAndLoad()}
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-60 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {lang === 'ta' ? 'வடிகட்டி பயன்படுத்து' : 'Apply filters'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedSubjectId('all');
+                setSelectedCategoryId('all');
+                setSelectedZoneId(userZoneId || 'all');
+                setSelectedDistrictId(userDistrictId || 'all');
+                setSelectedTpId(userTpId || 'all');
+                setSelectedWard('all');
+                setSelectedStreetName('all');
+                setSearchQuery('');
+                setFromDate(getDefaultFromDate());
+                setToDate(getTodayYmd());
+                setUserCols({ subject: false, category: false });
+                setLocCols({
+                  district: false,
+                  tp: false,
+                  ward: false,
+                  street: false,
+                  subject: false,
+                  category: false
+                });
+                queueMicrotask(() => applyFiltersAndLoad());
+              }}
+              className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold cursor-pointer"
+            >
+              {lang === 'ta' ? 'அனைத்தையும் மீட்டமை' : 'Reset Filters'}
+            </button>
+          </div>
         </div>
+        <p className="text-[11px] text-slate-500 -mt-2">
+          {lang === 'ta'
+            ? 'வடிகட்டிகளை மாற்றிய பிறகு «வடிகட்டி பயன்படுத்து» ஐ அழுத்தவும். டாஷ்போர்டு தானியங்கி புதுப்பிப்பு இங்கே பயன்படாது.'
+            : 'Change filters, then click Apply filters. Dashboard auto-refresh does not reload this table.'}
+        </p>
 
         {/* 10-Column Multi-tier Filters Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
@@ -5763,7 +5614,10 @@ export default function InspectionReportsView({
 
             <div className="flex flex-wrap gap-2 pt-0.5">
               <button
-                onClick={() => setSelectedCategoryId('all')}
+                onClick={() => {
+                  setSelectedCategoryId('all');
+                  queueMicrotask(() => applyFiltersAndLoad());
+                }}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
                   selectedCategoryId === 'all'
                     ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
@@ -5772,25 +5626,12 @@ export default function InspectionReportsView({
               >
                 <span>{lang === 'ta' ? 'அனைத்து வகைகளும்' : 'All Categories'}</span>
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${selectedCategoryId === 'all' ? 'bg-indigo-800 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                  {worksMatchingOtherFilters.length}
+                  {apiTotalWithoutCategory || filteredWorks.length}
                 </span>
               </button>
               {availableCategories.map((cat: any) => {
                 const isSelected = selectedCategoryId === cat.id || selectedCategoryId === cat.nameEn;
-                const targetId = String(cat.id || '').trim().toLowerCase();
-                const targetName = String(cat.nameEn || '').trim().toLowerCase();
-                const targetCode = String(cat.code || '').trim().toLowerCase();
-                const targetNameTa = String(cat.nameTa || '').trim().toLowerCase();
-
-                const count = worksMatchingOtherFilters.filter(w => {
-                  const wCat = String(w.categoryId || '').trim().toLowerCase();
-                  const wCatName = String(w.categoryNameEn || '').trim().toLowerCase();
-                  const wCatNameTa = String(w.categoryNameTa || '').trim().toLowerCase();
-                  return (targetId && wCat === targetId) || 
-                         (targetCode && wCat === targetCode) || 
-                         (targetName && wCatName === targetName) || 
-                         (targetNameTa && wCatNameTa === targetNameTa);
-                }).length;
+                const count = resolveCategoryCountFromApi(cat);
 
                 return (
                   <button
@@ -5804,6 +5645,7 @@ export default function InspectionReportsView({
                           setSelectedSubjectId(cat.subjectId);
                         }
                       }
+                      queueMicrotask(() => applyFiltersAndLoad());
                     }}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
                       isSelected

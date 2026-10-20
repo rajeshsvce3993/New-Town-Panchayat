@@ -1,4 +1,11 @@
-import { DEFAULT_SERVER_URL, FCM_APP_VERSION_LABEL, REQUEST_TIMEOUT_MS } from '../constants/config';
+import * as FileSystem from 'expo-file-system/legacy';
+import {
+  BOOTSTRAP_API_TIMEOUT_MS,
+  DEFAULT_SERVER_URL,
+  FCM_APP_VERSION_LABEL,
+  REQUEST_TIMEOUT_MS,
+  UPLOAD_TIMEOUT_MS,
+} from '../constants/config';
 import type {
   ChangePasswordResponse,
   InspectionWork,
@@ -25,6 +32,18 @@ export function setApiBaseUrl(url: string) {
 
 export function getApiBaseUrl() {
   return baseUrl;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function toUploadFileUri(uri: string) {
+  const s = String(uri || '').trim();
+  if (!s) return s;
+  if (s.startsWith('file:') || s.startsWith('content:')) return s;
+  if (s.startsWith('/')) return `file://${s}`;
+  return s;
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
@@ -64,6 +83,15 @@ function loginNetworkError(e: unknown): LoginResponse {
 }
 
 export const api = {
+  async isReachable(): Promise<boolean> {
+    try {
+      const resp = await fetchWithTimeout(`${baseUrl}/api/health`, { method: 'GET' }, 4000);
+      return resp.ok;
+    } catch {
+      return false;
+    }
+  },
+
   async testConnection(testUrl: string): Promise<[boolean, string]> {
     const clean = testUrl.trim().replace(/\/$/, '');
     try {
@@ -135,34 +163,53 @@ export const api = {
     mimeType: string;
     workId?: string | null;
     userId?: string | null;
+    username?: string | null;
     zone?: string | null;
     district?: string | null;
     tp?: string | null;
   }): Promise<string | null> {
-    try {
-      const form = new FormData();
-      form.append('file', { uri: opts.uri, name: opts.fileName, type: opts.mimeType } as unknown as Blob);
-      if (opts.workId) form.append('workId', opts.workId);
-      if (opts.userId) form.append('userId', opts.userId);
-      if (opts.zone) form.append('zone', opts.zone);
-      if (opts.district) form.append('district', opts.district);
-      if (opts.tp) form.append('tp', opts.tp);
-      const response = await fetchWithTimeout(`${baseUrl}/api/upload`, { method: 'POST', body: form });
-      if (!response.ok) return null;
-      const json = await response.json();
-      return json.success ? json.url : null;
-    } catch {
-      return null;
+    const fileUri = toUploadFileUri(opts.uri);
+    const parameters: Record<string, string> = {};
+    if (opts.workId) parameters.workId = String(opts.workId);
+    if (opts.userId) parameters.userId = String(opts.userId);
+    if (opts.username) parameters.username = String(opts.username);
+    if (opts.zone) parameters.zone = String(opts.zone);
+    if (opts.district) parameters.district = String(opts.district);
+    if (opts.tp) parameters.tp = String(opts.tp);
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const result = await FileSystem.uploadAsync(`${baseUrl}/api/upload`, fileUri, {
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          fieldName: 'file',
+          mimeType: opts.mimeType || 'image/jpeg',
+          parameters,
+        });
+        if (result.status >= 200 && result.status < 300 && result.body) {
+          const json = JSON.parse(result.body) as { success?: boolean; url?: string; permanentUrl?: string };
+          const url = json.permanentUrl || json.url;
+          if (json.success && url) return url;
+        }
+      } catch {
+        /* retry */
+      }
+      if (attempt < 3) await delay(400 * attempt);
     }
+    return null;
   },
 
   async submitInspectionWork(work: InspectionWork): Promise<SubmitWorkResponse> {
     try {
-      const response = await fetchWithTimeout(`${baseUrl}/api/inspection-works`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(work),
-      });
+      const response = await fetchWithTimeout(
+        `${baseUrl}/api/inspection-works`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(work),
+        },
+        UPLOAD_TIMEOUT_MS
+      );
       const resBody = await response.text();
       if (response.ok) {
         try {
@@ -179,11 +226,15 @@ export const api = {
 
   async enqueueInspectionWork(work: InspectionWork): Promise<QueueEnqueueResponse> {
     try {
-      const response = await fetchWithTimeout(`${baseUrl}/api/queue/enqueue`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(work),
-      });
+      const response = await fetchWithTimeout(
+        `${baseUrl}/api/queue/enqueue`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(work),
+        },
+        UPLOAD_TIMEOUT_MS
+      );
       const resBody = await response.text();
       if (response.ok) {
         try {
@@ -266,23 +317,35 @@ export const api = {
   },
 
   async uploadProfilePhoto(userId: string, username: string, uri: string): Promise<ProfilePhotoUploadResponse> {
-    try {
-      const form = new FormData();
-      form.append('userId', userId);
-      form.append('username', username);
-      form.append('file', { uri, name: `profile_${Date.now()}.jpg`, type: 'image/jpeg' } as unknown as Blob);
-      const response = await fetchWithTimeout(`${baseUrl}/api/users/profile-photo`, { method: 'POST', body: form });
-      const resBody = await response.text();
-      if (response.ok && resBody) return JSON.parse(resBody) as ProfilePhotoUploadResponse;
-      return { success: false, message: `Upload failed with status ${response.status}` };
-    } catch (e) {
-      return { success: false, message: e instanceof Error ? e.message : 'Failed to upload profile photo to S3' };
+    const fileUri = toUploadFileUri(uri);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const result = await FileSystem.uploadAsync(`${baseUrl}/api/users/profile-photo`, fileUri, {
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+          fieldName: 'file',
+          mimeType: 'image/jpeg',
+          parameters: { userId: String(userId || ''), username: String(username || '') },
+        });
+        if (result.status >= 200 && result.status < 300 && result.body) {
+          const json = JSON.parse(result.body) as ProfilePhotoUploadResponse;
+          if (json.success) return json;
+          return { success: false, message: json.message || `Upload failed with status ${result.status}` };
+        }
+        if (attempt === 3) return { success: false, message: `Upload failed with status ${result.status}` };
+      } catch (e) {
+        if (attempt === 3) {
+          return { success: false, message: e instanceof Error ? e.message : 'Failed to upload profile photo to S3' };
+        }
+      }
+      await delay(400 * attempt);
     }
+    return { success: false, message: 'Failed to upload profile photo to S3' };
   },
 
   async checkAppVersion(): Promise<VersionCheckResponse> {
     try {
-      const response = await fetchWithTimeout(`${baseUrl}/api/mobile/version-check`);
+      const response = await fetchWithTimeout(`${baseUrl}/api/mobile/version-check`, {}, BOOTSTRAP_API_TIMEOUT_MS);
       const resBody = await response.text();
       if (response.ok && resBody) return JSON.parse(resBody) as VersionCheckResponse;
       return {};
@@ -331,7 +394,7 @@ export const api = {
 
   async getMobileConfig(): Promise<{ appIconUrl?: string; loginLogoUrl?: string } | null> {
     try {
-      const response = await fetchWithTimeout(`${baseUrl}/api/mobile/config`);
+      const response = await fetchWithTimeout(`${baseUrl}/api/mobile/config`, {}, BOOTSTRAP_API_TIMEOUT_MS);
       if (!response.ok) return null;
       const json = (await response.json()) as {
         config?: { app_icon_url?: string; login_logo_url?: string };
@@ -367,23 +430,94 @@ export const api = {
   },
 };
 
+function mediaProxyUrl(s3KeyOrUrl: string, slug: string) {
+  const key = s3KeyOrUrl.startsWith('http') ? '' : s3KeyOrUrl.replace(/^\/+/, '');
+  const params = [`k=${encodeURIComponent(slug)}`];
+  if (key) params.push(`key=${encodeURIComponent(key)}`);
+  else params.push(`url=${encodeURIComponent(s3KeyOrUrl)}`);
+  return `${baseUrl}/api/media?${params.join('&')}#${encodeURIComponent(slug)}`;
+}
+
+export function isLocalPhotoPath(raw?: string | null): boolean {
+  if (!raw) return false;
+  const s = raw.trim().toLowerCase();
+  return (
+    s.startsWith('file:') ||
+    s.startsWith('content:') ||
+    s.includes('user_profile_photo.jpg') ||
+    s.startsWith('/data/') ||
+    s.startsWith('/storage/') ||
+    s.includes('offline_images')
+  );
+}
+
+export function isRemotePhotoUrl(raw?: string | null): boolean {
+  if (!raw?.trim() || isLocalPhotoPath(raw)) return false;
+  const s = raw.trim();
+  return (
+    s.startsWith('http://') ||
+    s.startsWith('https://') ||
+    s.startsWith('/uploads') ||
+    s.startsWith('/api') ||
+    s.startsWith('profiles/') ||
+    s.includes('amazonaws.com') ||
+    s.includes('s3.')
+  );
+}
+
 export function resolveMediaUrl(rawUrl: string): string {
+  if (!rawUrl) return '';
   if (rawUrl.startsWith('http') && (rawUrl.includes('amazonaws.com') || rawUrl.includes('s3.'))) {
     let slug = 'img';
+    let key = '';
     try {
-      slug = new URL(rawUrl).pathname.replace(/^\//, '').split('/').filter(Boolean).pop() || 'img';
+      const parsed = new URL(rawUrl);
+      const parts = parsed.pathname.replace(/^\//, '').split('/').filter(Boolean);
+      slug = parts.pop() || 'img';
+      key = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
     } catch {
       /* keep default slug */
     }
-    // Put the unique filename first so Android/Fresco cache keys cannot collide
-    // when long presigned URLs are truncated after `/api/media`.
-    return `${baseUrl}/api/media?k=${encodeURIComponent(slug)}&url=${encodeURIComponent(rawUrl)}#${encodeURIComponent(slug)}`;
+    if (key.startsWith('profiles/') || key.startsWith('inspection/')) {
+      return mediaProxyUrl(key, slug);
+    }
+    return mediaProxyUrl(rawUrl, slug);
+  }
+  if (rawUrl.startsWith('profiles/') || rawUrl.startsWith('inspection/')) {
+    const slug = rawUrl.split('/').filter(Boolean).pop() || 'img';
+    return mediaProxyUrl(rawUrl, slug);
+  }
+  if (rawUrl.includes('/api/media')) {
+    const abs = rawUrl.startsWith('http') ? rawUrl : `${baseUrl}${rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`}`;
+    try {
+      const parsed = new URL(abs);
+      const slug =
+        parsed.searchParams.get('k') ||
+        parsed.searchParams.get('token')?.slice(0, 24) ||
+        parsed.searchParams.get('url')?.split('/').pop() ||
+        'img';
+      if (!parsed.searchParams.get('k')) parsed.searchParams.set('k', slug);
+      return `${parsed.toString()}#${encodeURIComponent(slug)}`;
+    } catch {
+      return abs;
+    }
   }
   if (rawUrl.startsWith('/uploads')) return `${baseUrl}${rawUrl}`;
   if (rawUrl.startsWith('/') && !rawUrl.startsWith('/data') && !rawUrl.startsWith('/storage')) {
     return `${baseUrl}${rawUrl}`;
   }
   return rawUrl;
+}
+
+export function resolveProfilePhotoUrl(raw?: string | null): string | null {
+  if (!raw?.trim()) return null;
+  const s = raw.trim();
+  if (isLocalPhotoPath(s)) {
+    if (s.startsWith('file:') || s.startsWith('content:')) return s;
+    if (s.startsWith('/')) return `file://${s}`;
+    return s;
+  }
+  return resolveMediaUrl(s) || null;
 }
 
 export { emptyPortal };

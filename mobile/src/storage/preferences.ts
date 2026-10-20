@@ -68,7 +68,7 @@ export const prefs = {
     }
   },
   async getThemeId() {
-    return (await getStr(K.theme)) || 'royal_gold';
+    return (await getStr(K.theme)) || 'ocean_wave';
   },
   async setThemeId(id: string) {
     await setStr(K.theme, id);
@@ -162,8 +162,20 @@ export const prefs = {
   },
   async enqueueWork(entry: QueuedWorkEntry) {
     const current = await this.getQueue();
+    if (current.some((e) => e.clientTaskId === entry.clientTaskId || e.work.id === entry.work.id)) return;
     current.push(entry);
     await this.setQueue(current);
+  },
+  async upsertOfflineWork(work: InspectionWork) {
+    const list = await this.getOfflineWorks();
+    const i = list.findIndex((w) => w.id === work.id);
+    if (i >= 0) list[i] = work;
+    else list.push(work);
+    await this.setOfflineWorks(list);
+  },
+  async removeOfflineWork(id: string) {
+    const list = await this.getOfflineWorks();
+    await this.setOfflineWorks(list.filter((w) => w.id !== id));
   },
   async updateQueuedWork(clientTaskId: string, update: (e: QueuedWorkEntry) => void) {
     const current = await this.getQueue();
@@ -247,16 +259,19 @@ export const prefs = {
   },
   async updateUserPhoto(photoUrl: string, serverUrl: string) {
     let clean = photoUrl;
+    if (clean.includes('amazonaws.com') && clean.includes('?')) {
+      clean = clean.split('?')[0];
+    }
     if (
       !(
-        photoUrl.startsWith('http://') ||
-        photoUrl.startsWith('https://') ||
-        photoUrl.startsWith('file://') ||
-        photoUrl.startsWith('/data/') ||
-        photoUrl.includes('user_profile_photo.jpg')
+        clean.startsWith('http://') ||
+        clean.startsWith('https://') ||
+        clean.startsWith('file://') ||
+        clean.startsWith('/data/') ||
+        clean.includes('user_profile_photo.jpg')
       )
     ) {
-      if (photoUrl.startsWith('/')) clean = `${serverUrl.replace(/\/$/, '')}${photoUrl}`;
+      if (clean.startsWith('/')) clean = `${serverUrl.replace(/\/$/, '')}${clean}`;
     }
     const u = await this.getCurrentUser();
     if (!u) return u;

@@ -1,4 +1,6 @@
 export type ThemeType = 
+  | 'light'
+  | 'dark'
   | 'sunset-aurora'
   | 'ocean-wave'
   | 'magic-lavender'
@@ -47,6 +49,38 @@ export const defaultCustomThemeColors: CustomThemeColors = {
 };
 
 export const themesConfig: Record<ThemeType, ThemeConfig> = {
+  light: {
+    id: 'light',
+    nameEn: 'Light',
+    nameTa: 'வெளிச்சம்',
+    sidebarBg: 'bg-[linear-gradient(180deg,#020617_0%,#0f172a_48%,#334155_100%)]',
+    sidebarActive: 'bg-white/15 text-white shadow-xs border border-white/10',
+    sidebarHover: 'hover:bg-white/10 hover:text-white',
+    mainBg: 'bg-[#f5f7fa]',
+    accentColor: '#334155',
+    contrastBg: 'bg-slate-100 text-slate-800 border-slate-200',
+    cardBorder: 'border-l-4 border-slate-500',
+    primaryCta: 'bg-slate-800 hover:bg-slate-900 transition-all text-white font-semibold',
+    secondaryCta: 'border border-slate-200 text-slate-800 hover:bg-slate-50',
+    chartColors: ['#0f172a', '#334155', '#64748b', '#94a3b8'],
+    chartGradient: ['#0f172a', '#94a3b8']
+  },
+  dark: {
+    id: 'dark',
+    nameEn: 'Dark',
+    nameTa: 'இருள்',
+    sidebarBg: 'bg-[linear-gradient(180deg,#475569_0%,#1e293b_42%,#020617_100%)]',
+    sidebarActive: 'bg-white/15 text-white shadow-xs border border-white/10',
+    sidebarHover: 'hover:bg-white/10 hover:text-white',
+    mainBg: 'bg-[#0b1220]',
+    accentColor: '#cbd5e1',
+    contrastBg: 'bg-slate-800 text-slate-100 border-slate-700',
+    cardBorder: 'border-l-4 border-slate-400',
+    primaryCta: 'bg-slate-100 hover:bg-white transition-all text-slate-900 font-semibold',
+    secondaryCta: 'border border-slate-600 text-slate-200 hover:bg-slate-800',
+    chartColors: ['#e2e8f0', '#94a3b8', '#64748b', '#334155'],
+    chartGradient: ['#e2e8f0', '#334155']
+  },
   'sunset-aurora': {
     id: 'sunset-aurora',
     nameEn: 'Sunset Aurora',
@@ -256,3 +290,13 @@ export const themesConfig: Record<ThemeType, ThemeConfig> = {
     chartGradient: ['#4f46e5', '#10b981']
   }
 };
+
+export function getThemeSidebarGradient(theme: ThemeType, custom?: CustomThemeColors): string {
+  if (theme === 'custom' && custom) {
+    return `linear-gradient(180deg, ${custom.sidebarFrom} 0%, ${custom.sidebarTo} 100%)`;
+  }
+  const conf = themesConfig[theme] || themesConfig['ocean-wave'];
+  const from = conf.chartGradient?.[0] || '#0f172a';
+  const to = conf.chartGradient?.[1] || conf.accentColor || '#64748b';
+  return `linear-gradient(180deg, ${from} 0%, ${to} 100%)`;
+}

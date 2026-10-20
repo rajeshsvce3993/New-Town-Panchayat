@@ -1014,6 +1014,7 @@ let lastS3Region = '';
 const MONGO_COOLDOWN_MS = 300000; // 5-minute cooldown on connection error to prevent spamming failed connections
 
 let cachedActiveDb: Db | null = null;
+let resolvingActiveDb: Promise<Db> | null = null;
 const cachedCollectionNamesMap = new Map<string, string[]>();
 
 export function resetMongoClient() {
@@ -1021,6 +1022,7 @@ export function resetMongoClient() {
   globalWithMongo._mongoClientPromise = null;
   globalWithMongo._lastMongoAttemptFailedTime = Date.now();
   cachedActiveDb = null;
+  resolvingActiveDb = null;
   cachedCollectionNamesMap.clear();
 }
 
@@ -1193,9 +1195,7 @@ export async function getMongoClient(): Promise<MongoClient | null> {
       } catch (err: any) {
         lastError = err;
         if (isLocal && activeUri.includes(':27018') && attempt === 1) {
-          console.warn(`[MongoDB Connection] Port 27018 unreachable, trying standard MongoDB port 27017...`);
-          activeUri = activeUri.replace(':27018', ':27017');
-          continue;
+          console.warn('[MongoDB Connection] Port 27018 unreachable. Not falling back to 27017 (that host has other apps, not dtp_enterprise).');
         }
         if (isLocal) {
           console.info(`[Database Storage] Local persistent database active: using local database cache (${err?.message || 'offline'}).`);
@@ -1367,91 +1367,33 @@ export function getDefaultDbName(): string {
   return 'dtp_enterprise';
 }
 
-// Auto-seed empty collections to ensure full-stack self-healing capability
-async function autoSeedEmptyCollections(db: Db) {
-  try {
-    const collectionsToSeed = [
-      'users',
-      'inspectionUsers',
-      'townPanchayats',
-      'districts',
-      'zones',
-      'wardsAndStreets',
-      'inspectionSubjects',
-      'inspectionCategories',
-      'inspectionFields',
-      'roles',
-      'inspectionRoles',
-      'posts',
-      'officeCategories'
-    ];
-
-    const localDb = readLocalDb();
-
-    for (const colName of collectionsToSeed) {
-      const col = db.collection(colName);
-      const count = await col.countDocuments().catch(() => 0);
-      if (count === 0) {
-        const sourceData = (localDb && Array.isArray((localDb as any)[colName]))
-          ? (localDb as any)[colName]
-          : (INITIAL_DATA as any)[colName];
-
-        if (Array.isArray(sourceData) && sourceData.length > 0) {
-          console.log(`[AutoSeed] Seeding empty MongoDB collection "${colName}" with ${sourceData.length} records...`);
-          const documents = sourceData.map((item, idx) => {
-            const { id, _id, ...rest } = item;
-            const docId = id || (_id ? String(_id) : `${colName}_${idx}_${Date.now()}`);
-            return { _id: docId as any, id: docId, ...rest };
-          });
-          await col.insertMany(documents).catch((err) => {
-            console.error(`[AutoSeed] Error seeding "${colName}":`, err);
-          });
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[AutoSeed] Exception in auto-seeding:', err);
-  }
-}
-
-// Find active MongoDB database containing data collections (cached for speed)
 export async function getActiveMongoDb(client: MongoClient): Promise<Db> {
   if (cachedActiveDb) {
     return cachedActiveDb;
   }
+  if (resolvingActiveDb) {
+    return resolvingActiveDb;
+  }
 
-  const preferredDbName = getDefaultDbName();
-  const db = client.db(preferredDbName);
-
-  try {
-    const cols = await db.listCollections().toArray();
-    if (cols.length > 0) {
-      cachedActiveDb = db;
-      cachedCollectionNamesMap.set(db.databaseName, cols.map(c => c.name));
-      await autoSeedEmptyCollections(db);
-      return db;
-    }
-
-    // If preferredDb has 0 collections, auto-discover database with existing collections
-    const admin = client.db().admin();
-    const dbs = await admin.listDatabases();
-    for (const d of dbs.databases) {
-      if (['admin', 'config', 'local'].includes(d.name)) continue;
-      const candidateDb = client.db(d.name);
-      const cCols = await candidateDb.listCollections().toArray();
-      if (cCols.length > 0) {
-        console.log(`Auto-detected active MongoDB database with collections: ${d.name}`);
-        cachedActiveDb = candidateDb;
-        cachedCollectionNamesMap.set(candidateDb.databaseName, cCols.map(c => c.name));
-        await autoSeedEmptyCollections(candidateDb);
-        return candidateDb;
+  resolvingActiveDb = (async () => {
+    const preferredDbName = getDefaultDbName() || 'dtp_enterprise';
+    const db = client.db(preferredDbName);
+    try {
+      const cols = await db.listCollections().toArray();
+      cachedCollectionNamesMap.set(db.databaseName, cols.map((c) => c.name));
+      if (cols.length === 0) {
+        console.warn(`[MongoDB] Database "${preferredDbName}" has no collections. Dashboard data will use local fallback until this database is available.`);
       }
+    } catch (err: any) {
+      console.warn('[MongoDB] Could not list collections for', preferredDbName, err?.message || err);
     }
-  } catch (_) {}
+    cachedActiveDb = db;
+    return db;
+  })().finally(() => {
+    resolvingActiveDb = null;
+  });
 
-  cachedActiveDb = db;
-  await autoSeedEmptyCollections(db);
-  return db;
+  return resolvingActiveDb;
 }
 
 // Helper to find collection with case-insensitivity and plural/singular/snake_case aliases (cached collection names)
@@ -1637,9 +1579,8 @@ export async function getCollectionData(key: keyof typeof INITIAL_DATA): Promise
       const db = await getActiveMongoDb(client);
       const col = await getCollectionWithAliases(db, key);
       const items = await col.find({}).maxTimeMS(6000).toArray();
-      if (Array.isArray(items)) {
-        const normalized = items.map((item, idx) => normalizeItemFromMongo(key, item, idx));
-        return normalized;
+      if (Array.isArray(items) && items.length > 0) {
+        return items.map((item, idx) => normalizeItemFromMongo(key, item, idx));
       }
     }
   } catch (e: any) {
@@ -1650,13 +1591,9 @@ export async function getCollectionData(key: keyof typeof INITIAL_DATA): Promise
     }
   }
 
-  // Fallback to local
   const localDb = readLocalDb();
-  if (localDb && Array.isArray(localDb[key])) {
+  if (localDb && Array.isArray(localDb[key]) && localDb[key].length > 0) {
     return localDb[key];
-  }
-  if (['wardsAndStreets', 'townPanchayats', 'districts', 'zones', 'inspectionSubjects', 'inspectionCategories', 'inspectionFields'].includes(key as string)) {
-    return [];
   }
   return (INITIAL_DATA as any)[key] || [];
 }
@@ -2036,57 +1973,81 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
   });
 }
 
-// Get the full database state directly from MongoDB (without syncing local DB up)
-export async function getFullDatabaseState(): Promise<typeof INITIAL_DATA> {
-  const [
-    districts,
-    townPanchayats,
-    zones,
-    inspectionSubjects,
-    inspectionCategories,
-    inspectionFields,
-    wardsAndStreets,
-    inspectionWorks,
-    inspectionUsers,
-    inspectionRoles,
-    inspectionDesignations,
-    users,
-    employees,
-    notifications,
-    apkVersions,
-    userActivities,
-    settings,
-  ] = await Promise.all([
-    getCollectionData('districts'),
-    getCollectionData('townPanchayats'),
-    getCollectionData('zones'),
-    getCollectionData('inspectionSubjects'),
-    getCollectionData('inspectionCategories'),
-    getCollectionData('inspectionFields'),
-    getCollectionData('wardsAndStreets'),
-    getCollectionData('inspectionWorks'),
-    getCollectionData('inspectionUsers'),
-    getCollectionData('inspectionRoles'),
-    getCollectionData('inspectionDesignations'),
-    getCollectionData('users'),
-    getEmployees(),
-    getCollectionData('notifications'),
-    getCollectionData('apkVersions'),
-    getCollectionData('userActivities'),
-    getAppSettings(),
-  ]);
+/** Counts only — never pulls photo/document payloads from inspectionWorks. */
+export async function getInspectionWorksDashboardStats(): Promise<any[]> {
+  try {
+    const client = await getMongoClient();
+    if (client) {
+      const db = await getActiveMongoDb(client);
+      const col = await getCollectionWithAliases(db, 'inspectionWorks');
+      const rows = await col.aggregate([
+        {
+          $group: {
+            _id: {
+              subjectId: { $ifNull: ['$subjectId', 'unknown'] },
+              subjectNameEn: { $ifNull: ['$subjectNameEn', 'General Inspection'] },
+              subjectNameTa: { $ifNull: ['$subjectNameTa', 'பொது ஆய்வு'] },
+              zoneId: { $ifNull: ['$zoneId', ''] },
+              districtId: { $ifNull: ['$districtId', ''] },
+              tpId: { $ifNull: ['$tpId', ''] },
+            },
+            count: { $sum: 1 },
+          },
+        },
+      ], { maxTimeMS: 8000 }).toArray();
+      return rows.map((r: any) => ({
+        subjectId: r._id?.subjectId,
+        subjectNameEn: r._id?.subjectNameEn,
+        subjectNameTa: r._id?.subjectNameTa,
+        zoneId: r._id?.zoneId,
+        districtId: r._id?.districtId,
+        tpId: r._id?.tpId,
+        count: r.count || 0,
+      }));
+    }
+  } catch (e: any) {
+    console.warn('Inspection works stats skipped:', e?.message || e);
+  }
+  return [];
+}
 
-  const masters = { townPanchayats, districts, zones, inspectionRoles, inspectionDesignations };
-  const enrichedUsers = (inspectionUsers || []).map((u: any) => enrichUserForApp(u, masters));
-
+function assemblePortalState(parts: {
+  districts: any;
+  townPanchayats: any;
+  zones: any;
+  inspectionSubjects: any;
+  inspectionCategories: any;
+  inspectionFields: any;
+  wardsAndStreets: any;
+  inspectionUsers: any;
+  inspectionRoles: any;
+  inspectionDesignations: any;
+  users: any;
+  employees: any;
+  notifications: any;
+  apkVersions: any;
+  userActivities: any;
+  settings: any;
+  inspectionWorkStats?: any[];
+}) {
   const localDb = readLocalDb();
-  const finalUsers = (users && users.length > 0) ? users : ((localDb.users && localDb.users.length > 0) ? localDb.users : INITIAL_DATA.users);
+  const masters = {
+    townPanchayats: parts.townPanchayats,
+    districts: parts.districts,
+    zones: parts.zones,
+    inspectionRoles: parts.inspectionRoles,
+    inspectionDesignations: parts.inspectionDesignations,
+  };
+  const enrichedUsers = (parts.inspectionUsers || []).map((u: any) => enrichUserForApp(u, masters));
+  const finalUsers = (parts.users && parts.users.length > 0) ? parts.users : ((localDb.users && localDb.users.length > 0) ? localDb.users : INITIAL_DATA.users);
   const finalRoles = (localDb.roles && localDb.roles.length > 0) ? localDb.roles : INITIAL_DATA.roles;
-  const finalEmployees = (employees && employees.length > 0) ? employees : ((localDb.employees && localDb.employees.length > 0) ? localDb.employees : INITIAL_DATA.employees);
-  const finalTps = (Array.isArray(townPanchayats) && townPanchayats.length > 0) ? townPanchayats : ((Array.isArray(localDb.townPanchayats) && localDb.townPanchayats.length > 0) ? localDb.townPanchayats : INITIAL_DATA.townPanchayats);
-  const finalDistricts = (Array.isArray(districts) && districts.length > 0) ? districts : ((Array.isArray(localDb.districts) && localDb.districts.length > 0) ? localDb.districts : INITIAL_DATA.districts);
-  const finalZones = (Array.isArray(zones) && zones.length > 0) ? zones : ((Array.isArray(localDb.zones) && localDb.zones.length > 0) ? localDb.zones : INITIAL_DATA.zones);
-  const finalWardsAndStreets = (Array.isArray(wardsAndStreets) && wardsAndStreets.length > 0) ? wardsAndStreets : ((Array.isArray(localDb.wardsAndStreets) && localDb.wardsAndStreets.length > 0) ? localDb.wardsAndStreets : INITIAL_DATA.wardsAndStreets);
+  const finalEmployees = parts.employees !== undefined
+    ? (parts.employees || [])
+    : ((localDb.employees && localDb.employees.length > 0) ? localDb.employees : INITIAL_DATA.employees);
+  const finalTps = (Array.isArray(parts.townPanchayats) && parts.townPanchayats.length > 0) ? parts.townPanchayats : ((Array.isArray(localDb.townPanchayats) && localDb.townPanchayats.length > 0) ? localDb.townPanchayats : INITIAL_DATA.townPanchayats);
+  const finalDistricts = (Array.isArray(parts.districts) && parts.districts.length > 0) ? parts.districts : ((Array.isArray(localDb.districts) && localDb.districts.length > 0) ? localDb.districts : INITIAL_DATA.districts);
+  const finalZones = (Array.isArray(parts.zones) && parts.zones.length > 0) ? parts.zones : ((Array.isArray(localDb.zones) && localDb.zones.length > 0) ? localDb.zones : INITIAL_DATA.zones);
+  const finalWardsAndStreets = (Array.isArray(parts.wardsAndStreets) && parts.wardsAndStreets.length > 0) ? parts.wardsAndStreets : ((Array.isArray(localDb.wardsAndStreets) && localDb.wardsAndStreets.length > 0) ? localDb.wardsAndStreets : INITIAL_DATA.wardsAndStreets);
 
   return {
     ...INITIAL_DATA,
@@ -2097,19 +2058,261 @@ export async function getFullDatabaseState(): Promise<typeof INITIAL_DATA> {
     roles: finalRoles,
     users: finalUsers,
     employees: finalEmployees,
-    inspectionSubjects: (inspectionSubjects && inspectionSubjects.length > 0) ? inspectionSubjects : (localDb.inspectionSubjects || []),
-    inspectionCategories: (inspectionCategories && inspectionCategories.length > 0) ? inspectionCategories : (localDb.inspectionCategories || []),
-    inspectionFields: (inspectionFields && inspectionFields.length > 0) ? inspectionFields : (localDb.inspectionFields || []),
-    wardsAndStreets: finalWardsAndStreets,
-    inspectionWorks: inspectionWorks || [],
-    inspectionUsers: (enrichedUsers && enrichedUsers.length > 0) ? enrichedUsers : (localDb.inspectionUsers || []).map((u: any) => enrichUserForApp(u, masters)),
-    inspectionRoles: (inspectionRoles && inspectionRoles.length > 0) ? inspectionRoles : (localDb.inspectionRoles || []),
-    inspectionDesignations: (inspectionDesignations && inspectionDesignations.length > 0) ? inspectionDesignations : (localDb.inspectionDesignations || []),
-    notifications: notifications || [],
-    apkVersions: apkVersions || [],
-    userActivities: userActivities || [],
-    settings: { ...INITIAL_DATA.settings, ...(localDb.settings || {}), ...(settings || {}) },
+    inspectionSubjects: (parts.inspectionSubjects && parts.inspectionSubjects.length > 0) ? parts.inspectionSubjects : (localDb.inspectionSubjects || []),
+    inspectionCategories: (parts.inspectionCategories && parts.inspectionCategories.length > 0) ? parts.inspectionCategories : (localDb.inspectionCategories || []),
+    inspectionFields: Array.isArray(parts.inspectionFields) ? parts.inspectionFields : (localDb.inspectionFields || []),
+    wardsAndStreets: Array.isArray(parts.wardsAndStreets) ? parts.wardsAndStreets : finalWardsAndStreets,
+    inspectionWorks: [],
+    inspectionWorkStats: parts.inspectionWorkStats || [],
+    inspectionUsers: parts.inspectionUsers !== undefined
+      ? enrichedUsers
+      : (localDb.inspectionUsers || []).map((u: any) => enrichUserForApp(u, masters)),
+    inspectionRoles: (parts.inspectionRoles && parts.inspectionRoles.length > 0) ? parts.inspectionRoles : (localDb.inspectionRoles || []),
+    inspectionDesignations: (parts.inspectionDesignations && parts.inspectionDesignations.length > 0) ? parts.inspectionDesignations : (localDb.inspectionDesignations || []),
+    notifications: parts.notifications || [],
+    apkVersions: parts.apkVersions || [],
+    userActivities: parts.userActivities || [],
+    settings: { ...INITIAL_DATA.settings, ...(localDb.settings || {}), ...(parts.settings || {}) },
   };
+}
+
+function slimPortalUsers(users: any[]) {
+  return (users || []).map((u: any) => ({
+    id: u.id,
+    username: u.username,
+    name: u.name || u.nameEn,
+    nameEn: u.nameEn || u.name,
+    nameTa: u.nameTa,
+    role: u.role,
+    roleId: u.roleId || u.role,
+    customPagePermissions: u.customPagePermissions || null,
+    districtId: u.districtId,
+    tpId: u.tpId || u.townPanchayatId,
+    zoneId: u.zoneId,
+    scopeType: u.scopeType,
+    scopeId: u.scopeId,
+    status: u.status,
+    isEmployee: u.isEmployee,
+  }));
+}
+
+function slimSettings(settings: any) {
+  if (!settings || typeof settings !== 'object') return {};
+  const {
+    mongodbUri,
+    s3AccessKeyId,
+    s3SecretAccessKey,
+    s3AccessKey,
+    s3SecretKey,
+    ...safe
+  } = settings;
+  return safe;
+}
+
+function slimInspectionUsers(users: any[]) {
+  return (users || []).map((u: any) => ({
+    id: u.id,
+    username: u.username,
+    name: u.name || u.nameEn,
+    nameEn: u.nameEn || u.name,
+    nameTa: u.nameTa,
+    role: u.role,
+    roleId: u.roleId || u.role,
+    designationId: u.designationId,
+    designation: u.designation,
+    designationNameEn: u.designationNameEn,
+    designationNameTa: u.designationNameTa,
+    zoneId: u.zoneId,
+    zoneNameEn: u.zoneNameEn,
+    districtId: u.districtId,
+    districtNameEn: u.districtNameEn,
+    tpId: u.tpId || u.townPanchayatId,
+    townPanchayatId: u.townPanchayatId || u.tpId,
+    townPanchayatIds: u.townPanchayatIds || u.selectedTpIds,
+    selectedTpIds: u.selectedTpIds || u.townPanchayatIds,
+    assignedWards: u.assignedWards,
+    status: u.status,
+    employeeId: u.employeeId,
+  }));
+}
+
+function portalStructuralDefaults() {
+  const {
+    zones: _zones,
+    districts: _districts,
+    townPanchayats: _tps,
+    wardsAndStreets: _was,
+    users: _users,
+    employees: _employees,
+    inspectionSubjects: _subjects,
+    inspectionCategories: _cats,
+    inspectionFields: _fields,
+    inspectionUsers: _iusers,
+    inspectionRoles: _iroles,
+    inspectionDesignations: _idesig,
+    pendingIssues: _issues,
+    pendingIssuesSchema: _schema,
+    settings: _settings,
+    ...rest
+  } = INITIAL_DATA as any;
+  return rest;
+}
+
+/** Fast first paint: dashboard masters, issues, and field staff — not employees. */
+export async function getPortalBootstrapState(): Promise<any> {
+  const [
+    districts,
+    townPanchayats,
+    zones,
+    inspectionSubjects,
+    inspectionCategories,
+    inspectionFields,
+    wardsAndStreets,
+    inspectionUsers,
+    inspectionRoles,
+    inspectionDesignations,
+    users,
+    settings,
+    inspectionWorkStats,
+    pendingIssues,
+    pendingIssuesSchema,
+  ] = await Promise.all([
+    getCollectionData('districts'),
+    getCollectionData('townPanchayats'),
+    getCollectionData('zones'),
+    getCollectionData('inspectionSubjects'),
+    getCollectionData('inspectionCategories'),
+    getCollectionData('inspectionFields'),
+    getCollectionData('wardsAndStreets'),
+    getCollectionData('inspectionUsers'),
+    getCollectionData('inspectionRoles'),
+    getCollectionData('inspectionDesignations'),
+    getCollectionData('users'),
+    getAppSettings(),
+    getInspectionWorksDashboardStats(),
+    getCollectionData('pendingIssues'),
+    getCollectionData('pendingIssuesSchema'),
+  ]);
+
+  const localRoles = readLocalDb()?.roles || INITIAL_DATA.roles;
+  const masters = {
+    townPanchayats: townPanchayats || [],
+    districts: districts || [],
+    zones: zones || [],
+    inspectionRoles: inspectionRoles || [],
+    inspectionDesignations: inspectionDesignations || [],
+  };
+  const enrichedUsers = (inspectionUsers || []).map((u: any) => enrichUserForApp(u, masters));
+
+  return {
+    ...portalStructuralDefaults(),
+    districts: districts || [],
+    townPanchayats: townPanchayats || [],
+    zones: zones || [],
+    inspectionSubjects: inspectionSubjects || [],
+    inspectionCategories: inspectionCategories || [],
+    inspectionFields: inspectionFields || [],
+    wardsAndStreets: wardsAndStreets || [],
+    inspectionUsers: slimInspectionUsers(enrichedUsers),
+    inspectionRoles: inspectionRoles || [],
+    inspectionDesignations: inspectionDesignations || [],
+    users: slimPortalUsers(users || []),
+    employees: [],
+    pendingIssues: pendingIssues || [],
+    pendingIssuesSchema: (pendingIssuesSchema && pendingIssuesSchema.length > 0)
+      ? pendingIssuesSchema
+      : INITIAL_DATA.pendingIssuesSchema,
+    notifications: [],
+    apkVersions: [],
+    userActivities: [],
+    roles: localRoles,
+    settings: slimSettings(settings),
+    inspectionWorkStats: inspectionWorkStats || [],
+    inspectionWorks: [],
+    transferRequests: [],
+  };
+}
+
+/** Remaining heavy collections after dashboard is already visible. */
+export async function getPortalExtendedState(): Promise<any> {
+  const [
+    notifications,
+    apkVersions,
+    userActivities,
+    employees,
+  ] = await Promise.all([
+    getCollectionData('notifications'),
+    getCollectionData('apkVersions'),
+    getCollectionData('userActivities'),
+    getEmployees(),
+  ]);
+  return {
+    notifications,
+    apkVersions,
+    userActivities,
+    employees,
+  };
+}
+
+// Get the full database state directly from MongoDB (without syncing local DB up)
+export async function getFullDatabaseState(): Promise<typeof INITIAL_DATA> {
+  const [
+    districts,
+    townPanchayats,
+    zones,
+    inspectionSubjects,
+    inspectionCategories,
+    inspectionFields,
+    wardsAndStreets,
+    inspectionUsers,
+    inspectionRoles,
+    inspectionDesignations,
+    users,
+    employees,
+    notifications,
+    apkVersions,
+    userActivities,
+    settings,
+    inspectionWorkStats,
+  ] = await Promise.all([
+    getCollectionData('districts'),
+    getCollectionData('townPanchayats'),
+    getCollectionData('zones'),
+    getCollectionData('inspectionSubjects'),
+    getCollectionData('inspectionCategories'),
+    getCollectionData('inspectionFields'),
+    getCollectionData('wardsAndStreets'),
+    getCollectionData('inspectionUsers'),
+    getCollectionData('inspectionRoles'),
+    getCollectionData('inspectionDesignations'),
+    getCollectionData('users'),
+    getEmployees(),
+    getCollectionData('notifications'),
+    getCollectionData('apkVersions'),
+    getCollectionData('userActivities'),
+    getAppSettings(),
+    getInspectionWorksDashboardStats(),
+  ]);
+
+  return assemblePortalState({
+    districts,
+    townPanchayats,
+    zones,
+    inspectionSubjects,
+    inspectionCategories,
+    inspectionFields,
+    wardsAndStreets,
+    inspectionUsers,
+    inspectionRoles,
+    inspectionDesignations,
+    users,
+    employees,
+    notifications,
+    apkVersions,
+    userActivities,
+    settings,
+    inspectionWorkStats,
+  });
 }
 
 // User scope cache removed as requested. Clean up and drop user_scope_cache from MongoDB
@@ -2292,17 +2495,22 @@ export async function getEmployees(): Promise<any[]> {
       const centralDb = client.db('dtp_enterprise');
       const centralReg = await centralDb.collection('employees_registry').find({}).toArray();
       if (centralReg.length > 0) {
-        const fullEmployees: any[] = [];
-        for (const reg of centralReg) {
-          const { dbName, collectionName } = getPartitionDetails(reg as any);
-          const partDb = client.db(dbName);
-          const empDetails = await partDb.collection(collectionName).findOne({ id: reg.id });
-          if (empDetails) {
-            fullEmployees.push({ ...reg, ...empDetails });
-          } else {
-            fullEmployees.push(reg);
-          }
-        }
+        const loadOne = async (reg: any) => {
+          const { dbName, collectionName } = getPartitionDetails(reg);
+          const empDetails = await client.db(dbName).collection(collectionName).findOne({ id: reg.id });
+          return empDetails ? { ...reg, ...empDetails } : reg;
+        };
+        const fullEmployees: any[] = new Array(centralReg.length);
+        const workers = Math.min(8, centralReg.length);
+        let next = 0;
+        await Promise.all(
+          Array.from({ length: workers }, async () => {
+            while (next < centralReg.length) {
+              const idx = next++;
+              fullEmployees[idx] = await loadOne(centralReg[idx]);
+            }
+          })
+        );
         return fullEmployees;
       }
     }

@@ -4,6 +4,9 @@ export const APP_VERSION_CODE = 100;
 export const FCM_APP_VERSION_LABEL = '2.4.0';
 export const PACKAGE_NAME = 'com.tn.townpanchayat.ems';
 export const REQUEST_TIMEOUT_MS = 30000;
+/** Non-critical startup calls (config, version check) — fail fast so splash does not hang. */
+export const BOOTSTRAP_API_TIMEOUT_MS = 12000;
+export const UPLOAD_TIMEOUT_MS = 90000;
 export const INACTIVITY_MS = 3600000;
 export const SESSION_CHECK_MS = 10000;
 export const OFFLINE_SYNC_MS = 15000;

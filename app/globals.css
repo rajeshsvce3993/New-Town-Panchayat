@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@400;500;600;700;800&family=Mukta+Malar:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@400;600;700&display=swap');
 
 :root {
   --primary: #002B49;
@@ -48,4 +48,113 @@ body {
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--theme-scrollbar-thumb, #db277780) transparent;
+}
+
+.portal-sidenav {
+  box-shadow:
+    1px 0 0 rgba(15, 23, 42, 0.08),
+    4px 0 24px -6px rgba(15, 47, 107, 0.18);
+}
+
+.portal-topbar {
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+.portal-nav-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.portal-nav-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.portal-nav-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 9999px;
+}
+
+.portal-nav-group-label {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.42);
+}
+
+.portal-nav-item-label {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.portal-nav-item-active {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+}
+
+.portal-nav-item-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 1.25rem;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: rgb(255 255 255 / 0.85);
+  transform: translateY(-50%);
+}
+
+.portal-nav-item {
+  position: relative;
+}
+
+@keyframes portal-splash-shimmer {
+  0% { transform: translateX(-30%); }
+  100% { transform: translateX(30%); }
+}
+
+@keyframes portal-splash-bar {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+@keyframes portal-splash-spin {
+  to { transform: rotate(360deg); }
+}
+
+.portal-splash-shimmer {
+  animation: portal-splash-shimmer 2.4s ease-in-out infinite alternate;
+}
+
+.portal-splash-bar {
+  animation: portal-splash-bar 1.1s ease-in-out infinite;
+}
+
+.portal-splash-spinner {
+  animation: portal-splash-spin 0.75s linear infinite;
+}
+
+.portal-dashboard-panel {
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid rgb(226 232 240 / 0.9);
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 47 107 / 0.05);
+}
+
+.portal-dashboard-kpi-row {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.45) transparent;
+}
+
+.portal-dashboard-kpi-row::-webkit-scrollbar {
+  height: 6px;
+}
+
+.portal-dashboard-kpi-row::-webkit-scrollbar-thumb {
+  background: rgb(148 163 184 / 0.45);
+  border-radius: 9999px;
 }

@@ -129,6 +129,7 @@ export async function POST(req: NextRequest) {
           $set: {
             profilePhotoUrl: publicPhotoUrl,
             avatarUrl: publicPhotoUrl,
+            profileImage: publicPhotoUrl,
             updatedAt: new Date().toISOString(),
           },
         };
@@ -143,6 +144,7 @@ export async function POST(req: NextRequest) {
               $set: {
                 'user.profilePhotoUrl': publicPhotoUrl,
                 'user.avatarUrl': publicPhotoUrl,
+                'user.profileImage': publicPhotoUrl,
                 updatedAt: new Date().toISOString(),
               },
             }
@@ -163,6 +165,7 @@ export async function POST(req: NextRequest) {
           if (u.id === userId || (u.username && u.username.toLowerCase() === username)) {
             u.profilePhotoUrl = publicPhotoUrl;
             u.avatarUrl = publicPhotoUrl;
+            u.profileImage = publicPhotoUrl;
             updatedLocal = true;
           }
         });

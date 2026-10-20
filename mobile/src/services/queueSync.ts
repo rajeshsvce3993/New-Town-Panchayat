@@ -3,17 +3,11 @@ import { api, setApiBaseUrl } from '../api/client';
 import { prefs } from '../storage/preferences';
 import type { InspectionWork, QueuedWorkEntry } from '../types/models';
 import { QUEUE_STATUS } from '../types/models';
-import { cleanLocalFile, compressImageLocally, fileToBase64DataUri } from '../utils/imageCompression';
+import { cleanLocalFile } from '../utils/imageCompression';
+import { cleanLocalPhotosFromWork, isLocalPhotoPath, uploadLocalPhotosInWork, workHasLocalPhotos } from '../utils/photoPersist';
 import { showInspectionNotification, showSimpleNotification } from './notifications';
 
-function looksLocal(path: string) {
-  return (
-    !!path &&
-    !path.startsWith('http') &&
-    !path.startsWith('data:') &&
-    (path.startsWith('file:') || path.startsWith('/') || path.includes('offline_images') || path.includes('raw_uploads'))
-  );
-}
+let syncLock = false;
 
 async function exists(path?: string | null) {
   if (!path) return false;
@@ -25,173 +19,147 @@ async function exists(path?: string | null) {
   }
 }
 
-export async function processQueueFifo(): Promise<void> {
-  const server = await prefs.getServerUrl();
-  setApiBaseUrl(server);
-  const user = await prefs.getCurrentUser();
-  if (user) {
-    try {
-      const fresh = await api.getPortalState(user.username);
-      if (fresh.user && (fresh.user.status === 'disabled' || fresh.user.forceLoggedOut)) {
-        await prefs.setCurrentUser(null);
-        await prefs.setAuthToken(null);
-        await showSimpleNotification('கணக்கு முடக்கப்பட்டது', 'உங்கள் கணக்கு நிர்வாகியால் முடக்கப்பட்டு வெளியேற்றப்பட்டுள்ளது.');
-        return;
-      }
-      const currentVersion = await prefs.getScopeVersionInt();
-      const versionResp = await api.checkScopeVersion(currentVersion);
-      if (versionResp.success && versionResp.hasUpdate) {
-        const scopeResp = await api.getUserScope(user.username);
-        if (scopeResp.success && scopeResp.scope) {
-          await prefs.setUserScope(scopeResp.scope);
-          await prefs.setScopeVersionInt(scopeResp.scopeVersion || currentVersion);
-          await prefs.setPortal(fresh);
-        }
-      }
-    } catch {
-      /* offline: keep cache */
-    }
-  }
-
-  const entries = await prefs.getQueue();
-  const pending = entries.filter((e) => e.status !== QUEUE_STATUS.SUBMITTED && e.status !== QUEUE_STATUS.PROCESSING);
-  if (!pending.length) return;
-  const currentItem = pending[0];
-  await processOneEntry(currentItem);
+async function rememberWorkUrls(taskId: string, work: InspectionWork) {
+  await prefs.updateQueuedWork(taskId, (it) => {
+    it.work = { ...it.work, imageUrl: work.imageUrl, fieldsData: work.fieldsData };
+  });
+  await prefs.upsertOfflineWork({ ...work, workId: work.workId || '' });
 }
 
-export async function processOneEntry(currentItem: QueuedWorkEntry): Promise<boolean> {
+async function ensureOfflineWorksAreQueued() {
+  const offline = await prefs.getOfflineWorks();
+  const queue = await prefs.getQueue();
+  for (const work of offline) {
+    if (work.workId) continue;
+    if (queue.some((e) => e.work.id === work.id)) continue;
+    await prefs.enqueueWork({
+      clientTaskId: `off-${work.id}`,
+      work,
+      localPhotoPath: isLocalPhotoPath(work.imageUrl) ? String(work.imageUrl) : null,
+      status: QUEUE_STATUS.IN_QUEUE,
+      progress: 10,
+      attemptCount: 0,
+      createdAt: Date.now(),
+    });
+  }
+}
+
+export async function processQueueFifo(): Promise<InspectionWork[]> {
+  return syncPendingWorks();
+}
+
+export async function syncOfflineWorksForeground(): Promise<InspectionWork[]> {
+  return syncPendingWorks();
+}
+
+export async function syncPendingWorks(): Promise<InspectionWork[]> {
+  if (syncLock) return [];
+  syncLock = true;
+  const synced: InspectionWork[] = [];
+  try {
+    const server = await prefs.getServerUrl();
+    setApiBaseUrl(server);
+    const user = await prefs.getCurrentUser();
+    if (user) {
+      try {
+        const fresh = await api.getPortalState(user.username);
+        if (fresh.user && (fresh.user.status === 'disabled' || fresh.user.forceLoggedOut)) {
+          await prefs.setCurrentUser(null);
+          await prefs.setAuthToken(null);
+          await showSimpleNotification('கணக்கு முடக்கப்பட்டது', 'உங்கள் கணக்கு நிர்வாகியால் முடக்கப்பட்டு வெளியேற்றப்பட்டுள்ளது.');
+          return [];
+        }
+      } catch {
+        /* offline: keep cache */
+      }
+    }
+
+    if (!(await api.isReachable())) return [];
+
+    await ensureOfflineWorksAreQueued();
+    const entries = await prefs.getQueue();
+    const pending = entries.filter((e) => e.status !== QUEUE_STATUS.SUBMITTED);
+    for (const item of pending) {
+      const saved = await processOneEntry(item);
+      if (!saved) break;
+      synced.push(saved);
+    }
+  } finally {
+    syncLock = false;
+  }
+  return synced;
+}
+
+export async function processOneEntry(currentItem: QueuedWorkEntry): Promise<InspectionWork | null> {
   const taskId = currentItem.clientTaskId;
   try {
-    let localPath = currentItem.localPhotoPath || undefined;
-    if (!(await exists(localPath))) {
-      const cand = currentItem.work.imageUrl || '';
-      if (looksLocal(cand) && (await exists(cand))) localPath = cand;
-      else {
-        for (const v of Object.values(currentItem.work.fieldsData)) {
-          const pathStr = String(v || '');
-          if (looksLocal(pathStr) && (await exists(pathStr))) {
-            localPath = pathStr;
-            break;
-          }
-        }
-      }
-    }
-
-    let compressedPath = currentItem.compressedPhotoPath || null;
-    if (!compressedPath && localPath) {
-      await prefs.updateQueuedWork(taskId, (it) => {
-        it.status = QUEUE_STATUS.IMAGE_COMPRESSING;
-        it.progress = 20;
-      });
-      compressedPath = await compressImageLocally(localPath, `comp_${Date.now()}.jpg`);
-      if (compressedPath) {
-        await prefs.updateQueuedWork(taskId, (it) => {
-          it.compressedPhotoPath = compressedPath;
-          it.progress = 50;
-        });
-      } else compressedPath = localPath;
-    }
-
+    const user = await prefs.getCurrentUser();
     await prefs.updateQueuedWork(taskId, (it) => {
-      it.status = QUEUE_STATUS.IN_QUEUE;
-      it.progress = 60;
+      it.status = QUEUE_STATUS.IMAGE_COMPRESSING;
+      it.progress = 25;
     });
 
-    let finalImageUrl = currentItem.work.imageUrl || null;
-    const pathForB64 = compressedPath || localPath;
-    if (pathForB64) {
-      const dataUri = await fileToBase64DataUri(pathForB64);
-      if (dataUri) finalImageUrl = dataUri;
-    }
+    const payload = await uploadLocalPhotosInWork(currentItem.work, {
+      workId: currentItem.work.workId,
+      userId: user?.id || user?.username,
+      username: user?.username,
+      zone: currentItem.work.zoneNameEn,
+      district: currentItem.work.districtNameEn,
+      tp: currentItem.work.tpNameEn,
+    });
+    await rememberWorkUrls(taskId, { ...payload, workId: '' });
 
-    const updatedFields = { ...currentItem.work.fieldsData };
-    for (const [k, v] of Object.entries(updatedFields)) {
-      const vStr = String(v || '');
-      if (vStr === currentItem.work.imageUrl) {
-        if (finalImageUrl) updatedFields[k] = finalImageUrl;
-      } else if (looksLocal(vStr) && (await exists(vStr))) {
-        const ownUri = await fileToBase64DataUri(vStr);
-        if (ownUri) updatedFields[k] = ownUri;
-      }
+    if (workHasLocalPhotos(payload)) {
+      await handleSlow(taskId, 'Waiting to upload remaining photos');
+      return null;
     }
-    const workPayload: InspectionWork = { ...currentItem.work, imageUrl: finalImageUrl, fieldsData: updatedFields };
 
     await prefs.updateQueuedWork(taskId, (it) => {
       it.status = QUEUE_STATUS.PROCESSING;
-      it.progress = 75;
+      it.progress = 70;
     });
 
-    const enqueueResp = await api.enqueueInspectionWork(workPayload);
-    if (!enqueueResp.success || !enqueueResp.jobId) {
-      const direct = await api.submitInspectionWork(workPayload);
-      if (direct.success && (direct.workId || direct.work)) {
-        await onConfirmed(taskId, direct.workId || direct.work?.workId || '#CONFIRMED', localPath, compressedPath);
-        return true;
-      }
-      await handleSlow(taskId, direct.message || 'Server submission error');
-      return false;
+    const direct = await api.submitInspectionWork(payload);
+    if (direct.success && (direct.workId || direct.work)) {
+      const saved = direct.work || { ...payload, workId: direct.workId || payload.workId };
+      await onConfirmed(taskId, saved.workId || '#CONFIRMED', currentItem.work, payload, saved);
+      return saved;
     }
-
-    const serverJobId = enqueueResp.jobId;
-    await prefs.updateQueuedWork(taskId, (it) => {
-      it.serverJobId = serverJobId;
-      it.status = QUEUE_STATUS.PROCESSING;
-      it.progress = 80;
-    });
-
-    let finished = false;
-    for (let poll = 0; poll < 45 && !finished; poll++) {
-      await delay(1000);
-      const statusResp = await api.getQueueJobStatus(serverJobId);
-      if (statusResp.success && statusResp.job) {
-        const job = statusResp.job;
-        if (job.status === 'COMPLETED') {
-          await onConfirmed(taskId, job.workId || '#CONFIRMED', localPath, compressedPath);
-          finished = true;
-        } else if (job.status === 'REJECTED_RETRY_FROM_APP' || job.status === 'FAILED') {
-          await handleSlow(taskId, job.error || 'Server processing timeout');
-          finished = true;
-        } else if (job.status === 'PROCESSING') {
-          await prefs.updateQueuedWork(taskId, (it) => {
-            it.progress = Math.min(95, 80 + poll);
-          });
-        }
-      }
-    }
-    if (!finished) await handleSlow(taskId, 'Job status check timed out after 45s');
-    return finished;
+    await handleSlow(taskId, direct.message || 'Server submission error');
+    return null;
   } catch (e) {
     await handleSlow(taskId, e instanceof Error ? e.message : 'Network/Worker exception');
-    return false;
+    return null;
   }
 }
 
-async function onConfirmed(taskId: string, workId: string, localPath?: string | null, compressedPath?: string | null) {
+async function onConfirmed(
+  taskId: string,
+  workId: string,
+  original: InspectionWork,
+  uploaded: InspectionWork,
+  savedWork?: InspectionWork | null
+) {
   await prefs.updateQueuedWork(taskId, (it) => {
     it.status = QUEUE_STATUS.SUBMITTED;
     it.progress = 100;
     it.workId = workId;
   });
-  await cleanLocalFile(compressedPath);
-  await cleanLocalFile(localPath);
   const entries = await prefs.getQueue();
   const item = entries.find((e) => e.clientTaskId === taskId);
-  if (item) {
-    await cleanLocalFile(item.work.imageUrl);
-    for (const v of Object.values(item.work.fieldsData)) {
-      const p = String(v || '');
-      if (p.startsWith('/') || p.startsWith('file:')) await cleanLocalFile(p);
-    }
-    try {
-      await showInspectionNotification(workId, item.work.subjectNameEn || 'Field Work', false);
-    } catch {
-      /* ignore */
-    }
-    const offline = await prefs.getOfflineWorks();
-    await prefs.setOfflineWorks(offline.filter((w) => w.id !== item.work.id));
+  await cleanLocalFile(item?.compressedPhotoPath);
+  await cleanLocalFile(item?.localPhotoPath);
+  await cleanLocalPhotosFromWork(original);
+  await cleanLocalPhotosFromWork(uploaded);
+  await cleanLocalPhotosFromWork(item?.work);
+  await prefs.removeOfflineWork(original.id);
+  await prefs.removeQueuedWorkMatching((e) => e.clientTaskId === taskId || e.work.id === original.id);
+  try {
+    await showInspectionNotification(workId, original.subjectNameEn || 'Field Work', false);
+  } catch {
+    /* ignore */
   }
-  await prefs.removeQueuedWork(taskId);
+  void savedWork;
 }
 
 async function handleSlow(taskId: string, reason: string) {
@@ -207,85 +175,4 @@ async function handleSlow(taskId: string, reason: string) {
   }
 }
 
-function delay(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-export async function syncOfflineWorksForeground(): Promise<InspectionWork[]> {
-  const user = await prefs.getCurrentUser();
-  if (!user) return [];
-  const offline = await prefs.getOfflineWorks();
-  if (!offline.length) return [];
-  const remaining = [...offline];
-  const synced: InspectionWork[] = [];
-  for (const work of offline) {
-    try {
-      let updatedWork = { ...work, fieldsData: { ...work.fieldsData } };
-      let primaryUrl = work.imageUrl;
-      if (primaryUrl && looksLocal(primaryUrl) && (await exists(primaryUrl))) {
-        const uploaded = await api.uploadFile({
-          uri: primaryUrl,
-          fileName: `${work.id}_photo.jpg`,
-          mimeType: 'image/jpeg',
-          workId: work.workId,
-          userId: user.id || user.username,
-          zone: work.zoneNameEn,
-          district: work.districtNameEn,
-          tp: work.tpNameEn,
-        });
-        if (uploaded) {
-          for (const [k, v] of Object.entries(updatedWork.fieldsData)) {
-            if (String(v) === primaryUrl) updatedWork.fieldsData[k] = uploaded;
-          }
-          primaryUrl = uploaded;
-          updatedWork.imageUrl = uploaded;
-          await cleanLocalFile(work.imageUrl);
-        } else {
-          const dataUri = await fileToBase64DataUri(primaryUrl);
-          if (dataUri) {
-            primaryUrl = dataUri;
-            updatedWork.imageUrl = dataUri;
-          }
-        }
-      }
-      for (const [key, value] of Object.entries(updatedWork.fieldsData)) {
-        const valueStr = String(value || '');
-        if (valueStr && looksLocal(valueStr) && (await exists(valueStr))) {
-          const uploaded = await api.uploadFile({
-            uri: valueStr,
-            fileName: `${work.id}_captured_photo_${key}.jpg`,
-            mimeType: 'image/jpeg',
-            workId: work.workId,
-            userId: user.id || user.username,
-            zone: work.zoneNameEn,
-            district: work.districtNameEn,
-            tp: work.tpNameEn,
-          });
-          if (uploaded) {
-            updatedWork.fieldsData[key] = uploaded;
-            if (!primaryUrl || looksLocal(primaryUrl)) {
-              primaryUrl = uploaded;
-              updatedWork.imageUrl = uploaded;
-            }
-            await cleanLocalFile(valueStr);
-          }
-        }
-      }
-      const res = await api.submitInspectionWork(updatedWork);
-      if (res.success && res.work) {
-        remaining.splice(remaining.indexOf(work), 1);
-        await prefs.removeQueuedWorkMatching(
-          (it) =>
-            it.work.id === work.id ||
-            (!!res.work?.workId && (it.workId === res.work.workId || it.work.workId === res.work.workId))
-        );
-        synced.push(res.work);
-        await showInspectionNotification(res.work.workId, res.work.subjectNameEn, false);
-      }
-    } catch {
-      break;
-    }
-  }
-  if (synced.length) await prefs.setOfflineWorks(remaining);
-  return synced;
-}
+export { exists, isLocalPhotoPath };

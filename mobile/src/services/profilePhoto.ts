@@ -21,11 +21,9 @@ export async function pickAndUploadProfile(source: 'camera' | 'gallery', userId:
   const compressed = await compressImageLocally(uri, `comp_prof_${Date.now()}.jpg`);
   const uploadUri = compressed || dest;
   const resp = await api.uploadProfilePhoto(userId, username, uploadUri);
-  if (resp.success && resp.profilePhotoUrl) {
-    let raw = resp.profilePhotoUrl.startsWith('/') ? `${getApiBaseUrl().replace(/\/$/, '')}${resp.profilePhotoUrl}` : resp.profilePhotoUrl;
-    if (!(raw.includes('X-Amz-') || raw.includes('amazonaws.com'))) {
-      raw = raw.includes('?') ? `${raw}&t=${Date.now()}` : `${raw}?t=${Date.now()}`;
-    }
+  const stored = (resp.rawS3Url || resp.profilePhotoUrl || '').trim();
+  if (resp.success && stored) {
+    let raw = stored.startsWith('/') ? `${getApiBaseUrl().replace(/\/$/, '')}${stored}` : stored;
     await prefs.updateUserPhoto(raw, getApiBaseUrl());
     return { local: dest, remote: raw, message: resp.message };
   }

@@ -20,12 +20,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ViewShot, { captureRef, type ViewShotRef } from 'react-native-view-shot';
-import { resolveMediaUrl } from '../api/client';
+import { getApiBaseUrl, isLocalPhotoPath, resolveMediaUrl, resolveProfilePhotoUrl } from '../api/client';
 import { SAMPLE_PHOTO } from '../constants/config';
+import { useApp } from '../context/AppContext';
+import { profilePhotoFile } from '../storage/preferences';
 import { BrandImage } from './BrandImage';
-import { getPaletteById, type AppPalette } from '../theme/palettes';
+import { DEFAULT_PALETTE_ID, getPaletteById, type AppPalette } from '../theme/palettes';
 import type { FieldDefinition, InspectionWork, PortalState } from '../types/models';
-import { portalFields } from '../types/models';
+import { effectivePhotoUrl, portalFields, resolveOfficerDesignation } from '../types/models';
 import { formatTo12Hr } from '../utils/dates';
 import { fieldOrderIndex } from '../utils/fieldVisibility';
 
@@ -33,15 +35,171 @@ const EXPORT_W = Math.max(960, Math.round(Dimensions.get('window').width * 1.7))
 const EXPORT_FIT_SCALE = Math.min(1, Dimensions.get('window').width / EXPORT_W);
 const GOOGLE_STATIC_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 
-function locationMapUris(latitude: number, longitude: number) {
+function mapFileUri(path: string) {
+  if (!path) return path;
+  if (path.startsWith('file:') || path.startsWith('content:')) return path;
+  if (path.startsWith('/')) return `file://${path}`;
+  return path;
+}
+
+function latLngToTile(lat: number, lon: number, zoom: number) {
+  const n = 2 ** zoom;
+  const x = Math.floor(((lon + 180) / 360) * n);
+  const latRad = (lat * Math.PI) / 180;
+  const y = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n);
+  return { x, y, z: zoom };
+}
+
+function googleStaticMapUrl(latitude: number, longitude: number, key: string) {
+  const k = String(key || '').trim();
+  if (!k) return '';
+  const q = `${latitude},${longitude}`;
+  return (
+    `https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(q)}` +
+    `&zoom=18&size=240x240&scale=2&maptype=hybrid` +
+    `&markers=color:red%7C${encodeURIComponent(q)}` +
+    `&key=${encodeURIComponent(k)}`
+  );
+}
+
+function googleHybridTileUrl(latitude: number, longitude: number) {
+  const { x, y, z } = latLngToTile(latitude, longitude, 18);
+  return `https://mt1.google.com/vt/lyrs=y&x=${x}&y=${y}&z=${z}`;
+}
+
+function esriSatelliteTileUrl(latitude: number, longitude: number) {
+  const { x, y, z } = latLngToTile(latitude, longitude, 18);
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+}
+
+function osmTileUrl(latitude: number, longitude: number) {
+  const { x, y, z } = latLngToTile(latitude, longitude, 18);
+  return `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
+}
+
+function uint8ToBase64(bytes: Uint8Array) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b1 = bytes[i];
+    const b2 = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    const b3 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    out += chars[b1 >> 2];
+    out += chars[((b1 & 3) << 4) | (b2 >> 4)];
+    out += i + 1 < bytes.length ? chars[((b2 & 15) << 2) | (b3 >> 6)] : '=';
+    out += i + 2 < bytes.length ? chars[b3 & 63] : '=';
+  }
+  return out;
+}
+
+function isImageMagic(bytes: Uint8Array) {
+  if (bytes.length < 4) return false;
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return true;
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) return true;
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return true;
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) return true;
+  return false;
+}
+
+async function cachedFileIsImage(path: string) {
+  try {
+    const info = await FileSystem.getInfoAsync(path);
+    if (!info.exists || !('size' in info) || typeof info.size !== 'number' || info.size < 800) return false;
+    const head = await FileSystem.readAsStringAsync(path, {
+      encoding: FileSystem.EncodingType.Base64,
+      length: 12,
+      position: 0,
+    });
+    return (
+      head.startsWith('iVBOR') ||
+      head.startsWith('/9j/') ||
+      head.startsWith('R0lGOD') ||
+      head.startsWith('UklGR')
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function saveMapUrlToFile(url: string, dest: string, headers?: Record<string, string>) {
+  try {
+    const result = await FileSystem.downloadAsync(url, dest, headers ? { headers } : undefined);
+    if (result.status >= 200 && result.status < 300 && (await cachedFileIsImage(result.uri || dest))) {
+      return true;
+    }
+  } catch {
+    /* fall through to fetch */
+  }
+  try {
+    const res = await fetch(url, { headers, cache: 'no-store' });
+    if (!res.ok) return false;
+    const type = (res.headers.get('content-type') || '').toLowerCase();
+    if (type && !type.startsWith('image/') && !type.includes('octet-stream') && !type.includes('binary')) {
+      return false;
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.length < 800 || !isImageMagic(bytes)) return false;
+    await FileSystem.writeAsStringAsync(dest, uint8ToBase64(bytes), {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function downloadLocationMap(latitude: number, longitude: number, mapsKey?: string): Promise<string | null> {
   const lat = Number(latitude || 0);
   const lon = Number(longitude || 0);
-  const q = `${lat},${lon}`;
-  return {
-    google: `https://maps.googleapis.com/maps/api/staticmap?center=${encodeURIComponent(q)}&zoom=18&size=200x200&scale=2&maptype=hybrid&markers=color:red%7Csize:mid%7C${encodeURIComponent(q)}&key=${GOOGLE_STATIC_MAPS_KEY}`,
-    osm: `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lon}&zoom=18&size=200x200&maptype=mapnik&markers=${lat},${lon},red-pushpin`,
-  };
+  if (!lat && !lon) return null;
+  const dest = `${FileSystem.cacheDirectory}gps_map_${lat.toFixed(5)}_${lon.toFixed(5)}.png`;
+  if (await cachedFileIsImage(dest)) return mapFileUri(dest);
+  try {
+    await FileSystem.deleteAsync(dest, { idempotent: true });
+  } catch {
+    /* download fresh */
+  }
+  const key = String(mapsKey || GOOGLE_STATIC_MAPS_KEY || '').trim();
+  const candidates: { url: string; headers?: Record<string, string> }[] = [
+    { url: googleStaticMapUrl(lat, lon, key) },
+    { url: `${getApiBaseUrl()}/api/static-map?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lon))}` },
+    { url: googleHybridTileUrl(lat, lon) },
+    { url: esriSatelliteTileUrl(lat, lon) },
+    {
+      url: osmTileUrl(lat, lon),
+      headers: { 'User-Agent': 'TownPanchayatEMS/2.0 (inspection report map)' },
+    },
+  ].filter((item) => !!item.url);
+  for (const item of candidates) {
+    const ok = await saveMapUrlToFile(item.url, dest, item.headers);
+    if (ok) return mapFileUri(dest);
+  }
+  return null;
 }
+
+async function downloadOfficerPhoto(raw?: string | null): Promise<string | null> {
+  const local = profilePhotoFile();
+  if (await cachedFileIsImage(local)) return mapFileUri(local);
+  const src = String(raw || '').trim();
+  if (!src) return null;
+  if (isLocalPhotoPath(src)) {
+    const uri = resolveProfilePhotoUrl(src);
+    if (uri && (await cachedFileIsImage(uri))) return mapFileUri(uri);
+    return uri;
+  }
+  const remote = resolveProfilePhotoUrl(src);
+  if (!remote) return null;
+  const dest = `${FileSystem.cacheDirectory}officer_profile.jpg`;
+  if (await cachedFileIsImage(dest)) return mapFileUri(dest);
+  try {
+    await FileSystem.deleteAsync(dest, { idempotent: true });
+  } catch {
+    /* download fresh */
+  }
+  const ok = await saveMapUrlToFile(remote, dest);
+  return ok ? mapFileUri(dest) : null;
+}
+
 const EXPORT_PHOTO_H = 440;
 const EXPORT_PHOTO_PAD = 10;
 const EXPORT_PHOTO_GAP = 8;
@@ -177,6 +335,17 @@ function unwrapMediaUrl(raw: string): string {
       const parsed = new URL(v, 'http://localhost');
       const inner = parsed.searchParams.get('url');
       if (inner) return unwrapMediaUrl(inner);
+      const token = parsed.searchParams.get('token');
+      if (token) {
+        try {
+          const decoded = typeof atob === 'function' ? atob(token) : token;
+          if (decoded) return decoded;
+        } catch {
+          return `token:${token}`;
+        }
+      }
+      const k = parsed.searchParams.get('k');
+      if (k) return k;
     } catch {
       /* keep original */
     }
@@ -192,6 +361,10 @@ function mediaFingerprint(raw: string): string {
     const parsed = new URL(v, 'http://localhost');
     const path = decodeURIComponent(parsed.pathname).replace(/\/+$/, '').toLowerCase();
     const host = parsed.hostname.toLowerCase();
+    if (path.includes('/api/media')) {
+      const mark = parsed.searchParams.get('k') || parsed.searchParams.get('token') || parsed.searchParams.get('url') || parsed.search;
+      return `media:${mark}`;
+    }
     if (host && host !== 'localhost') return `${host}${path}`;
     return path || v.replace(/\?.*$/, '').toLowerCase();
   } catch {
@@ -212,6 +385,8 @@ function isImageValue(v: string) {
   return (
     s.startsWith('http') ||
     s.startsWith('/uploads') ||
+    s.includes('/api/media') ||
+    s.startsWith('inspection/') ||
     s.startsWith('data:image/') ||
     s.startsWith('file:') ||
     s.includes('offline_images') ||
@@ -282,7 +457,7 @@ function getMediaLibrary(): MediaLibraryLegacy | null {
     // Load the legacy native module only. `expo-media-library` default export is
     // ExpoMediaLibraryNext, which is not in Expo Go and crashes on import.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    mediaLibraryMod = require('expo-media-library/build/legacy/MediaLibrary') as MediaLibraryLegacy;
+    mediaLibraryMod = require('expo-media-library/legacy') as MediaLibraryLegacy;
   } catch {
     mediaLibraryMod = null;
   }
@@ -443,19 +618,22 @@ function ExportPhotoRow({
   );
 }
 
-/** Download/share report only — fixed-height grid, two photos per row. */
+/** Download/share report only — photo grid fills the same height as the details table. */
 function ExportPhotoFrame({
   images,
   isTamil,
   onImageLoad,
+  height,
 }: {
   images: { url: string; name: string; fieldKey: string }[];
   isTamil: boolean;
   onImageLoad: () => void;
+  height: number;
 }) {
+  const frameStyle = [styles.exportPhotoFrame, { height, minHeight: height }];
   if (!images.length) {
     return (
-      <View style={[styles.exportPhotoFrame, styles.exportPhotoFrameEmpty]}>
+      <View style={[frameStyle, styles.exportPhotoFrameEmpty]}>
         <Text style={styles.emptyTxt}>{isTamil ? 'புகைப்படம் இல்லை' : 'No photo attached'}</Text>
       </View>
     );
@@ -465,7 +643,7 @@ function ExportPhotoFrame({
 
   if (images.length === 1) {
     return (
-      <View style={styles.exportPhotoFrame}>
+      <View style={frameStyle}>
         <ExportPhotoTile item={images[0]} index={0} imageCount={1} captionHeight={captionH} onImageLoad={onImageLoad} />
       </View>
     );
@@ -473,7 +651,7 @@ function ExportPhotoFrame({
 
   if (images.length === 2) {
     return (
-      <View style={styles.exportPhotoFrame}>
+      <View style={frameStyle}>
         <ExportPhotoRow items={images} startIndex={0} imageCount={2} captionHeight={captionH} onImageLoad={onImageLoad} />
       </View>
     );
@@ -481,7 +659,7 @@ function ExportPhotoFrame({
 
   if (images.length === 3) {
     return (
-      <View style={styles.exportPhotoFrame}>
+      <View style={frameStyle}>
         <View style={styles.exportStack}>
           <ExportPhotoRow
             items={[images[0], images[1]]}
@@ -509,7 +687,7 @@ function ExportPhotoFrame({
   }
 
   return (
-    <View style={styles.exportPhotoFrame}>
+    <View style={frameStyle}>
       <View style={styles.exportStack}>
         {pairs.map((row, ri) => (
           <ExportPhotoRow
@@ -610,29 +788,47 @@ function DetailSummaryBody({
 }
 
 function ExportLocationMapThumb({
-  latitude,
-  longitude,
+  mapUri,
   onLoad,
 }: {
-  latitude: number;
-  longitude: number;
+  mapUri?: string | null;
   onLoad: () => void;
 }) {
-  const uris = locationMapUris(latitude, longitude);
-  const [src, setSrc] = useState(uris.google);
+  useEffect(() => {
+    if (!mapUri) onLoad();
+  }, [mapUri, onLoad]);
 
   return (
     <View style={styles.exportHeaderMapWrap} collapsable={false}>
-      <Image
-        source={{ uri: src }}
-        style={styles.exportHeaderMapImg}
-        resizeMode="cover"
-        onLoad={onLoad}
-        onError={() => {
-          if (src !== uris.osm) setSrc(uris.osm);
-          else onLoad();
-        }}
-      />
+      {mapUri ? (
+        <>
+          <Image
+            source={{ uri: mapUri }}
+            style={styles.exportHeaderMapImg}
+            resizeMode="cover"
+            fadeDuration={0}
+            onLoad={onLoad}
+            onError={onLoad}
+          />
+          <View style={styles.exportMapPinOverlay} pointerEvents="none">
+            <Ionicons name="location" size={18} color="#DC2626" />
+          </View>
+        </>
+      ) : (
+        <LinearGradient
+          colors={['#7CBA6B', '#4A8F3C', '#2F6B2A', '#8B6B3A']}
+          locations={[0, 0.38, 0.7, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.exportHeaderMapImg}
+        >
+          <View style={styles.exportMapRoadH} />
+          <View style={styles.exportMapRoadV} />
+          <View style={styles.exportMapPin}>
+            <Ionicons name="location" size={18} color="#DC2626" />
+          </View>
+        </LinearGradient>
+      )}
     </View>
   );
 }
@@ -648,7 +844,12 @@ function ExportReportHeader({
   submitted,
   latitude,
   longitude,
+  mapUri,
   onMapLoad,
+  officerPhotoUri,
+  officerName,
+  officerDesignation,
+  onOfficerLoad,
 }: {
   isTamil: boolean;
   place: string;
@@ -659,7 +860,12 @@ function ExportReportHeader({
   submitted: string;
   latitude: number;
   longitude: number;
+  mapUri?: string | null;
   onMapLoad: () => void;
+  officerPhotoUri?: string | null;
+  officerName: string;
+  officerDesignation: string;
+  onOfficerLoad: () => void;
 }) {
   const wardLabel = formatWardLabel(isTamil, wardNumber);
   const street = streetLabel?.trim() || '';
@@ -670,10 +876,10 @@ function ExportReportHeader({
   const dateGpsLine = [submitted, `${latText}, ${lonText}`].filter(Boolean).join('  ·  ');
 
   return (
-    <ExportReportHeaderSurface style={styles.exportSummaryHeader} defaultHeight={78}>
+    <ExportReportHeaderSurface style={styles.exportSummaryHeader} defaultHeight={76}>
       <View style={styles.exportHeaderRow} collapsable={false}>
         <View style={styles.exportHeaderLogoPlate} collapsable={false}>
-          <BrandImage kind="icon" style={styles.exportHeaderLogo} />
+          <BrandImage kind="logo" style={styles.exportHeaderLogo} />
         </View>
         <View style={styles.exportHeaderContentCentered} collapsable={false}>
           {!!subjectCategory && (
@@ -691,11 +897,73 @@ function ExportReportHeader({
             {!!dateGpsLine && <Text style={styles.exportHeadLine4}>{`  ·  ${dateGpsLine}`}</Text>}
           </Text>
         </View>
-        <View style={styles.exportHeaderGps} collapsable={false}>
-          <ExportLocationMapThumb latitude={latitude} longitude={longitude} onLoad={onMapLoad} />
+        <View style={styles.exportHeaderRight} collapsable={false}>
+          <ExportLocationMapThumb mapUri={mapUri} onLoad={onMapLoad} />
+          <ExportOfficerBlock
+            isTamil={isTamil}
+            photoUri={officerPhotoUri}
+            name={officerName}
+            designation={officerDesignation}
+            onLoad={onOfficerLoad}
+          />
         </View>
       </View>
     </ExportReportHeaderSurface>
+  );
+}
+
+function ExportOfficerBlock({
+  isTamil,
+  photoUri,
+  name,
+  designation,
+  onLoad,
+}: {
+  isTamil?: boolean;
+  photoUri?: string | null;
+  name: string;
+  designation: string;
+  onLoad: () => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  const showPhoto = !!photoUri && !failed;
+  const letter = (name || 'U').trim().slice(0, 1).toUpperCase() || 'U';
+
+  useEffect(() => {
+    if (!photoUri) onLoad();
+  }, [photoUri, onLoad]);
+
+  return (
+    <View style={styles.exportOfficerInner} collapsable={false}>
+      {showPhoto ? (
+        <Image
+          source={{ uri: photoUri }}
+          style={styles.exportOfficerImg}
+          resizeMode="cover"
+          fadeDuration={0}
+          onLoad={onLoad}
+          onError={() => {
+            setFailed(true);
+            onLoad();
+          }}
+        />
+      ) : (
+        <LinearGradient
+          colors={['#1A3D66', '#288C46']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.exportOfficerLetter}
+        >
+          <Text style={styles.exportOfficerLetterTxt}>{letter}</Text>
+        </LinearGradient>
+      )}
+      <Text style={styles.exportOfficerName} numberOfLines={1}>
+        {name}
+      </Text>
+      <Text style={styles.exportOfficerRole} numberOfLines={1}>
+        {designation || (isTamil ? 'களப் பணியாளர்' : 'Field worker')}
+      </Text>
+    </View>
   );
 }
 
@@ -713,7 +981,7 @@ function ReportFooterBar({
   onShare: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const theme = (palette ?? getPaletteById('royal_gold')).primary;
+  const theme = (palette ?? getPaletteById(DEFAULT_PALETTE_ID)).primary;
 
   return (
     <View style={[styles.reportFooter, { paddingBottom: Math.max(insets.bottom, 6) }]}>
@@ -775,7 +1043,8 @@ export function WorkDetailModal({
   streetLabel: string;
   onClose: () => void;
 }) {
-  const resolvedPalette = palette ?? getPaletteById('royal_gold');
+  const { user } = useApp();
+  const resolvedPalette = palette ?? getPaletteById(DEFAULT_PALETTE_ID);
   const insets = useSafeAreaInsets();
   const exportRef = useRef<ViewShotRef>(null);
   const exportLoadedCount = useRef(0);
@@ -785,6 +1054,9 @@ export function WorkDetailModal({
   const [photoReady, setPhotoReady] = useState(false);
   const [exportReady, setExportReady] = useState(false);
   const [exportCapturing, setExportCapturing] = useState(false);
+  const [exportColH, setExportColH] = useState(EXPORT_PHOTO_H);
+  const [exportMapUri, setExportMapUri] = useState<string | null>(null);
+  const [exportOfficerUri, setExportOfficerUri] = useState<string | null>(null);
 
   const images = useMemo(() => {
     const list: { url: string; name: string; fieldKey: string }[] = [];
@@ -855,6 +1127,37 @@ export function WorkDetailModal({
     setExportReady(images.length === 0);
   }, [images]);
 
+  const mapsApiKey = String(portal.settings?.googleMapsApiKey || '').trim();
+  const officerName = (
+    isTamil
+      ? user?.nameTa || user?.name || user?.nameEn || work.submittedByUserName
+      : user?.name || user?.nameEn || work.submittedByUserName
+  )?.trim() || '';
+  const officerDesignation =
+    resolveOfficerDesignation(user, portal, isTamil) || (isTamil ? 'களப் பணியாளர்' : 'Field worker');
+
+  useEffect(() => {
+    let live = true;
+    setExportMapUri(null);
+    void downloadLocationMap(Number(work.latitude || 0), Number(work.longitude || 0), mapsApiKey).then((uri) => {
+      if (live) setExportMapUri(uri);
+    });
+    return () => {
+      live = false;
+    };
+  }, [work.latitude, work.longitude, work.id, mapsApiKey]);
+
+  useEffect(() => {
+    let live = true;
+    setExportOfficerUri(null);
+    void downloadOfficerPhoto(effectivePhotoUrl(user)).then((uri) => {
+      if (live) setExportOfficerUri(uri);
+    });
+    return () => {
+      live = false;
+    };
+  }, [user?.id, user?.profilePhotoUrl, user?.avatarUrl, user?.profileImage]);
+
   const run = async (kind: 'image' | 'report', save: boolean) => {
     try {
       setBusy(kind);
@@ -872,6 +1175,17 @@ export function WorkDetailModal({
 
       const stamp = Date.now();
       exportLoadedCount.current = 0;
+      setExportColH(EXPORT_PHOTO_H);
+      let mapUri = exportMapUri;
+      if (!mapUri) {
+        mapUri = await downloadLocationMap(Number(work.latitude || 0), Number(work.longitude || 0), mapsApiKey);
+        setExportMapUri(mapUri);
+      }
+      let officerUri = exportOfficerUri;
+      if (!officerUri) {
+        officerUri = await downloadOfficerPhoto(effectivePhotoUrl(user));
+        setExportOfficerUri(officerUri);
+      }
       const laidOut = new Promise<void>((resolve) => {
         exportLaidOut.current = resolve;
       });
@@ -879,13 +1193,13 @@ export function WorkDetailModal({
       await Promise.race([laidOut, new Promise<void>((r) => setTimeout(r, 900))]);
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       {
-        const needed = images.length + 1;
+        const needed = images.length + 2;
         const started = Date.now();
-        while (exportLoadedCount.current < needed && Date.now() - started < 2000) {
+        while (exportLoadedCount.current < needed && Date.now() - started < 6000) {
           await new Promise((r) => setTimeout(r, 80));
         }
       }
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 280));
       let captured: string;
       try {
         captured = await captureRef(exportRef, {
@@ -1083,37 +1397,56 @@ export function WorkDetailModal({
               submitted={submitted}
               latitude={Number(work.latitude || 0)}
               longitude={Number(work.longitude || 0)}
+              mapUri={exportMapUri}
               onMapLoad={markExportImageLoaded}
+              officerPhotoUri={exportOfficerUri}
+              officerName={officerName}
+              officerDesignation={officerDesignation}
+              onOfficerLoad={markExportImageLoaded}
             />
             <View style={styles.landBody}>
-              <View style={styles.landPhotoExport}>
-                <ExportPhotoFrame images={images} isTamil={isTamil} onImageLoad={markExportImageLoaded} />
+              <View style={[styles.landPhotoExport, { height: exportColH }]} collapsable={false}>
+                <ExportPhotoFrame
+                  images={images}
+                  isTamil={isTamil}
+                  height={exportColH}
+                  onImageLoad={markExportImageLoaded}
+                />
               </View>
-              <View style={styles.exportSplit} />
-              <View style={styles.landTable}>
-                <Text style={styles.tableTitle}>{isTamil ? 'விவரங்கள் அட்டவணை' : 'DETAILS TABLE'}</Text>
-                <View style={styles.table}>
-                  <View style={styles.thead}>
-                    <Text style={[styles.th, { flex: 1.65 }]}>{isTamil ? 'தலைப்புகள்' : 'HEADINGS'}</Text>
-                    <View style={styles.colSplit} />
-                    <Text style={[styles.th, { flex: 1 }]}>{isTamil ? 'விவரங்கள்' : 'DETAILS'}</Text>
+              <View style={[styles.exportSplit, { height: exportColH }]} collapsable={false} />
+              <View style={[styles.landTable, { height: exportColH }]} collapsable={false}>
+                <View
+                  collapsable={false}
+                  onLayout={(e) => {
+                    const h = Math.ceil(e.nativeEvent.layout.height);
+                    setExportColH((prev) => Math.max(EXPORT_PHOTO_H, prev, h));
+                  }}
+                >
+                  <Text style={styles.tableTitle}>{isTamil ? 'விவரங்கள் அட்டவணை' : 'DETAILS TABLE'}</Text>
+                  <View style={styles.table}>
+                    <View style={styles.thead}>
+                      <Text style={[styles.th, { flex: 1.65 }]}>{isTamil ? 'தலைப்புகள்' : 'HEADINGS'}</Text>
+                      <View style={styles.colSplit} />
+                      <Text style={[styles.th, { flex: 1 }]}>{isTamil ? 'விவரங்கள்' : 'DETAILS'}</Text>
+                    </View>
+                    {fieldRows.length ? (
+                      fieldRows.map((r, i) => (
+                        <View key={`ex-${r.key}`} style={[styles.tr, i % 2 === 1 && styles.trAlt]}>
+                          <Text style={[styles.tdL, { flex: 1.65 }]}>{r.label}</Text>
+                          <View style={styles.colSplit} />
+                          <Text style={[styles.tdR, { flex: 1 }]}>{r.value}</Text>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={styles.emptyTxt}>
+                        {isTamil ? 'புலங்களின் தகவல்கள் எதுவும் பதிவு செய்யப்படவில்லை' : 'No custom field inputs recorded'}
+                      </Text>
+                    )}
                   </View>
-                  {fieldRows.length ? (
-                    fieldRows.map((r, i) => (
-                      <View key={`ex-${r.key}`} style={[styles.tr, i % 2 === 1 && styles.trAlt]}>
-                        <Text style={[styles.tdL, { flex: 1.65 }]}>{r.label}</Text>
-                        <View style={styles.colSplit} />
-                        <Text style={[styles.tdR, { flex: 1 }]}>{r.value}</Text>
-                      </View>
-                    ))
-                  ) : (
-                    <Text style={styles.emptyTxt}>
-                      {isTamil ? 'புலங்களின் தகவல்கள் எதுவும் பதிவு செய்யப்படவில்லை' : 'No custom field inputs recorded'}
-                    </Text>
-                  )}
                 </View>
               </View>
             </View>
+            <View style={styles.exportFooterRule} collapsable={false} />
           </View>
               </ViewShot>
             </View>
@@ -1227,9 +1560,9 @@ const styles = StyleSheet.create({
   },
   exportSummaryHeader: {
     position: 'relative',
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: 10,
-    minHeight: 78,
+    minHeight: 76,
     width: '100%',
     justifyContent: 'center',
     borderBottomWidth: 2,
@@ -1243,19 +1576,20 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   exportHeaderLogoPlate: {
-    width: 58,
+    width: 56,
     height: 58,
-    borderRadius: 11,
+    borderRadius: 9,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 5,
+    padding: 3,
+    flexShrink: 0,
   },
   exportHeaderLogo: {
     width: 48,
-    height: 48,
+    height: 50,
   },
   exportHeaderContentCentered: {
     flex: 1,
@@ -1306,41 +1640,131 @@ const styles = StyleSheet.create({
     letterSpacing: 0.15,
     textAlign: 'center',
   },
-  exportHeaderGps: {
+  exportHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+    gap: 8,
+  },
+  exportOfficerInner: {
+    width: 56,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    backgroundColor: 'transparent',
+    paddingHorizontal: 1,
+  },
+  exportOfficerImg: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#E2E8F0',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
+  exportOfficerLetter: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 3,
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.9)',
+  },
+  exportOfficerLetterTxt: {
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  exportOfficerName: {
+    width: '100%',
+    marginTop: 1,
+    fontSize: 8,
+    lineHeight: 10,
+    fontWeight: '800',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  exportOfficerRole: {
+    width: '100%',
+    marginTop: 0,
+    fontSize: 7,
+    lineHeight: 9,
+    fontWeight: '700',
+    color: REPORT_AMBER,
+    textAlign: 'center',
   },
   exportHeaderMapWrap: {
-    width: 54,
-    height: 54,
+    width: 56,
+    height: 56,
     borderRadius: 7,
     overflow: 'hidden',
-    backgroundColor: '#1B3A1A',
+    backgroundColor: '#4A8F3C',
     borderWidth: 1,
-    borderColor: '#C5D0C2',
+    borderColor: '#fff',
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   exportHeaderMapImg: {
-    width: 54,
-    height: 54,
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  landBody: { flexDirection: 'row', alignItems: 'stretch', backgroundColor: '#fff' },
+  exportMapRoadH: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 26,
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.38)',
+  },
+  exportMapRoadV: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 22,
+    width: 3,
+    backgroundColor: 'rgba(255,230,180,0.45)',
+  },
+  exportMapPinOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 3,
+  },
+  exportMapPin: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  landBody: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: '#fff',
+    minHeight: EXPORT_PHOTO_H,
+  },
   landPhotoExport: {
     width: '58%',
+    minHeight: EXPORT_PHOTO_H,
+    alignSelf: 'stretch',
     overflow: 'hidden',
     backgroundColor: '#fff',
   },
   exportSplit: {
     width: 3,
-    alignSelf: 'stretch',
+    backgroundColor: REPORT_GREEN,
+  },
+  exportFooterRule: {
+    width: '100%',
+    height: 3,
     backgroundColor: REPORT_GREEN,
   },
   exportPhotoFrame: {
-    height: EXPORT_PHOTO_H,
+    width: '100%',
     padding: EXPORT_PHOTO_PAD,
     backgroundColor: '#fff',
     flexDirection: 'column',
@@ -1388,7 +1812,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
     textAlign: 'center',
   },
-  landTable: { width: '42%', padding: 10, backgroundColor: '#F8FAFC' },
+  landTable: {
+    width: '42%',
+    padding: 10,
+    backgroundColor: '#F8FAFC',
+  },
   sumPlace: {
     width: '100%',
     fontSize: 13,

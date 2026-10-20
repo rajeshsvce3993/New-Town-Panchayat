@@ -1081,16 +1081,21 @@ export default function UserSettingsView({
 
               <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1 scrollbar-custom">
                 {[
-                  { id: 'sunset-aurora' as const, name: lang === 'ta' ? 'அந்திச் செவ்வானம்' : 'Sunset Aurora', icon: Sun, colorLeft: 'bg-[#4c1d95]', colorRight: 'bg-[#fffbfa]', desc: 'Sunset purple-red-amber' },
-                  { id: 'ocean-wave' as const, name: lang === 'ta' ? 'கடல் அலை' : 'Ocean Wave', icon: Droplet, colorLeft: 'bg-[#0f172a]', colorRight: 'bg-[#f4fbfd]', desc: 'Refreshing deep marine slate & cyan' },
-                  { id: 'magic-lavender' as const, name: lang === 'ta' ? 'மந்திர லாவெண்டர் (இயல்புநிலை)' : 'Magic Lavender (Default)', icon: Zap, colorLeft: 'bg-[#1e1b4b]', colorRight: 'bg-[#faf5f8]', desc: 'Cosmic indigo & magenta fuchsia' },
-                  { id: 'rainbow-prism' as const, name: lang === 'ta' ? 'வானவில் பிரிசம்' : 'Rainbow Prism', icon: LayoutGrid, colorLeft: 'bg-[#0369a1]', colorRight: 'bg-[#f8fafc]', desc: 'Brilliant full-spectrum glass refraction' },
-                  { id: 'nilgiri-emerald' as const, name: lang === 'ta' ? 'நீலகிரி மரகதம்' : 'Nilgiri Emerald', icon: Palette, colorLeft: 'bg-[#064e3b]', colorRight: 'bg-[#f0faf6]', desc: 'Misty green forest landscapes' },
-                  { id: 'kovai-maroon' as const, name: lang === 'ta' ? 'கோவை மரூன்' : 'Kovai Maroon', icon: Palette, colorLeft: 'bg-[#7f1d1d]', colorRight: 'bg-[#fffaf9]', desc: 'Traditional rich red-earth & clay' },
-                  { id: 'madurai-blue' as const, name: lang === 'ta' ? 'மதுரை நீலம்' : 'Madurai Blue', icon: Palette, colorLeft: 'bg-[#1e3a8a]', colorRight: 'bg-[#f5f8ff]', desc: 'Regal royal blue & purple mystical' },
-                  { id: 'nellai-orange' as const, name: lang === 'ta' ? 'நெல்லை ஆரஞ்சு' : 'Nellai Orange', icon: Sun, colorLeft: 'bg-[#c2410c]', colorRight: 'bg-[#fffbf9]', desc: 'Citrus-red & terracotta high contrast' },
-                  { id: 'chennai-slate' as const, name: lang === 'ta' ? 'சென்னை ஸ்லேட்' : 'Chennai Slate', icon: Moon, colorLeft: 'bg-[#1e293b]', colorRight: 'bg-[#f8fafc]', desc: 'Minimal premium corporate graphite' },
-                  { id: 'custom' as const, name: lang === 'ta' ? 'தனிப்பயன் தீம் இஞ்சின்' : 'Custom Theme Engine', icon: Palette, colorLeft: 'bg-[#4f46e5]', colorRight: 'bg-[#e0e7ff]', desc: 'Design your own colors on the fly' }
+                  { id: 'light' as const, name: lang === 'ta' ? 'வெளிச்சம்' : 'Light', icon: Sun, colorLeft: 'bg-[#0f172a]', colorRight: 'bg-[#94a3b8]', desc: lang === 'ta' ? 'இருள் முதல் வெளிர் ஸ்லேட்' : 'Dark-to-light slate' },
+                  { id: 'dark' as const, name: lang === 'ta' ? 'இருள்' : 'Dark', icon: Moon, colorLeft: 'bg-[#e2e8f0]', colorRight: 'bg-[#334155]', desc: lang === 'ta' ? 'வெளிர் முதல் இருள் ஸ்லேட்' : 'Light-to-dark slate' },
+                  { id: 'ocean-wave' as const, name: lang === 'ta' ? 'கடல் அலை' : 'Ocean Wave', icon: Droplet, colorLeft: 'bg-[#0f172a]', colorRight: 'bg-[#0d9488]', desc: lang === 'ta' ? 'இருள் கடல் முதல் வெளிர் டீல்' : 'Dark-to-light ocean' },
+                  { id: 'sunset-aurora' as const, name: lang === 'ta' ? 'அந்திச் செவ்வானம்' : 'Sunset Aurora', icon: Sun, colorLeft: 'bg-[#4c1d95]', colorRight: 'bg-[#f59e0b]', desc: lang === 'ta' ? 'இருள் ஊதா முதல் வெளிர் அம்பர்' : 'Dark-to-light sunset' },
+                  { id: 'magic-lavender' as const, name: lang === 'ta' ? 'மந்திர லாவெண்டர்' : 'Magic Lavender', icon: Zap, colorLeft: 'bg-[#1e1b4b]', colorRight: 'bg-[#db2777]', desc: lang === 'ta' ? 'இருள் இண்டிகோ முதல் வெளிர் இளஞ்சிவப்பு' : 'Dark-to-light lavender' },
+                  { id: 'rainbow-prism' as const, name: lang === 'ta' ? 'வானவில் பிரிசம்' : 'Rainbow Prism', icon: LayoutGrid, colorLeft: 'bg-[#0369a1]', colorRight: 'bg-[#be123c]', desc: lang === 'ta' ? 'இருள் நீலம் முதல் வெளிர் சிவப்பு' : 'Dark-to-light prism' },
+                  { id: 'nilgiri-emerald' as const, name: lang === 'ta' ? 'நீலகிரி மரகதம்' : 'Nilgiri Emerald', icon: Palette, colorLeft: 'bg-[#064e3b]', colorRight: 'bg-[#10b981]', desc: lang === 'ta' ? 'இருள் பச்சை முதல் வெளிர் மரகதம்' : 'Dark-to-light emerald' },
+                  { id: 'kovai-maroon' as const, name: lang === 'ta' ? 'கோவை மரூன்' : 'Kovai Maroon', icon: Palette, colorLeft: 'bg-[#7f1d1d]', colorRight: 'bg-[#ea580c]', desc: lang === 'ta' ? 'இருள் மெரூன் முதல் வெளிர் செம்மண்' : 'Dark-to-light maroon' },
+                  { id: 'madurai-blue' as const, name: lang === 'ta' ? 'மதுரை நீலம்' : 'Madurai Blue', icon: Palette, colorLeft: 'bg-[#1e3a8a]', colorRight: 'bg-[#8b5cf6]', desc: lang === 'ta' ? 'இருள் நீலம் முதல் வெளிர் ஊதா' : 'Dark-to-light royal blue' },
+                  { id: 'nellai-orange' as const, name: lang === 'ta' ? 'நெல்லை ஆரஞ்சு' : 'Nellai Orange', icon: Sun, colorLeft: 'bg-[#c2410c]', colorRight: 'bg-[#f97316]', desc: lang === 'ta' ? 'இருள் ஆரஞ்சு முதல் வெளிர் ஆரஞ்சு' : 'Dark-to-light orange' },
+                  { id: 'chennai-slate' as const, name: lang === 'ta' ? 'சென்னை ஸ்லேட்' : 'Chennai Slate', icon: Moon, colorLeft: 'bg-[#1e293b]', colorRight: 'bg-[#64748b]', desc: lang === 'ta' ? 'இருள் கிராஃபைட் முதல் வெளிர் ஸ்லேட்' : 'Dark-to-light graphite' },
+                  { id: 'royal-gold' as const, name: lang === 'ta' ? 'அரச பொன்' : 'Royal Gold', icon: Sun, colorLeft: 'bg-[#78350f]', colorRight: 'bg-[#f59e0b]', desc: lang === 'ta' ? 'இருள் பழுப்பு முதல் வெளிர் பொன்' : 'Dark-to-light gold' },
+                  { id: 'crimson-ruby' as const, name: lang === 'ta' ? 'மாணிக்க சிவப்பு' : 'Crimson Ruby', icon: Palette, colorLeft: 'bg-[#881337]', colorRight: 'bg-[#fb7185]', desc: lang === 'ta' ? 'இருள் சிவப்பு முதல் வெளிர் ரோஜா' : 'Dark-to-light ruby' },
+                  { id: 'cyber-teal' as const, name: lang === 'ta' ? 'நவீன நீலப்பச்சை' : 'Cyber Teal', icon: Droplet, colorLeft: 'bg-[#134e4a]', colorRight: 'bg-[#2dd4bf]', desc: lang === 'ta' ? 'இருள் டீல் முதல் வெளிர் டீல்' : 'Dark-to-light teal' },
+                  { id: 'custom' as const, name: lang === 'ta' ? 'தனிப்பயன் தீம்' : 'Custom Theme', icon: Palette, colorLeft: 'bg-[#4f46e5]', colorRight: 'bg-[#e0e7ff]', desc: lang === 'ta' ? 'இருள் முதல் வெளிர் தனிப்பயன் நிறம்' : 'Dark-to-light custom colors' },
                 ].map((th) => {
                   const Icon = th.icon;
                   const isSelected = theme === th.id;

@@ -131,6 +131,7 @@ async function runSystemDiagnostics() {
         await db.collection('inspectionWorks').createIndex({ submittedByUserName: 1 }, { background: true });
         await db.collection('inspectionWorks').createIndex({ submittedByUserId: 1 }, { background: true });
         await db.collection('inspectionWorks').createIndex({ username: 1 }, { background: true });
+        await db.collection('inspectionWorks').createIndex({ subjectId: 1, zoneId: 1, districtId: 1, tpId: 1 }, { background: true });
       }
       console.log(`   - Database Indexes    : B-Tree Indexes Verified & Active ✅`);
     } catch (idxErr) {

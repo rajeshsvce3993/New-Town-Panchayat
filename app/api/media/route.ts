@@ -67,6 +67,7 @@ export async function GET(req: NextRequest) {
     const lowerKey = s3Key.toLowerCase();
     const isAndroidLocalPath =
       !lowerKey.includes('inspection/') &&
+      !lowerKey.includes('profiles/') &&
       (lowerKey.includes('com.tn.townpanchayat.ems') ||
        lowerKey.includes('offline_images') ||
        lowerKey.startsWith('/data/') ||

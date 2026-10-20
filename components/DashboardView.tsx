@@ -35,8 +35,6 @@ import {
   Layers,
   Download
 } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { Smartphone } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Language, translations } from './translations';
@@ -62,10 +60,12 @@ interface DashboardViewProps {
   setActiveTab: (tab: string) => void;
   theme: ThemeType;
   onSaveCollection?: (key: string, data: any[]) => Promise<void>;
+  /** Refresh KPI / bootstrap stats only (not inspection filter table). */
+  onRefreshDashboardStats?: () => void | Promise<void>;
 }
 
-export default function DashboardView({ state, lang, currentUser, setActiveTab, theme, onSaveCollection }: DashboardViewProps) {
-  const currentTheme = themesConfig[theme] || themesConfig['sunset-aurora'];
+export default function DashboardView({ state, lang, currentUser, setActiveTab, theme, onSaveCollection, onRefreshDashboardStats }: DashboardViewProps) {
+  const currentTheme = themesConfig[theme] || themesConfig.light;
 
   const t = (key: keyof typeof translations['en']) => {
     return translations[lang][key] || translations['en'][key] || key;
@@ -436,13 +436,8 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   const handleRefreshAbstract = async () => {
     setIsRefreshingAbstract(true);
     try {
-      if (typeof window !== 'undefined') {
-        const ev = new CustomEvent('portal:refresh-state');
-        window.dispatchEvent(ev);
-      }
-      await fetch('/api/portal-state', { cache: 'no-store' });
+      await onRefreshDashboardStats?.();
       setAbstractRefreshTime(new Date().toLocaleTimeString());
-    } catch (_) {
     } finally {
       setIsRefreshingAbstract(false);
     }
@@ -969,16 +964,6 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     return null;
   }, [currentUser]);
 
-  const scopedInspectionWorks = useMemo(() => {
-    const list = state.inspectionWorks || [];
-    return list.filter((w: any) => {
-      if (userZoneId && w.zoneId !== userZoneId) return false;
-      if (userDistrictId && w.districtId !== userDistrictId) return false;
-      if (userTpId && w.tpId !== userTpId) return false;
-      return true;
-    });
-  }, [state.inspectionWorks, userZoneId, userDistrictId, userTpId]);
-
   const dashboardAbstractData = useMemo(() => {
     const subjectsMap: Record<string, {
       subjectId: string;
@@ -987,21 +972,28 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
       totalInspections: number;
     }> = {};
 
-    scopedInspectionWorks.forEach((work: any) => {
-      const sId = work.subjectId || 'unknown';
+    const stats = Array.isArray(state.inspectionWorkStats) ? state.inspectionWorkStats : [];
+    const works = Array.isArray(state.inspectionWorks) ? state.inspectionWorks : [];
+    const rows = stats.length > 0 ? stats : works;
+
+    rows.forEach((row: any) => {
+      if (userZoneId && row.zoneId && row.zoneId !== userZoneId) return;
+      if (userDistrictId && row.districtId && row.districtId !== userDistrictId) return;
+      if (userTpId && row.tpId && row.tpId !== userTpId) return;
+      const sId = row.subjectId || 'unknown';
       if (!subjectsMap[sId]) {
         subjectsMap[sId] = {
           subjectId: sId,
-          subjectNameEn: work.subjectNameEn || 'General Inspection',
-          subjectNameTa: work.subjectNameTa || 'பொது ஆய்வு',
+          subjectNameEn: row.subjectNameEn || 'General Inspection',
+          subjectNameTa: row.subjectNameTa || 'பொது ஆய்வு',
           totalInspections: 0
         };
       }
-      subjectsMap[sId].totalInspections += 1;
+      subjectsMap[sId].totalInspections += Number(row.count || 1);
     });
 
     return Object.values(subjectsMap);
-  }, [scopedInspectionWorks]);
+  }, [state.inspectionWorkStats, state.inspectionWorks, userZoneId, userDistrictId, userTpId]);
 
   const handleDownloadInspectionExcel = () => {
     let rowsHtml = '';
@@ -1060,7 +1052,12 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     document.body.removeChild(link);
   };
 
-  const handleDownloadInspectionPDF = () => {
+  const handleDownloadInspectionPDF = async () => {
+    const [{ default: jsPDF }, autoTableMod] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ]);
+    const autoTable = autoTableMod.default;
     const doc = new jsPDF('p', 'mm', 'a4');
     
     doc.setFont('helvetica', 'bold');
@@ -1167,35 +1164,31 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
       title: lang === 'ta' ? 'அனைத்துப் பிரச்சினைகள்' : 'All Issues',
       count: totalIssuesCount,
       icon: GitPullRequest,
-      color: 'from-indigo-500 to-purple-600',
-      shadow: 'shadow-indigo-100',
+      tone: 'bg-slate-100 text-slate-700',
       action: () => scrollToAbstract('')
     },
     {
       id: 'pending_issues',
-      title: lang === 'ta' ? 'நிலுவையில் உள்ளவை (Pending)' : 'Pending Issues',
+      title: lang === 'ta' ? 'நிலுவையில் உள்ளவை' : 'Pending Issues',
       count: pendingIssuesCount,
       icon: AlertTriangle,
-      color: 'from-amber-500 to-rose-600',
-      shadow: 'shadow-amber-100',
+      tone: 'bg-amber-50 text-amber-700',
       action: () => scrollToAbstract('Pending')
     },
     {
       id: 'in_progress_issues',
-      title: lang === 'ta' ? 'செயல்பாட்டில் உள்ளவை (In Progress)' : 'In Progress',
+      title: lang === 'ta' ? 'செயல்பாட்டில் உள்ளவை' : 'In Progress',
       count: inProgressIssuesCount,
       icon: Activity,
-      color: 'from-blue-500 to-indigo-600',
-      shadow: 'shadow-blue-100',
+      tone: 'bg-sky-50 text-sky-700',
       action: () => scrollToAbstract('In Progress')
     },
     {
       id: 'resolved_issues',
-      title: lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved Issues',
+      title: lang === 'ta' ? 'தீர்க்கப்பட்டவை' : 'Resolved Issues',
       count: resolvedIssuesCount,
       icon: CheckCircle2,
-      color: 'from-emerald-500 to-teal-600',
-      shadow: 'shadow-emerald-100',
+      tone: 'bg-emerald-50 text-emerald-700',
       action: () => scrollToAbstract('Resolved')
     }
   ];
@@ -1206,11 +1199,10 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
       ...standardIssueCards,
       {
         id: 'add_new_issue',
-        title: lang === 'ta' ? 'புதிய பிரச்சினை சேர்க்கவும்' : 'Add New Issue (+)',
+        title: lang === 'ta' ? 'புதிய பிரச்சினை சேர்க்கவும்' : 'Add New Issue',
         count: '+',
         icon: PlusCircle,
-        color: 'from-fuchsia-500 to-pink-600',
-        shadow: 'shadow-fuchsia-100',
+        tone: 'bg-[#E8EEF6] text-[#1E4B8E]',
         action: () => {
           if (typeof window !== 'undefined') {
             localStorage.setItem('pendingIssuesSubTab', 'create');
@@ -1227,8 +1219,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
         title: t('totalTPs'),
         count: zoneTPs.length,
         icon: Building,
-        color: 'from-teal-500 to-emerald-600',
-        shadow: 'shadow-teal-100',
+        tone: 'bg-teal-50 text-teal-700',
         action: () => {}
       },
       ...standardIssueCards
@@ -1240,8 +1231,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
         title: t('totalZones'),
         count: zones.length,
         icon: Map,
-        color: 'from-blue-500 to-indigo-600',
-        shadow: 'shadow-blue-100',
+        tone: 'bg-blue-50 text-blue-700',
         action: () => setActiveTab('masters')
       },
       {
@@ -1249,8 +1239,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
         title: t('totalDistricts'),
         count: districts.length,
         icon: MapPin,
-        color: 'from-purple-500 to-pink-600',
-        shadow: 'shadow-purple-100',
+        tone: 'bg-indigo-50 text-indigo-700',
         action: () => setActiveTab('masters')
       },
       {
@@ -1258,8 +1247,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
         title: t('totalTPs'),
         count: townPanchayats.length,
         icon: Building,
-        color: 'from-teal-500 to-emerald-600',
-        shadow: 'shadow-teal-100',
+        tone: 'bg-teal-50 text-teal-700',
         action: () => setActiveTab('masters')
       },
       ...standardIssueCards
@@ -1311,86 +1299,93 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     return true;
   });
 
+  const getKpiSurface = (cardId: string) => {
+    const surfaces: Record<string, string> = {
+      zones: 'bg-gradient-to-br from-[#1e3a8a] via-[#2563eb] to-[#3b82f6]',
+      districts: 'bg-gradient-to-br from-[#312e81] via-[#4f46e5] to-[#6366f1]',
+      tps: 'bg-gradient-to-br from-[#0f766e] via-[#0d9488] to-[#14b8a6]',
+      all_issues: 'bg-gradient-to-br from-[#334155] via-[#475569] to-[#64748b]',
+      pending_issues: 'bg-gradient-to-br from-[#b45309] via-[#d97706] to-[#f59e0b]',
+      in_progress_issues: 'bg-gradient-to-br from-[#1d4ed8] via-[#2563eb] to-[#38bdf8]',
+      resolved_issues: 'bg-gradient-to-br from-[#047857] via-[#059669] to-[#10b981]',
+      add_new_issue: 'bg-gradient-to-br from-[#123A73] via-[#1E4B8E] to-[#2E6BB8]',
+    };
+    return surfaces[cardId] || 'bg-gradient-to-br from-[#123A73] to-[#1E4B8E]';
+  };
+
+  const kpiGridCols =
+    cards.length >= 7
+      ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7'
+      : cards.length >= 5
+        ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'
+        : cards.length === 4
+          ? 'grid-cols-2 lg:grid-cols-4'
+          : 'grid-cols-2 sm:grid-cols-3';
+
   return (
-    <div id="dashboard-view-container" className="space-y-6">
-      {/* Top Header Block with Greeting */}
-      <div className="bg-white p-6 rounded-2xl shadow-xs border border-gray-100 w-full">
-        <div className="space-y-4">
-          <h2 className="text-2xl font-bold text-gray-950 tracking-tight flex items-center gap-2">
-            <Activity className="w-6 h-6 animate-pulse" style={{ color: currentTheme.accentColor }} />
-            <span>{lang === 'ta' ? 'வணக்கம்,' : 'Welcome back,'} {tObj(currentUser)}</span>
-          </h2>
-          <p className="text-sm text-gray-500">
-            {lang === 'ta' 
-              ? 'தமிழ்நாடு பேரூராட்சிகள் நிர்வாகப் பதிவு மற்றும் கண்காணிப்பு தளம்.' 
-              : 'Tamil Nadu Town Panchayats Administration and Monitoring Portal.'}
-          </p>
-        </div>
-        {isTPUser && (
-          <div className="mt-6 pt-4 border-t border-gray-50">
-            <button
-              type="button"
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  localStorage.setItem('pendingIssuesSubTab', 'create');
-                }
-                setActiveTab('pendingIssues');
-              }}
-              className="flex items-center gap-2 px-5 py-3 rounded-xl text-white font-bold text-sm bg-indigo-600 hover:bg-indigo-700 shadow-xs transition-all cursor-pointer border-none"
-            >
-              <PlusCircle className="w-5 h-5" />
-              <span>{lang === 'ta' ? 'புதிய பிரச்சினை சேர்க்கவும் (+)' : 'Add New Issue (+)'}</span>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Bottom Abstract Report Frame */}
-      <div className="bg-white p-6 rounded-2xl shadow-xs border border-gray-100 w-full">
-        <InspectionReportsView 
-          state={state} 
-          lang={lang} 
-          theme={theme} 
-          currentUser={currentUser}
-          defaultActiveTab="abstract"
-          hideTabsHeader={true}
-          hideTopTitle={true}
-        />
-      </div>
-
-      {/* KPI Grid */}
-      <div className={`grid grid-cols-1 sm:grid-cols-2 ${cards.length === 5 ? 'lg:grid-cols-5' : cards.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4`}>
+    <div id="dashboard-view-container" className="min-w-0 space-y-5 overflow-x-hidden">
+      <section className={`grid min-w-0 gap-2 md:gap-2.5 ${kpiGridCols}`}>
         {cards.map((card) => (
-          <motion.button
+          <button
             key={card.id}
             id={`kpi-card-${card.id}`}
-            whileHover={{ y: -3, scale: 1.01 }}
-            transition={{ duration: 0.15 }}
+            type="button"
             onClick={card.action}
-            className={`flex items-center justify-between ${isAdminRole ? 'p-4' : 'p-5'} bg-white rounded-2xl border border-gray-100 text-left w-full shadow-xs cursor-pointer hover:border-gray-200`}
+            className={`portal-dashboard-kpi-card relative flex min-w-0 flex-col justify-between overflow-hidden rounded-xl p-2.5 text-left shadow-[0_4px_14px_-6px_rgba(15,47,107,0.45)] transition duration-200 hover:shadow-[0_8px_20px_-6px_rgba(15,47,107,0.5)] sm:p-3 ${getKpiSurface(card.id)}`}
           >
-            <div className="space-y-1">
-              <span className="text-[10px] sm:text-xs font-medium text-gray-400 uppercase tracking-wider">{card.title}</span>
-              <h3 className={`${isAdminRole ? 'text-2xl' : 'text-3xl'} font-bold text-gray-900`}>{card.count}</h3>
+            <card.icon
+              className="pointer-events-none absolute -right-0.5 -top-0.5 h-11 w-11 text-white/[0.12]"
+              strokeWidth={1.25}
+            />
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
+              <card.icon className="h-3.5 w-3.5" strokeWidth={2} />
+            </span>
+            <div className="relative z-[1] mt-2.5 min-w-0">
+              <p className="truncate text-[9px] font-semibold uppercase tracking-[0.06em] text-white/75 sm:text-[10px]">
+                {card.title}
+              </p>
+              <p className="mt-1 text-lg font-bold tabular-nums leading-none tracking-tight text-white sm:text-xl">
+                {card.count}
+              </p>
             </div>
-            <div className={`${isAdminRole ? 'p-2.5' : 'p-3.5'} rounded-xl bg-gradient-to-br ${card.color} text-white shadow-md`}>
-              <card.icon className={`${isAdminRole ? 'w-5 h-5' : 'w-6 h-6'}`} />
-            </div>
-          </motion.button>
+          </button>
         ))}
-      </div>
+      </section>
+
+      <section className="portal-dashboard-panel overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(15,47,107,0.05)]">
+        <div className="border-b border-slate-100 px-5 py-3.5 sm:px-6">
+          <h3 className="text-[15px] font-semibold text-slate-800">
+            {lang === 'ta' ? 'கள ஆய்வு சுருக்கம்' : 'Field inspection summary'}
+          </h3>
+          <p className="mt-0.5 text-[12px] text-slate-500">
+            {lang === 'ta' ? 'பொருள் வாரியான ஆய்வு எண்ணிக்கை' : 'Inspection counts by work type'}
+          </p>
+        </div>
+        <div className="p-4 sm:p-5">
+          <InspectionReportsView
+            state={state}
+            lang={lang}
+            theme={theme}
+            currentUser={currentUser}
+            defaultActiveTab="abstract"
+            hideTabsHeader={true}
+            hideTopTitle={true}
+            embedMode={true}
+          />
+        </div>
+      </section>
 
       {/* Visual Charts / Diagrams */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Left: Category Wise Diagrams */}
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-          <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+        <div className="portal-dashboard-panel space-y-4 p-5 sm:p-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-sm font-bold text-gray-800 tracking-tight">
-                {lang === 'ta' ? 'வகை வாரியான வரைபடம்' : 'Category Wise Diagram'}
+              <h3 className="text-[15px] font-semibold text-slate-800">
+                {lang === 'ta' ? 'வகை வாரியான வரைபடம்' : 'Issues by category'}
               </h3>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                {lang === 'ta' ? 'வகை வாரியாகப் பிரச்சினைகளைத் தேர்ந்தெடுக்கவும்' : 'Click a category to filter subcategories'}
+              <p className="mt-0.5 text-[12px] text-slate-500">
+                {lang === 'ta' ? 'வகையைத் தேர்ந்தெடுத்து உட்பிரிவுகளை வடிகட்டவும்' : 'Select a category to filter subcategories'}
               </p>
             </div>
             {selectedChartCategory && (
@@ -1449,13 +1444,13 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
         </div>
 
         {/* Right: Subcategory Wise Diagrams */}
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-          <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+        <div className="portal-dashboard-panel space-y-4 p-5 sm:p-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-sm font-bold text-gray-800 tracking-tight">
-                {lang === 'ta' ? 'துணை வகை வாரியான வரைபடம்' : 'Subcategory Wise Diagram'}
+              <h3 className="text-[15px] font-semibold text-slate-800">
+                {lang === 'ta' ? 'துணை வகை வாரியான வரைபடம்' : 'Issues by subcategory'}
               </h3>
-              <p className="text-[11px] text-gray-400 mt-0.5">
+              <p className="mt-0.5 text-[12px] text-slate-500">
                 {(() => {
                   if (selectedChartCategory) {
                     const matched = CATEGORIES_LIST.find((c: any) => c.id === selectedChartCategory);
@@ -1538,21 +1533,23 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
       </div>
 
       {/* Abstract Table with Filters Section */}
-      <div id="abstract-register-section" className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-6">
-        <div>
-          <h3 className="text-md font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-indigo-600" />
-            {lang === 'ta' ? 'பிரச்சினைகள் கண்காணிப்பு அட்டவணை' : 'Issues Monitoring Abstract Register'}
+      <div id="abstract-register-section" className="portal-dashboard-panel space-y-5 p-5 sm:p-6">
+        <div className="border-b border-slate-100 pb-4">
+          <h3 className="flex items-center gap-2 text-[15px] font-semibold text-slate-800">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#123A73]/10 text-[#123A73]">
+              <AlertTriangle className="h-4 w-4" />
+            </span>
+            {lang === 'ta' ? 'பிரச்சினைகள் கண்காணிப்பு அட்டவணை' : 'Issues monitoring register'}
           </h3>
-          <p className="text-xs text-gray-400 mt-1">
-            {lang === 'ta' 
-              ? 'மண்டலம், மாவட்டம், பேரூராட்சி மற்றும் நிலைகளின் அடிப்படையில் வடிகட்டக்கூடிய சுருக்க அறிக்கை' 
-              : 'Interactive abstract ledger with real-time dynamic charts updating according to active filter subsets.'}
+          <p className="mt-2 text-[12px] leading-relaxed text-slate-500">
+            {lang === 'ta'
+              ? 'மண்டலம், மாவட்டம், பேரூராட்சி மற்றும் நிலை வாரியாக வடிகட்டி பார்க்கவும்.'
+              : 'Filter by zone, district, town panchayat, and status for a live summary.'}
           </p>
         </div>
 
         {/* Dynamic Filters Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
+        <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-100 bg-slate-50/60 p-4 sm:grid-cols-2 lg:grid-cols-5">
           {/* Zone Filter */}
           <div>
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMongoClient, getActiveMongoDb, getCollectionData, enrichUserForApp, getPresignedS3Url } from '@/lib/storage';
+import { getMongoClient, getActiveMongoDb, getCollectionData } from '@/lib/storage';
 import { getUserScopeDetails } from '@/lib/userScopeCache';
 import { recordUserLogin } from '@/lib/userActivity';
 import { logServerProcess } from '@/lib/serverLogger';
+import { postRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,14 +17,11 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
 }
 
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
   try {
-    const { username, password } = await req.json();
+    const body = await req.json();
+    const { username, password } = body;
     const cleanUsername = (username || '').trim().toLowerCase();
 
     if (!cleanUsername) {
@@ -33,61 +31,61 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Dev / thin client: authenticate only against live portal (server MongoDB), never local cache.
+    if (shouldUseRemotePortalApi(req.nextUrl.origin)) {
+      const { status, data } = await postRemotePortalJson('/api/auth/login', req.nextUrl.origin, {
+        username,
+        password,
+      });
+      const duration = Date.now() - startTime;
+      if (data?.success) {
+        console.log(`[LOGIN SUCCESS] User "${cleanUsername}" via remote portal in ${duration}ms ✅`);
+      } else {
+        console.warn(`[LOGIN FAILED] Remote portal for "${cleanUsername}" (${duration}ms):`, data?.message || status);
+      }
+      const httpStatus = data?.success ? 200 : status >= 400 ? status : 401;
+      return NextResponse.json(data, { status: httpStatus, headers: CORS_HEADERS });
+    }
+
     let userDoc: any = null;
     let sourceCollection = '';
+    let mongoDb: any = null;
 
-    // STEP 1: Authoritative authentication from MongoDB
     const client = await getMongoClient();
     if (client) {
       const db = await getActiveMongoDb(client);
+      mongoDb = db;
+      const usernameVariants = Array.from(new Set([cleanUsername, String(username || '').trim()].filter(Boolean)));
+      const identityOr = [
+        { username: { $in: usernameVariants } },
+        { mobile: cleanUsername },
+        { phone: cleanUsername },
+      ];
 
-      // 1. Check inspectionUsers collection first (for field inspection officers / animators / si / dbc)
-      const inspUsersCol = db.collection('inspectionUsers');
-      userDoc = await inspUsersCol.findOne({
-        $or: [
-          { mobile: cleanUsername },
-          { username: cleanUsername },
-          { employeeId: cleanUsername },
-          { phone: cleanUsername },
-          { contact: cleanUsername },
-          { username: { $regex: new RegExp(`^${escapeRegex(cleanUsername)}$`, 'i') } }
-        ]
-      });
-      if (userDoc) {
+      const [portalUser, inspUser] = await Promise.all([
+        db.collection('users').findOne({ $or: identityOr }),
+        db.collection('inspectionUsers').findOne({
+          $or: [...identityOr, { employeeId: cleanUsername }, { contact: cleanUsername }],
+        }),
+      ]);
+
+      if (portalUser) {
+        userDoc = portalUser;
+        sourceCollection = 'users';
+      } else if (inspUser) {
+        userDoc = inspUser;
         sourceCollection = 'inspectionUsers';
-      }
-
-      // 2. If not found in inspectionUsers, check users collection (for web portal admins / AD / EO / HOD)
-      if (!userDoc) {
-        const usersCol = db.collection('users');
-        userDoc = await usersCol.findOne({
-          $or: [
-            { username: { $regex: new RegExp(`^${escapeRegex(cleanUsername)}$`, 'i') } },
-            { mobile: cleanUsername },
-            { phone: cleanUsername }
-          ]
+      } else {
+        const empUser = await db.collection('employees').findOne({
+          $or: [{ username: { $in: usernameVariants } }, { employeeId: cleanUsername }],
         });
-        if (userDoc) {
-          sourceCollection = 'users';
-        }
-      }
-
-      // 3. Fallback: check employees collection
-      if (!userDoc) {
-        const empCol = db.collection('employees');
-        userDoc = await empCol.findOne({
-          $or: [
-            { username: { $regex: new RegExp(`^${escapeRegex(cleanUsername)}$`, 'i') } },
-            { employeeId: cleanUsername }
-          ]
-        });
-        if (userDoc) {
+        if (empUser) {
+          userDoc = empUser;
           sourceCollection = 'employees';
         }
       }
     }
 
-    // Fallback: check local storage if MongoDB was unreachable
     if (!userDoc) {
       const [users, inspectionUsers, employees] = await Promise.all([
         getCollectionData('users'),
@@ -103,7 +101,7 @@ export async function POST(req: NextRequest) {
 
     if (!userDoc) {
       const duration = Date.now() - startTime;
-      console.warn(`[LOGIN FAILED] User "${cleanUsername}" not found in inspectionUsers or users collection (${duration}ms)`);
+      console.warn(`[LOGIN FAILED] User "${cleanUsername}" not found (${duration}ms)`);
       logServerProcess({
         category: 'LOGIN',
         action: 'LOGIN_USER_NOT_FOUND',
@@ -117,20 +115,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // STEP 2: Verify Password
     const uPass = userDoc.password || userDoc.passwordHash || '';
-    const isPassValid = !password || 
-                        password === uPass || 
-                        password === 'admin' || 
-                        password === 'admin123' || 
-                        password === 'password123' || 
-                        password === 'dtp123' || 
-                        password === 'ad123' || 
-                        password === 'eo123' || 
-                        password === 'zonal123' || 
-                        password === 'tp123' || 
-                        password === 'pass001' || 
-                        password === 'pass002';
+    const isPassValid =
+      !password ||
+      password === uPass ||
+      password === 'admin' ||
+      password === 'admin123' ||
+      password === 'password123' ||
+      password === 'dtp123' ||
+      password === 'ad123' ||
+      password === 'eo123' ||
+      password === 'zonal123' ||
+      password === 'tp123' ||
+      password === 'pass001' ||
+      password === 'pass002';
 
     if (!isPassValid) {
       const duration = Date.now() - startTime;
@@ -148,16 +146,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // STEP 3: Verify Account Active Status
     if (userDoc.status === 'disabled' || userDoc.status === 'Inactive' || userDoc.isActive === false) {
-      console.warn(`[LOGIN BLOCKED] Account disabled for user "${cleanUsername}"`);
-      logServerProcess({
-        category: 'LOGIN',
-        action: 'LOGIN_BLOCKED_DISABLED_USER',
-        username: cleanUsername,
-        status: 'WARNING',
-        details: 'Login attempt rejected because account is disabled',
-      });
       return NextResponse.json(
         {
           success: false,
@@ -167,10 +156,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // STEP 4: Retrieve compact user scope (Fast indexed lookup)
-    const userScope = await getUserScopeDetails(userDoc.username || cleanUsername);
+    const userScope =
+      sourceCollection === 'inspectionUsers' ? await getUserScopeDetails(userDoc.username || cleanUsername) : null;
 
-    // STEP 5: Prepare clean, compact AppUser payload
+    let designationNameEn = String(userDoc.designationNameEn || '').trim();
+    let designationNameTa = String(userDoc.designationNameTa || '').trim();
+    const designationId = String(userDoc.designationId || '').trim();
+    if (mongoDb && designationId && (!designationNameEn || !designationNameTa)) {
+      try {
+        const matchedDesig = await mongoDb.collection('inspectionDesignations').findOne({
+          $or: [{ id: designationId }, { nameEn: designationId }, { nameTa: designationId }],
+        });
+        if (matchedDesig) {
+          designationNameEn = designationNameEn || String(matchedDesig.nameEn || '').trim();
+          designationNameTa = designationNameTa || String(matchedDesig.nameTa || '').trim();
+        }
+      } catch {
+        /* keep stored designation names */
+      }
+    }
+
+    const rawPhoto = String(userDoc.profilePhotoUrl || userDoc.avatarUrl || userDoc.profileImage || '');
+    const signedPhoto = rawPhoto && !rawPhoto.startsWith('data:') ? rawPhoto : null;
+
     const returnUser: any = {
       id: String(userDoc.id || userDoc._id || ''),
       username: userDoc.username || cleanUsername,
@@ -181,8 +189,10 @@ export async function POST(req: NextRequest) {
       role: userDoc.role || userDoc.roleId || (sourceCollection === 'inspectionUsers' ? 'Inspection Officer' : 'admin'),
       roleId: userDoc.roleId || userDoc.role || (sourceCollection === 'inspectionUsers' ? 'Inspection Officer' : 'admin'),
       roleNameTa: userDoc.roleNameTa || '',
-      designation: userDoc.designation || 'Field Inspector',
-      designationNameTa: userDoc.designationNameTa || '',
+      designationId,
+      designation: designationNameEn || userDoc.designation || '',
+      designationNameEn,
+      designationNameTa,
       townPanchayat: userDoc.townPanchayat || userDoc.tpName || userScope?.townPanchayat?.nameEn || '',
       townPanchayatTa: userDoc.townPanchayatTa || userDoc.tpNameTa || userScope?.townPanchayat?.nameTa || '',
       district: userDoc.district || userDoc.districtName || userScope?.townPanchayat?.districtNameEn || '',
@@ -201,22 +211,20 @@ export async function POST(req: NextRequest) {
       categoryIds: userDoc.categoryIds || userDoc.assignedCategories || [],
       assignedCategories: userDoc.assignedCategories || userDoc.categoryIds || [],
       selectedTpIds: userDoc.selectedTpIds || [],
-      profilePhotoUrl: (userDoc.profilePhotoUrl || userDoc.avatarUrl) ? await getPresignedS3Url(userDoc.profilePhotoUrl || userDoc.avatarUrl) : null,
-      avatarUrl: (userDoc.avatarUrl || userDoc.profilePhotoUrl) ? await getPresignedS3Url(userDoc.avatarUrl || userDoc.profilePhotoUrl) : null,
+      profilePhotoUrl: signedPhoto,
+      avatarUrl: signedPhoto,
       status: userDoc.status || 'active',
       isInspectionUser: sourceCollection === 'inspectionUsers' || userDoc.isInspectionUser === true,
       customPagePermissions: userDoc.customPagePermissions || null,
     };
 
-    // Record login synchronously before response to guarantee instant user activity reflection
-    await recordUserLogin(returnUser, req).catch((err) => {
+    void recordUserLogin(returnUser, req).catch((err) => {
       console.error('[LOGIN] Error in recordUserLogin:', err);
     });
 
     const duration = Date.now() - startTime;
-    console.log(`[LOGIN SUCCESS] User "${cleanUsername}" authenticated from collection "${sourceCollection}" in ${duration}ms ✅`);
+    console.log(`[LOGIN SUCCESS] User "${cleanUsername}" from "${sourceCollection}" in ${duration}ms ✅`);
 
-    // Return lightweight response with userScope pre-attached to guarantee instant offline capability without second request!
     return NextResponse.json(
       {
         success: true,

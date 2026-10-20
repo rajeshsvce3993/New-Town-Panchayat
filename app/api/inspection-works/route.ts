@@ -16,12 +16,22 @@ import {
   extractCalendarDateYMD,
   findExistingInspectionWork,
   getTargetedInspectionWorks,
+  getActiveMongoDb,
 } from '@/lib/storage';
 import { enqueueInspectionWork } from '@/lib/serverQueue';
 import { getUserScopeDetails } from '@/lib/userScopeCache';
 import { logServerProcess } from '@/lib/serverLogger';
+import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
+import { fetchRemoteInspectionWorksRaw } from '@/lib/remoteInspectionWorksCache';
+import { buildInspectionWorksViewResponse } from '@/lib/inspectionWorksQueryFilters';
+import { resolveInspectionFilterMasters } from '@/lib/inspectionWorksFilterMastersServer';
+import {
+  buildInspectionWorksCacheKey,
+  parseInspectionWorksViewQuery,
+  toInspectionWorksFilterQuery,
+} from '@/lib/inspectionWorksViewQuery';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 const CORS_HEADERS = {
@@ -39,25 +49,67 @@ export async function OPTIONS() {
 
 // In-memory short-lived cache for inspection works list to prevent event-loop congestion from rapid polling
 let cachedWorksList: { data: any; timestamp: number; key: string } | null = null;
-const WORKS_CACHE_TTL_MS = 6000; // 6 seconds memory cache
+const WORKS_CACHE_TTL_MS = 45_000; // filtered response cache (raw list cached separately ~15 min)
 
 // GET: Retrieve inspection works from MongoDB (sorted newest first)
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const dateParam = searchParams.get('date');
-    const fromDate = searchParams.get('fromDate');
-    const toDate = searchParams.get('toDate');
-    const zoneId = searchParams.get('zoneId');
-    const districtId = searchParams.get('districtId');
-    const tpId = searchParams.get('tpId');
-    const ward = searchParams.get('ward');
-    const username = searchParams.get('username');
-    const cacheKey = `${dateParam || ''}_${fromDate || ''}_${toDate || ''}_${zoneId || ''}_${districtId || ''}_${tpId || ''}_${ward || ''}_${username || ''}`;
+    const viewQuery = parseInspectionWorksViewQuery(searchParams);
+    const cacheKey = buildInspectionWorksCacheKey(searchParams);
+    const fromDate = viewQuery.fromDate;
+    const toDate = viewQuery.toDate;
+    const dateParam = viewQuery.dateParam;
+    const districtId = viewQuery.districtId;
+    const tpId = viewQuery.tpId;
+    const zoneId = viewQuery.zoneId;
+    const ward = viewQuery.ward;
+    const username = viewQuery.username;
+    const lite = viewQuery.lite;
 
     const now = Date.now();
     if (cachedWorksList && cachedWorksList.key === cacheKey && (now - cachedWorksList.timestamp) < WORKS_CACHE_TTL_MS) {
       return NextResponse.json(cachedWorksList.data, { headers: CORS_HEADERS });
+    }
+
+    const rawList = await fetchRemoteInspectionWorksRaw(req.nextUrl.origin);
+    if (rawList) {
+      const masters = await resolveInspectionFilterMasters(req.nextUrl.origin);
+      const view = buildInspectionWorksViewResponse(
+        rawList,
+        toInspectionWorksFilterQuery(viewQuery),
+        masters,
+        { lite, limit: viewQuery.limit || (lite ? 2000 : 0) }
+      );
+      const responsePayload = {
+        success: true,
+        count: view.works.length,
+        works: view.works,
+        categoryCounts: view.categoryCounts,
+        totalWithoutCategoryFilter: view.totalWithoutCategoryFilter,
+        remoteTotal: rawList.length,
+      };
+      const shouldCache =
+        view.works.length > 0 || rawList.length === 0 || !(fromDate || toDate || dateParam);
+      if (shouldCache) {
+        cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
+      }
+      return NextResponse.json(responsePayload, { headers: CORS_HEADERS });
+    }
+
+    if (shouldUseRemotePortalApi(req.nextUrl.origin)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            'Live portal inspection works are still loading or unavailable. Wait for the first sync to finish, then click Apply filters again.',
+          works: [],
+          count: 0,
+          categoryCounts: {},
+          totalWithoutCategoryFilter: 0,
+        },
+        { status: 503, headers: CORS_HEADERS }
+      );
     }
 
     let works: any[] = [];
@@ -66,7 +118,7 @@ export async function GET(req: NextRequest) {
     try {
       const client = await getMongoClient();
       if (client) {
-        const db = client.db('dtp_enterprise');
+        const db = await getActiveMongoDb(client);
         const query: any = {};
         const andConditions: any[] = [];
 
@@ -148,10 +200,20 @@ export async function GET(req: NextRequest) {
         }
 
         const limitParam = searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 0;
-        const queryLimit = limitParam > 0 ? limitParam : 0; // 0 means no limit in MongoDB Node driver
+        const queryLimit = limitParam > 0 ? limitParam : (lite ? 400 : 0);
 
         let mongoQuery = db.collection('inspectionWorks')
-          .find(query)
+          .find(query, lite ? {
+            projection: {
+              fieldsData: 0,
+              photos: 0,
+              documents: 0,
+              photoBase64: 0,
+              locationImage: 0,
+              staticMapUrl: 0,
+              mapImage: 0,
+            },
+          } : undefined)
           .sort({ submittedAt: -1, createdAt: -1 });
 
         if (queryLimit > 0) {
@@ -169,13 +231,34 @@ export async function GET(req: NextRequest) {
       console.warn('MongoDB query warning in GET inspection-works, using fallback:', dbErr);
     }
 
-    if (!works || works.length === 0) {
+    if ((!works || works.length === 0) && !fromDate && !toDate && !dateParam) {
       const limitParam = searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 0;
       works = (await getTargetedInspectionWorks({
         username: username || undefined,
         tpId: tpId || undefined,
-        limit: limitParam > 0 ? limitParam : 100000
+        limit: limitParam > 0 ? limitParam : (lite ? 400 : 100000)
       })) || [];
+    }
+
+    if (lite) {
+      const masters = await resolveInspectionFilterMasters(req.nextUrl.origin);
+      const view = buildInspectionWorksViewResponse(
+        works || [],
+        toInspectionWorksFilterQuery(viewQuery),
+        masters,
+        { lite: true, limit: viewQuery.limit || 2000 }
+      );
+      const responsePayload = {
+        success: true,
+        count: view.works.length,
+        works: view.works,
+        categoryCounts: view.categoryCounts,
+        totalWithoutCategoryFilter: view.totalWithoutCategoryFilter,
+      };
+      if (view.works.length > 0) {
+        cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
+      }
+      return NextResponse.json(responsePayload, { headers: CORS_HEADERS });
     }
 
     const [dbSubjects, dbCategories, dbTps, dbDistricts] = await Promise.all([
@@ -298,7 +381,9 @@ export async function GET(req: NextRequest) {
       count: normalizedWorks.length,
       works: normalizedWorks,
     };
-    cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
+    if (normalizedWorks.length > 0) {
+      cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
+    }
 
     return NextResponse.json(responsePayload, { headers: CORS_HEADERS });
   } catch (err: any) {

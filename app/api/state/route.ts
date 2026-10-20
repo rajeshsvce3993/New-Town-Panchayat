@@ -6,10 +6,13 @@ import {
   saveAppSettings,
   saveSingleInspectionWork,
   getFullDatabaseState,
+  getPortalBootstrapState,
+  getPortalExtendedState,
   rebuildUserScopeCache,
 } from '@/lib/storage';
 import { invalidateAndRefreshUserScopeCache } from '@/lib/userScopeCache';
 import { logServerProcess } from '@/lib/serverLogger';
+import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,8 +29,8 @@ export async function OPTIONS() {
   });
 }
 
-let cachedFullState: { data: any; timestamp: number } | null = null;
-const STATE_CACHE_TTL_MS = 60000; // 60s fast server-side cache
+let cachedFullState: { data: any; timestamp: number; mode: string } | null = null;
+const STATE_CACHE_TTL_MS = 45000;
 
 async function runDataStructureDiagnostics() {
   const diagnosticLogs: string[] = [];
@@ -186,6 +189,25 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, diagnostics: diagReport }, { headers: CORS_HEADERS });
     }
 
+    const remoteQs = searchParams.toString();
+    const useRemoteOnly = shouldUseRemotePortalApi(req.nextUrl.origin);
+    const remoteState = await fetchRemotePortalJson(
+      `/api/state${remoteQs ? `?${remoteQs}` : ''}`,
+      req.nextUrl.origin
+    );
+    if (remoteState) {
+      return NextResponse.json(remoteState, { headers: CORS_HEADERS });
+    }
+    if (useRemoteOnly) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Live portal data unavailable. Check PORTAL_API_BASE and network connectivity.',
+        },
+        { status: 502, headers: CORS_HEADERS }
+      );
+    }
+
     if (key === 'settings') {
       const settings = await getAppSettings();
       return NextResponse.json({ success: true, data: settings }, { headers: CORS_HEADERS });
@@ -196,15 +218,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, data }, { headers: CORS_HEADERS });
     }
 
+    const mode = (searchParams.get('mode') || 'bootstrap').toLowerCase();
     const forceFresh = searchParams.get('fresh') === 'true';
-    if (!forceFresh && cachedFullState && (Date.now() - cachedFullState.timestamp) < STATE_CACHE_TTL_MS) {
-      return NextResponse.json({ success: true, data: cachedFullState.data, cached: true }, { headers: CORS_HEADERS });
+    const cacheHeaders = {
+      ...CORS_HEADERS,
+      'Cache-Control': 'private, max-age=15, stale-while-revalidate=30',
+    };
+
+    if (mode === 'extended') {
+      const extra = await getPortalExtendedState();
+      return NextResponse.json({ success: true, data: extra, mode }, { headers: cacheHeaders });
     }
 
-    // Return the full database state from MongoDB
-    const fullState = await getFullDatabaseState();
-    cachedFullState = { data: fullState, timestamp: Date.now() };
-    return NextResponse.json({ success: true, data: fullState }, { headers: CORS_HEADERS });
+    if (!forceFresh && cachedFullState && cachedFullState.mode === mode && (Date.now() - cachedFullState.timestamp) < STATE_CACHE_TTL_MS) {
+      return NextResponse.json({ success: true, data: cachedFullState.data, cached: true, mode }, { headers: cacheHeaders });
+    }
+
+    const fullState = mode === 'full'
+      ? await getFullDatabaseState()
+      : await getPortalBootstrapState();
+    cachedFullState = { data: fullState, timestamp: Date.now(), mode };
+    return NextResponse.json({ success: true, data: fullState, mode }, { headers: cacheHeaders });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500, headers: CORS_HEADERS });
   }

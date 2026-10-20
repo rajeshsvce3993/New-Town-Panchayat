@@ -8,10 +8,10 @@ if (!isExpoGo) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const BackgroundFetch = require('expo-background-fetch') as typeof import('expo-background-fetch');
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { processQueueFifo } = require('./queueSync') as typeof import('./queueSync');
+    const { syncPendingWorks } = require('./queueSync') as typeof import('./queueSync');
     TaskManager.defineTask(BG_SCOPE_TASK, async () => {
       try {
-        await processQueueFifo();
+        await syncPendingWorks();
         return BackgroundFetch.BackgroundFetchResult.NewData;
       } catch {
         return BackgroundFetch.BackgroundFetchResult.Failed;

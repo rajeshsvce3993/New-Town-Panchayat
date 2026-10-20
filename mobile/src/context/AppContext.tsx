@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, AppState, BackHandler, Linking, Platform, ToastAndroid } from 'react-native';
-import { api, getApiBaseUrl, setApiBaseUrl } from '../api/client';
+import { Alert, AppState, BackHandler, InteractionManager, Linking, Platform, ToastAndroid } from 'react-native';
+import { api, getApiBaseUrl, isRemotePhotoUrl, setApiBaseUrl } from '../api/client';
 import {
   APP_VERSION_CODE,
   INACTIVITY_MS,
@@ -17,9 +17,9 @@ import {
   showRichNotification,
   subscribeNotificationResponses,
 } from '../services/notifications';
-import { processQueueFifo, syncOfflineWorksForeground } from '../services/queueSync';
+import { syncPendingWorks } from '../services/queueSync';
 import { prefs, profilePhotoFile } from '../storage/preferences';
-import { getPaletteById, type AppPalette } from '../theme/palettes';
+import { DEFAULT_PALETTE_ID, getPaletteById, type AppPalette } from '../theme/palettes';
 import type { AppUser, InspectionWork, LoginRequest, LoginResponse, PortalState, UserScopeData } from '../types/models';
 import { emptyPortal, isInspectionUser, portalWorks } from '../types/models';
 import { todayYyyyMmDd } from '../utils/dates';
@@ -88,7 +88,7 @@ const Ctx = createContext<AppCtx | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
-  const [palette, setPalette] = useState(getPaletteById('royal_gold'));
+  const [palette, setPalette] = useState(getPaletteById(DEFAULT_PALETTE_ID));
   const [isTamil, setIsTamil] = useState(false);
   const [user, setUser] = useState<AppUser | null>(null);
   const [portal, setPortal] = useState<PortalState>(emptyPortal());
@@ -102,6 +102,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const lastInteract = useRef(Date.now());
   const userRef = useRef<AppUser | null>(null);
   const sessionIdRef = useRef(0);
+  const portalRefreshInFlight = useRef(false);
 
   const applyUser = useCallback((next: AppUser | null) => {
     if (!next && userRef.current) sessionIdRef.current += 1;
@@ -115,64 +116,80 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const applyBranding = async (iconUrl?: string | null, logoUrl?: string | null) => {
+      const resolve = (raw?: string | null) => {
+        if (!raw?.trim()) return '';
+        if (raw.startsWith('http')) return raw;
+        return `${getApiBaseUrl()}${raw.startsWith('/') ? raw : `/${raw}`}`;
+      };
+      const nextIcon = resolve(iconUrl);
+      const nextLogo = resolve(logoUrl);
+      if (isUsableLogoUrl(nextIcon)) {
+        await prefs.setAppIconUrl(nextIcon);
+        if (!cancelled) setAppIcon(nextIcon);
+      }
+      if (isUsableLogoUrl(nextLogo)) {
+        await prefs.setLoginLogoUrl(nextLogo);
+        if (!cancelled) setLoginLogo(nextLogo);
+      }
+    };
+
     (async () => {
-      const url = await prefs.getServerUrl();
+      const [url, theme, tamil, u, cached, logo, icon, tone] = await Promise.all([
+        prefs.getServerUrl(),
+        prefs.getThemeId(),
+        prefs.getIsTamil(),
+        prefs.getCurrentUser(),
+        prefs.getPortal(),
+        prefs.getLoginLogoUrl(),
+        prefs.getAppIconUrl(),
+        prefs.getTone(),
+      ]);
+      if (cancelled) return;
+
       setApiBaseUrl(url);
       setServerUrl(url);
-      const theme = await prefs.getThemeId();
       setPalette(getPaletteById(theme));
-      setIsTamil(await prefs.getIsTamil());
-      const u = await prefs.getCurrentUser();
+      setIsTamil(tamil);
       applyUser(u);
-      const cached = await prefs.getPortal();
       if (cached) {
         setPortal(cached);
         setWorks(portalWorks(cached));
       }
-      const logo = await prefs.getLoginLogoUrl();
-      const icon = await prefs.getAppIconUrl();
       if (isUsableLogoUrl(logo)) setLoginLogo(logo);
       if (isUsableLogoUrl(icon)) setAppIcon(icon);
-      const applyBranding = async (iconUrl?: string | null, logoUrl?: string | null) => {
-        const resolve = (raw?: string | null) => {
-          if (!raw?.trim()) return '';
-          if (raw.startsWith('http')) return raw;
-          return `${getApiBaseUrl()}${raw.startsWith('/') ? raw : `/${raw}`}`;
-        };
-        const nextIcon = resolve(iconUrl);
-        const nextLogo = resolve(logoUrl);
-        if (isUsableLogoUrl(nextIcon)) {
-          await prefs.setAppIconUrl(nextIcon);
-          setAppIcon(nextIcon);
+
+      setReady(true);
+
+      void createNotificationChannel(tone).catch(() => undefined);
+      void registerBackgroundSync();
+
+      InteractionManager.runAfterInteractions(() => {
+        void (async () => {
+          try {
+            await Location.requestForegroundPermissionsAsync();
+            await requestNotificationPermission();
+          } catch {
+            /* first-install prompts — must not block splash */
+          }
+        })();
+      });
+
+      void (async () => {
+        try {
+          const cfg = await api.getMobileConfig();
+          if (cfg && !cancelled) await applyBranding(cfg.appIconUrl, cfg.loginLogoUrl);
+        } catch {
+          /* */
         }
-        if (isUsableLogoUrl(nextLogo)) {
-          await prefs.setLoginLogoUrl(nextLogo);
-          setLoginLogo(nextLogo);
-        }
-      };
-      try {
-        const cfg = await api.getMobileConfig();
-        if (cfg) await applyBranding(cfg.appIconUrl, cfg.loginLogoUrl);
-      } catch {
-        /* */
-      }
-      try {
-        const remote = await api.getPortalState(u?.username);
-        await applyBranding(remote.appIconUrl, remote.loginLogoUrl);
-      } catch {
-        /* */
-      }
-      await createNotificationChannel(await prefs.getTone());
-      await registerBackgroundSync();
-      try {
-        await Location.requestForegroundPermissionsAsync();
-        await requestNotificationPermission();
-      } catch {
-        /* */
-      }
-      try {
-        const versionResp = await api.checkAppVersion();
-        if (versionResp.success && (versionResp.latestVersionCode || 0) > 0) {
+      })();
+
+      void (async () => {
+        try {
+          const versionResp = await api.checkAppVersion();
+          if (cancelled || !versionResp.success || !(versionResp.latestVersionCode || 0)) return;
           const latest = versionResp.latestVersionCode || 0;
           const minReq = versionResp.minRequiredVersionCode || 0;
           const hasNew = latest > APP_VERSION_CODE;
@@ -186,13 +203,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               apkUrl: versionResp.apkDownloadUrl || '',
             });
           }
+        } catch {
+          /* */
         }
-      } catch {
-        /* */
-      }
-      setReady(true);
+      })();
     })();
-  }, []);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applyUser]);
 
   useEffect(() => {
     return subscribeNotificationResponses((data) => {
@@ -214,6 +234,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const refreshPortal = useCallback(async () => {
     const current = userRef.current;
     if (!current) return;
+    if (portalRefreshInFlight.current) return;
+    portalRefreshInFlight.current = true;
     const sid = sessionIdRef.current;
     touch();
     try {
@@ -222,7 +244,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setPortal(remote);
       await prefs.setPortal(remote);
       if (sid !== sessionIdRef.current || !userRef.current) return;
-      setWorks(portalWorks(remote));
+      const remoteWorks = portalWorks(remote);
+      const offline = await prefs.getOfflineWorks();
+      const remoteIds = new Set(remoteWorks.map((w) => w.id));
+      const unsynced = offline.filter((w) => !w.workId && !remoteIds.has(w.id));
+      setWorks([...unsynced, ...remoteWorks]);
       const resolve = (raw?: string | null) => {
         if (!raw?.trim()) return '';
         if (raw.startsWith('http')) return raw;
@@ -256,7 +282,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
           const live = userRef.current;
           if (!live || sid !== sessionIdRef.current) return;
-          const safePhoto = remote.user.profilePhotoUrl || remote.user.avatarUrl || live.profilePhotoUrl || persistent;
+          const remotePhoto = remote.user.profilePhotoUrl || remote.user.avatarUrl || '';
+          const livePhoto = live.profilePhotoUrl || live.avatarUrl || '';
+          const chosen =
+            (isRemotePhotoUrl(remotePhoto) && remotePhoto) ||
+            (isRemotePhotoUrl(livePhoto) && livePhoto) ||
+            remotePhoto ||
+            livePhoto ||
+            persistent;
+          const safePhoto =
+            chosen && chosen.includes('amazonaws.com') && chosen.includes('?') ? chosen.split('?')[0] : chosen;
           const safeUser = { ...remote.user, profilePhotoUrl: safePhoto, avatarUrl: safePhoto };
           await prefs.setCurrentUser(safeUser);
           if (sid !== sessionIdRef.current || !userRef.current) {
@@ -268,12 +303,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     } catch {
       /* cache */
+    } finally {
+      portalRefreshInFlight.current = false;
     }
   }, [touch, applyUser]);
 
   useEffect(() => {
-    if (!ready) return;
-    void refreshPortal();
+    if (!ready || !user?.username) return;
+    const t = setTimeout(() => {
+      void refreshPortal();
+    }, 300);
+    return () => clearTimeout(t);
   }, [ready, user?.username, refreshPortal]);
 
   useEffect(() => {
@@ -343,14 +383,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
     const t = setInterval(async () => {
       if (AppState.currentState !== 'active') return;
-      const synced = await syncOfflineWorksForeground();
+      const synced = await syncPendingWorks();
       if (synced.length) {
         setWorks((prev) => {
           const ids = new Set(synced.map((s) => s.id));
-          return [...synced, ...prev.filter((w) => !ids.has(w.id))];
+          const workIds = new Set(synced.map((s) => s.workId).filter(Boolean));
+          return [
+            ...synced,
+            ...prev.filter((w) => !ids.has(w.id) && (!w.workId || !workIds.has(w.workId))),
+          ];
         });
       }
-      await processQueueFifo();
     }, OFFLINE_SYNC_MS);
     return () => clearInterval(t);
   }, [user]);
@@ -386,8 +429,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const onLoginSuccess = useCallback(async (u: AppUser) => {
-    applyUser(u);
-    await prefs.setCurrentUser(u);
+    const photo = u.profilePhotoUrl || u.avatarUrl || '';
+    const canonical = photo.includes('amazonaws.com') && photo.includes('?') ? photo.split('?')[0] : photo;
+    const next = canonical ? { ...u, profilePhotoUrl: canonical, avatarUrl: canonical } : u;
+    applyUser(next);
+    await prefs.setCurrentUser(next);
     await prefs.setLoginDate(todayYyyyMmDd());
     await prefs.setLastInteraction(Date.now());
     lastInteract.current = Date.now();

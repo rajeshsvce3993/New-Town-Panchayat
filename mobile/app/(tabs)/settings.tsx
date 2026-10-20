@@ -18,7 +18,7 @@ import {
   ToastAndroid,
   View,
 } from 'react-native';
-import { api, getApiBaseUrl } from '../../src/api/client';
+import { api, isRemotePhotoUrl, resolveProfilePhotoUrl } from '../../src/api/client';
 import { HeaderBell } from '../../src/components/AppHeader';
 import { HeaderBrand } from '../../src/components/HeaderBrand';
 import { PhotoSourceDialog } from '../../src/components/PhotoSourceDialog';
@@ -35,13 +35,6 @@ function toast(msg: string) {
   else Alert.alert('', msg);
 }
 
-function resolvePhoto(raw?: string | null) {
-  if (!raw) return null;
-  if (raw.startsWith('http') || raw.startsWith('file:')) return raw;
-  if (raw.startsWith('/uploads') || raw.startsWith('/api')) return `${getApiBaseUrl()}${raw}`;
-  if (raw.startsWith('/')) return `file://${raw}`;
-  return raw;
-}
 
 const TONE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   default: 'volume-high',
@@ -74,6 +67,11 @@ export default function SettingsScreen() {
   useEffect(() => {
     (async () => {
       setTone((await prefs.getTone()) || 'default');
+      const remote = effectivePhotoUrl(user);
+      if (isRemotePhotoUrl(remote)) {
+        setPhoto(remote);
+        return;
+      }
       try {
         const local = profilePhotoFile();
         const info = await FileSystem.getInfoAsync(local);
@@ -84,7 +82,7 @@ export default function SettingsScreen() {
       } catch {
         /* */
       }
-      setPhoto(effectivePhotoUrl(user));
+      setPhoto(remote);
     })();
   }, [user]);
 
@@ -96,7 +94,7 @@ export default function SettingsScreen() {
     ['vibrate', isTamil ? 'அதிர்வு மட்டும்' : 'Vibrate Only', isTamil ? 'சத்தமின்றி அதிர்வு மட்டும் செயல்படும்' : 'Silent with vibration pulse only'],
   ] as const;
 
-  const photoUri = resolvePhoto(photo);
+  const photoUri = resolveProfilePhotoUrl(photo);
   const wards = effectiveWards(user);
   const subjects = user?.assignedSubjectNames?.length ? user.assignedSubjectNames : effectiveSubjectIds(user);
   const desig = isTamil ? user?.designationNameTa || user?.designation : designationNameEn(user) || user?.designation;
@@ -174,7 +172,14 @@ export default function SettingsScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Pressable onPress={() => setPhotoDlg(true)} style={{ width: 44, height: 44 }}>
             {photoUri ? (
-              <Image source={{ uri: photoUri }} style={[styles.av, { borderColor: palette.primary }]} />
+              <Image
+                source={{ uri: photoUri }}
+                style={[styles.av, { borderColor: palette.primary }]}
+                onError={() => {
+                  if (isRemotePhotoUrl(photo)) setPhoto(profilePhotoFile());
+                  else setPhoto(null);
+                }}
+              />
             ) : (
               <View style={[styles.av, { backgroundColor: palette.primaryContainer, borderColor: palette.primary, alignItems: 'center', justifyContent: 'center' }]}>
                 <Ionicons name="person" size={18} color={palette.primary} />

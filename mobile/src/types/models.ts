@@ -2,11 +2,14 @@ export interface AppUser {
   id: string;
   username: string;
   name: string;
+  nameEn?: string;
   nameTa?: string;
   mobile?: string;
   role: string;
+  roleId?: string;
   roleNameTa?: string;
   designation?: string;
+  designationId?: string;
   designationNameTa?: string;
   designationNameEn?: string;
   designationNameEnField?: string;
@@ -36,13 +39,16 @@ export interface AppUser {
   isInspectionUser?: boolean;
   profilePhotoUrl?: string | null;
   avatarUrl?: string | null;
+  profileImage?: string | null;
   status?: string;
   forceLoggedOut?: boolean;
 }
 
 export function effectivePhotoUrl(user?: AppUser | null): string | null {
   if (!user) return null;
-  return user.profilePhotoUrl?.trim() || user.avatarUrl?.trim() || null;
+  const raw = user.profilePhotoUrl?.trim() || user.avatarUrl?.trim() || user.profileImage?.trim() || null;
+  if (!raw || raw.startsWith('data:')) return null;
+  return raw;
 }
 
 export function isInspectionUser(user?: AppUser | null): boolean {
@@ -54,6 +60,62 @@ export function isInspectionUser(user?: AppUser | null): boolean {
 
 export function designationNameEn(user?: AppUser | null): string {
   return user?.designationNameEnField?.trim() || user?.designationNameEn?.trim() || user?.designation || '';
+}
+
+export interface InspectionDesignation {
+  id?: string;
+  nameEn?: string;
+  nameTa?: string;
+  code?: string;
+}
+
+function isDisplayDesignation(value: string, designationId?: string) {
+  const v = value.trim();
+  if (!v) return false;
+  if (designationId && v === designationId) return false;
+  if (/^[a-z]{1,4}_[a-z0-9]+$/i.test(v) && !/\s/.test(v)) return false;
+  return true;
+}
+
+export function resolveOfficerDesignation(
+  user?: AppUser | null,
+  portal?: PortalState | null,
+  isTamil = false,
+): string {
+  const designations = portal?.inspectionDesignations || [];
+  const desigId = String(user?.designationId || '').trim();
+  const matched = designations.find(
+    (d) =>
+      String(d.id || '') === desigId ||
+      String(d.id || '') === String(user?.designation || '').trim() ||
+      String(d.nameEn || '').toLowerCase() === desigId.toLowerCase() ||
+      String(d.nameEn || '').toLowerCase() === String(user?.designation || '').trim().toLowerCase() ||
+      String(d.nameTa || '') === desigId ||
+      String(d.nameTa || '') === String(user?.designation || '').trim(),
+  );
+  const candidates = isTamil
+    ? [
+        matched?.nameTa,
+        matched?.nameEn,
+        user?.designationNameTa,
+        user?.designationNameEn,
+        user?.designation,
+        user?.roleNameTa,
+        user?.role,
+      ]
+    : [
+        matched?.nameEn,
+        matched?.nameTa,
+        user?.designationNameEnField,
+        user?.designationNameEn,
+        user?.designation,
+        user?.role,
+      ];
+  return (
+    candidates
+      .map((value) => String(value || '').trim())
+      .find((value) => isDisplayDesignation(value, desigId)) || ''
+  );
 }
 
 export function effectiveWards(user?: AppUser | null): string[] {
@@ -211,8 +273,13 @@ export interface PortalState {
   fields?: FieldDefinition[];
   works?: InspectionWork[];
   user?: AppUser | null;
+  inspectionDesignations?: InspectionDesignation[];
   appIconUrl?: string | null;
   loginLogoUrl?: string | null;
+  settings?: {
+    googleMapsApiKey?: string;
+    [key: string]: unknown;
+  };
 }
 
 export function portalSubjects(p: PortalState): Subject[] {
@@ -252,6 +319,7 @@ export interface QueueJobDetail {
   statusMessage?: string;
   workId?: string | null;
   error?: string | null;
+  result?: InspectionWork | null;
 }
 
 export interface QueueStatusResponse {
@@ -355,6 +423,7 @@ export interface UserScopeResponse {
 export interface ProfilePhotoUploadResponse {
   success: boolean;
   profilePhotoUrl?: string | null;
+  rawS3Url?: string | null;
   message?: string | null;
 }
 

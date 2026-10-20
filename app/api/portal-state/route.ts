@@ -11,6 +11,7 @@ import {
   getTargetedInspectionWorks
 } from '@/lib/storage';
 import { getScopeVersionMeta } from '@/lib/userScopeCache';
+import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,21 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
+    const remoteQs = searchParams.toString();
+    const remoteState = await fetchRemotePortalJson(
+      `/api/portal-state${remoteQs ? `?${remoteQs}` : ''}`,
+      req.nextUrl.origin
+    );
+    if (remoteState) {
+      return NextResponse.json(remoteState, { headers: CORS_HEADERS });
+    }
+    if (shouldUseRemotePortalApi(req.nextUrl.origin)) {
+      return NextResponse.json(
+        { success: false, message: 'Live portal state unavailable. Check PORTAL_API_BASE and network connectivity.' },
+        { status: 502, headers: CORS_HEADERS }
+      );
+    }
+
     const username = searchParams.get('username') || searchParams.get('userId') || searchParams.get('user') || req.headers.get('x-username') || req.headers.get('x-user-id');
     const todayOnly = searchParams.get('todayOnly') === 'true';
 
@@ -389,20 +405,24 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    if (matchedUser && (matchedUser.profilePhotoUrl || matchedUser.avatarUrl)) {
-      let uPhoto = matchedUser.profilePhotoUrl || matchedUser.avatarUrl;
-      if (uPhoto.startsWith('/uploads')) {
+    if (matchedUser && (matchedUser.profilePhotoUrl || matchedUser.avatarUrl || matchedUser.profileImage)) {
+      let uPhoto = matchedUser.profilePhotoUrl || matchedUser.avatarUrl || matchedUser.profileImage;
+      if (typeof uPhoto === 'string' && uPhoto.startsWith('data:')) {
+        uPhoto = '';
+      } else if (uPhoto?.startsWith('/uploads')) {
         uPhoto = `${origin}${uPhoto}`;
-      } else if (uPhoto.includes('s3.') || uPhoto.includes('amazonaws.com') || uPhoto.startsWith('profiles/')) {
+      } else if (uPhoto && (uPhoto.includes('s3.') || uPhoto.includes('amazonaws.com') || uPhoto.startsWith('profiles/'))) {
         try {
           uPhoto = await getPresignedS3Url(uPhoto);
         } catch (_) {}
       }
-      matchedUser = {
-        ...matchedUser,
-        profilePhotoUrl: uPhoto,
-        avatarUrl: uPhoto,
-      };
+      if (uPhoto) {
+        matchedUser = {
+          ...matchedUser,
+          profilePhotoUrl: uPhoto,
+          avatarUrl: uPhoto,
+        };
+      }
     }
 
     const scopeMeta = getScopeVersionMeta();

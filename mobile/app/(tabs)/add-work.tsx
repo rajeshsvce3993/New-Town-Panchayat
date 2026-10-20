@@ -33,12 +33,19 @@ import { HeaderBrand } from '../../src/components/HeaderBrand';
 import { FALLBACK_STREETS_EN, FALLBACK_STREETS_TA, SAMPLE_PHOTO } from '../../src/constants/config';
 import { useApp } from '../../src/context/AppContext';
 import { showInspectionNotification } from '../../src/services/notifications';
-import { processOneEntry } from '../../src/services/queueSync';
+import { syncPendingWorks } from '../../src/services/queueSync';
 import { prefs } from '../../src/storage/preferences';
 import type { Category, FieldDefinition, InspectionWork, QueuedWorkEntry, Subject } from '../../src/types/models';
 import { QUEUE_STATUS, effectiveCategoryIds, effectiveSubjectIds, effectiveWards, portalCategories, portalFields, portalSubjects, portalWorks } from '../../src/types/models';
 import { fieldKey, isCameraField, visibleDynamicFields } from '../../src/utils/fieldVisibility';
-import { compressImageLocally, ensureDir, fileToBase64DataUri } from '../../src/utils/imageCompression';
+import { compressImageLocally, ensureDir } from '../../src/utils/imageCompression';
+import {
+  cleanLocalPhotoUris,
+  persistPhotosInParallel,
+  persistPhotosLocalOnly,
+  uniquePhotoFileName,
+  workHasLocalPhotos,
+} from '../../src/utils/photoPersist';
 import { now12Hr } from '../../src/utils/dates';
 import { validateVisibleFields } from '../../src/utils/validateFields';
 import { matchesTp, normalizeWard, resolveUserTpId } from '../../src/utils/wards';
@@ -184,9 +191,11 @@ export default function AddWorkScreen() {
       toast(isTamil ? 'கேமரா அனுமதி தேவை' : 'Camera permission is required to capture evidence');
       return;
     }
-    const res = await ImagePicker.launchCameraAsync({ quality: 1, exif: true });
+    const res = await ImagePicker.launchCameraAsync({ quality: 0.75, exif: false });
     if (res.canceled || !res.assets[0]) return;
-    const uri = res.assets[0].uri;
+    const raw = res.assets[0].uri;
+    const compressed = await compressImageLocally(raw, uniquePhotoFileName(key || 'primary'));
+    const uri = compressed || raw;
     if (key) {
       setPhotos((p) => ({ ...p, [key]: uri }));
       setValues((v) => ({ ...v, [key]: `captured_photo_${key}_${Date.now()}.jpg` }));
@@ -248,37 +257,38 @@ export default function AddWorkScreen() {
     const tpName = user?.townPanchayat || 'Thiruporur';
     const fieldCopy = { ...values };
     let s3 = SAMPLE_PHOTO;
-    const offlineDir = `${FileSystem.documentDirectory}offline_images`;
+    const clientWorkId = `work_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+    const offlineDir = `${FileSystem.documentDirectory}offline_images/${clientWorkId}`;
     await ensureDir(offlineDir);
-
-    const uploadOrLocal = async (uri: string, name: string) => {
-      const up = await api.uploadFile({
-        uri,
-        fileName: name,
-        mimeType: 'image/jpeg',
-        workId: actualWorkId,
-        userId: user?.id || user?.username,
-        zone: zoneName,
-        district: districtName,
-        tp: tpName,
-      });
-      if (up) return up;
-      const dest = `${offlineDir}/${name}`;
-      await FileSystem.copyAsync({ from: uri, to: dest });
-      return dest;
+    const photoMeta = {
+      workId: actualWorkId,
+      userId: user?.id || user?.username,
+      username: user?.username,
+      zone: zoneName,
+      district: districtName,
+      tp: tpName,
     };
 
-    if (primaryPhoto) {
-      s3 = await uploadOrLocal(primaryPhoto, `${Date.now()}_${Math.random().toString(16).slice(2, 10)}.jpg`);
+    const photoJobs = Object.entries(photos).map(([k, uri]) => ({ key: k, uri }));
+    if (primaryPhoto) photoJobs.push({ key: '__primary__', uri: primaryPhoto });
+    const reachable = await api.isReachable();
+    if (photoJobs.length > 1 && reachable) {
+      toast(isTamil ? `${photoJobs.length} புகைப்படங்கள் ஒரே நேரத்தில் பதிவேற்றப்படுகின்றன...` : `Uploading ${photoJobs.length} photos together...`);
     }
-    for (const [k, uri] of Object.entries(photos)) {
-      const url = await uploadOrLocal(uri, `${Date.now()}_${k}.jpg`);
-      fieldCopy[k] = url;
-      if (s3 === SAMPLE_PHOTO) s3 = url;
+    if (photoJobs.length) {
+      const uploaded = reachable
+        ? await persistPhotosInParallel(photoJobs, offlineDir, photoMeta)
+        : await persistPhotosLocalOnly(photoJobs, offlineDir);
+      for (const [k, url] of Object.entries(uploaded)) {
+        if (k === '__primary__') continue;
+        fieldCopy[k] = url;
+        if (s3 === SAMPLE_PHOTO) s3 = url;
+      }
+      if (uploaded.__primary__) s3 = uploaded.__primary__;
     }
 
     const newWork: InspectionWork = {
-      id: `work_${Date.now()}`,
+      id: clientWorkId,
       workId: actualWorkId,
       districtCode: ids.distCode,
       tpCode: ids.townCode,
@@ -307,72 +317,47 @@ export default function AddWorkScreen() {
       status: 'Completed',
     };
 
+    const firstLocal =
+      [s3, ...Object.values(fieldCopy).map((v) => String(v || ''))].find((u) => typeof u === 'string' && !u.startsWith('http') && !u.startsWith('data:')) ||
+      null;
     const entry: QueuedWorkEntry = {
-      clientTaskId: `${Date.now()}-${Math.random()}`,
-      work: newWork,
-      localPhotoPath: s3.startsWith('http') ? primaryPhoto : s3,
-      status: QUEUE_STATUS.PROCESSING,
+      clientTaskId: clientWorkId,
+      work: { ...newWork, workId: '' },
+      localPhotoPath: firstLocal,
+      status: QUEUE_STATUS.IN_QUEUE,
       progress: 10,
       attemptCount: 0,
       createdAt: Date.now(),
     };
-    await prefs.enqueueWork(entry);
 
     let finalWork = newWork;
     let online = false;
     try {
-      const compressSrc = primaryPhoto || (s3.startsWith('file') || s3.includes('offline') ? s3 : null);
-      let payload = newWork;
-      if (compressSrc) {
-        const compressed = await compressImageLocally(compressSrc, `comp_${Date.now()}.jpg`);
-        if (compressed) {
-          const dataUri = await fileToBase64DataUri(compressed);
-          if (dataUri) {
-            const uf = { ...newWork.fieldsData };
-            for (const [k, v] of Object.entries(uf)) {
-              if (String(v) === s3) uf[k] = dataUri;
-            }
-            payload = { ...newWork, imageUrl: dataUri, fieldsData: uf };
-          }
-        }
-      }
-      const q = await api.enqueueInspectionWork(payload);
-      if (q.success && q.jobId) {
-        for (let p = 0; p < 20; p++) {
-          await new Promise((r) => setTimeout(r, p === 0 ? 600 : 1000));
-          const st = await api.getQueueJobStatus(q.jobId);
-          if (st.job?.status === 'COMPLETED') {
-            actualWorkId = st.job.workId || '#CONFIRMED';
-            finalWork = { ...payload, workId: actualWorkId };
-            online = true;
-            await prefs.removeQueuedWork(entry.clientTaskId);
-            break;
-          }
-        }
-      }
-      if (!online) {
-        const res = await api.submitInspectionWork(payload);
+      if (reachable && !workHasLocalPhotos(newWork)) {
+        const res = await api.submitInspectionWork(newWork);
         if (res.success && res.work) {
           finalWork = res.work;
           actualWorkId = res.work.workId;
           online = true;
-          await prefs.removeQueuedWork(entry.clientTaskId);
         }
       }
     } catch {
       /* offline */
     }
-    if (!online) {
-      await prefs.updateQueuedWork(entry.clientTaskId, (it) => {
-        it.status = QUEUE_STATUS.IMAGE_COMPRESSING;
-        it.progress = 10;
-      });
+    if (online) {
+      await cleanLocalPhotoUris([primaryPhoto, s3, ...Object.values(photos), ...Object.values(fieldCopy).map((v) => String(v || ''))]);
+      try {
+        await refreshPortal();
+      } catch {
+        /* keep submitted work in memory */
+      }
+    } else {
+      await prefs.enqueueWork(entry);
       const off = { ...newWork, workId: '' };
-      const list = await prefs.getOfflineWorks();
-      await prefs.setOfflineWorks([...list, off]);
+      await prefs.upsertOfflineWork(off);
       finalWork = off;
       actualWorkId = '';
-      void processOneEntry({ ...entry, work: off, status: QUEUE_STATUS.IMAGE_COMPRESSING });
+      if (reachable) void syncPendingWorks();
     }
     setWorks((w) => [finalWork, ...w.filter((x) => x.id !== finalWork.id)]);
     setLastId(actualWorkId);

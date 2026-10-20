@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCollectionData, saveCollectionData, readLocalDb, uploadInspectionMediaToS3 } from '@/lib/storage';
+import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,21 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
+    const remoteQs = searchParams.toString();
+    const remoteNotifs = await fetchRemotePortalJson(
+      `/api/notifications${remoteQs ? `?${remoteQs}` : ''}`,
+      req.nextUrl.origin
+    );
+    if (remoteNotifs) {
+      return NextResponse.json(remoteNotifs, { headers: CORS_HEADERS });
+    }
+    if (shouldUseRemotePortalApi(req.nextUrl.origin)) {
+      return NextResponse.json(
+        { success: false, message: 'Live portal notifications unavailable.', data: [] },
+        { status: 502, headers: CORS_HEADERS }
+      );
+    }
+
     const userId = (searchParams.get('userId') || searchParams.get('username') || '').toLowerCase();
     const zoneId = (searchParams.get('zoneId') || searchParams.get('zone') || '').toLowerCase();
     const tpId = (searchParams.get('tpId') || searchParams.get('tp') || '').toLowerCase();

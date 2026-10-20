@@ -78,7 +78,7 @@ interface ReportsViewProps {
 }
 
 export default function ReportsView({ state, lang, theme, currentUser }: ReportsViewProps) {
-  const currentTheme = themesConfig[theme] || themesConfig['sunset-aurora'];
+  const currentTheme = themesConfig[theme] || themesConfig.light;
 
   const isEmployeeMgmtDisabled = state?.settings?.enableEmployeeManagement === false;
 

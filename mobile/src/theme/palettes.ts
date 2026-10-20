@@ -45,6 +45,8 @@ export const palettes: AppPalette[] = [
   { id: 'mint_lagoon', nameEn: 'Mint Lagoon', nameTa: 'புதினா அலை (Multi)', primary: '#14B8A6', primaryContainer: '#CCFBF1', secondary: '#0F766E', isGradient: true, gradientColors: ['#14B8A6', '#10B981'], chartShades: ['#14B8A6', '#10B981', '#0D9488', '#34D399', '#059669'], ...base },
 ];
 
+export const DEFAULT_PALETTE_ID = 'ocean_wave';
+
 export function getPaletteById(id: string): AppPalette {
-  return palettes.find((p) => p.id === id) || palettes[0];
+  return palettes.find((p) => p.id === id) || palettes.find((p) => p.id === DEFAULT_PALETTE_ID) || palettes[0];
 }

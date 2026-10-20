@@ -51,6 +51,9 @@
         "projectId": "db4e8188-dc32-4377-bd98-330f8d5f1a0c"
       }
     },
+    "autolinking": {
+      "exclude": ["@expo/ui"]
+    },
     "plugins": [
       [
         "expo-splash-screen",
@@ -68,13 +71,17 @@
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
             "enableBundleCompression": true,
+            "enablePngCrunchInReleaseBuilds": true,
+            "gifEnabled": false,
             "useLegacyPackaging": true,
             "networkInspector": false,
-            "extraProguardRules": "-keep class expo.modules.** { *; }\n-keep class com.facebook.react.** { *; }\n-keep class fr.greweb.reactnativeviewshot.** { *; }\n-keep class com.reactnativecommunity.webview.** { *; }\n",
+            "buildArchs": ["arm64-v8a"],
+            "extraProguardRules": "-keep class fr.greweb.reactnativeviewshot.** { *; }\n-keep class com.reactnativecommunity.webview.** { *; }\n",
             "packagingOptions": {
               "exclude": [
                 "lib/x86/**",
-                "lib/x86_64/**"
+                "lib/x86_64/**",
+                "lib/armeabi-v7a/**"
               ]
             }
           }
@@ -112,8 +119,8 @@
       "expo-background-fetch",
       "expo-task-manager",
       "expo-document-picker",
-      "expo-web-browser",
-      "expo-font"
+      "expo-asset",
+      "./plugins/withApkSize"
     ]
   }
 }

@@ -15,6 +15,13 @@ import { todayDdMmYyyy } from '../../src/utils/dates';
 import { normalizeWard, resolveUserTpId } from '../../src/utils/wards';
 import { filterByDateRange, filterUserWorks, sortRecentFirst } from '../../src/utils/workFilters';
 
+function shortWorkId(workId?: string | null) {
+  const raw = String(workId || '').trim();
+  const match = raw.match(/^(WRK-)([^-]+)(-.*)$/i);
+  if (!match) return raw;
+  return `${match[1]}${match[2].slice(0, 4)}${match[3]}`;
+}
+
 function localizedStreet(portal: PortalState, street: string, ward: string, isTamil: boolean) {
   const match =
     portal.wardsAndStreets?.find(
@@ -59,8 +66,8 @@ export default function ReportsScreen() {
   const [search, setSearch] = useState('');
   const [ward, setWard] = useState('all');
   const [street, setStreet] = useState('all');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  const [fromDate, setFromDate] = useState(todayDdMmYyyy);
+  const [toDate, setToDate] = useState(todayDdMmYyyy);
   const [picker, setPicker] = useState<'from' | 'to' | null>(null);
   const [detail, setDetail] = useState<InspectionWork | null>(null);
   const [queued, setQueued] = useState<QueuedWorkEntry[]>([]);
@@ -323,7 +330,7 @@ export default function ReportsScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontWeight: '700', fontSize: 13, color: unsynced ? '#B45309' : '#0F172A' }} numberOfLines={1}>
-                        {unsynced ? (isTamil ? 'ஒத்திசைக்கப்படாத பணி' : 'Unsynced work') : w.workId}
+                        {unsynced ? (isTamil ? 'ஒத்திசைக்கப்படாத பணி' : 'Unsynced work') : shortWorkId(w.workId)}
                       </Text>
                       <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }} numberOfLines={1}>
                         {isTamil ? w.subjectNameTa || w.subjectNameEn : w.subjectNameEn} · {isTamil ? 'வார்டு' : 'Ward'} {w.wardNumber} · {localizedStreet(portal, w.streetName, w.wardNumber, isTamil)}

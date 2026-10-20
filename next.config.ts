@@ -9,7 +9,9 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  compress: true,
   experimental: {
+    optimizePackageImports: ['lucide-react', 'recharts'],
     serverActions: {
       bodySizeLimit: '50mb',
     },

@@ -15,7 +15,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { api, getApiBaseUrl } from '../../src/api/client';
+import { api, isRemotePhotoUrl, resolveProfilePhotoUrl } from '../../src/api/client';
 import { HeaderBell } from '../../src/components/AppHeader';
 import { HeaderBrand } from '../../src/components/HeaderBrand';
 import { useApp } from '../../src/context/AppContext';
@@ -49,20 +49,13 @@ function queueStatusColor(status: string) {
   }
 }
 
-function resolvePhotoUri(raw: string | null | undefined) {
-  if (!raw) return null;
-  if (raw.startsWith('http') || raw.startsWith('file:')) return raw;
-  if (raw.startsWith('/uploads') || raw.startsWith('/api')) return `${getApiBaseUrl()}${raw}`;
-  if (raw.startsWith('/')) return `file://${raw}`;
-  return raw;
-}
 
 export default function DashboardScreen() {
   const { user, palette, isTamil, works, appIcon, loginLogo, setBrandingUrls } = useApp();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  const [fromDate, setFromDate] = useState(todayDdMmYyyy);
+  const [toDate, setToDate] = useState(todayDdMmYyyy);
   const [picker, setPicker] = useState<'from' | 'to' | null>(null);
   const [queue, setQueue] = useState<QueuedWorkEntry[]>([]);
   const [photo, setPhoto] = useState<string | null>(effectivePhotoUrl(user));
@@ -96,6 +89,11 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     (async () => {
+      const remote = effectivePhotoUrl(user);
+      if (isRemotePhotoUrl(remote)) {
+        setPhoto(remote);
+        return;
+      }
       try {
         const FileSystem = await import('expo-file-system/legacy');
         const local = profilePhotoFile();
@@ -107,7 +105,7 @@ export default function DashboardScreen() {
       } catch {
         /* */
       }
-      setPhoto(effectivePhotoUrl(user));
+      setPhoto(remote);
     })();
   }, [user]);
 
@@ -161,7 +159,7 @@ export default function DashboardScreen() {
   const wardList = effectiveWards(user);
   const wardText = wardList.length ? wardList.join(', ') : isTamil ? 'அனைத்தும்' : 'All';
   const isAdmin = (user?.role || '').toLowerCase().includes('admin');
-  const photoUri = resolvePhotoUri(photo);
+  const photoUri = resolveProfilePhotoUrl(photo);
   const heroEnd = palette.isGradient && palette.gradientColors[1] ? palette.gradientColors[1] : palette.secondary;
 
   const onPickDate = (_: unknown, d: Date) => {
@@ -268,7 +266,14 @@ export default function DashboardScreen() {
           <View style={styles.identityHead}>
             <View style={[styles.avatar, { borderColor: palette.primary }]}>
               {photoUri ? (
-                <Image source={{ uri: photoUri }} style={styles.avatarImg} />
+                <Image
+                  source={{ uri: photoUri }}
+                  style={styles.avatarImg}
+                  onError={() => {
+                    if (isRemotePhotoUrl(photo)) setPhoto(profilePhotoFile());
+                    else setPhoto(null);
+                  }}
+                />
               ) : (
                 <LinearGradient colors={[palette.primary, palette.secondary]} style={styles.avatarImg}>
                   <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{(user?.name || 'A').slice(0, 1).toUpperCase()}</Text>
