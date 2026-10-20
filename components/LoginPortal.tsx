@@ -102,40 +102,42 @@ export function LoginPortal({
       </section>
 
       <section className="relative grid h-[100dvh] min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[#F9FBFE] lg:h-full">
-        <div className="relative z-10 flex shrink-0 justify-end px-5 pt-4">
-          <button
-            type="button"
-            onClick={onToggleLanguage}
-            className="inline-flex items-center gap-1.5 text-[12px] font-medium text-slate-500 hover:text-[#1E4B8E]"
-          >
-            <Globe className="h-3.5 w-3.5" />
-            {ta ? 'English' : 'தமிழ்'}
-          </button>
-        </div>
+        <header className="relative z-10 grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-2 px-5 pb-2 pt-4">
+          <div aria-hidden className="min-w-0" />
+          <div className="min-w-0 text-center">
+            <img
+              src={logoSrc}
+              alt="Town Panchayat"
+              fetchPriority="high"
+              decoding="async"
+              className="mx-auto block h-auto w-[148px] max-w-[min(52vw,148px)] object-contain object-top"
+              onError={(e) => {
+                const el = e.currentTarget;
+                if (el.dataset.fallback === '1') return;
+                el.dataset.fallback = '1';
+                el.onerror = null;
+                el.src = '/login-logo.png';
+              }}
+            />
+            <p className="mt-2 text-[14px] text-slate-400">
+              {ta ? 'நிர்வாக முகப்பு உள்நுழைவு' : 'Admin Portal Login'}
+            </p>
+          </div>
+          <div className="flex min-w-0 justify-end">
+            <button
+              type="button"
+              onClick={onToggleLanguage}
+              className="inline-flex items-center gap-1.5 text-[12px] font-medium text-slate-500 hover:text-[#1E4B8E]"
+            >
+              <Globe className="h-3.5 w-3.5" />
+              {ta ? 'English' : 'தமிழ்'}
+            </button>
+          </div>
+        </header>
 
-        <div className="relative z-10 flex min-h-0 items-center justify-center overflow-hidden px-8 sm:px-12">
-          <div className="w-full max-w-[360px]">
-            <div className="text-center">
-              <img
-                src={logoSrc}
-                alt="Town Panchayat"
-                fetchPriority="high"
-                decoding="async"
-                className="mx-auto block h-auto w-[148px] max-w-[52vw] object-contain object-center"
-                onError={(e) => {
-                  const el = e.currentTarget;
-                  if (el.dataset.fallback === '1') return;
-                  el.dataset.fallback = '1';
-                  el.onerror = null;
-                  el.src = '/login-logo.png';
-                }}
-              />
-              <p className="mt-3 text-[14px] text-slate-400">
-                {ta ? 'நிர்வாக முகப்பு உள்நுழைவு' : 'Admin Portal Login'}
-              </p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="mt-5 w-full">
+        <div className="relative z-10 flex min-h-0 flex-col overflow-y-auto overscroll-contain px-8 sm:px-12">
+          <div className="mx-auto flex w-full max-w-[360px] flex-1 flex-col justify-center py-3">
+            <form onSubmit={handleSubmit} className="w-full">
             {error && (
               <p className="mb-4 rounded-xl bg-red-50 px-3 py-2.5 text-center text-[12px] font-medium text-red-700">{error}</p>
             )}

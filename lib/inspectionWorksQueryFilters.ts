@@ -412,7 +412,7 @@ export function buildInspectionWorksViewResponse(
 
   works = sortInspectionWorksNewestFirst(works);
 
-  const limit = options?.limit && options.limit > 0 ? options.limit : options?.lite ? 2000 : 0;
+  const limit = options?.limit && options.limit > 0 ? options.limit : 0;
   if (limit > 0 && works.length > limit) {
     works = works.slice(0, limit);
   }

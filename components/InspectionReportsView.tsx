@@ -1159,6 +1159,7 @@ export default function InspectionReportsView({
   const lastUserActivityRef = React.useRef(Date.now());
   /** Increment to load report rows from API (Apply / Refresh — not dashboard auto-refresh). */
   const [filtersLoadToken, setFiltersLoadToken] = React.useState(0);
+  const refreshRemoteOnFetchRef = React.useRef(false);
   const filterQueryRef = React.useRef<Record<string, string>>({});
 
   // Listen to user interactions to detect active vs idle state
@@ -1443,6 +1444,10 @@ export default function InspectionReportsView({
       else if (p.scopeZoneId) qParams.set('scopeZoneId', p.scopeZoneId);
       else if (p.scopeDistrictId) qParams.set('scopeDistrictId', p.scopeDistrictId);
       qParams.set('lite', '1');
+      if (refreshRemoteOnFetchRef.current) {
+        qParams.set('refreshRemote', '1');
+        refreshRemoteOnFetchRef.current = false;
+      }
 
       const res = await fetch(`/api/inspection-works?${qParams.toString()}`, { cache: 'no-store' });
       if (seq !== fetchSeqRef.current) return;
@@ -1480,7 +1485,8 @@ export default function InspectionReportsView({
     }
   }, [lang]);
 
-  const applyFiltersAndLoad = React.useCallback(() => {
+  const applyFiltersAndLoad = React.useCallback((opts?: { refreshRemote?: boolean }) => {
+    if (opts?.refreshRemote) refreshRemoteOnFetchRef.current = true;
     setFiltersLoadToken((t) => t + 1);
   }, []);
 
@@ -4535,7 +4541,7 @@ export default function InspectionReportsView({
             )}
             <button
               type="button"
-              onClick={() => applyFiltersAndLoad()}
+              onClick={() => applyFiltersAndLoad({ refreshRemote: true })}
               disabled={isRefreshing}
               className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-60 cursor-pointer"
             >

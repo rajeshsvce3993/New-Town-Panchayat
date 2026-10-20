@@ -22,7 +22,7 @@ import { enqueueInspectionWork } from '@/lib/serverQueue';
 import { getUserScopeDetails } from '@/lib/userScopeCache';
 import { logServerProcess } from '@/lib/serverLogger';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
-import { fetchRemoteInspectionWorksRaw } from '@/lib/remoteInspectionWorksCache';
+import { fetchRemoteInspectionWorksRaw, invalidateRemoteInspectionWorksCache } from '@/lib/remoteInspectionWorksCache';
 import { buildInspectionWorksViewResponse } from '@/lib/inspectionWorksQueryFilters';
 import { resolveInspectionFilterMasters } from '@/lib/inspectionWorksFilterMastersServer';
 import {
@@ -67,6 +67,11 @@ export async function GET(req: NextRequest) {
     const username = viewQuery.username;
     const lite = viewQuery.lite;
 
+    if (searchParams.get('refreshRemote') === '1') {
+      invalidateRemoteInspectionWorksCache();
+      cachedWorksList = null;
+    }
+
     const now = Date.now();
     if (cachedWorksList && cachedWorksList.key === cacheKey && (now - cachedWorksList.timestamp) < WORKS_CACHE_TTL_MS) {
       return NextResponse.json(cachedWorksList.data, { headers: CORS_HEADERS });
@@ -79,7 +84,7 @@ export async function GET(req: NextRequest) {
         rawList,
         toInspectionWorksFilterQuery(viewQuery),
         masters,
-        { lite, limit: viewQuery.limit || (lite ? 2000 : 0) }
+        { lite, limit: viewQuery.limit > 0 ? viewQuery.limit : 0 }
       );
       const responsePayload = {
         success: true,
@@ -168,31 +173,35 @@ export async function GET(req: NextRequest) {
           });
         }
 
-        if (fromDate || toDate) {
-          const dateRangeConds: any[] = [];
-          
-          const isoCond: any = {};
-          if (fromDate) isoCond.$gte = `${fromDate}T00:00:00.000Z`;
-          if (toDate) isoCond.$lte = `${toDate}T23:59:59.999Z`;
-          dateRangeConds.push({ submittedAt: isoCond });
-          dateRangeConds.push({ createdAt: isoCond });
-          
-          const strCond: any = {};
-          if (fromDate) strCond.$gte = fromDate;
-          if (toDate) strCond.$lte = toDate;
-          dateRangeConds.push({ date: strCond });
+        // Lite/report responses apply date filters in memory (Asia/Kolkata calendar dates).
+        // Mongo UTC range queries can drop valid rows and cap stats when combined with .limit().
+        if (!lite) {
+          if (fromDate || toDate) {
+            const dateRangeConds: any[] = [];
 
-          andConditions.push({ $or: dateRangeConds });
-        } else if (dateParam) {
-          const targetYmd = extractCalendarDateYMD(dateParam) || dateParam;
-          const dateRangeConds: any[] = [];
-          
-          const isoCond: any = { $gte: `${targetYmd}T00:00:00.000Z`, $lte: `${targetYmd}T23:59:59.999Z` };
-          dateRangeConds.push({ submittedAt: isoCond });
-          dateRangeConds.push({ createdAt: isoCond });
-          dateRangeConds.push({ date: targetYmd });
+            const isoCond: any = {};
+            if (fromDate) isoCond.$gte = `${fromDate}T00:00:00.000Z`;
+            if (toDate) isoCond.$lte = `${toDate}T23:59:59.999Z`;
+            dateRangeConds.push({ submittedAt: isoCond });
+            dateRangeConds.push({ createdAt: isoCond });
 
-          andConditions.push({ $or: dateRangeConds });
+            const strCond: any = {};
+            if (fromDate) strCond.$gte = fromDate;
+            if (toDate) strCond.$lte = toDate;
+            dateRangeConds.push({ date: strCond });
+
+            andConditions.push({ $or: dateRangeConds });
+          } else if (dateParam) {
+            const targetYmd = extractCalendarDateYMD(dateParam) || dateParam;
+            const dateRangeConds: any[] = [];
+
+            const isoCond: any = { $gte: `${targetYmd}T00:00:00.000Z`, $lte: `${targetYmd}T23:59:59.999Z` };
+            dateRangeConds.push({ submittedAt: isoCond });
+            dateRangeConds.push({ createdAt: isoCond });
+            dateRangeConds.push({ date: targetYmd });
+
+            andConditions.push({ $or: dateRangeConds });
+          }
         }
 
         if (andConditions.length > 0) {
@@ -200,7 +209,7 @@ export async function GET(req: NextRequest) {
         }
 
         const limitParam = searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 0;
-        const queryLimit = limitParam > 0 ? limitParam : (lite ? 400 : 0);
+        const queryLimit = limitParam > 0 ? limitParam : 0;
 
         let mongoQuery = db.collection('inspectionWorks')
           .find(query, lite ? {
@@ -236,7 +245,7 @@ export async function GET(req: NextRequest) {
       works = (await getTargetedInspectionWorks({
         username: username || undefined,
         tpId: tpId || undefined,
-        limit: limitParam > 0 ? limitParam : (lite ? 400 : 100000)
+        limit: limitParam > 0 ? limitParam : 100000
       })) || [];
     }
 
@@ -246,7 +255,7 @@ export async function GET(req: NextRequest) {
         works || [],
         toInspectionWorksFilterQuery(viewQuery),
         masters,
-        { lite: true, limit: viewQuery.limit || 2000 }
+        { lite: true, limit: viewQuery.limit > 0 ? viewQuery.limit : 0 }
       );
       const responsePayload = {
         success: true,
