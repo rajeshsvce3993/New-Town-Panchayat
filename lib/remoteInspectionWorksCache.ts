@@ -10,7 +10,7 @@ let inflightRawFetch: Promise<any[] | null> | null = null;
 
 async function downloadRemoteWorksList(): Promise<any[] | null> {
   const base = getRemotePortalApiBase();
-  const url = `${base}/api/inspection-works?lite=1`;
+  const url = `${base}/api/inspection-works?lite=1&limit=100000`;
   const res = await fetch(url, {
     method: 'GET',
     headers: { Accept: 'application/json' },

@@ -285,7 +285,16 @@ function workMatchesAdminField(
 export function workMatchesUserScope(w: any, query: InspectionWorksFilterQuery, ctx: InspectionWorksFilterMasters): boolean {
   const { scopeTpId, scopeZoneId, scopeDistrictId } = query;
   if (scopeTpId) {
-    if ((ctx.townPanchayats || []).length > 0 && !workMatchesTp(w, scopeTpId, ctx)) return false;
+    if ((ctx.townPanchayats || []).length > 0) {
+      if (workMatchesTp(w, scopeTpId, ctx)) return true;
+      const scopedTp = (ctx.townPanchayats || []).find(
+        (t: any) =>
+          String(t.id || '').toLowerCase() === String(scopeTpId).toLowerCase() ||
+          String(t.nameEn || '').trim().toLowerCase() === String(scopeTpId).toLowerCase()
+      );
+      if (scopedTp?.nameEn && workMatchesTp(w, scopedTp.nameEn, ctx)) return true;
+      return false;
+    }
   } else if (scopeZoneId) {
     const uZone = String(scopeZoneId).toLowerCase();
     const zones = ctx.zones || [];
@@ -303,16 +312,38 @@ export function workMatchesUserScope(w: any, query: InspectionWorksFilterQuery, 
   return true;
 }
 
+function bumpCount(counts: Record<string, number>, key: string, n = 1) {
+  const k = String(key || '').trim();
+  if (!k) return;
+  counts[k] = (counts[k] || 0) + n;
+}
+
 export function computeCategoryCounts(works: any[], categories: any[] = []): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const w of works) {
-    let key = String(w.categoryId || '').trim();
-    if (!key) {
-      const wName = String(w.categoryNameEn || '').trim().toLowerCase();
-      const cat = categories.find((c: any) => String(c.nameEn || '').trim().toLowerCase() === wName);
-      key = cat?.id ? String(cat.id) : wName || '_unknown';
+    let catId = String(w.categoryId || '').trim();
+    const wName = String(w.categoryNameEn || '').trim().toLowerCase();
+    const cat = categories.find((c: any) => {
+      const cId = String(c.id || '').trim();
+      const cCode = String(c.code || '').trim().toLowerCase();
+      const cName = String(c.nameEn || '').trim().toLowerCase();
+      return (
+        (catId && (cId === catId || cCode === catId.toLowerCase())) ||
+        (wName && cName === wName)
+      );
+    });
+    if (cat) {
+      catId = String(cat.id || catId).trim();
+      bumpCount(counts, catId);
+      if (cat.code) bumpCount(counts, String(cat.code));
+      if (cat.nameEn) bumpCount(counts, String(cat.nameEn).trim().toLowerCase());
+    } else if (catId) {
+      bumpCount(counts, catId);
+    } else if (wName) {
+      bumpCount(counts, wName);
+    } else {
+      bumpCount(counts, '_unknown');
     }
-    counts[key] = (counts[key] || 0) + 1;
   }
   return counts;
 }

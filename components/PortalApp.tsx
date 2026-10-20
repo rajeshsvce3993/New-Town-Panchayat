@@ -41,6 +41,7 @@ import { Language, translations } from '@/components/translations';
 import { ThemeType, themesConfig, CustomThemeColors, defaultCustomThemeColors, getThemeSidebarGradient } from '@/lib/themeConfig';
 import { getUserEffectiveAllowedPages } from '@/lib/pageAccessControl';
 import { LoginPortal } from '@/components/LoginPortal';
+import { normalizePortalSessionUser } from '@/lib/userScope';
 import { PortalSplash } from '@/components/PortalSplash';
 import {
   loadPortalBootstrap,
@@ -120,7 +121,9 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     if (typeof window === 'undefined') return false;
     return Boolean(localStorage.getItem('ems_current_user'));
   });
-  const [currentUser, setCurrentUser] = useState<any>(initialUser ?? null);
+  const [currentUser, setCurrentUser] = useState<any>(
+    initialUser ? normalizePortalSessionUser(initialUser) : null
+  );
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -347,8 +350,9 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
       const savedUser = localStorage.getItem('ems_current_user');
       if (savedUser) {
         try {
-          const parsed = JSON.parse(savedUser);
+          const parsed = normalizePortalSessionUser(JSON.parse(savedUser));
           setCurrentUser(parsed);
+          localStorage.setItem('ems_current_user', JSON.stringify(parsed));
           hasSession = true;
           if (parsed.isEmployee) {
             setActiveTab('employeeManagement');

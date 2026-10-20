@@ -39,6 +39,13 @@ import { Smartphone } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Language, translations } from './translations';
 import { ThemeType, themesConfig } from '@/lib/themeConfig';
+import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
+import {
+  isFallbackInspectionWork,
+  workMatchesDistrict,
+  workMatchesTp,
+  workMatchesZone,
+} from '@/lib/inspectionWorksQueryFilters';
 
 const InspectionReportsView = dynamic(
   () => import('./InspectionReportsView'),
@@ -86,6 +93,8 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     moduleSchemas = []
   } = state || {};
 
+  const hodLike = isHodLikeUser(currentUser);
+
   const getTPZoneId = (tp: any) => {
     if (!tp) return '';
     if (tp.zoneId) return tp.zoneId;
@@ -97,7 +106,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   };
 
   const allIssues = state?.pendingIssues || [];
-  const scopedIssues = currentUser?.scopeType === 'HOD'
+  const scopedIssues = hodLike
     ? allIssues
     : currentUser?.scopeType === 'Zone'
       ? allIssues.filter((i: any) => {
@@ -415,7 +424,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   const [activePreviewFile, setActivePreviewFile] = useState<any | null>(null);
 
   // Define permissible abstract table view modes based on user scope role
-  const permissibleModes = currentUser.scopeType === 'HOD'
+  const permissibleModes = hodLike
     ? ['category', 'zone', 'district']
     : currentUser.scopeType === 'Zone'
       ? ['category', 'district']
@@ -931,7 +940,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
 
   // Scoped inspection calculations for dashboard card
   const userZoneId = useMemo(() => {
-    if (!currentUser) return null;
+    if (!currentUser || hodLike) return null;
     if (currentUser.scopeType === 'Zone') {
       return currentUser.scopeId;
     }
@@ -944,25 +953,25 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
       }
     }
     return null;
-  }, [currentUser, townPanchayats, districts]);
+  }, [currentUser, hodLike, townPanchayats, districts]);
 
   const userDistrictId = useMemo(() => {
-    if (!currentUser) return null;
+    if (!currentUser || hodLike) return null;
     if (currentUser.scopeType === 'TownPanchayat' || currentUser.isEmployee) {
       const tpId = currentUser.tpId || currentUser.scopeId;
       const tpObj = (townPanchayats || []).find((t: any) => t.id === tpId);
       return tpObj?.districtId || null;
     }
     return null;
-  }, [currentUser, townPanchayats]);
+  }, [currentUser, hodLike, townPanchayats]);
 
   const userTpId = useMemo(() => {
-    if (!currentUser) return null;
+    if (!currentUser || hodLike) return null;
     if (currentUser.scopeType === 'TownPanchayat' || currentUser.isEmployee) {
       return currentUser.tpId || currentUser.scopeId;
     }
     return null;
-  }, [currentUser]);
+  }, [currentUser, hodLike]);
 
   const dashboardAbstractData = useMemo(() => {
     const subjectsMap: Record<string, {
@@ -975,11 +984,19 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     const stats = Array.isArray(state.inspectionWorkStats) ? state.inspectionWorkStats : [];
     const works = Array.isArray(state.inspectionWorks) ? state.inspectionWorks : [];
     const rows = stats.length > 0 ? stats : works;
+    const filterMasters = { districts, zones, townPanchayats };
+
+    const rowMatchesScope = (row: any) => {
+      if (hodLike) return true;
+      if (userTpId && !workMatchesTp(row, userTpId, filterMasters)) return false;
+      if (userDistrictId && !workMatchesDistrict(row, userDistrictId, filterMasters)) return false;
+      if (userZoneId && !workMatchesZone(row, userZoneId, filterMasters)) return false;
+      return true;
+    };
 
     rows.forEach((row: any) => {
-      if (userZoneId && row.zoneId && row.zoneId !== userZoneId) return;
-      if (userDistrictId && row.districtId && row.districtId !== userDistrictId) return;
-      if (userTpId && row.tpId && row.tpId !== userTpId) return;
+      if (isFallbackInspectionWork(row)) return;
+      if (!rowMatchesScope(row)) return;
       const sId = row.subjectId || 'unknown';
       if (!subjectsMap[sId]) {
         subjectsMap[sId] = {
@@ -993,7 +1010,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     });
 
     return Object.values(subjectsMap);
-  }, [state.inspectionWorkStats, state.inspectionWorks, userZoneId, userDistrictId, userTpId]);
+  }, [state.inspectionWorkStats, state.inspectionWorks, userZoneId, userDistrictId, userTpId, hodLike, districts, zones, townPanchayats]);
 
   const handleDownloadInspectionExcel = () => {
     let rowsHtml = '';
@@ -1110,7 +1127,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
 
   // Filter employees based on current user scope for counters
   const getScopedData = () => {
-    if (currentUser.scopeType === 'HOD') {
+    if (hodLike) {
       return employees;
     } else if (currentUser.scopeType === 'Zone') {
       return employees.filter((e: any) => e.zoneId === currentUser.scopeId);
@@ -1139,7 +1156,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   const isTransferPostingEnabled = state?.settings?.enableTransferPosting !== false;
 
   const isAdminRole = currentUser.roleId === 'admin' || currentUser.roleId === 'dtp_admin';
-  const isZonalUser = currentUser.scopeType === 'Zone' || currentUser.roleId === 'ad';
+  const isZonalUser = isZonalScopedUser(currentUser);
   const isTPUser = currentUser.scopeType === 'TownPanchayat' || currentUser.roleId === 'eo';
 
   // Standard Issue Counts for all user roles
@@ -1224,7 +1241,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
       },
       ...standardIssueCards
     ];
-  } else if (isAdminRole) {
+  } else if (isAdminRole || hodLike) {
     cards = [
       {
         id: 'zones',
@@ -1267,19 +1284,19 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   };
 
   // Allowed scopes based on user role
-  const allowedZones = currentUser.scopeType === 'HOD' 
-    ? zones 
-    : currentUser.scopeType === 'Zone' 
+  const allowedZones = hodLike
+    ? zones
+    : currentUser.scopeType === 'Zone'
       ? zones.filter((z: any) => z.id === currentUser.scopeId)
       : zones.filter((z: any) => z.id === getTPZoneId(townPanchayats.find((tp: any) => tp.id === currentUser.scopeId)));
 
-  const allowedDistricts = currentUser.scopeType === 'HOD'
+  const allowedDistricts = hodLike
     ? districts
     : currentUser.scopeType === 'Zone'
       ? districts.filter((d: any) => d.zoneId === currentUser.scopeId)
       : districts.filter((d: any) => d.id === (townPanchayats.find((tp: any) => tp.id === currentUser.scopeId)?.districtId));
 
-  const allowedTPs = currentUser.scopeType === 'HOD'
+  const allowedTPs = hodLike
     ? townPanchayats
     : currentUser.scopeType === 'Zone'
       ? townPanchayats.filter((tp: any) => getTPZoneId(tp) === currentUser.scopeId)
@@ -1287,7 +1304,6 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
 
   // Helper lists for dropdown filters
   const availableDistricts = allowedDistricts.filter((d: any) => {
-    if (currentUser.scopeType === 'HOD' && !filterZoneId) return false;
     if (filterZoneId && d.zoneId !== filterZoneId) return false;
     return true;
   });
@@ -1564,7 +1580,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               }}
               className="w-full text-xs p-2.5 rounded-xl border border-gray-200 outline-none bg-white font-medium"
             >
-              {currentUser.scopeType === 'HOD' && (
+              {hodLike && (
                 <option value="">{lang === 'ta' ? 'அனைத்து மண்டலங்கள்' : 'All Zones'}</option>
               )}
               {allowedZones.map((z: any) => (

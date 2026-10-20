@@ -17,6 +17,9 @@ import {
   findExistingInspectionWork,
   getTargetedInspectionWorks,
   getActiveMongoDb,
+  getCollectionWithAliases,
+  fetchAllLiteInspectionWorksFromMongo,
+  LITE_INSPECTION_WORKS_PROJECTION,
 } from '@/lib/storage';
 import { enqueueInspectionWork } from '@/lib/serverQueue';
 import { getUserScopeDetails } from '@/lib/userScopeCache';
@@ -77,11 +80,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(cachedWorksList.data, { headers: CORS_HEADERS });
     }
 
-    const rawList = await fetchRemoteInspectionWorksRaw(req.nextUrl.origin);
+    let rawList: any[] | null = null;
+    if (lite) {
+      rawList = await fetchAllLiteInspectionWorksFromMongo();
+    }
+    if (!rawList?.length) {
+      rawList = await fetchRemoteInspectionWorksRaw(req.nextUrl.origin);
+    }
     if (rawList) {
       const masters = await resolveInspectionFilterMasters(req.nextUrl.origin);
+      const enrichedList = normalizeAndEnrichWorks(rawList, masters);
       const view = buildInspectionWorksViewResponse(
-        rawList,
+        enrichedList,
         toInspectionWorksFilterQuery(viewQuery),
         masters,
         { lite, limit: viewQuery.limit > 0 ? viewQuery.limit : 0 }
@@ -212,17 +222,7 @@ export async function GET(req: NextRequest) {
         const queryLimit = limitParam > 0 ? limitParam : 0;
 
         let mongoQuery = db.collection('inspectionWorks')
-          .find(query, lite ? {
-            projection: {
-              fieldsData: 0,
-              photos: 0,
-              documents: 0,
-              photoBase64: 0,
-              locationImage: 0,
-              staticMapUrl: 0,
-              mapImage: 0,
-            },
-          } : undefined)
+          .find(query, lite ? { projection: LITE_INSPECTION_WORKS_PROJECTION } : undefined)
           .sort({ submittedAt: -1, createdAt: -1 });
 
         if (queryLimit > 0) {
@@ -251,8 +251,9 @@ export async function GET(req: NextRequest) {
 
     if (lite) {
       const masters = await resolveInspectionFilterMasters(req.nextUrl.origin);
+      const enrichedWorks = normalizeAndEnrichWorks(works || [], masters);
       const view = buildInspectionWorksViewResponse(
-        works || [],
+        enrichedWorks,
         toInspectionWorksFilterQuery(viewQuery),
         masters,
         { lite: true, limit: viewQuery.limit > 0 ? viewQuery.limit : 0 }

@@ -55,7 +55,8 @@ import {
   exportMultiSheetExcel, 
   sanitizeSheetName 
 } from '@/lib/inspectionReportExport';
-import { extractWorksFromInspectionApiPayload } from '@/lib/inspectionWorksQueryFilters';
+import { extractWorksFromInspectionApiPayload, isFallbackInspectionWork } from '@/lib/inspectionWorksQueryFilters';
+import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
 import MapViewReport from './MapViewReport';
 import html2canvas from 'html2canvas-pro';
 
@@ -1216,29 +1217,13 @@ export default function InspectionReportsView({
   }, [fetchedWorks, state.inspectionWorks, state.inspectionSubjects, state.inspectionCategories, state.inspectionFields]);
 
   // Helper to determine if the logged in user is Admin or Director (full unrestricted state-wide access)
-  const isAdminOrDirector = useMemo(() => {
-    if (!currentUser) return false;
-    const r = String(currentUser.roleId || currentUser.role || '').toLowerCase();
-    const u = String(currentUser.username || '').toLowerCase();
-    return (
-      r === 'admin' ||
-      r === 'superadmin' ||
-      r === 'director' ||
-      r === 'directorate' ||
-      r === 'state' ||
-      r.includes('admin') ||
-      r.includes('director') ||
-      u === 'admin' ||
-      u === 'director'
-    );
-  }, [currentUser]);
+  const isAdminOrDirector = useMemo(() => isHodLikeUser(currentUser), [currentUser]);
 
   // Restricted scope helper values - strict scoping for Town Panchayat and Zonal roles
   const userTpId = useMemo(() => {
     if (isAdminOrDirector || !currentUser) return null;
     const role = String(currentUser.roleId || currentUser.role || '').toLowerCase();
-    const isZonalRole = currentUser.scopeType === 'Zone' || role === 'zonal' || role.includes('zone') || role === 'ad';
-    if (isZonalRole) return null;
+    if (isZonalScopedUser(currentUser)) return null;
     const uName = String(currentUser.username || '').toLowerCase();
 
     // Direct check for Arani EO or username (matching any login with username eo/arani/tp_csv)
@@ -1310,8 +1295,7 @@ export default function InspectionReportsView({
   const userDistrictId = useMemo(() => {
     if (isAdminOrDirector || !currentUser) return null;
     const role = String(currentUser.roleId || currentUser.role || '').toLowerCase();
-    const isZonalRole = currentUser.scopeType === 'Zone' || role === 'zonal' || role.includes('zone') || role === 'ad';
-    if (isZonalRole) return null;
+    if (isZonalScopedUser(currentUser)) return null;
     if (userTpId) {
       const tpObj = (state.townPanchayats || []).find((t: any) => 
         String(t.id).toLowerCase() === String(userTpId).toLowerCase() || 
@@ -1334,11 +1318,8 @@ export default function InspectionReportsView({
         );
         if (thiruvallurDist) return thiruvallurDist.id;
       }
-      if ((state.districts || []).length > 0) {
-        return state.districts[0].id;
-      }
     }
-    if (!isZonalRole && currentUser.districtId && currentUser.districtId !== 'all') {
+    if (!isZonalScopedUser(currentUser) && currentUser.districtId && currentUser.districtId !== 'all') {
       return currentUser.districtId;
     }
     return null;
@@ -1346,9 +1327,7 @@ export default function InspectionReportsView({
 
   const userZoneId = useMemo(() => {
     if (isAdminOrDirector || !currentUser) return null;
-    const role = String(currentUser.roleId || currentUser.role || '').toLowerCase();
-    const isZonalRole = currentUser.scopeType === 'Zone' || role === 'zonal' || role.includes('zone') || role === 'ad';
-    if (isZonalRole) {
+    if (isZonalScopedUser(currentUser)) {
       const explicitZone = currentUser.zoneId || (currentUser.scopeType === 'Zone' ? currentUser.scopeId : null);
       if (explicitZone && explicitZone !== 'all') {
         const matched = (state.zones || []).find((z: any) => 
@@ -1390,12 +1369,6 @@ export default function InspectionReportsView({
         );
         if (distObj?.zoneId) return distObj.zoneId;
       }
-      const thiruvallurZone = (state.zones || []).find((z: any) => 
-        String(z.nameEn || '').toLowerCase().includes('thiruvallur') ||
-        String(z.nameEn || '').toLowerCase().includes('chennai')
-      );
-      if (thiruvallurZone) return thiruvallurZone.id;
-      if ((state.zones || []).length > 0) return state.zones[0].id;
     }
     if (currentUser.zoneId && currentUser.zoneId !== 'all') return currentUser.zoneId;
     return null;
@@ -1440,9 +1413,11 @@ export default function InspectionReportsView({
       if (p.searchQuery?.trim()) qParams.set('q', p.searchQuery.trim());
       if (p.adminFilterFieldId) qParams.set('adminFieldId', p.adminFilterFieldId);
       if (p.adminFilterValue) qParams.set('adminFieldValue', p.adminFilterValue);
-      if (p.scopeTpId) qParams.set('scopeTpId', p.scopeTpId);
-      else if (p.scopeZoneId) qParams.set('scopeZoneId', p.scopeZoneId);
-      else if (p.scopeDistrictId) qParams.set('scopeDistrictId', p.scopeDistrictId);
+      if (!isAdminOrDirector) {
+        if (p.scopeTpId) qParams.set('scopeTpId', p.scopeTpId);
+        else if (p.scopeZoneId) qParams.set('scopeZoneId', p.scopeZoneId);
+        else if (p.scopeDistrictId) qParams.set('scopeDistrictId', p.scopeDistrictId);
+      }
       qParams.set('lite', '1');
       if (refreshRemoteOnFetchRef.current) {
         qParams.set('refreshRemote', '1');
@@ -1483,7 +1458,7 @@ export default function InspectionReportsView({
         isFetchingRef.current = false;
       }
     }
-  }, [lang]);
+  }, [lang, isAdminOrDirector]);
 
   const applyFiltersAndLoad = React.useCallback((opts?: { refreshRemote?: boolean }) => {
     if (opts?.refreshRemote) refreshRemoteOnFetchRef.current = true;
@@ -1538,23 +1513,6 @@ export default function InspectionReportsView({
     state.zones?.length,
     applyFiltersAndLoad,
   ]);
-
-  const resolveCategoryCountFromApi = React.useCallback(
-    (cat: any) => {
-      const id = String(cat.id || '').trim();
-      const name = String(cat.nameEn || '').trim().toLowerCase();
-      const code = String(cat.code || '').trim().toLowerCase();
-      if (id && apiCategoryCounts[id] != null) return apiCategoryCounts[id];
-      if (code && apiCategoryCounts[code] != null) return apiCategoryCounts[code];
-      if (name && apiCategoryCounts[name] != null) return apiCategoryCounts[name];
-      return Object.entries(apiCategoryCounts).reduce((sum, [key, n]) => {
-        const k = key.toLowerCase();
-        if (k === id.toLowerCase() || k === name || k === code) return sum + n;
-        return sum;
-      }, 0);
-    },
-    [apiCategoryCounts]
-  );
 
   // Reset pages to 1 when filters change
   useEffect(() => {
@@ -1620,6 +1578,32 @@ export default function InspectionReportsView({
 
     return sorted;
   }, [rawWorks, detailedSortField, detailedSortDirection, lang]);
+
+  const resolveCategoryCountFromApi = React.useCallback(
+    (cat: any) => {
+      const id = String(cat.id || '').trim();
+      const name = String(cat.nameEn || '').trim().toLowerCase();
+      const code = String(cat.code || '').trim().toLowerCase();
+      if (id && apiCategoryCounts[id] != null) return apiCategoryCounts[id];
+      if (code && apiCategoryCounts[code] != null) return apiCategoryCounts[code];
+      if (name && apiCategoryCounts[name] != null) return apiCategoryCounts[name];
+      const fromApi = Object.entries(apiCategoryCounts).reduce((sum, [key, n]) => {
+        const k = key.toLowerCase();
+        if (k === id.toLowerCase() || k === name || k === code) return sum + n;
+        return sum;
+      }, 0);
+      if (fromApi > 0) return fromApi;
+      if (selectedCategoryId === 'all') {
+        return filteredWorks.filter((w: any) => {
+          const wCat = String(w.categoryId || '').trim().toLowerCase();
+          const wName = String(w.categoryNameEn || '').trim().toLowerCase();
+          return wCat === id.toLowerCase() || wCat === code || wName === name;
+        }).length;
+      }
+      return fromApi;
+    },
+    [apiCategoryCounts, filteredWorks, selectedCategoryId]
+  );
 
   // Paginated detailed works
   const paginatedDetailedWorks = useMemo(() => {
@@ -2044,19 +2028,17 @@ export default function InspectionReportsView({
     }> = {};
 
     filteredWorks.forEach((work) => {
+      if (isFallbackInspectionWork(work)) return;
+
       const sId = work.subjectId || 'unknown';
       const subj = (state.inspectionSubjects || []).find((s: any) => s.id === sId || s.code === sId);
-      const sNameEn = (work.subjectNameEn && work.subjectNameEn !== 'General Inspection') ? work.subjectNameEn : (subj?.nameEn || '');
-      const sNameTa = (work.subjectNameTa && work.subjectNameTa !== 'பொது ஆய்வு') ? work.subjectNameTa : (subj?.nameTa || sNameEn);
-
-      if (!sNameEn || sNameEn === 'General Inspection' || sNameEn.toLowerCase().includes('fallback')) return;
+      const sNameEn = work.subjectNameEn || subj?.nameEn || sId;
+      const sNameTa = work.subjectNameTa || subj?.nameTa || sNameEn;
 
       const cId = work.categoryId || 'unknown';
       const cat = (state.inspectionCategories || []).find((c: any) => c.id === cId || c.code === cId);
-      const cNameEn = (work.categoryNameEn && work.categoryNameEn !== 'General Category' && work.categoryNameEn !== 'Field Check') ? work.categoryNameEn : (cat?.nameEn || '');
-      const cNameTa = (work.categoryNameTa && work.categoryNameTa !== 'பொது வகை' && work.categoryNameTa !== 'கள ஆய்வு') ? work.categoryNameTa : (cat?.nameTa || cNameEn);
-
-      if (!cNameEn || cNameEn === 'Field Check' || cNameEn === 'General Category' || cNameEn.toLowerCase().includes('fallback')) return;
+      const cNameEn = work.categoryNameEn || cat?.nameEn || cId;
+      const cNameTa = work.categoryNameTa || cat?.nameTa || cNameEn;
 
       if (!subjectsMap[sId]) {
         subjectsMap[sId] = {
@@ -2108,6 +2090,8 @@ export default function InspectionReportsView({
     }> = {};
 
     filteredWorks.forEach((w) => {
+      if (isFallbackInspectionWork(w)) return;
+
       const sId = w.subjectId || 'unknown';
       const cId = w.categoryId || 'unknown';
       const key = `${sId}_${cId}`;
@@ -2115,12 +2099,10 @@ export default function InspectionReportsView({
       const subj = (state.inspectionSubjects || []).find((s: any) => s.id === sId || s.code === sId);
       const cat = (state.inspectionCategories || []).find((c: any) => c.id === cId || c.code === cId);
 
-      const sNameEn = (w.subjectNameEn && w.subjectNameEn !== 'General Inspection') ? w.subjectNameEn : (subj?.nameEn || '');
-      const sNameTa = (w.subjectNameTa && w.subjectNameTa !== 'பொது ஆய்வு') ? w.subjectNameTa : (subj?.nameTa || sNameEn);
-      const cNameEn = (w.categoryNameEn && w.categoryNameEn !== 'General Category' && w.categoryNameEn !== 'Field Check') ? w.categoryNameEn : (cat?.nameEn || '');
-      const cNameTa = (w.categoryNameTa && w.categoryNameTa !== 'பொது வகை' && w.categoryNameTa !== 'கள ஆய்வு') ? w.categoryNameTa : (cat?.nameTa || cNameEn);
-
-      if (!sNameEn || !cNameEn || sNameEn === 'General Inspection' || cNameEn === 'Field Check' || cNameEn === 'General Category' || sNameEn.toLowerCase().includes('fallback') || cNameEn.toLowerCase().includes('fallback')) return;
+      const sNameEn = w.subjectNameEn || subj?.nameEn || sId;
+      const sNameTa = w.subjectNameTa || subj?.nameTa || sNameEn;
+      const cNameEn = w.categoryNameEn || cat?.nameEn || cId;
+      const cNameTa = w.categoryNameTa || cat?.nameTa || cNameEn;
 
       if (!groups[key]) {
         groups[key] = {
@@ -2357,8 +2339,17 @@ export default function InspectionReportsView({
   }, [groupingStyle, sortedSubjectWiseData, sortedUserWiseData, sortedLocationWiseData]);
 
   const activeRowsTotal = useMemo(() => {
-    return activeRows.reduce((sum, r: any) => sum + (r.totalInspections || 0), 0);
-  }, [activeRows]);
+    const rowSum = activeRows.reduce((sum, r: any) => sum + (r.totalInspections || 0), 0);
+    if (
+      selectedCategoryId === 'all' &&
+      apiTotalWithoutCategory > 0 &&
+      rowSum > 0 &&
+      rowSum < apiTotalWithoutCategory
+    ) {
+      return apiTotalWithoutCategory;
+    }
+    return rowSum || apiTotalWithoutCategory || 0;
+  }, [activeRows, selectedCategoryId, apiTotalWithoutCategory]);
 
   // Paginated Rows (50 items per page)
   const paginatedRows = useMemo(() => {

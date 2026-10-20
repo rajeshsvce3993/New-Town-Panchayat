@@ -7,6 +7,7 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, List
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { OFFICIAL_PF_INTEREST_RATES } from './pfInterestRatesData';
+import { isFallbackInspectionWork } from '@/lib/inspectionWorksQueryFilters';
 
 // Storage paths for local fallback
 const STORAGE_DIR = path.join(process.cwd(), 'data');
@@ -1952,10 +1953,18 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
     const resolvedCategoryNameEn = cat ? (cat.nameEn || cat.name) : (w.categoryNameEn || '');
     const resolvedCategoryNameTa = cat ? (cat.nameTa || cat.nameEn) : (w.categoryNameTa || resolvedCategoryNameEn || '');
 
+    const resolvedTpId = String(w.tpId || w.townPanchayatId || tp?.id || '').trim();
+    const resolvedDistrictId = String(w.districtId || tp?.districtId || dist?.id || '').trim();
+    const resolvedZoneId = String(w.zoneId || dist?.zoneId || '').trim();
+
     return {
       ...w,
       id: w.id || w.workId || '',
       workId: w.workId || w.id || '',
+      tpId: resolvedTpId || w.tpId,
+      townPanchayatId: resolvedTpId || w.townPanchayatId,
+      districtId: resolvedDistrictId || w.districtId,
+      zoneId: resolvedZoneId || w.zoneId,
       tpNameEn: w.tpNameEn || tp?.nameEn || 'Thiruporur TP',
       tpNameTa: w.tpNameTa || tp?.nameTa || 'திருப்போரூர் பேரூராட்சி',
       districtNameEn: w.districtNameEn || dist?.nameEn || 'Chengalpattu Dist',
@@ -1973,38 +1982,115 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
   });
 }
 
+export const LITE_INSPECTION_WORKS_PROJECTION = {
+  fieldsData: 0,
+  photos: 0,
+  documents: 0,
+  photoBase64: 0,
+  locationImage: 0,
+  staticMapUrl: 0,
+  mapImage: 0,
+};
+
+const INSPECTION_WORKS_COLLECTION_ALIASES = [
+  'inspectionWorks',
+  'inspection_works',
+  'inspections',
+  'inspectionworks',
+  'works',
+];
+
+/** Full lite rows for dashboard/reports (no row cap). Merges alias collections and dedupes by workId. */
+export async function fetchAllLiteInspectionWorksFromMongo(): Promise<any[] | null> {
+  try {
+    const client = await getMongoClient();
+    if (!client) return null;
+    const db = await getActiveMongoDb(client);
+    const primary = await getCollectionWithAliases(db, 'inspectionWorks');
+    const namesToQuery = new Set<string>([primary.collectionName, ...INSPECTION_WORKS_COLLECTION_ALIASES]);
+
+    const merged: any[] = [];
+    const seen = new Set<string>();
+    for (const name of namesToQuery) {
+      let items: any[] = [];
+      try {
+        items = await db
+          .collection(name)
+          .find({}, { projection: LITE_INSPECTION_WORKS_PROJECTION })
+          .sort({ submittedAt: -1, createdAt: -1 })
+          .toArray();
+      } catch {
+        continue;
+      }
+      for (const item of items) {
+        const dedupeKey = String(item.workId || item.id || item._id || '').trim();
+        if (!dedupeKey || seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        const { _id, ...rest } = item;
+        merged.push({ id: item.id || item.workId || (_id ? _id.toString() : ''), ...rest });
+      }
+    }
+    if (!merged.length) return null;
+    return merged;
+  } catch (err) {
+    console.warn('[storage] Mongo full inspection works list read failed:', err);
+    return null;
+  }
+}
+
+function aggregateEnrichedWorksForDashboardStats(works: any[]): any[] {
+  const groups = new Map<string, any>();
+  for (const w of works) {
+    if (isFallbackInspectionWork(w)) continue;
+    const subjectId = String(w.subjectId || 'unknown').trim();
+    const zoneId = String(w.zoneId || '').trim();
+    const districtId = String(w.districtId || '').trim();
+    const tpId = String(w.tpId || w.townPanchayatId || '').trim();
+    const key = `${subjectId}|${zoneId}|${districtId}|${tpId}`;
+    let row = groups.get(key);
+    if (!row) {
+      row = {
+        subjectId,
+        subjectNameEn: w.subjectNameEn || 'General Inspection',
+        subjectNameTa: w.subjectNameTa || 'பொது ஆய்வு',
+        zoneId,
+        districtId,
+        tpId,
+        count: 0,
+      };
+      groups.set(key, row);
+    }
+    row.count += 1;
+  }
+  return Array.from(groups.values());
+}
+
 /** Counts only — never pulls photo/document payloads from inspectionWorks. */
 export async function getInspectionWorksDashboardStats(): Promise<any[]> {
   try {
-    const client = await getMongoClient();
-    if (client) {
-      const db = await getActiveMongoDb(client);
-      const col = await getCollectionWithAliases(db, 'inspectionWorks');
-      const rows = await col.aggregate([
-        {
-          $group: {
-            _id: {
-              subjectId: { $ifNull: ['$subjectId', 'unknown'] },
-              subjectNameEn: { $ifNull: ['$subjectNameEn', 'General Inspection'] },
-              subjectNameTa: { $ifNull: ['$subjectNameTa', 'பொது ஆய்வு'] },
-              zoneId: { $ifNull: ['$zoneId', ''] },
-              districtId: { $ifNull: ['$districtId', ''] },
-              tpId: { $ifNull: ['$tpId', ''] },
-            },
-            count: { $sum: 1 },
-          },
-        },
-      ], { maxTimeMS: 8000 }).toArray();
-      return rows.map((r: any) => ({
-        subjectId: r._id?.subjectId,
-        subjectNameEn: r._id?.subjectNameEn,
-        subjectNameTa: r._id?.subjectNameTa,
-        zoneId: r._id?.zoneId,
-        districtId: r._id?.districtId,
-        tpId: r._id?.tpId,
-        count: r.count || 0,
-      }));
+    let rawList: any[] | null = await fetchAllLiteInspectionWorksFromMongo();
+    if (!rawList?.length) {
+      const { fetchRemoteInspectionWorksRaw } = await import('@/lib/remoteInspectionWorksCache');
+      rawList = await fetchRemoteInspectionWorksRaw();
     }
+    if (!rawList?.length) return [];
+
+    const [districts, townPanchayats, zones, inspectionSubjects, inspectionCategories] = await Promise.all([
+      getCollectionData('districts'),
+      getCollectionData('townPanchayats'),
+      getCollectionData('zones'),
+      getCollectionData('inspectionSubjects'),
+      getCollectionData('inspectionCategories'),
+    ]);
+    const masters = {
+      districts: districts || [],
+      townPanchayats: townPanchayats || [],
+      zones: zones || [],
+      inspectionSubjects: inspectionSubjects || [],
+      inspectionCategories: inspectionCategories || [],
+    };
+    const enriched = normalizeAndEnrichWorks(rawList, masters);
+    return aggregateEnrichedWorksForDashboardStats(enriched);
   } catch (e: any) {
     console.warn('Inspection works stats skipped:', e?.message || e);
   }

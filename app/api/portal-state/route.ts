@@ -12,6 +12,7 @@ import {
 } from '@/lib/storage';
 import { getScopeVersionMeta } from '@/lib/userScopeCache';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
+import { isHodLikeUser } from '@/lib/userScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -177,9 +178,10 @@ export async function GET(req: NextRequest) {
       delete matchedUser.password;
       delete matchedUser.passwordHash;
 
-      const isHOD = matchedUser.scopeType === 'HOD' || 
-                    matchedUser.role === 'Super Admin' || 
-                    ['admin', 'dtpadmin', 'director'].includes(requestedUser);
+      const isHOD =
+        isHodLikeUser(matchedUser) ||
+        matchedUser.role === 'Super Admin' ||
+        ['admin', 'dtpadmin', 'director'].includes(String(requestedUser || '').toLowerCase());
 
       if (!isHOD) {
         // Resolve user's Town Panchayat

@@ -4,6 +4,7 @@ import { getUserScopeDetails } from '@/lib/userScopeCache';
 import { recordUserLogin } from '@/lib/userActivity';
 import { logServerProcess } from '@/lib/serverLogger';
 import { postRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
+import { isHodLikeUser } from '@/lib/userScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -217,6 +218,11 @@ export async function POST(req: NextRequest) {
       isInspectionUser: sourceCollection === 'inspectionUsers' || userDoc.isInspectionUser === true,
       customPagePermissions: userDoc.customPagePermissions || null,
     };
+
+    if (isHodLikeUser(returnUser)) {
+      returnUser.scopeType = 'HOD';
+      returnUser.scopeId = 'all';
+    }
 
     void recordUserLogin(returnUser, req).catch((err) => {
       console.error('[LOGIN] Error in recordUserLogin:', err);

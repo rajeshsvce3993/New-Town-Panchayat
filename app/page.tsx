@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { LoginPortal } from '@/components/LoginPortal';
+import { normalizePortalSessionUser } from '@/lib/userScope';
 import { PortalSplash, prefetchLoginDecor } from '@/components/PortalSplash';
 
 type Language = 'en' | 'ta';
@@ -16,7 +17,7 @@ const PortalApp = dynamic(() => import('@/components/PortalApp'), {
 function readSavedUser() {
   try {
     const saved = localStorage.getItem('ems_current_user');
-    return saved ? JSON.parse(saved) : null;
+    return saved ? normalizePortalSessionUser(JSON.parse(saved)) : null;
   } catch {
     return null;
   }
@@ -61,9 +62,10 @@ export default function Home() {
           );
           return;
         }
-        localStorage.setItem('ems_current_user', JSON.stringify(data.user));
+        const sessionUser = normalizePortalSessionUser(data.user);
+        localStorage.setItem('ems_current_user', JSON.stringify(sessionUser));
         void import('@/lib/portalBootstrapClient').then(({ loadPortalBootstrap }) => loadPortalBootstrap());
-        setCurrentUser(data.user);
+        setCurrentUser(sessionUser);
       } else {
         setLoginError(
           data.message ||
