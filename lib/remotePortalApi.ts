@@ -1,29 +1,13 @@
-const DEFAULT_REMOTE_PORTAL = 'https://townpanchayat.com';
+import { getAppEnv, getPortalApiUrl, isLocalDevHost } from '@/lib/appEnvironment';
 
 export function getRemotePortalApiBase(): string {
-  const raw = process.env.PORTAL_API_BASE || process.env.NEXT_PUBLIC_PORTAL_API_BASE || DEFAULT_REMOTE_PORTAL;
-  return String(raw).trim().replace(/\/$/, '');
+  return getPortalApiUrl();
 }
 
+/** Prod on your laptop → call live API. Prod on server → use local Mongo on that server. */
 export function shouldUseRemotePortalApi(requestOrigin?: string): boolean {
-  const flag = String(process.env.USE_REMOTE_PORTAL_API || '').toLowerCase();
-  if (flag === '0' || flag === 'false' || flag === 'off') return false;
-
-  const base = getRemotePortalApiBase();
-  if (requestOrigin) {
-    try {
-      const remoteHost = new URL(base).host.replace(/^www\./, '');
-      const localHost = new URL(requestOrigin).host.replace(/^www\./, '');
-      if (remoteHost && localHost && remoteHost === localHost) {
-        return false;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  if (flag === '1' || flag === 'true' || flag === 'on') return true;
-  return process.env.NODE_ENV !== 'production';
+  if (getAppEnv() === 'local') return false;
+  return isLocalDevHost(requestOrigin);
 }
 
 export async function fetchRemotePortalJson(
@@ -55,7 +39,6 @@ export async function fetchRemotePortalJson(
   }
 }
 
-/** POST/PUT to live portal; preserves HTTP status and JSON body (for login, etc.). */
 export async function postRemotePortalJson(
   pathWithQuery: string,
   requestOrigin: string | undefined,

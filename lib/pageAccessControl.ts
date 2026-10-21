@@ -11,7 +11,8 @@ import {
   AlertTriangle, 
   Bell, 
   UserCircle, 
-  Settings 
+  Settings,
+  ArrowLeftRight
 } from 'lucide-react';
 
 export interface SystemPage {
@@ -121,6 +122,16 @@ export const SYSTEM_PAGES: SystemPage[] = [
     icon: Users
   },
   {
+    id: 'transferCounseling',
+    nameEn: 'Employee Transfer Counseling',
+    nameTa: 'பணியிட மாற்று ஆலோசனை',
+    descriptionEn: 'Counseling session: review applicants, vacancies, and allocate transfers with remarks',
+    descriptionTa: 'விண்ணapanங்கள், காலியிடங்கள் மற்றும் இடமாற்ற ஒதுக்கீடு',
+    categoryEn: 'Employee & Finance',
+    categoryTa: 'பணியாளர் & நிதி',
+    icon: ArrowLeftRight
+  },
+  {
     id: 'pendingIssues',
     nameEn: 'Pending Issues & Complaints',
     nameTa: 'நிலுவையிலுள்ள புகார்கள் & சிக்கல்கள்',
@@ -167,9 +178,9 @@ export const ALL_PAGE_IDS = SYSTEM_PAGES.map(p => p.id);
 
 export const DEFAULT_ROLE_PAGES: Record<string, string[]> = {
   admin: ALL_PAGE_IDS,
-  ad: ['dashboard', 'inspectionModules', 'inspectionEmployees', 'inspectionReports', 'pfManagement', 'employees', 'pendingIssues', 'userSettings'],
-  eo: ['dashboard', 'inspectionModules', 'inspectionEmployees', 'inspectionReports', 'pfManagement', 'employees', 'pendingIssues', 'userSettings'],
-  zonal: ['dashboard', 'inspectionModules', 'inspectionEmployees', 'inspectionReports', 'pfManagement', 'employees', 'pendingIssues', 'userSettings']
+  ad: ['dashboard', 'inspectionModules', 'inspectionEmployees', 'inspectionReports', 'pfManagement', 'employees', 'transferCounseling', 'pendingIssues', 'userSettings'],
+  eo: ['dashboard', 'inspectionModules', 'inspectionEmployees', 'inspectionReports', 'pfManagement', 'employees', 'transferCounseling', 'pendingIssues', 'userSettings'],
+  zonal: ['dashboard', 'inspectionModules', 'inspectionEmployees', 'inspectionReports', 'pfManagement', 'employees', 'transferCounseling', 'pendingIssues', 'userSettings']
 };
 
 export const getDefaultRolePages = (roleId: string): string[] => {
@@ -187,6 +198,7 @@ export const getDefaultRolePages = (roleId: string): string[] => {
     'inspectionReports',
     'pfManagement',
     'employees',
+    'transferCounseling',
     'pendingIssues',
     'userSettings'
   ];

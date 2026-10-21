@@ -116,6 +116,7 @@ const UserSettingsView = dynamic(() => import('@/components/UserSettingsView'), 
 const PendingIssuesView = dynamic(() => import('@/components/PendingIssuesView'), { ssr: false, loading: TabLoading });
 const PfManagementView = dynamic(() => import('@/components/PfManagementView'), { ssr: false, loading: TabLoading });
 const NotificationApkManagementView = dynamic(() => import('@/components/NotificationApkManagementView'), { ssr: false, loading: TabLoading });
+const EmployeeTransferCounselingView = dynamic(() => import('@/components/EmployeeTransferCounselingView'), { ssr: false, loading: TabLoading });
 
 export default function PortalApp({ initialUser = null }: { initialUser?: any }) {
   const [loading, setLoading] = useState(() => {
@@ -771,6 +772,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     { id: 'inspectionReports', label: t('inspectionReports'), navLabel: nav('Reports', 'அறிக்கைகள்'), icon: FileSpreadsheet, view: InspectionReportsView, roles: ['admin', 'ad', 'eo', 'zonal'] },
     { id: 'pfManagement', label: t('pfManagement'), navLabel: nav('Provident fund', 'வருங்கால வைப்பு'), icon: Calculator, view: PfManagementView, roles: ['admin', 'ad', 'eo', 'zonal'] },
     { id: 'employees', label: t('employeeManagement'), navLabel: nav('Employees', 'ஊழியர்கள்'), icon: Users, view: EmployeeManagementView, roles: ['admin', 'ad', 'eo', 'zonal'] },
+    { id: 'transferCounseling', label: lang === 'ta' ? 'இடமாற்று ஆலோசனை' : 'Transfer counseling', navLabel: nav('Counseling', 'ஆலோசனை'), icon: ArrowLeftRight, view: EmployeeTransferCounselingView, roles: ['admin', 'ad', 'eo', 'zonal'] },
     { id: 'pendingIssues', label: t('pendingIssues'), navLabel: nav('Issues', 'பிரச்சினைகள்'), icon: AlertTriangle, view: PendingIssuesView, roles: ['admin', 'ad', 'eo', 'zonal'] },
     { id: 'appManagement', label: lang === 'ta' ? 'அறிவிப்பு மேலாண்மை' : 'Notifications', navLabel: nav('Notifications', 'அறிவிப்புகள்'), icon: Bell, view: NotificationApkManagementView, roles: ['admin'] },
     { id: 'userSettings', label: t('userSettings'), navLabel: nav('Profile', 'சுயவிவரம்'), icon: UserCircle, view: UserSettingsView, roles: ['admin', 'ad', 'eo', 'zonal'] },
@@ -800,7 +802,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
   const menuGroups = [
     { id: 'overview', labelEn: 'Overview', labelTa: 'கண்ணோட்டம்', ids: ['dashboard'] },
     { id: 'field', labelEn: 'Field operations', labelTa: 'களப் பணிகள்', ids: ['inspectionModules', 'inspectionEmployees', 'inspectionReports', 'pendingIssues'] },
-    { id: 'admin', labelEn: 'Administration', labelTa: 'நிர்வாகம்', ids: ['masters', 'users', 'modules', 'employees', 'employeeManagement', 'pfManagement'] },
+    { id: 'admin', labelEn: 'Administration', labelTa: 'நிர்வாகம்', ids: ['masters', 'users', 'modules', 'employees', 'employeeManagement', 'transferCounseling', 'pfManagement'] },
     { id: 'system', labelEn: 'System', labelTa: 'அமைப்பு', ids: ['appManagement', 'userSettings', 'webappSettings'] },
   ];
   const activePageLabel = activeMenuItems.find((i) => i.id === activeTab)?.label || t('dashboard');
@@ -1215,6 +1217,9 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                   currentUser={currentUser}
                   onSaveCollection={handleSaveCollection}
                 />
+              )}
+              {activeTab === 'transferCounseling' && (
+                <EmployeeTransferCounselingView lang={lang} currentUser={currentUser} />
               )}
               {activeTab === 'pendingIssues' && (
                 <PendingIssuesView

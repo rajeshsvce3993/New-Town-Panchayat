@@ -13,6 +13,7 @@ import {
 } from '@/lib/storage';
 import { invalidateAndRefreshUserScopeCache } from '@/lib/userScopeCache';
 import { logServerProcess } from '@/lib/serverLogger';
+import { logPortalEnvironmentOnce } from '@/lib/appEnvironment';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 
 export const dynamic = 'force-dynamic';
@@ -174,6 +175,7 @@ async function runDataStructureDiagnostics() {
 
 export async function GET(req: NextRequest) {
   try {
+    logPortalEnvironmentOnce(req.nextUrl.origin);
     const { searchParams } = new URL(req.url);
     const key = searchParams.get('key');
     const isDiagnosticRequest = key === 'diagnostic' || searchParams.get('diagnostic') === 'true';

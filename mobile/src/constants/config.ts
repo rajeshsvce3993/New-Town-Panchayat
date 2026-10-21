@@ -1,4 +1,16 @@
-export const DEFAULT_SERVER_URL = 'https://townpanchayat.com';
+const PROD_API = 'https://townpanchayat.com';
+const LOCAL_API = 'http://localhost:3000';
+
+function getMobileAppEnv(): 'local' | 'prod' {
+  const v = String(process.env.EXPO_PUBLIC_APP_ENV || 'local').toLowerCase().trim();
+  return v === 'prod' || v === 'production' ? 'prod' : 'local';
+}
+
+/** Set EXPO_PUBLIC_APP_ENV=local or prod in mobile/.env */
+export const DEFAULT_SERVER_URL = (
+  getMobileAppEnv() === 'prod' ? PROD_API : LOCAL_API
+).replace(/\/$/, '');
+
 export const APP_VERSION_NAME = '2.0.0';
 export const APP_VERSION_CODE = 100;
 export const FCM_APP_VERSION_LABEL = '2.4.0';
