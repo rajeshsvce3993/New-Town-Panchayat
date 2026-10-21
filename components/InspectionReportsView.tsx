@@ -55,7 +55,11 @@ import {
   exportMultiSheetExcel, 
   sanitizeSheetName 
 } from '@/lib/inspectionReportExport';
-import { extractWorksFromInspectionApiPayload, isFallbackInspectionWork } from '@/lib/inspectionWorksQueryFilters';
+import {
+  extractWorksFromInspectionApiPayload,
+  getWorkDynamicFieldValue,
+  isFallbackInspectionWork,
+} from '@/lib/inspectionWorksQueryFilters';
 import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
 import MapViewReport from './MapViewReport';
 import html2canvas from 'html2canvas-pro';
@@ -947,25 +951,51 @@ export default function InspectionReportsView({
   }, [state.inspectionCategories, state.inspectionSubjects, selectedSubjectId]);
 
   // Compute fields available for dynamic filtering based on category & subject selection
+  const fieldMatchesCategory = React.useCallback(
+    (f: any, categoryId: string) => {
+      if (!categoryId || categoryId === 'all') return true;
+      const fCat = String(f.categoryId || f.category_id || '').trim();
+      if (!fCat) return false;
+      if (fCat === categoryId) return true;
+      const cat = (state.inspectionCategories || []).find(
+        (c: any) => String(c.id) === categoryId || String(c.code || '') === categoryId
+      );
+      if (!cat) return fCat.toLowerCase() === String(categoryId).toLowerCase();
+      return (
+        fCat === cat.id ||
+        fCat === cat.code ||
+        String(fCat).toLowerCase() === String(cat.id).toLowerCase() ||
+        String(fCat).toLowerCase() === String(cat.code || '').toLowerCase()
+      );
+    },
+    [state.inspectionCategories]
+  );
+
   const fieldsForFilter = useMemo(() => {
     let list = state.inspectionFields || [];
     if (selectedCategoryId !== 'all') {
-      list = list.filter((f: any) => f.categoryId === selectedCategoryId);
+      list = list.filter((f: any) => fieldMatchesCategory(f, selectedCategoryId));
     } else if (selectedSubjectId !== 'all') {
-      const catIds = availableCategories.map((c: any) => c.id);
-      list = list.filter((f: any) => catIds.includes(f.categoryId));
+      const catIds = new Set(availableCategories.flatMap((c: any) => [c.id, c.code].filter(Boolean)));
+      list = list.filter((f: any) => {
+        const fCat = String(f.categoryId || f.category_id || '');
+        return catIds.has(fCat) || [...catIds].some((id) => String(id).toLowerCase() === fCat.toLowerCase());
+      });
     }
     return list;
-  }, [state.inspectionFields, selectedCategoryId, selectedSubjectId, availableCategories]);
+  }, [state.inspectionFields, selectedCategoryId, selectedSubjectId, availableCategories, fieldMatchesCategory]);
 
   // Compute dynamic columns for the table based on category & subject selection
   const dynamicColumns = useMemo(() => {
     let fields = state.inspectionFields || [];
     if (selectedCategoryId !== 'all') {
-      fields = fields.filter((f: any) => f.categoryId === selectedCategoryId);
+      fields = fields.filter((f: any) => fieldMatchesCategory(f, selectedCategoryId));
     } else if (selectedSubjectId !== 'all') {
-      const catIds = availableCategories.map((c: any) => c.id);
-      fields = fields.filter((f: any) => catIds.includes(f.categoryId));
+      const catIds = new Set(availableCategories.flatMap((c: any) => [c.id, c.code].filter(Boolean)));
+      fields = fields.filter((f: any) => {
+        const fCat = String(f.categoryId || f.category_id || '');
+        return catIds.has(fCat) || [...catIds].some((id) => String(id).toLowerCase() === fCat.toLowerCase());
+      });
     }
     const seen = new Set();
     return fields.filter((f: any) => {
@@ -974,7 +1004,7 @@ export default function InspectionReportsView({
       seen.add(fId);
       return true;
     });
-  }, [state.inspectionFields, selectedCategoryId, selectedSubjectId, availableCategories]);
+  }, [state.inspectionFields, selectedCategoryId, selectedSubjectId, availableCategories, fieldMatchesCategory]);
 
   // Dynamic Grouping Style: 'subject' | 'user' | 'location'
   const [groupingStyle, setGroupingStyle] = useState<'subject' | 'user' | 'location'>('subject');
@@ -1528,12 +1558,28 @@ export default function InspectionReportsView({
     selectedStreetName,
     fromDate,
     toDate,
-    searchQuery
+    searchQuery,
+    adminFilterFieldId,
+    adminFilterValue,
   ]);
 
-  // Rows returned from GET /api/inspection-works (all filtering is server-side)
+  // Rows from API (primary filters server-side) + client guard for dynamic field filter/columns
   const filteredWorks = useMemo(() => {
-    const sorted = [...rawWorks].sort((a: any, b: any) => {
+    let list = rawWorks;
+    if (adminFilterFieldId) {
+      const q = (adminFilterValue || '').toLowerCase().trim();
+      list = list.filter((w: any) => {
+        const val = getWorkDynamicFieldValue(w, adminFilterFieldId, state.inspectionFields || []);
+        const vStr = String(val).toLowerCase().trim();
+        if (!q) return !!vStr;
+        if (!vStr) return false;
+        if (q === 'yes' || q === 'ஆம்') return vStr === 'yes' || vStr === 'ஆம்';
+        if (q === 'no' || q === 'இல்லை') return vStr === 'no' || vStr === 'இல்லை';
+        return vStr.includes(q);
+      });
+    }
+
+    const sorted = [...list].sort((a: any, b: any) => {
       let valA: any = '';
       let valB: any = '';
       if (detailedSortField === 'submittedAt') {
@@ -1577,7 +1623,15 @@ export default function InspectionReportsView({
     });
 
     return sorted;
-  }, [rawWorks, detailedSortField, detailedSortDirection, lang]);
+  }, [
+    rawWorks,
+    adminFilterFieldId,
+    adminFilterValue,
+    state.inspectionFields,
+    detailedSortField,
+    detailedSortDirection,
+    lang,
+  ]);
 
   const resolveCategoryCountFromApi = React.useCallback(
     (cat: any) => {
@@ -3588,13 +3642,8 @@ export default function InspectionReportsView({
           getInspectorDesignation(work),
           work.latitude ? Number(work.latitude).toFixed(5) : '-',
           work.longitude ? Number(work.longitude).toFixed(5) : '-',
-          ...dynamicFieldCols.map(df => {
-            let val = '';
-            if (work.fieldsData && work.fieldsData[df.id] !== undefined) {
-              val = String(work.fieldsData[df.id]);
-            } else if (work.fieldsData && work.fieldsData[df.label] !== undefined) {
-              val = String(work.fieldsData[df.label]);
-            }
+          ...dynamicFieldCols.map((df) => {
+            const val = getWorkDynamicFieldValue(work, df, state.inspectionFields || []);
             if (val.startsWith('http')) return '[Photo]';
             return val || '-';
           }),
@@ -5859,10 +5908,7 @@ export default function InspectionReportsView({
 
                         {/* Dynamic custom field columns */}
                         {dynamicColumns.map((col: any) => {
-                          const fId = col.id;
-                          const matchedField = (state.inspectionFields || []).find((f: any) => f.id === fId);
-                          const fieldName = matchedField?.fieldName || matchedField?.nameEn || '';
-                          const val = work.fieldsData?.[fId] ?? work.fieldsData?.[fieldName] ?? '';
+                          const val = getWorkDynamicFieldValue(work, col, state.inspectionFields || []);
                           const isPhoto = col.type === 'camera' || col.fieldType === 'camera' || (typeof val === 'string' && (val.startsWith('http') || val.startsWith('/uploads') || val.includes('s3.amazonaws.com') || val.endsWith('.jpg') || val.endsWith('.png')));
                           
                           return (

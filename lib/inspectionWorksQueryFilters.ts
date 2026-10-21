@@ -263,23 +263,75 @@ function workMatchesSearch(w: any, search: string): boolean {
   return matchId || matchStreet || matchInspector || matchCaption || matchSubj;
 }
 
+export function getWorkDynamicFieldValue(
+  work: any,
+  fieldOrId: string | any,
+  fields: any[] = []
+): string {
+  const fd = work?.fieldsData;
+  if (!fd || typeof fd !== 'object') return '';
+
+  const field =
+    typeof fieldOrId === 'string'
+      ? fields.find(
+          (f: any) =>
+            String(f.id || '') === fieldOrId ||
+            String(f.fieldKey || '') === fieldOrId ||
+            String(f.code || '') === fieldOrId
+        )
+      : fieldOrId;
+
+  const keys = new Set<string>();
+  const addKey = (k: string | undefined | null) => {
+    const s = String(k || '').trim();
+    if (s) keys.add(s);
+  };
+
+  if (typeof fieldOrId === 'string') addKey(fieldOrId);
+  if (field) {
+    addKey(field.id);
+    addKey(field.fieldKey);
+    addKey(field.fieldName);
+    addKey(field.nameEn);
+    addKey(field.nameTa);
+    addKey(field.code);
+  }
+
+  for (const k of keys) {
+    const v = fd[k];
+    if (v !== undefined && v !== null && String(v).trim() !== '') {
+      return String(v);
+    }
+  }
+
+  const keysLower = new Map<string, string>();
+  for (const [k, v] of Object.entries(fd)) {
+    if (v === undefined || v === null) continue;
+    keysLower.set(String(k).toLowerCase(), String(v));
+  }
+  for (const k of keys) {
+    const hit = keysLower.get(k.toLowerCase());
+    if (hit !== undefined && hit.trim() !== '') return hit;
+  }
+  return '';
+}
+
 function workMatchesAdminField(
   w: any,
   adminFieldId: string,
   adminFieldValue: string | null | undefined,
   ctx: InspectionWorksFilterMasters
 ): boolean {
-  const matchedField = (ctx.inspectionFields || []).find((f: any) => f.id === adminFieldId);
-  const fieldName = matchedField?.fieldName || matchedField?.nameEn || '';
-  const val = w.fieldsData?.[adminFieldId] ?? w.fieldsData?.[fieldName] ?? '';
+  const val = getWorkDynamicFieldValue(w, adminFieldId, ctx.inspectionFields || []);
   if (adminFieldValue) {
     const q = adminFieldValue.toLowerCase().trim();
     const vStr = String(val).toLowerCase().trim();
+    if (!vStr) return false;
     if (q === 'yes' || q === 'ஆம்') return vStr === 'yes' || vStr === 'ஆம்';
     if (q === 'no' || q === 'இல்லை') return vStr === 'no' || vStr === 'இல்லை';
     return vStr.includes(q);
   }
-  return !!val;
+  return !!val && val.trim() !== '';
 }
 
 export function workMatchesUserScope(w: any, query: InspectionWorksFilterQuery, ctx: InspectionWorksFilterMasters): boolean {
@@ -470,7 +522,6 @@ export function sortInspectionWorksNewestFirst(works: any[]): any[] {
 
 export function stripInspectionWorkForLite(w: any): any {
   const {
-    fieldsData,
     photos,
     documents,
     photoBase64,

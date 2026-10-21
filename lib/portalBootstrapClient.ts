@@ -80,6 +80,19 @@ export function peekPortalBootstrapCache(): any | null {
   return readSessionBootstrap();
 }
 
+/** After saving users / inspectionUsers — drop stale bootstrap without passwords. */
+export function invalidatePortalBootstrapCache() {
+  cached = null;
+  inflight = null;
+  if (typeof sessionStorage !== 'undefined') {
+    try {
+      sessionStorage.removeItem(SESSION_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 /** Returns cached data immediately when available; refreshes from API in the background. */
 export function loadPortalBootstrap(force = false): Promise<any> {
   if (!force) {

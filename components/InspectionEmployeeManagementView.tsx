@@ -32,6 +32,12 @@ import {
   RefreshCw,
   Calendar
 } from 'lucide-react';
+import {
+  applyUserPasswordFields,
+  buildUserCredentialIndex,
+  getUserStoredPassword,
+  resolvePasswordFromIndex,
+} from '@/lib/userCredentials';
 // Pure client-safe calendar date extractor in Asia/Kolkata timezone
 function extractCalendarDateYMD(dateVal: any): string | null {
   if (!dateVal) return null;
@@ -106,102 +112,33 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     return `${year}-${month}-${day}`;
   };
 
-  const handleExportEmployeesExcel = () => {
-    const usersToExport = (userSearchQuery && userSearchQuery.trim() && filteredUsers.length > 0) ? filteredUsers : inspectionUsers;
+  const [credentialIndex, setCredentialIndex] = useState<Record<string, string>>({});
+  const [listPasswordVisible, setListPasswordVisible] = useState<Record<string, boolean>>({});
 
-    let html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta http-equiv="content-type" content="text/plain; charset=UTF-8"/>
-        <style>
-          table { border-collapse: collapse; font-family: sans-serif; }
-          th { background-color: #002B49; color: white; font-weight: bold; padding: 8px; text-align: left; }
-          td { padding: 6px 8px; border: 1px solid #cbd5e1; }
-        </style>
-      </head>
-      <body>
-        <table border="1">
-          <thead>
-            <tr>
-              <th colspan="13" style="background-color: #002B49; color: #ffffff; font-size: 14pt; padding: 10px; text-align: center;">
-                ${lang === 'ta' ? 'தமிழ்நாடு பேரூராட்சிகள் இயக்ககம் • கள ஆய்வு பணியாளர்கள் பட்டியல் (கடவுச்சொற்களுடன்)' : 'Directorate of Town Panchayats • Inspection Employee Management List (With Passwords)'}
-              </th>
-            </tr>
-            <tr>
-              <th colspan="13" style="background-color: #f1f5f9; color: #334155; font-size: 10pt; padding: 6px; text-align: center;">
-                ${lang === 'ta' ? `பதிவிறக்கப்பட்ட தேதி: ${new Date().toLocaleDateString('ta-IN')} | மொத்த பணியாளர்கள்: ${usersToExport.length}` : `Downloaded on: ${new Date().toLocaleDateString()} | Total Employees: ${usersToExport.length}`}
-              </th>
-            </tr>
-            <tr>
-              <th>${lang === 'ta' ? 'வ.எண்' : 'S.No'}</th>
-              <th>${lang === 'ta' ? 'பணியாளர் பெயர் (ஆங்கிலம்)' : 'Employee Name (EN)'}</th>
-              <th>${lang === 'ta' ? 'பணியாளர் பெயர் (தமிழ்)' : 'Employee Name (TA)'}</th>
-              <th>${lang === 'ta' ? 'பயனர் அடையாளம் (Username)' : 'Username'}</th>
-              <th style="background-color: #1e3a8a; color: #ffffff;">${lang === 'ta' ? 'கடவுச்சொல் (Password)' : 'Password'}</th>
-              <th>${lang === 'ta' ? 'கைபேசி எண்' : 'Mobile'}</th>
-              <th>${lang === 'ta' ? 'பொறுப்பு (Role)' : 'Role'}</th>
-              <th>${lang === 'ta' ? 'பதவி (Designation)' : 'Designation'}</th>
-              <th>${lang === 'ta' ? 'மண்டலம்' : 'Assigned Zone'}</th>
-              <th>${lang === 'ta' ? 'மாவட்டம்' : 'Assigned District'}</th>
-              <th>${lang === 'ta' ? 'பேரூராட்சி(கள்)' : 'Assigned Town Panchayat(s)'}</th>
-              <th>${lang === 'ta' ? 'வார்டுகள்' : 'Assigned Wards'}</th>
-              <th>${lang === 'ta' ? 'நிலை' : 'Status'}</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
-    
-    usersToExport.forEach((user: any, index: number) => {
-      const roleObj = inspectionRoles.find((r: any) => r.id === user.roleId);
-      const desigObj = inspectionDesignations.find((d: any) => d.id === user.designationId);
-      const zoneObj = zones.find((z: any) => z.id === user.zoneId);
-      const distObj = districts.find((d: any) => d.id === user.districtId);
-      const tps = townPanchayats.filter((tp: any) => (user.townPanchayatIds || user.selectedTpIds || (user.tpId ? [user.tpId] : []))?.includes(tp.id));
-      const userWards = user.assignedWards || user.selectedWards || [];
-      const matchedStateUser = (state.users || []).find((u: any) => u.id === user.id || u.username === user.username);
-      const userPassword = user.password || matchedStateUser?.password || 'password123';
-      
-      const roleName = lang === 'ta' ? (roleObj?.nameTa || roleObj?.nameEn || '') : (roleObj?.nameEn || '');
-      const desigName = lang === 'ta' ? (desigObj?.nameTa || desigObj?.nameEn || '') : (desigObj?.nameEn || '');
-      const zoneName = lang === 'ta' ? (zoneObj?.nameTa || zoneObj?.nameEn || '') : (zoneObj?.nameEn || '');
-      const distName = lang === 'ta' ? (distObj?.nameTa || distObj?.nameEn || '') : (distObj?.nameEn || '');
-      const tpNames = Array.from(new Set(tps.map((tp: any) => (lang === 'ta' ? (tp.nameTa || tp.nameEn) : (tp.nameEn || tp.nameTa || ''))))).filter(Boolean).join(', ');
-
-      html += `
-        <tr>
-          <td>${index + 1}</td>
-          <td>${user.nameEn || ''}</td>
-          <td>${user.nameTa || ''}</td>
-          <td>${user.username || ''}</td>
-          <td style="font-family: monospace; font-weight: bold; color: #1e3a8a; background-color: #f0fdf4; mso-number-format: '\\@';">${userPassword}</td>
-          <td>${user.mobile || ''}</td>
-          <td>${roleName}</td>
-          <td>${desigName}</td>
-          <td>${zoneName}</td>
-          <td>${distName}</td>
-          <td>${tpNames}</td>
-          <td>${userWards.join(', ')}</td>
-          <td>${user.status || 'Active'}</td>
-        </tr>
-      `;
+  const rememberUserCredential = (user: any, plain: string) => {
+    const p = String(plain || '').trim();
+    if (!p) return;
+    setCredentialIndex((prev) => {
+      const next = { ...prev };
+      if (user?.id) next[String(user.id)] = p;
+      if (user?.username) next[`u:${String(user.username).toLowerCase()}`] = p;
+      return next;
     });
-    
-    html += `
-          </tbody>
-        </table>
-      </body>
-      </html>
-    `;
-    
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `Inspection_Employee_Management_List_With_Passwords_${lang === 'ta' ? 'தமிழ்' : 'English'}_${getTodayYmd()}.xls`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  };
+
+  const resolveInspectionUserPassword = (user: any) =>
+    resolvePasswordFromIndex(user, credentialIndex);
+
+  const refreshInspectionUserCredentials = async () => {
+    try {
+      const res = await fetch('/api/state?key=inspectionUsers', { cache: 'no-store' });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setCredentialIndex(buildUserCredentialIndex(json.data));
+      }
+    } catch {
+      /* ignore */
+    }
   };
 
   // Real-time activity list filter states & Date selection
@@ -226,6 +163,15 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     setLocalInspectionUsers(state.inspectionUsers || []);
     setLocalSessions(state.userSessions || []);
   }, [state.userActivities, state.users, state.inspectionUsers, state.userSessions]);
+
+  React.useEffect(() => {
+    if (activeTab !== 'employees') return;
+    setCredentialIndex((prev) => ({
+      ...buildUserCredentialIndex(state.inspectionUsers || []),
+      ...prev,
+    }));
+    void refreshInspectionUserCredentials();
+  }, [activeTab, state.inspectionUsers]);
 
   // Polling Auto-refresh every 5 seconds when activeTab is 'sessions' or date changes
   React.useEffect(() => {
@@ -486,7 +432,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
   const startEditUser = (user: any) => {
     setEditingUserId(user.id);
     setUserUsername(user.username || user.mobile || '');
-    setUserPassword(user.password || '');
+    setUserPassword(getUserStoredPassword(user));
     setUserNameEn(user.nameEn || '');
     setUserNameTa(user.nameTa || '');
     setUserMobile(user.mobile || '');
@@ -567,10 +513,9 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
       // Update existing user
       const updated = inspectionUsers.map((u: any) => {
         if (u.id === editingUserId) {
-          return {
+          return applyUserPasswordFields({
             ...u,
             username: userUsername.trim(),
-            password: userPassword.trim(),
             nameEn: userNameEn.trim(),
             nameTa: userNameTa.trim(),
             mobile: userMobile.trim(),
@@ -589,19 +534,19 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
             categoryIds: userCategoryIds,
             assignedCategories: userCategoryIds,
             updatedAt: new Date().toISOString()
-          };
+          }, userPassword.trim());
         }
         return u;
       });
 
       await onSaveCollection('inspectionUsers', updated);
+      rememberUserCredential({ id: editingUserId, username: userUsername.trim() }, userPassword.trim());
       resetUserForm();
     } else {
       // Create new user
-      const newUser = {
+      const newUser = applyUserPasswordFields({
         id: 'iu_' + Math.random().toString(36).substr(2, 6),
         username: userUsername.trim(),
-        password: userPassword.trim(),
         nameEn: userNameEn.trim(),
         nameTa: userNameTa.trim(),
         mobile: userMobile.trim(),
@@ -621,9 +566,10 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
         assignedCategories: userCategoryIds,
         status: 'Active',
         createdAt: new Date().toISOString()
-      };
+      }, userPassword.trim());
 
       await onSaveCollection('inspectionUsers', [...inspectionUsers, newUser]);
+      rememberUserCredential(newUser, userPassword.trim());
       resetUserForm();
     }
   };
@@ -779,7 +725,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
           } else {
             [empEn, empTa, mobile, rEn, rTa, rScope, dEn, dTa, subjs, tpNames, wards] = values;
             username = 'insp_' + (mobile ? mobile.slice(-4) : Math.random().toString(36).substr(2, 4));
-            password = 'password123';
+            password = mobile ? `pass${mobile.slice(-4)}` : '';
           }
 
           if (!empEn || !mobile) continue;
@@ -859,10 +805,9 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
           );
 
           if (existingUserIndex >= 0) {
-            uploadedUsers[existingUserIndex] = {
+            uploadedUsers[existingUserIndex] = applyUserPasswordFields({
               ...uploadedUsers[existingUserIndex],
               username: username || uploadedUsers[existingUserIndex].username || ('insp_' + mobile.slice(-4)),
-              password: password || uploadedUsers[existingUserIndex].password || 'password123',
               nameEn: empEn,
               nameTa: empTa || empEn,
               mobile: mobile,
@@ -879,12 +824,11 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
               subjectIds: resolvedSubjIds.length > 0 ? resolvedSubjIds : uploadedUsers[existingUserIndex].subjectIds,
               status: 'Active',
               updatedAt: new Date().toISOString()
-            };
+            }, password || getUserStoredPassword(uploadedUsers[existingUserIndex]));
           } else {
-            uploadedUsers.push({
+            uploadedUsers.push(applyUserPasswordFields({
               id: 'iu_' + Math.random().toString(36).substr(2, 6),
               username: username || ('insp_' + mobile.slice(-4)),
-              password: password || 'password123',
               nameEn: empEn,
               nameTa: empTa || empEn,
               mobile: mobile,
@@ -901,7 +845,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
               subjectIds: resolvedSubjIds,
               status: 'Active',
               createdAt: new Date().toISOString()
-            });
+            }, password || undefined));
           }
         }
 
@@ -934,6 +878,123 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     const mobileMatch = user.mobile?.includes(q);
     return nameMatch || mobileMatch;
   });
+
+  const handleExportEmployeesExcel = async () => {
+    let credIndex = { ...credentialIndex };
+    try {
+      const res = await fetch('/api/state?key=inspectionUsers', { cache: 'no-store' });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        credIndex = { ...buildUserCredentialIndex(json.data), ...credIndex };
+      }
+    } catch {
+      /* use in-memory index */
+    }
+
+    const usersToExport =
+      userSearchQuery && userSearchQuery.trim() && filteredUsers.length > 0
+        ? filteredUsers
+        : inspectionUsers;
+
+    let html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta http-equiv="content-type" content="text/plain; charset=UTF-8"/>
+        <style>
+          table { border-collapse: collapse; font-family: sans-serif; }
+          th { background-color: #002B49; color: white; font-weight: bold; padding: 8px; text-align: left; }
+          td { padding: 6px 8px; border: 1px solid #cbd5e1; }
+        </style>
+      </head>
+      <body>
+        <table border="1">
+          <thead>
+            <tr>
+              <th colspan="13" style="background-color: #002B49; color: #ffffff; font-size: 14pt; padding: 10px; text-align: center;">
+                ${lang === 'ta' ? 'தமிழ்நாடு பேரூராட்சிகள் இயக்ககம் • கள ஆய்வு பணியாளர்கள் பட்டியல் (கடவுச்சொற்களுடன்)' : 'Directorate of Town Panchayats • Inspection Employee Management List (With Passwords)'}
+              </th>
+            </tr>
+            <tr>
+              <th colspan="13" style="background-color: #f1f5f9; color: #334155; font-size: 10pt; padding: 6px; text-align: center;">
+                ${lang === 'ta' ? `பதிவிறக்கப்பட்ட தேதி: ${new Date().toLocaleDateString('ta-IN')} | மொத்த பணியாளர்கள்: ${usersToExport.length}` : `Downloaded on: ${new Date().toLocaleDateString()} | Total Employees: ${usersToExport.length}`}
+              </th>
+            </tr>
+            <tr>
+              <th>${lang === 'ta' ? 'வ.எண்' : 'S.No'}</th>
+              <th>${lang === 'ta' ? 'பணியாளர் பெயர் (ஆங்கிலம்)' : 'Employee Name (EN)'}</th>
+              <th>${lang === 'ta' ? 'பணியாளர் பெயர் (தமிழ்)' : 'Employee Name (TA)'}</th>
+              <th>${lang === 'ta' ? 'பயனர் அடையாளம் (Username)' : 'Username'}</th>
+              <th style="background-color: #1e3a8a; color: #ffffff;">${lang === 'ta' ? 'கடவுச்சொல் (Password)' : 'Password'}</th>
+              <th>${lang === 'ta' ? 'கைபேசி எண்' : 'Mobile'}</th>
+              <th>${lang === 'ta' ? 'பொறுப்பு (Role)' : 'Role'}</th>
+              <th>${lang === 'ta' ? 'பதவி (Designation)' : 'Designation'}</th>
+              <th>${lang === 'ta' ? 'மண்டலம்' : 'Assigned Zone'}</th>
+              <th>${lang === 'ta' ? 'மாவட்டம்' : 'Assigned District'}</th>
+              <th>${lang === 'ta' ? 'பேரூராட்சி(கள்)' : 'Assigned Town Panchayat(s)'}</th>
+              <th>${lang === 'ta' ? 'வார்டுகள்' : 'Assigned Wards'}</th>
+              <th>${lang === 'ta' ? 'நிலை' : 'Status'}</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    usersToExport.forEach((user: any, index: number) => {
+      const roleObj = inspectionRoles.find((r: any) => r.id === user.roleId);
+      const desigObj = inspectionDesignations.find((d: any) => d.id === user.designationId);
+      const zoneObj = zones.find((z: any) => z.id === user.zoneId);
+      const distObj = districts.find((d: any) => d.id === user.districtId);
+      const tps = townPanchayats.filter((tp: any) =>
+        (user.townPanchayatIds || user.selectedTpIds || (user.tpId ? [user.tpId] : []))?.includes(tp.id)
+      );
+      const userWards = user.assignedWards || user.selectedWards || [];
+      const userPassword = resolvePasswordFromIndex(user, credIndex) || '';
+
+      const roleName = lang === 'ta' ? (roleObj?.nameTa || roleObj?.nameEn || '') : (roleObj?.nameEn || '');
+      const desigName = lang === 'ta' ? (desigObj?.nameTa || desigObj?.nameEn || '') : (desigObj?.nameEn || '');
+      const zoneName = lang === 'ta' ? (zoneObj?.nameTa || zoneObj?.nameEn || '') : (zoneObj?.nameEn || '');
+      const distName = lang === 'ta' ? (distObj?.nameTa || distObj?.nameEn || '') : (distObj?.nameEn || '');
+      const tpNames = Array.from(
+        new Set(tps.map((tp: any) => (lang === 'ta' ? (tp.nameTa || tp.nameEn) : (tp.nameEn || tp.nameTa || ''))))
+      )
+        .filter(Boolean)
+        .join(', ');
+
+      html += `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${user.nameEn || ''}</td>
+          <td>${user.nameTa || ''}</td>
+          <td>${user.username || ''}</td>
+          <td style="font-family: monospace; font-weight: bold; color: #1e3a8a; background-color: #f0fdf4; mso-number-format: '\\@';">${userPassword}</td>
+          <td>${user.mobile || ''}</td>
+          <td>${roleName}</td>
+          <td>${desigName}</td>
+          <td>${zoneName}</td>
+          <td>${distName}</td>
+          <td>${tpNames}</td>
+          <td>${userWards.join(', ')}</td>
+          <td>${user.status || 'Active'}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Inspection_Employee_Management_List_With_Passwords_${lang === 'ta' ? 'தமிழ்' : 'English'}_${getTodayYmd()}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div id="inspection-employee-management-container" className="space-y-6">
@@ -2249,6 +2310,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           <th className="p-3">{lang === 'ta' ? 'வ.எண்' : 'S.No'}</th>
                           <th className="p-3">{lang === 'ta' ? 'பெயர் / பயனர் பெயர்' : 'Name / Username'}</th>
                           <th className="p-3">{lang === 'ta' ? 'கைபேசி' : 'Contact'}</th>
+                          <th className="p-3">{lang === 'ta' ? 'கடவுச்சொல்' : 'Password'}</th>
                           <th className="p-3">{lang === 'ta' ? 'பதவி / பொறுப்பு' : 'Designation / Role'}</th>
                           <th className="p-3">{lang === 'ta' ? 'வட்டார எல்லைகள்' : 'Jurisdictions'}</th>
                           <th className="p-3 text-right">{lang === 'ta' ? 'செயல்பாடுகள்' : 'Actions'}</th>
@@ -2271,6 +2333,31 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                 <div className="text-[10px] text-gray-500 font-mono">@{user.username}</div>
                               </td>
                               <td className="p-3 text-indigo-700 font-semibold">{user.mobile}</td>
+                              <td className="p-3 font-mono text-[11px]">
+                                <div className="flex items-center gap-1.5">
+                                  <span>
+                                    {listPasswordVisible[user.id]
+                                      ? (resolveInspectionUserPassword(user) || '—')
+                                      : '••••••••'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setListPasswordVisible((prev) => ({
+                                        ...prev,
+                                        [user.id]: !prev[user.id],
+                                      }))
+                                    }
+                                    className="text-gray-400 hover:text-gray-600"
+                                  >
+                                    {listPasswordVisible[user.id] ? (
+                                      <EyeOff className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <Eye className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              </td>
                               <td className="p-3">
                                 <div className="font-semibold text-gray-800">{desigObj ? tObj(desigObj) : '—'}</div>
                                 <div className="text-[10px] text-gray-400">{roleObj ? tObj(roleObj) : '—'}</div>

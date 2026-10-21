@@ -9,6 +9,7 @@ import {
   getPortalBootstrapState,
   getPortalExtendedState,
   rebuildUserScopeCache,
+  overlayLocalAdminUserCredentials,
 } from '@/lib/storage';
 import { invalidateAndRefreshUserScopeCache } from '@/lib/userScopeCache';
 import { logServerProcess } from '@/lib/serverLogger';
@@ -189,6 +190,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, diagnostics: diagReport }, { headers: CORS_HEADERS });
     }
 
+    /** Admin edits + passwords must come from local Mongo — never the remote portal mirror. */
+    const LOCAL_ADMIN_COLLECTION_KEYS = new Set([
+      'users',
+      'inspectionUsers',
+      'roles',
+      'officeCategories',
+    ]);
+    if (key && LOCAL_ADMIN_COLLECTION_KEYS.has(key)) {
+      const data = await getCollectionData(key as any);
+      return NextResponse.json(
+        { success: true, data, source: 'local' },
+        { headers: CORS_HEADERS }
+      );
+    }
+
     const remoteQs = searchParams.toString();
     const useRemoteOnly = shouldUseRemotePortalApi(req.nextUrl.origin);
     const remoteState = await fetchRemotePortalJson(
@@ -196,6 +212,9 @@ export async function GET(req: NextRequest) {
       req.nextUrl.origin
     );
     if (remoteState) {
+      if (remoteState.success && remoteState.data) {
+        remoteState.data = await overlayLocalAdminUserCredentials(remoteState.data);
+      }
       return NextResponse.json(remoteState, { headers: CORS_HEADERS });
     }
     if (useRemoteOnly) {

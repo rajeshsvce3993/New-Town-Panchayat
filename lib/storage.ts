@@ -8,6 +8,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { OFFICIAL_PF_INTEREST_RATES } from './pfInterestRatesData';
 import { isFallbackInspectionWork } from '@/lib/inspectionWorksQueryFilters';
+import { applyUserPasswordFields, mergeUserRecordPreservingPassword } from '@/lib/userCredentials';
 
 // Storage paths for local fallback
 const STORAGE_DIR = path.join(process.cwd(), 'data');
@@ -1426,7 +1427,7 @@ export async function getCollectionWithAliases(db: Db, key: string) {
     }
 
     const aliasesMap: Record<string, string[]> = {
-      inspectionUsers: ['inspection_users', 'inspectionEmployees', 'inspection_employees', 'field_users', 'inspectionusers', 'users'],
+      inspectionUsers: ['inspection_users', 'inspectionEmployees', 'inspection_employees', 'field_users', 'inspectionusers'],
       inspectionWorks: ['inspection_works', 'inspections', 'inspectionworks', 'works'],
       townPanchayats: ['town_panchayats', 'townpanchayats', 'panchayats', 'tps'],
       districts: ['districts_master', 'districts_list'],
@@ -1546,7 +1547,7 @@ function normalizeItemFromMongo(key: string, item: any, idx: number): any {
     const wards = item.assignedWards || item.selectedWards || item.wards || [];
     const subs = item.subjectIds || item.assignedSubjects || item.subjects || [];
     const cats = item.categoryIds || item.assignedCategories || item.categories || [];
-    return {
+    const normalized = {
       ...rest,
       id: rawId || item.username || `iu_${idx}`,
       username: item.username || item.userName || '',
@@ -1567,6 +1568,12 @@ function normalizeItemFromMongo(key: string, item: any, idx: number): any {
       status: item.status || 'Active',
       isInspectionUser: true,
     };
+    return applyUserPasswordFields(normalized);
+  }
+
+  if (key === 'users') {
+    const normalized = { id: rawId, ...rest };
+    return applyUserPasswordFields(normalized);
   }
 
   return { id: rawId, ...rest };
@@ -1863,7 +1870,7 @@ export function enrichUserForApp(user: any, masters?: any): any {
                           ['dtpadmin', 'admin', 'ad_kanchi', 'eo_thiruporur', 'zonal', 'tp'].includes(usernameLower);
   const isInspection = isWebPortalRole ? false : (user.isInspectionUser === true || (user.id && String(user.id).startsWith('iu_')) || !isWebPortalRole);
 
-  return {
+  const enriched = {
     ...user,
     id: user.id || (user._id ? String(user._id) : ''),
     username: user.username || '',
@@ -1900,6 +1907,7 @@ export function enrichUserForApp(user: any, masters?: any): any {
     assignedCategoryNames,
     isInspectionUser: isInspection,
   };
+  return applyUserPasswordFields(enriched);
 }
 
 // Normalize and enrich inspection works with Town Panchayat, District, Subject, and Category names
@@ -1982,8 +1990,8 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
   });
 }
 
+/** Lite list keeps fieldsData for dynamic filters/columns; strips heavy media only. */
 export const LITE_INSPECTION_WORKS_PROJECTION = {
-  fieldsData: 0,
   photos: 0,
   documents: 0,
   photoBase64: 0,
@@ -2162,24 +2170,33 @@ function assemblePortalState(parts: {
   };
 }
 
+export function mapPortalUsersForClient(users: any[]) {
+  return slimPortalUsers(users);
+}
+
 function slimPortalUsers(users: any[]) {
-  return (users || []).map((u: any) => ({
-    id: u.id,
-    username: u.username,
-    name: u.name || u.nameEn,
-    nameEn: u.nameEn || u.name,
-    nameTa: u.nameTa,
-    role: u.role,
-    roleId: u.roleId || u.role,
-    customPagePermissions: u.customPagePermissions || null,
-    districtId: u.districtId,
-    tpId: u.tpId || u.townPanchayatId,
-    zoneId: u.zoneId,
-    scopeType: u.scopeType,
-    scopeId: u.scopeId,
-    status: u.status,
-    isEmployee: u.isEmployee,
-  }));
+  return (users || []).map((u: any) => {
+    const pass = u.password || u.passwordHash || '';
+    return {
+      id: u.id,
+      username: u.username,
+      name: u.name || u.nameEn,
+      nameEn: u.nameEn || u.name,
+      nameTa: u.nameTa,
+      role: u.role,
+      roleId: u.roleId || u.role,
+      customPagePermissions: u.customPagePermissions || null,
+      districtId: u.districtId,
+      tpId: u.tpId || u.townPanchayatId,
+      zoneId: u.zoneId,
+      scopeType: u.scopeType,
+      scopeId: u.scopeId,
+      status: u.status,
+      isEmployee: u.isEmployee,
+      password: pass,
+      passwordHash: pass,
+    };
+  });
 }
 
 function slimSettings(settings: any) {
@@ -2195,31 +2212,44 @@ function slimSettings(settings: any) {
   return safe;
 }
 
+export function mapInspectionUsersForClient(users: any[]) {
+  return slimInspectionUsers(users);
+}
+
 function slimInspectionUsers(users: any[]) {
-  return (users || []).map((u: any) => ({
-    id: u.id,
-    username: u.username,
-    name: u.name || u.nameEn,
-    nameEn: u.nameEn || u.name,
-    nameTa: u.nameTa,
-    role: u.role,
-    roleId: u.roleId || u.role,
-    designationId: u.designationId,
-    designation: u.designation,
-    designationNameEn: u.designationNameEn,
-    designationNameTa: u.designationNameTa,
-    zoneId: u.zoneId,
-    zoneNameEn: u.zoneNameEn,
-    districtId: u.districtId,
-    districtNameEn: u.districtNameEn,
-    tpId: u.tpId || u.townPanchayatId,
-    townPanchayatId: u.townPanchayatId || u.tpId,
-    townPanchayatIds: u.townPanchayatIds || u.selectedTpIds,
-    selectedTpIds: u.selectedTpIds || u.townPanchayatIds,
-    assignedWards: u.assignedWards,
-    status: u.status,
-    employeeId: u.employeeId,
-  }));
+  return (users || []).map((u: any) => {
+    const pass = u.password || u.passwordHash || '';
+    return {
+      id: u.id,
+      username: u.username,
+      name: u.name || u.nameEn,
+      nameEn: u.nameEn || u.name,
+      nameTa: u.nameTa,
+      mobile: u.mobile,
+      role: u.role,
+      roleId: u.roleId || u.role,
+      designationId: u.designationId,
+      designation: u.designation,
+      designationNameEn: u.designationNameEn,
+      designationNameTa: u.designationNameTa,
+      zoneId: u.zoneId,
+      zoneNameEn: u.zoneNameEn,
+      districtId: u.districtId,
+      districtNameEn: u.districtNameEn,
+      tpId: u.tpId || u.townPanchayatId,
+      townPanchayatId: u.townPanchayatId || u.tpId,
+      townPanchayatIds: u.townPanchayatIds || u.selectedTpIds,
+      selectedTpIds: u.selectedTpIds || u.townPanchayatIds,
+      assignedWards: u.assignedWards,
+      selectedWards: u.selectedWards,
+      subjectIds: u.subjectIds,
+      categoryIds: u.categoryIds,
+      status: u.status,
+      employeeId: u.employeeId,
+      password: pass,
+      passwordHash: pass,
+    };
+  });
 }
 
 function portalStructuralDefaults() {
@@ -2242,6 +2272,36 @@ function portalStructuralDefaults() {
     ...rest
   } = INITIAL_DATA as any;
   return rest;
+}
+
+/** Remote bootstrap omits passwords — merge local admin collections for User Management. */
+export async function overlayLocalAdminUserCredentials(portalState: any): Promise<any> {
+  if (!portalState || typeof portalState !== 'object') return portalState;
+  try {
+    const [users, inspectionUsers, inspectionRoles, inspectionDesignations] = await Promise.all([
+      getCollectionData('users'),
+      getCollectionData('inspectionUsers'),
+      getCollectionData('inspectionRoles'),
+      getCollectionData('inspectionDesignations'),
+    ]);
+    if (Array.isArray(users) && users.length > 0) {
+      portalState.users = mapPortalUsersForClient(users);
+    }
+    if (Array.isArray(inspectionUsers) && inspectionUsers.length > 0) {
+      const masters = {
+        townPanchayats: portalState.townPanchayats || [],
+        districts: portalState.districts || [],
+        zones: portalState.zones || [],
+        inspectionRoles: inspectionRoles || portalState.inspectionRoles || [],
+        inspectionDesignations: inspectionDesignations || portalState.inspectionDesignations || [],
+      };
+      const enriched = inspectionUsers.map((u: any) => enrichUserForApp(u, masters));
+      portalState.inspectionUsers = mapInspectionUsersForClient(enriched);
+    }
+  } catch (e: any) {
+    console.warn('overlayLocalAdminUserCredentials:', e?.message || e);
+  }
+  return portalState;
 }
 
 /** Fast first paint: dashboard masters, issues, and field staff — not employees. */
@@ -2511,6 +2571,27 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
             const itemId = id || (_id ? String(_id) : `zone_${idx}`);
             return { _id: itemId as any, id: itemId, ...rest };
           }));
+        }
+      } else if (key === 'users' || key === 'inspectionUsers') {
+        const existing = await col.find({}).toArray();
+        const existingById = new Map(
+          existing.map((e: any) => [String(e.id || e._id), e])
+        );
+        const mergedItems = items.map((item) =>
+          mergeUserRecordPreservingPassword(
+            item,
+            item.id ? existingById.get(String(item.id)) : undefined
+          )
+        );
+        await col.deleteMany({});
+        if (mergedItems.length > 0) {
+          await col.insertMany(
+            mergedItems.map((item, idx) => {
+              const { id, _id, ...rest } = item;
+              const itemId = id || (_id ? String(_id) : `${key}_${idx}_${Date.now()}`);
+              return { _id: itemId as any, id: itemId, ...rest };
+            })
+          );
         }
       } else {
         await col.deleteMany({});

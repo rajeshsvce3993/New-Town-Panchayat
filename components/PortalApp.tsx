@@ -45,6 +45,7 @@ import { normalizePortalSessionUser } from '@/lib/userScope';
 import { PortalSplash } from '@/components/PortalSplash';
 import {
   loadPortalBootstrap,
+  invalidatePortalBootstrapCache,
   onPortalBootstrapFresh,
   peekPortalBootstrapCache,
 } from '@/lib/portalBootstrapClient';
@@ -240,6 +241,18 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
         merged[key] = prev[key];
       }
     });
+    if (Array.isArray(next?.users) && Array.isArray(prev?.users)) {
+      const prevById = new Map(prev.users.map((u: any) => [String(u.id), u]));
+      merged.users = next.users.map((u: any) => {
+        const p =
+          u.password ||
+          u.passwordHash ||
+          prevById.get(String(u.id))?.password ||
+          prevById.get(String(u.id))?.passwordHash ||
+          '';
+        return p ? { ...u, password: p, passwordHash: p } : u;
+      });
+    }
     if (next?.settings && typeof next.settings === 'object') {
       merged.settings = { ...(prev?.settings || {}), ...next.settings };
     }
@@ -509,7 +522,10 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
       });
       const resJson = await res.json();
       if (resJson.success) {
-        await loadState(false, false, true);
+        setState((prev: any) => mergePortalState(prev, { [key]: data }));
+        const forceBootstrap = key === 'users' || key === 'inspectionUsers';
+        if (forceBootstrap) invalidatePortalBootstrapCache();
+        await loadState(false, forceBootstrap, true);
       }
     } catch (err) {
       console.error(`Error saving collection ${key}:`, err);

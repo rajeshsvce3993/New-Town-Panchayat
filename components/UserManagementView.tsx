@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { 
   Users, 
@@ -41,6 +41,12 @@ import {
   ALL_PAGE_IDS, 
   SystemPage 
 } from '@/lib/pageAccessControl';
+import {
+  applyUserPasswordFields,
+  buildUserCredentialIndex,
+  getUserStoredPassword,
+  resolvePasswordFromIndex,
+} from '@/lib/userCredentials';
 
 interface UserManagementViewProps {
   state: any;
@@ -59,9 +65,45 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
     townPanchayats = [],
     posts = [],
     roles = [],
-    users = [],
+    users: stateUsers = [],
     officeCategories = []
   } = state || {};
+
+  const [localUsers, setLocalUsers] = useState<any[]>([]);
+  const [credentialIndex, setCredentialIndex] = useState<Record<string, string>>({});
+
+  const refreshPortalUsers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/state?key=users', { cache: 'no-store' });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setLocalUsers(json.data);
+        setCredentialIndex(buildUserCredentialIndex(json.data));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPortalUsers();
+  }, [refreshPortalUsers, stateUsers]);
+
+  const rememberUserCredential = (user: any, plain: string) => {
+    const p = String(plain || '').trim();
+    if (!p) return;
+    setCredentialIndex((prev) => {
+      const next = { ...prev };
+      if (user?.id) next[String(user.id)] = p;
+      if (user?.username) next[`u:${String(user.username).toLowerCase()}`] = p;
+      return next;
+    });
+  };
+
+  const displayPasswordForUser = (user: any) =>
+    resolvePasswordFromIndex(user, credentialIndex) || getUserStoredPassword(user) || '';
+
+  const users = localUsers.length > 0 ? localUsers : stateUsers;
 
   // Page Access Control States
   const [accessMode, setAccessMode] = useState<'role_wise' | 'user_wise'>('role_wise');
@@ -260,7 +302,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
   const handleStartEditUser = (user: any) => {
     setEditingUser(user);
     setEditUsername(user.username || '');
-    setEditPassword(user.passwordHash || '');
+    setEditPassword(displayPasswordForUser(user));
     setEditRoleId(user.roleId || '');
     setEditScopeType(user.scopeType || 'HOD');
     setEditScopeId(user.scopeId || 'all');
@@ -274,21 +316,22 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
     const updatedUsers = users.map((u: any) => {
       if (u.id === editingUser.id) {
-        return {
+        return applyUserPasswordFields({
           ...u,
           username: editUsername,
-          passwordHash: editPassword,
           roleId: editRoleId,
           scopeType: editScopeType,
           scopeId: editScopeType === 'HOD' ? 'all' : editScopeId,
           nameEn: editFullNameEn,
           nameTa: editFullNameTa
-        };
+        }, editPassword);
       }
       return u;
     });
 
     await onSaveCollection('users', updatedUsers);
+    rememberUserCredential({ id: editingUser.id, username: editUsername }, editPassword);
+    void refreshPortalUsers();
     setEditingUser(null);
   };
 
@@ -359,19 +402,20 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
     e.preventDefault();
     if (!username || !password || !selectedRoleId || !fullNameEn || !fullNameTa) return;
 
-    const newUser = {
+    const newUser = applyUserPasswordFields({
       id: 'u' + (users.length + 1) + '_' + Math.random().toString(36).substr(2, 4),
       username,
-      passwordHash: password,
       roleId: selectedRoleId,
       scopeType,
       scopeId: scopeType === 'HOD' ? 'all' : scopeId,
       status: 'Active' as 'Active' | 'Inactive',
       nameEn: fullNameEn,
       nameTa: fullNameTa
-    };
+    }, password);
 
     await onSaveCollection('users', [...users, newUser]);
+    rememberUserCredential(newUser, password);
+    void refreshPortalUsers();
     setUsername('');
     setPassword('');
     setFullNameEn('');
@@ -739,21 +783,22 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
           // Ensure username unique
           if (!uploadedUsers.some(u => u.username.toLowerCase() === uname.toLowerCase())) {
-            uploadedUsers.push({
+            uploadedUsers.push(applyUserPasswordFields({
               id: 'u_csv_' + Math.random().toString(36).substr(2, 6),
               username: uname,
-              passwordHash: pass,
               roleId: roleIdInput.toLowerCase(),
               scopeType: sType as 'HOD' | 'Zone' | 'TownPanchayat',
               scopeId: sId,
               status: 'Active',
               nameEn: fNameEn,
               nameTa: fNameTa
-            });
+            }, pass));
           }
         }
 
         await onSaveCollection('users', uploadedUsers);
+        setCredentialIndex(buildUserCredentialIndex(uploadedUsers));
+        void refreshPortalUsers();
         setCsvFeedback({ type: 'success', message: lang === 'ta' ? 'பயனர் கணக்குகள் வெற்றிகரமாக சேர்க்கப்பட்டன!' : 'Administrative user accounts imported successfully!' });
       } catch (err: any) {
         setCsvFeedback({ type: 'error', message: 'Error parsing users CSV.' });
@@ -897,7 +942,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                         <td className="p-4 font-mono text-gray-500">{user.username}</td>
                         <td className="p-4 font-mono">
                           <div className="flex items-center gap-2">
-                            <span>{isVisible ? user.passwordHash : '••••••••'}</span>
+                            <span>{isVisible ? (displayPasswordForUser(user) || '—') : '••••••••'}</span>
                             <button
                               onClick={() => togglePasswordVisibility(user.id)}
                               className="text-gray-400 hover:text-gray-600"
