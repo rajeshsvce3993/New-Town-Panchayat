@@ -180,7 +180,7 @@ function buildFieldValidationRules(fields: any[]): { enrichedFields: CompactFiel
     const rule: FieldValidationRule = {
       required: isExplicitMandatory,
       mandatory: isExplicitMandatory,
-      minLength: field.minLength ?? (fieldType === 'text' || fieldType === 'textarea' ? (isExplicitMandatory ? 3 : 0) : undefined),
+      minLength: field.minLength ?? (fieldType === 'text' || fieldType === 'textarea' ? (isExplicitMandatory ? 1 : 0) : undefined),
       maxLength: field.maxLength ?? (fieldType === 'text' ? 250 : fieldType === 'textarea' ? 1000 : undefined),
       pattern: field.pattern ?? field.regex ?? (fieldType === 'number' ? '^[0-9]+$' : undefined),
       minValue: field.minValue ?? field.min,
