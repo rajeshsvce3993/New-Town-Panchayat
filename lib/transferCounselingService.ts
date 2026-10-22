@@ -257,11 +257,10 @@ export async function getCounselingBootstrap(
   filter: CounselingApplicantFilter,
   search: string
 ) {
-  const todayStart = startOfTodayUtcLocal().toISOString();
   const applicantsCol = db.collection(APPLICANTS_COL);
   const vacanciesCol = db.collection(VACANCIES_COL);
 
-  const [metrics, applicantRows, openVacancyRows, todayRows] = await Promise.all([
+  const [metrics, applicantRows, openVacancyRows, allocationRows] = await Promise.all([
     getCounselingMetrics(db, search),
     applicantsCol
       .find(applicantFilterQuery(filter, search))
@@ -270,7 +269,7 @@ export async function getCounselingBootstrap(
       .limit(500)
       .toArray(),
     vacanciesCol
-      .find({ availableSlots: { $gt: 0 } })
+      .find({})
       .project({
         vacancyId: 1,
         district: 1,
@@ -283,28 +282,7 @@ export async function getCounselingBootstrap(
       })
       .sort({ district: 1, townPanchayat: 1 })
       .toArray(),
-    applicantsCol
-      .find({
-        counselingStatus: 'ALLOCATED',
-        allocatedAt: { $gte: todayStart },
-      })
-      .project({
-        counselingEmployeeId: 1,
-        employeeName: 1,
-        currentTownPanchayat: 1,
-        currentDistrict: 1,
-        allocatedDistrict: 1,
-        allocatedTownPanchayat: 1,
-        allocatedDesignation: 1,
-        vacancyType: 1,
-        allocationRemarks: 1,
-        allocatedBy: 1,
-        allocatedAt: 1,
-        counselingStatus: 1,
-      })
-      .sort({ allocatedAt: -1 })
-      .limit(200)
-      .toArray(),
+    listAllAllocations(db),
   ]);
 
   const applicants = applicantRows.map((r) => ({
@@ -322,21 +300,9 @@ export async function getCounselingBootstrap(
   }));
 
   const allVacancies = openVacancyRows.map(mapVacancyRow);
-  const districts = districtsFromVacancyRows(openVacancyRows);
+  const districts = districtsFromVacancyRows(openVacancyRows.filter((v) => (v.availableSlots ?? 0) > 0));
 
-  const allocations = todayRows.map((r, idx) => ({
-    sno: idx + 1,
-    counselingEmployeeId: r.counselingEmployeeId,
-    employeeName: r.employeeName,
-    previousPosting: [r.currentTownPanchayat, r.currentDistrict].filter(Boolean).join(', '),
-    allocatedDistrict: r.allocatedDistrict,
-    allocatedTownPanchayat: r.allocatedTownPanchayat,
-    post: r.allocatedDesignation ?? r.vacancyType ?? '',
-    remarks: r.allocationRemarks,
-    allocatedBy: r.allocatedBy,
-    allocatedAt: r.allocatedAt,
-    status: r.counselingStatus ?? '',
-  }));
+  const allocations = allocationRows;
 
   const { stats, filterCounts } = metrics;
   return { stats, filterCounts, applicants, allVacancies, districts, allocations };
@@ -389,6 +355,125 @@ export async function listCounselingApplicants(
   }));
 }
 
+export type PostingHistoryBucket = 'current' | 'recent' | 'older';
+
+export type PostingTimelineItem = {
+  label: string;
+  period?: string;
+  bucket: PostingHistoryBucket;
+  sortDate?: string;
+};
+
+export type GroupedPostingHistory = {
+  current: PostingTimelineItem[];
+  recent: PostingTimelineItem[];
+  older: PostingTimelineItem[];
+};
+
+function parseDotDate(day: string, month: string, year: string): Date | null {
+  const d = new Date(Number(year), Number(month) - 1, Number(day));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Latest date embedded in a previous-station blob (DD.MM.YYYY). */
+function latestDateInStationText(raw: string): Date | null {
+  let latest: Date | null = null;
+  for (const m of raw.matchAll(/(\d{2})\.(\d{2})\.(\d{4})/g)) {
+    const d = parseDotDate(m[1], m[2], m[3]);
+    if (d && (!latest || d > latest)) latest = d;
+  }
+  return latest;
+}
+
+function formatStationLabel(raw: string) {
+  return raw.trim().replace(/\s*\n+\s*/g, '\n');
+}
+
+export function buildPostingHistoryFromRecord(history: Record<string, any> | null): GroupedPostingHistory {
+  const empty: GroupedPostingHistory = { current: [], recent: [], older: [] };
+  if (!history) return empty;
+
+  const reference = history.presentStationReferenceDate
+    ? new Date(String(history.presentStationReferenceDate))
+    : new Date();
+  const refMs = Number.isNaN(reference.getTime()) ? Date.now() : reference.getTime();
+  const threeYearsMs = refMs - 1000 * 60 * 60 * 24 * 365.25 * 3;
+
+  if (history.townPanchayat || history.district) {
+    empty.current.push({
+      label: [history.townPanchayat, history.district].filter(Boolean).join(', '),
+      period: history.presentStationJoiningDate ? String(history.presentStationJoiningDate) : undefined,
+      bucket: 'current',
+      sortDate: history.presentStationJoiningDate ? String(history.presentStationJoiningDate) : undefined,
+    });
+  }
+
+  const previousItems: PostingTimelineItem[] = [];
+  for (const key of ['previousWorkingStation1', 'previousWorkingStation2', 'previousWorkingStation3'] as const) {
+    const raw = history[key];
+    if (!raw || !String(raw).trim()) continue;
+    const text = formatStationLabel(String(raw));
+    const endDate = latestDateInStationText(text);
+    const endMs = endDate?.getTime() ?? 0;
+    const bucket: PostingHistoryBucket = endMs >= threeYearsMs ? 'recent' : 'older';
+    previousItems.push({
+      label: text,
+      bucket,
+      sortDate: endDate ? endDate.toISOString().slice(0, 10) : undefined,
+    });
+  }
+
+  previousItems.sort((a, b) => {
+    const ta = a.sortDate ? new Date(a.sortDate).getTime() : 0;
+    const tb = b.sortDate ? new Date(b.sortDate).getTime() : 0;
+    return tb - ta;
+  });
+
+  for (const item of previousItems) {
+    if (item.bucket === 'recent') empty.recent.push(item);
+    else empty.older.push(item);
+  }
+
+  return empty;
+}
+
+function normalizePlaceToken(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function placeNamesMatch(targetTownPanchayat: string, historyLabel: string): boolean {
+  const target = normalizePlaceToken(targetTownPanchayat);
+  const label = normalizePlaceToken(String(historyLabel).replace(/\n/g, ' '));
+  if (!target || target.length < 2) return false;
+  if (!label) return false;
+  if (label === target) return true;
+  if (label.includes(target) || target.includes(label)) return true;
+  const targetWords = target.split(' ').filter((w) => w.length >= 3);
+  if (targetWords.length > 0 && targetWords.every((w) => label.includes(w))) return true;
+  return false;
+}
+
+/** True if TP matches current or last-3-year posting history (not older bucket). */
+export function findRepeatTownPanchayatWithinThreeYears(
+  grouped: GroupedPostingHistory | null | undefined,
+  townPanchayat: string
+): { repeat: boolean; matchedLabel?: string; bucket?: PostingHistoryBucket } {
+  if (!grouped || !String(townPanchayat || '').trim()) return { repeat: false };
+
+  for (const bucket of ['current', 'recent'] as const) {
+    for (const item of grouped[bucket] || []) {
+      if (placeNamesMatch(townPanchayat, item.label)) {
+        return { repeat: true, matchedLabel: item.label, bucket };
+      }
+    }
+  }
+  return { repeat: false };
+}
+
 export async function getCounselingEmployeeDetail(db: Db, counselingEmployeeId: string) {
   const id = counselingEmployeeId.trim();
   const applicant = await db.collection(APPLICANTS_COL).findOne({ counselingEmployeeId: id });
@@ -396,26 +481,18 @@ export async function getCounselingEmployeeDetail(db: Db, counselingEmployeeId: 
 
   const history = await db.collection(HISTORY_COL).findOne({ counselingEmployeeId: id });
 
-  const postingTimeline: { label: string; period?: string }[] = [];
-  if (history) {
-    if (history.townPanchayat || history.district) {
-      postingTimeline.push({
-        label: [history.townPanchayat, history.district].filter(Boolean).join(', '),
-        period: history.presentStationJoiningDate,
-      });
-    }
-    for (const key of ['previousWorkingStation3', 'previousWorkingStation2', 'previousWorkingStation1'] as const) {
-      const raw = history[key];
-      if (raw && String(raw).trim()) {
-        postingTimeline.push({ label: String(raw).trim() });
-      }
-    }
-  }
+  const postingHistoryGrouped = buildPostingHistoryFromRecord(history);
+  const postingTimeline: PostingTimelineItem[] = [
+    ...postingHistoryGrouped.current,
+    ...postingHistoryGrouped.recent,
+    ...postingHistoryGrouped.older,
+  ];
 
   return {
     applicant,
     history,
     postingTimeline,
+    postingHistoryGrouped,
   };
 }
 
@@ -465,19 +542,23 @@ export async function listDistrictsWithVacancies(db: Db) {
   return rows.map((r) => ({ district: r._id, availableSlots: r.slots }));
 }
 
-export async function listTodayAllocations(db: Db) {
-  const todayStart = startOfTodayUtcLocal();
-  const rows = await db
-    .collection(APPLICANTS_COL)
-    .find({
-      counselingStatus: 'ALLOCATED',
-      allocatedAt: { $gte: todayStart.toISOString() },
-    })
-    .sort({ allocatedAt: -1 })
-    .limit(200)
-    .toArray();
+const ALLOCATION_LIST_PROJECTION = {
+  counselingEmployeeId: 1,
+  employeeName: 1,
+  currentTownPanchayat: 1,
+  currentDistrict: 1,
+  allocatedDistrict: 1,
+  allocatedTownPanchayat: 1,
+  allocatedDesignation: 1,
+  vacancyType: 1,
+  allocationRemarks: 1,
+  allocatedBy: 1,
+  allocatedAt: 1,
+  counselingStatus: 1,
+} as const;
 
-  return rows.map((r, idx) => ({
+function mapAllocationListRow(r: Record<string, any>, idx: number) {
+  return {
     sno: idx + 1,
     counselingEmployeeId: r.counselingEmployeeId,
     employeeName: r.employeeName,
@@ -489,7 +570,39 @@ export async function listTodayAllocations(db: Db) {
     allocatedBy: r.allocatedBy,
     allocatedAt: r.allocatedAt,
     status: r.counselingStatus ?? '',
-  }));
+  };
+}
+
+/** All counseling allocations (newest first). */
+export async function listAllAllocations(db: Db, limit = 5000) {
+  const rows = await db
+    .collection(APPLICANTS_COL)
+    .find({
+      counselingStatus: 'ALLOCATED',
+      allocatedAt: { $exists: true, $nin: [null, ''] },
+    })
+    .project(ALLOCATION_LIST_PROJECTION)
+    .sort({ allocatedAt: -1 })
+    .limit(limit)
+    .toArray();
+
+  return rows.map(mapAllocationListRow);
+}
+
+export async function listTodayAllocations(db: Db) {
+  const todayStart = startOfTodayUtcLocal().toISOString();
+  const rows = await db
+    .collection(APPLICANTS_COL)
+    .find({
+      counselingStatus: 'ALLOCATED',
+      allocatedAt: { $gte: todayStart },
+    })
+    .project(ALLOCATION_LIST_PROJECTION)
+    .sort({ allocatedAt: -1 })
+    .limit(500)
+    .toArray();
+
+  return rows.map(mapAllocationListRow);
 }
 
 export async function allocateTransferCounseling(

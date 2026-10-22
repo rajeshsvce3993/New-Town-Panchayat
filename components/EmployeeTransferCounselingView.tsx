@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Search,
   RefreshCw,
-  User,
   AlertTriangle,
   CheckCircle2,
   Clock,
@@ -15,13 +15,14 @@ import {
   MapPin,
   Building2,
   ClipboardList,
+  FileSpreadsheet,
   X,
   ChevronRight,
-  Check,
   ChevronDown,
   RotateCcw,
 } from 'lucide-react';
 import { Language } from './translations';
+import { findRepeatTownPanchayatWithinThreeYears } from '@/lib/transferCounselingService';
 
 type ApplicantRow = {
   counselingEmployeeId: string;
@@ -58,7 +59,7 @@ function statusStyles(status: string) {
   return 'bg-slate-50 text-slate-700 ring-slate-200/80';
 }
 
-type PanelTone = 'blue' | 'indigo' | 'violet' | 'cyan' | 'emerald' | 'slate';
+type PanelTone = 'blue' | 'indigo' | 'violet' | 'cyan' | 'emerald' | 'slate' | 'vacancy' | 'allocations';
 
 const panelToneStyles: Record<
   PanelTone,
@@ -112,6 +113,23 @@ const panelToneStyles: Record<
     shell: 'border-slate-200 shadow-[0_4px_14px_rgba(15,23,42,0.08)]',
     body: 'bg-white',
   },
+  /** Neutral chrome so multicolor district blocks read clearly inside. */
+  vacancy: {
+    header: 'border-b border-slate-200/90 bg-gradient-to-r from-slate-100 via-slate-50 to-white',
+    icon: 'bg-[#0066FF] text-white shadow-sm ring-1 ring-[#0066FF]/20',
+    title: 'text-slate-900',
+    subtitle: 'text-slate-600',
+    shell: 'border-slate-200/90 shadow-[0_4px_14px_rgba(15,23,42,0.06)]',
+    body: 'bg-slate-200/45',
+  },
+  allocations: {
+    header: 'border-b border-emerald-900/30 bg-gradient-to-r from-emerald-800 via-teal-800 to-emerald-900',
+    icon: 'bg-white/15 text-white ring-1 ring-white/25 shadow-sm',
+    title: 'text-white',
+    subtitle: 'text-emerald-100/90',
+    shell: 'border-emerald-200/80 shadow-[0_4px_16px_rgba(5,150,105,0.14)]',
+    body: 'bg-gradient-to-b from-emerald-50/40 via-white to-white',
+  },
 };
 
 function Panel({
@@ -125,6 +143,7 @@ function Panel({
   bodyGrow = true,
   tone = 'blue',
   compact = false,
+  allowBodyShadowBleed = false,
 }: {
   title: string;
   subtitle?: string;
@@ -136,11 +155,13 @@ function Panel({
   bodyGrow?: boolean;
   tone?: PanelTone;
   compact?: boolean;
+  /** Lets focus rings / shadows show (overrides .portal-dashboard-panel overflow). */
+  allowBodyShadowBleed?: boolean;
 }) {
   const t = panelToneStyles[tone];
   return (
     <section
-      className={`portal-dashboard-panel flex flex-col overflow-hidden rounded-xl border bg-white ${t.shell} ${className}`}
+      className={`portal-dashboard-panel flex flex-col rounded-xl border bg-white ${allowBodyShadowBleed ? '!overflow-visible' : 'overflow-hidden'} ${t.shell} ${className}`}
     >
       <header
         className={`flex shrink-0 items-center justify-between gap-2 ${compact ? 'px-3 py-2' : 'px-4 py-3'} ${t.header}`}
@@ -165,30 +186,74 @@ function Panel({
   );
 }
 
+type StatTheme = 'indigo' | 'amber' | 'emerald' | 'teal' | 'blue';
+
+const statThemeStyles: Record<
+  StatTheme,
+  { card: string; label: string; value: string; icon: string; orb: string }
+> = {
+  indigo: {
+    card: 'border-indigo-200/90 bg-gradient-to-br from-indigo-50 via-white to-violet-100/50 shadow-[0_4px_14px_rgba(79,70,229,0.12)]',
+    label: 'text-indigo-700/85',
+    value: 'text-indigo-950',
+    icon: 'bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-md shadow-indigo-500/30',
+    orb: 'bg-indigo-400/25',
+  },
+  amber: {
+    card: 'border-amber-200/90 bg-gradient-to-br from-amber-50 via-white to-orange-100/45 shadow-[0_4px_14px_rgba(245,158,11,0.14)]',
+    label: 'text-amber-800/80',
+    value: 'text-amber-950',
+    icon: 'bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md shadow-amber-500/35',
+    orb: 'bg-amber-400/30',
+  },
+  emerald: {
+    card: 'border-emerald-200/90 bg-gradient-to-br from-emerald-50 via-white to-teal-100/40 shadow-[0_4px_14px_rgba(16,185,129,0.13)]',
+    label: 'text-emerald-800/80',
+    value: 'text-emerald-950',
+    icon: 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/30',
+    orb: 'bg-emerald-400/25',
+  },
+  teal: {
+    card: 'border-cyan-200/90 bg-gradient-to-br from-cyan-50 via-white to-sky-100/50 shadow-[0_4px_14px_rgba(6,182,212,0.14)]',
+    label: 'text-cyan-800/80',
+    value: 'text-cyan-950',
+    icon: 'bg-gradient-to-br from-cyan-500 to-sky-600 text-white shadow-md shadow-cyan-500/30',
+    orb: 'bg-cyan-400/28',
+  },
+  blue: {
+    card: 'border-[#0066FF]/25 bg-gradient-to-br from-blue-50 via-white to-[#0066FF]/10 shadow-[0_4px_14px_rgba(0,102,255,0.15)]',
+    label: 'text-[#0052cc]/85',
+    value: 'text-[#003d99]',
+    icon: 'bg-gradient-to-br from-[#0066FF] to-[#0052cc] text-white shadow-md shadow-blue-500/35',
+    orb: 'bg-[#0066FF]/20',
+  },
+};
+
 function StatCard({
   label,
   value,
   icon: Icon,
-  iconWrap,
-  accent,
+  theme,
 }: {
   label: string;
   value: string | number;
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
-  iconWrap: string;
-  accent: string;
+  theme: StatTheme;
 }) {
+  const t = statThemeStyles[theme];
   return (
-    <div
-      className={`relative overflow-hidden rounded-xl border border-white/80 bg-white px-3.5 py-3 shadow-[0_2px_8px_rgba(15,23,42,0.06)] ring-1 ring-slate-200/70 ${accent}`}
-    >
-      <div className="flex items-center gap-3">
-        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconWrap}`}>
-          <Icon className="h-[18px] w-[18px]" strokeWidth={2.25} />
+    <div className={`relative overflow-hidden rounded-xl border px-4 py-4 ${t.card}`}>
+      <div
+        className={`pointer-events-none absolute -right-3 -top-3 h-16 w-16 rounded-full blur-2xl ${t.orb}`}
+        aria-hidden
+      />
+      <div className="relative flex items-center gap-3.5">
+        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${t.icon}`}>
+          <Icon className="h-[19px] w-[19px]" strokeWidth={2.25} />
         </span>
-        <div className="min-w-0">
-          <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
-          <p className="mt-0.5 text-xl font-bold tabular-nums text-slate-900">{value}</p>
+        <div className="min-w-0 flex-1 text-left">
+          <p className={`truncate text-[10px] font-semibold uppercase tracking-wider ${t.label}`}>{label}</p>
+          <p className={`mt-1 text-2xl font-bold leading-tight tabular-nums tracking-tight ${t.value}`}>{value}</p>
         </div>
       </div>
     </div>
@@ -229,72 +294,97 @@ function avatarListClass(index: number, selected: boolean) {
   return `${AVATAR_PALETTE[index % AVATAR_PALETTE.length]} ring-1 ring-white/40`;
 }
 
+/** Solid district block palettes — rich header + tinted body + white TP tiles */
 const VACANCY_DISTRICT_THEMES = [
   {
-    collapsed: 'bg-gradient-to-r from-amber-100/90 via-orange-50 to-yellow-50 border-amber-200',
-    expandedShell: 'border-amber-300 shadow-sm shadow-amber-100/80',
-    expandedHeader: 'bg-gradient-to-r from-amber-300/90 via-orange-200 to-amber-200',
-    expandedBody: 'bg-gradient-to-b from-amber-50/90 to-orange-50/40',
-    title: 'text-amber-950',
-    meta: 'text-amber-900/75',
-    chip: 'bg-amber-600/15 text-amber-950 ring-1 ring-amber-400/30',
-    row: 'hover:bg-amber-100/70',
-    picked: 'bg-amber-200/80 ring-1 ring-amber-500/35',
+    shell: 'shadow-lg shadow-indigo-900/15',
+    header: 'bg-indigo-700',
+    headerTitle: 'text-white',
+    headerMeta: 'text-indigo-100/90',
+    chip: 'bg-white/15 text-white ring-1 ring-white/25',
+    body: 'bg-indigo-200/90',
+    card: 'border border-indigo-300/50 bg-white shadow-[0_2px_10px_rgba(49,46,129,0.12)]',
+    cardHover: 'hover:-translate-y-0.5 hover:shadow-[0_6px_18px_rgba(49,46,129,0.18)] hover:ring-2 hover:ring-indigo-400/40',
+    cardTitle: 'text-indigo-950',
+    cardMuted: 'text-indigo-700/75',
+    icon: 'bg-indigo-600 text-white shadow-sm',
+    slot: 'bg-indigo-700 text-white',
+    picked: 'border-2 border-[#0066FF] bg-indigo-50/90 shadow-md shadow-indigo-900/10',
   },
   {
-    collapsed: 'bg-gradient-to-r from-teal-100/90 via-emerald-50 to-teal-50 border-teal-200',
-    expandedShell: 'border-teal-300 shadow-sm shadow-teal-100/80',
-    expandedHeader: 'bg-gradient-to-r from-teal-300/90 via-emerald-200 to-teal-200',
-    expandedBody: 'bg-gradient-to-b from-teal-50/90 to-emerald-50/40',
-    title: 'text-teal-950',
-    meta: 'text-teal-900/75',
-    chip: 'bg-teal-600/15 text-teal-950 ring-1 ring-teal-400/30',
-    row: 'hover:bg-teal-100/70',
-    picked: 'bg-teal-200/80 ring-1 ring-teal-500/35',
+    shell: 'shadow-lg shadow-teal-900/15',
+    header: 'bg-teal-700',
+    headerTitle: 'text-white',
+    headerMeta: 'text-teal-100/90',
+    chip: 'bg-white/15 text-white ring-1 ring-white/25',
+    body: 'bg-teal-200/90',
+    card: 'border border-teal-300/50 bg-white shadow-[0_2px_10px_rgba(15,118,110,0.12)]',
+    cardHover: 'hover:-translate-y-0.5 hover:shadow-[0_6px_18px_rgba(15,118,110,0.18)] hover:ring-2 hover:ring-teal-500/40',
+    cardTitle: 'text-teal-950',
+    cardMuted: 'text-teal-800/70',
+    icon: 'bg-teal-600 text-white shadow-sm',
+    slot: 'bg-teal-700 text-white',
+    picked: 'border-2 border-[#0066FF] bg-teal-50/90 shadow-md shadow-teal-900/10',
   },
   {
-    collapsed: 'bg-gradient-to-r from-violet-100/90 via-purple-50 to-violet-50 border-violet-200',
-    expandedShell: 'border-violet-300 shadow-sm shadow-violet-100/80',
-    expandedHeader: 'bg-gradient-to-r from-violet-300/90 via-purple-200 to-violet-200',
-    expandedBody: 'bg-gradient-to-b from-violet-50/90 to-purple-50/40',
-    title: 'text-violet-950',
-    meta: 'text-violet-900/75',
-    chip: 'bg-violet-600/15 text-violet-950 ring-1 ring-violet-400/30',
-    row: 'hover:bg-violet-100/70',
-    picked: 'bg-violet-200/80 ring-1 ring-violet-500/35',
+    shell: 'shadow-lg shadow-violet-900/15',
+    header: 'bg-violet-700',
+    headerTitle: 'text-white',
+    headerMeta: 'text-violet-100/90',
+    chip: 'bg-white/15 text-white ring-1 ring-white/25',
+    body: 'bg-violet-200/90',
+    card: 'border border-violet-300/50 bg-white shadow-[0_2px_10px_rgba(91,33,182,0.12)]',
+    cardHover: 'hover:-translate-y-0.5 hover:shadow-[0_6px_18px_rgba(91,33,182,0.18)] hover:ring-2 hover:ring-violet-500/40',
+    cardTitle: 'text-violet-950',
+    cardMuted: 'text-violet-800/70',
+    icon: 'bg-violet-600 text-white shadow-sm',
+    slot: 'bg-violet-700 text-white',
+    picked: 'border-2 border-[#0066FF] bg-violet-50/90 shadow-md shadow-violet-900/10',
   },
   {
-    collapsed: 'bg-gradient-to-r from-sky-100/90 via-blue-50 to-sky-50 border-sky-200',
-    expandedShell: 'border-sky-300 shadow-sm shadow-sky-100/80',
-    expandedHeader: 'bg-gradient-to-r from-sky-300/90 via-blue-200 to-sky-200',
-    expandedBody: 'bg-gradient-to-b from-sky-50/90 to-blue-50/40',
-    title: 'text-sky-950',
-    meta: 'text-sky-900/75',
-    chip: 'bg-sky-600/15 text-sky-950 ring-1 ring-sky-400/30',
-    row: 'hover:bg-sky-100/70',
-    picked: 'bg-sky-200/80 ring-1 ring-sky-500/35',
+    shell: 'shadow-lg shadow-blue-900/15',
+    header: 'bg-[#0052cc]',
+    headerTitle: 'text-white',
+    headerMeta: 'text-blue-100/90',
+    chip: 'bg-white/15 text-white ring-1 ring-white/25',
+    body: 'bg-blue-200/90',
+    card: 'border border-blue-300/50 bg-white shadow-[0_2px_10px_rgba(29,78,216,0.12)]',
+    cardHover: 'hover:-translate-y-0.5 hover:shadow-[0_6px_18px_rgba(29,78,216,0.18)] hover:ring-2 hover:ring-blue-500/40',
+    cardTitle: 'text-blue-950',
+    cardMuted: 'text-blue-800/70',
+    icon: 'bg-[#0066FF] text-white shadow-sm',
+    slot: 'bg-[#0052cc] text-white',
+    picked: 'border-2 border-[#0066FF] bg-blue-50/90 shadow-md shadow-blue-900/10',
   },
   {
-    collapsed: 'bg-gradient-to-r from-rose-100/90 via-pink-50 to-rose-50 border-rose-200',
-    expandedShell: 'border-rose-300 shadow-sm shadow-rose-100/80',
-    expandedHeader: 'bg-gradient-to-r from-rose-300/90 via-pink-200 to-rose-200',
-    expandedBody: 'bg-gradient-to-b from-rose-50/90 to-pink-50/40',
-    title: 'text-rose-950',
-    meta: 'text-rose-900/75',
-    chip: 'bg-rose-600/15 text-rose-950 ring-1 ring-rose-400/30',
-    row: 'hover:bg-rose-100/70',
-    picked: 'bg-rose-200/80 ring-1 ring-rose-500/35',
+    shell: 'shadow-lg shadow-rose-900/15',
+    header: 'bg-rose-700',
+    headerTitle: 'text-white',
+    headerMeta: 'text-rose-100/90',
+    chip: 'bg-white/15 text-white ring-1 ring-white/25',
+    body: 'bg-rose-200/90',
+    card: 'border border-rose-300/50 bg-white shadow-[0_2px_10px_rgba(190,18,60,0.12)]',
+    cardHover: 'hover:-translate-y-0.5 hover:shadow-[0_6px_18px_rgba(190,18,60,0.18)] hover:ring-2 hover:ring-rose-500/40',
+    cardTitle: 'text-rose-950',
+    cardMuted: 'text-rose-800/70',
+    icon: 'bg-rose-600 text-white shadow-sm',
+    slot: 'bg-rose-700 text-white',
+    picked: 'border-2 border-[#0066FF] bg-rose-50/90 shadow-md shadow-rose-900/10',
   },
   {
-    collapsed: 'bg-gradient-to-r from-lime-100/90 via-green-50 to-lime-50 border-lime-200',
-    expandedShell: 'border-lime-300 shadow-sm shadow-lime-100/80',
-    expandedHeader: 'bg-gradient-to-r from-lime-300/90 via-green-200 to-lime-200',
-    expandedBody: 'bg-gradient-to-b from-lime-50/90 to-green-50/40',
-    title: 'text-lime-950',
-    meta: 'text-lime-900/75',
-    chip: 'bg-lime-600/15 text-lime-950 ring-1 ring-lime-500/30',
-    row: 'hover:bg-lime-100/70',
-    picked: 'bg-lime-200/80 ring-1 ring-lime-600/35',
+    shell: 'shadow-lg shadow-amber-900/15',
+    header: 'bg-amber-700',
+    headerTitle: 'text-white',
+    headerMeta: 'text-amber-100/90',
+    chip: 'bg-white/15 text-white ring-1 ring-white/25',
+    body: 'bg-amber-200/90',
+    card: 'border border-amber-300/50 bg-white shadow-[0_2px_10px_rgba(180,83,9,0.12)]',
+    cardHover: 'hover:-translate-y-0.5 hover:shadow-[0_6px_18px_rgba(180,83,9,0.18)] hover:ring-2 hover:ring-amber-500/40',
+    cardTitle: 'text-amber-950',
+    cardMuted: 'text-amber-900/70',
+    icon: 'bg-amber-600 text-white shadow-sm',
+    slot: 'bg-amber-800 text-white',
+    picked: 'border-2 border-[#0066FF] bg-amber-50/90 shadow-md shadow-amber-900/10',
   },
 ] as const;
 
@@ -302,6 +392,94 @@ function vacancyDistrictTheme(district: string, index: number) {
   let h = index;
   for (let i = 0; i < district.length; i++) h = (h * 31 + district.charCodeAt(i)) >>> 0;
   return VACANCY_DISTRICT_THEMES[h % VACANCY_DISTRICT_THEMES.length];
+}
+
+type VacancyTheme = (typeof VACANCY_DISTRICT_THEMES)[number];
+
+function VacancyTpTile({
+  vacancy,
+  theme,
+  picked,
+  disabled,
+  slotsLabel,
+  allottedLabel,
+  onSelect,
+}: {
+  vacancy: VacancyRow;
+  theme: VacancyTheme;
+  picked: boolean;
+  disabled: boolean;
+  slotsLabel: string;
+  allottedLabel: string;
+  onSelect: () => void;
+}) {
+  const hasOpenSlots = (vacancy.availableSlots ?? 0) > 0;
+  const tileDisabled = disabled || !hasOpenSlots;
+
+  return (
+    <button
+      type="button"
+      disabled={tileDisabled}
+      onClick={onSelect}
+      aria-disabled={tileDisabled}
+      className={`flex h-full min-h-[5.5rem] w-full flex-col gap-0 rounded-xl p-0 text-center transition ${
+        hasOpenSlots
+          ? `border-emerald-200/80 bg-gradient-to-b from-white to-emerald-50/50 shadow-[0_2px_10px_rgba(16,185,129,0.1)] ${theme.card} ${
+              picked ? theme.picked : theme.cardHover
+            }`
+          : 'cursor-not-allowed border border-slate-300/70 bg-gradient-to-b from-slate-100 to-slate-200/80 opacity-95'
+      } disabled:cursor-not-allowed`}
+    >
+      <div className="flex flex-col items-center px-3 pb-3 pt-4">
+        <span
+          className={`mb-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+            hasOpenSlots ? theme.icon : 'bg-slate-400 text-white'
+          }`}
+        >
+          <Building2 className="h-[18px] w-[18px]" strokeWidth={2.25} />
+        </span>
+        <p
+          className={`w-full px-1 text-center text-[14px] font-bold leading-snug sm:text-[15px] ${
+            hasOpenSlots ? theme.cardTitle : 'text-slate-600'
+          }`}
+        >
+          {vacancy.townPanchayat}
+        </p>
+      </div>
+      <div
+        className={`mt-auto flex items-center justify-between gap-3 border-t px-4 py-2.5 ${
+          hasOpenSlots ? 'border-emerald-200/60' : 'border-slate-300/60'
+        }`}
+      >
+        <span
+          className={`text-left text-[10px] font-medium uppercase tracking-wider ${
+            hasOpenSlots ? theme.cardMuted : 'text-slate-500'
+          }`}
+        >
+          {hasOpenSlots ? slotsLabel : allottedLabel}
+        </span>
+        <span
+          className={`min-w-[2.25rem] shrink-0 rounded-md px-2.5 py-1 text-center text-sm font-bold tabular-nums leading-none ${
+            hasOpenSlots ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-500 text-white'
+          }`}
+        >
+          {vacancy.availableSlots}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+const VACANCY_SUBBLOCKS_PER_ROW = 4;
+
+/** Column count for TP tiles; narrower max when nested under a district in a 3-column grid. */
+function vacancySubBlockGridClass(tpCount: number, nestedInDistrictRow = false): string {
+  const cap = nestedInDistrictRow ? 2 : VACANCY_SUBBLOCKS_PER_ROW;
+  const cols = Math.min(Math.max(tpCount, 1), cap);
+  if (cols === 1) return 'grid-cols-1';
+  if (cols === 2) return 'grid-cols-1 sm:grid-cols-2';
+  if (cols === 3) return 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+  return 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4';
 }
 
 const inputClass =
@@ -324,17 +502,20 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
   const [employeeDetail, setEmployeeDetail] = useState<any>(null);
   const [allVacancies, setAllVacancies] = useState<VacancyRow[]>([]);
   const [districts, setDistricts] = useState<{ district: string; availableSlots: number }[]>([]);
-  const [todayAllocations, setTodayAllocations] = useState<any[]>([]);
+  const [allocationRecords, setAllocationRecords] = useState<any[]>([]);
   const [assignDistrict, setAssignDistrict] = useState('');
   const [assignTp, setAssignTp] = useState('');
   const [selectedVacancyId, setSelectedVacancyId] = useState('');
   const [remarks, setRemarks] = useState('');
   const [loading, setLoading] = useState(false);
   const [allocateModalOpen, setAllocateModalOpen] = useState(false);
+  const [expandedVacancyDistrict, setExpandedVacancyDistrict] = useState<string | null>(null);
+  const [repeatPostingPrompt, setRepeatPostingPrompt] = useState<{
+    vacancy: VacancyRow;
+    matchedLabel: string;
+  } | null>(null);
   const [message, setMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
-  const [expandedDistrict, setExpandedDistrict] = useState<string | null>(null);
-
-  /** Tall first row: fills viewport so middle column scrolls inside details + history panels. */
+  /** Tall main workspace row. */
   const workspaceRowHeight = 'h-[min(780px,calc(100vh-11.5rem))] min-h-[620px]';
 
   const authorityName =
@@ -351,7 +532,7 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
     if (data.applicants) setApplicants(data.applicants);
     if (data.allVacancies) setAllVacancies(data.allVacancies);
     if (data.districts) setDistricts(data.districts);
-    if (data.allocations) setTodayAllocations(data.allocations);
+    if (data.allocations) setAllocationRecords(data.allocations);
   }, []);
 
   const loadBootstrap = useCallback(
@@ -392,11 +573,35 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
 
   useEffect(() => {
     if (!listReadyRef.current) return;
-    const t = setTimeout(() => {
-      void loadBootstrap(filter, search);
-    }, 300);
-    return () => clearTimeout(t);
-  }, [filter, search, loadBootstrap]);
+    void loadBootstrap(filter, '');
+  }, [filter, loadBootstrap]);
+
+  const searchQuery = search.trim();
+  const searchActive = searchQuery.length > 0;
+
+  const filteredApplicants = useMemo(() => {
+    if (!searchActive) return [];
+    const q = searchQuery.toLowerCase();
+    return applicants.filter(
+      (a) =>
+        a.employeeName?.toLowerCase().includes(q) ||
+        a.counselingEmployeeId?.toLowerCase().includes(q)
+    );
+  }, [applicants, searchActive, searchQuery]);
+
+  useEffect(() => {
+    if (!searchActive) {
+      setSelectedId('');
+      setEmployeeDetail(null);
+      setAllocateModalOpen(false);
+      return;
+    }
+    if (selectedId && !filteredApplicants.some((a) => a.counselingEmployeeId === selectedId)) {
+      setSelectedId('');
+      setEmployeeDetail(null);
+      setAllocateModalOpen(false);
+    }
+  }, [searchActive, searchQuery, selectedId, filteredApplicants]);
 
   const selectEmployee = async (id: string) => {
     setSelectedId(id);
@@ -480,7 +685,7 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
         setMessage({ type: 'ok', text: data.message });
         if (data.stats) setStats(data.stats);
         if (data.filterCounts) setFilterCounts(data.filterCounts);
-        if (data.allocations) setTodayAllocations(data.allocations);
+        if (data.allocations) setAllocationRecords(data.allocations);
         setRemarks('');
         setSelectedId('');
         setEmployeeDetail(null);
@@ -495,7 +700,6 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
   };
 
   const applicant = employeeDetail?.applicant;
-  const history = employeeDetail?.history;
   const isAllocated = applicant?.counselingStatus === 'ALLOCATED';
 
   const filterTabs = useMemo(
@@ -512,13 +716,6 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
   const formatDbStatus = (status?: string) =>
     status ? status.replace(/_/g, ' ') : '—';
 
-  const formatDbBool = (value: unknown) => {
-    if (value === true) return en ? 'Yes' : 'ஆம்';
-    if (value === false) return en ? 'No' : 'இல்லை';
-    if (value === null || value === undefined || value === '') return undefined;
-    return String(value);
-  };
-
   const initials = (name?: string) =>
     (name || '?')
       .split(/\s+/)
@@ -526,19 +723,6 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
       .map((w) => w[0])
       .join('')
       .toUpperCase();
-
-  const flowSteps = useMemo(
-    () =>
-      [
-        { step: 1, label: en ? 'Employee' : 'ஊழியர்' },
-        { step: 2, label: en ? 'History' : 'வரலாறு' },
-        { step: 3, label: en ? 'Vacancy' : 'காலியிடம்' },
-        { step: 4, label: en ? 'Allocation' : 'ஒதுக்கீடு' },
-      ] as const,
-    [en]
-  );
-
-  const activeFlowStep = !selectedId ? 1 : !selectedVacancyId ? 2 : !remarks.trim() ? 3 : 4;
 
   const vacanciesByDistrict = useMemo(() => {
     const map = new Map<string, VacancyRow[]>();
@@ -549,13 +733,57 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [allVacancies]);
 
-  const recentAllocRows = useMemo(() => {
-    if (selectedId) {
-      const mine = todayAllocations.filter((r) => r.counselingEmployeeId === selectedId);
-      if (mine.length) return mine;
+  useEffect(() => {
+    setExpandedVacancyDistrict(null);
+    setRepeatPostingPrompt(null);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId || vacanciesByDistrict.length !== 1) return;
+    setExpandedVacancyDistrict(vacanciesByDistrict[0][0]);
+  }, [selectedId, vacanciesByDistrict]);
+
+  const exportAllocationsExcel = useCallback(() => {
+    if (!allocationRecords.length) {
+      setMessage({ type: 'err', text: en ? 'No allocation records to export.' : 'ஏற்றுமதி செய்ய ஒதுக்கீடுகள் இல்லை.' });
+      return;
     }
-    return todayAllocations;
-  }, [todayAllocations, selectedId]);
+    const locale = en ? 'en-IN' : 'ta-IN';
+    const rows = allocationRecords.map((row, idx) => ({
+      SNo: idx + 1,
+      [en ? 'Date & time' : 'தேதி']: row.allocatedAt
+        ? new Date(row.allocatedAt).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' })
+        : '',
+      [en ? 'Employee ID' : 'ஊழியர் ID']: row.counselingEmployeeId ?? '',
+      [en ? 'Name' : 'பெயர்']: row.employeeName ?? '',
+      [en ? 'District' : 'மாவட்டம்']: row.allocatedDistrict ?? '',
+      [en ? 'Town Panchayat' : 'பேரூராட்சி']: row.allocatedTownPanchayat ?? '',
+      [en ? 'Remarks' : 'குறிப்பு']: row.remarks ?? '',
+      [en ? 'Allocated by' : 'ஒதுக்கியவர்']: row.allocatedBy ?? '',
+      [en ? 'Status' : 'நிலை']: row.status ?? '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, en ? 'Allocations' : 'Allocations');
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `transfer_counseling_allocations_${stamp}.xlsx`);
+  }, [allocationRecords, en]);
+
+  const postingHistoryGrouped = useMemo(() => {
+    const g = employeeDetail?.postingHistoryGrouped as
+      | { current: { label: string; period?: string }[]; recent: { label: string; period?: string }[]; older: { label: string; period?: string }[] }
+      | undefined;
+    if (g) return g;
+    return { current: [], recent: [], older: [] };
+  }, [employeeDetail]);
+
+  const openAllocateModalForVacancy = useCallback((v: VacancyRow) => {
+    setAssignDistrict(v.district);
+    setAssignTp(v.townPanchayat);
+    setSelectedVacancyId(v.vacancyId);
+    setRemarks('');
+    setAllocateModalOpen(true);
+  }, []);
 
   const pickVacancy = (v: VacancyRow) => {
     if (!selectedId) {
@@ -563,11 +791,29 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
       return;
     }
     if (isAllocated) return;
-    setAssignDistrict(v.district);
-    setAssignTp(v.townPanchayat);
-    setSelectedVacancyId(v.vacancyId);
-    setRemarks('');
-    setAllocateModalOpen(true);
+    if ((v.availableSlots ?? 0) <= 0) return;
+
+    const repeatCheck = findRepeatTownPanchayatWithinThreeYears(postingHistoryGrouped, v.townPanchayat);
+    if (repeatCheck.repeat) {
+      setRepeatPostingPrompt({
+        vacancy: v,
+        matchedLabel: repeatCheck.matchedLabel || v.townPanchayat,
+      });
+      return;
+    }
+
+    openAllocateModalForVacancy(v);
+  };
+
+  const confirmRepeatPostingAllocation = () => {
+    if (!repeatPostingPrompt) return;
+    const v = repeatPostingPrompt.vacancy;
+    setRepeatPostingPrompt(null);
+    openAllocateModalForVacancy(v);
+  };
+
+  const cancelRepeatPostingAllocation = () => {
+    setRepeatPostingPrompt(null);
   };
 
   const closeAllocateModal = () => {
@@ -582,58 +828,15 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
     setAllocateModalOpen(false);
   };
 
-  const toggleDistrictAccordion = (district: string) => {
-    setExpandedDistrict((prev) => (prev === district ? null : district));
-  };
+  const hasWorkHistory =
+    postingHistoryGrouped.current.length > 0 ||
+    postingHistoryGrouped.recent.length > 0 ||
+    postingHistoryGrouped.older.length > 0;
 
-  const transferAppStatus = applicant
-    ? formatDbBool(applicant.transferRequestMarked) ?? formatDbStatus(applicant.counselingStatus)
-    : '—';
-
-  const postingTimeline = (employeeDetail?.postingTimeline || []) as { label: string; period?: string }[];
+  const employeeProfileReady = Boolean(searchActive && selectedId && applicant);
 
   return (
-    
-    <div className="-mx-1 space-y-4 bg-gradient-to-b from-slate-100 to-[#eef2f7] px-1 py-1 pb-6 sm:px-0">
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm ring-1 ring-slate-200/60 sm:flex-row sm:items-center sm:justify-between">
-        <div className="border-l-4 border-[#0066FF] pl-3">
-          <h1 className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
-            {en ? 'Employee Transfer Counseling' : 'பணியாளர் இடமாற்று ஆலோசனை'}
-          </h1>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {en ? 'Digital counseling desk for transfer allocation' : 'இடமாற்று ஒதுக்கீட்டு ஆலோசனை'}
-          </p>
-        </div>
-        <nav
-          className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-50 p-1.5 text-xs ring-1 ring-slate-200/80"
-          aria-label={en ? 'Workflow progress' : 'படிப்படி'}
-        >
-          {flowSteps.map(({ step, label }, idx) => (
-            <React.Fragment key={step}>
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-semibold transition ${
-                  activeFlowStep === step
-                    ? 'bg-[#0066FF] text-white shadow-sm'
-                    : activeFlowStep > step
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'text-slate-500'
-                }`}
-              >
-                {activeFlowStep > step ? (
-                  <Check className="h-3.5 w-3.5" />
-                ) : (
-                  <span className="tabular-nums">{step}.</span>
-                )}
-                {label}
-              </span>
-              {idx < flowSteps.length - 1 && (
-                <ChevronRight className="h-4 w-4 text-slate-300" aria-hidden />
-              )}
-            </React.Fragment>
-          ))}
-        </nav>
-      </div>
-
+    <div className="-mx-1 space-y-4 bg-gradient-to-br from-slate-100 via-indigo-50/30 to-[#eef2f7] px-1 py-1 pb-6 sm:px-0">
       {message && (
         <div
           role="alert"
@@ -652,294 +855,374 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-5">
-        <StatCard accent="border-t-[3px] border-t-slate-500" label={en ? 'Total applicants' : 'மொத்த விண்ணப்பம்'} value={stats?.totalEmployees ?? '—'} icon={Users} iconWrap="bg-slate-100 text-slate-700" />
-        <StatCard accent="border-t-[3px] border-t-amber-500" label={en ? 'Pending' : 'நிலுவை'} value={stats?.pending ?? '—'} icon={Hourglass} iconWrap="bg-amber-100 text-amber-700" />
-        <StatCard accent="border-t-[3px] border-t-emerald-500" label={en ? 'Completed' : 'முடிந்தது'} value={stats?.completed ?? '—'} icon={CheckCheck} iconWrap="bg-emerald-100 text-emerald-700" />
-        <StatCard accent="border-t-[3px] border-t-cyan-500" label={en ? 'Vacancies available' : 'காலியிடம்'} value={stats?.remainingVacancies ?? '—'} icon={MapPin} iconWrap="bg-cyan-100 text-cyan-800" />
-        <StatCard accent="border-t-[3px] border-t-[#0066FF]" label={en ? 'Allocated today' : 'இன்று ஒதுக்கீடு'} value={stats?.vacanciesAllocatedToday ?? '—'} icon={Briefcase} iconWrap="bg-blue-100 text-[#0066FF]" />
+      <div className="grid grid-cols-2 gap-3.5 md:grid-cols-3 xl:grid-cols-5">
+        <StatCard theme="indigo" label={en ? 'Total applicants' : 'மொத்த விண்ணப்பம்'} value={stats?.totalEmployees ?? '—'} icon={Users} />
+        <StatCard theme="amber" label={en ? 'Pending' : 'நிலுவை'} value={stats?.pending ?? '—'} icon={Hourglass} />
+        <StatCard theme="emerald" label={en ? 'Completed' : 'முடிந்தது'} value={stats?.completed ?? '—'} icon={CheckCheck} />
+        <StatCard theme="teal" label={en ? 'Vacancies available' : 'காலியிடம்'} value={stats?.remainingVacancies ?? '—'} icon={MapPin} />
+        <StatCard theme="blue" label={en ? 'Allocated today' : 'இன்று ஒதுக்கீடு'} value={stats?.vacanciesAllocatedToday ?? '—'} icon={Briefcase} />
       </div>
 
-      <div className={`grid items-stretch gap-3 xl:grid-cols-12 ${workspaceRowHeight}`}>
-        <div className="flex h-full min-h-0 flex-col xl:col-span-3">
-          <Panel
-            tone="blue"
-            compact
-            title={en ? 'Search employee' : 'ஊழியர் தேடல்'}
-            subtitle={en ? 'Select an applicant' : 'விண்ணப்பதாரர் தேர்வு'}
-            icon={Search}
-            className="flex h-full min-h-0 flex-col"
-            bodyClassName="flex min-h-0 flex-1 flex-col p-2.5"
-          >
-            <div className="flex gap-1.5">
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={en ? 'Employee ID, name or seniority…' : 'ID / பெயர் / முன்னுரிமை…'}
-                  className="w-full rounded-md border border-slate-200 bg-slate-50/50 py-2 pl-8 pr-2.5 text-xs outline-none focus:border-[#0066FF]/50 focus:bg-white focus:ring-2 focus:ring-[#0066FF]/15"
-                />
+      <div
+        className={`grid items-stretch gap-3 xl:grid-cols-[minmax(0,25fr)_minmax(0,75fr)] ${workspaceRowHeight}`}
+      >
+        <Panel
+          tone="blue"
+          compact
+          title={en ? 'Search employee' : 'ஊழியர் தேடல்'}
+          subtitle={
+            employeeProfileReady
+              ? en
+                ? 'Profile — pick a vacancy on the right'
+                : 'விவரம் — வலதில் காலியிடம்'
+              : searchActive
+                ? en
+                  ? 'Matches update as you type'
+                  : 'தட்டச்சு செய்து தேர்வு'
+                : en
+                  ? 'Search by name or employee ID'
+                  : 'பெயர் அல்லது ID மூலம் தேடல்'
+          }
+          icon={Search}
+          className="flex h-full min-h-0 flex-col"
+          bodyClassName={
+            employeeProfileReady
+              ? 'flex flex-col justify-start p-2.5'
+              : 'flex min-h-0 flex-1 flex-col p-2.5'
+          }
+        >
+          <div className="flex gap-1.5">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#0066FF]/70" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={en ? 'Type name or employee ID…' : 'பெயர் அல்லது ID…'}
+                className="w-full rounded-md border border-blue-200/80 bg-white py-2 pl-8 pr-2.5 text-xs shadow-sm outline-none focus:border-[#0066FF]/60 focus:ring-2 focus:ring-[#0066FF]/15"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void refreshAll()}
+              className="inline-flex shrink-0 items-center justify-center rounded-lg bg-gradient-to-b from-[#0066FF] to-[#0052cc] px-3 text-white shadow-sm hover:brightness-105"
+              title={en ? 'Refresh' : 'புதுப்பி'}
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+          {searchActive && !employeeProfileReady && (
+            <>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-600">
+                <span>
+                  {en ? 'Matches' : 'பொருத்தம்'}{' '}
+                  <strong className="font-semibold text-slate-900">{filteredApplicants.length}</strong>
+                </span>
+                <select
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value as typeof filter)}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 outline-none focus:border-[#0066FF]/50"
+                >
+                  {filterTabs.map(([id, label, count]) => (
+                    <option key={id} value={id}>
+                      {label}
+                      {count != null ? ` (${count})` : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <button
-                type="button"
-                onClick={() => void refreshAll()}
-                className="inline-flex shrink-0 items-center justify-center rounded-md bg-[#0066FF] px-2.5 text-white hover:bg-[#0052cc]"
-                title={en ? 'Refresh' : 'புதுப்பி'}
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1.5 text-[10px] text-slate-500">
-              <span>
-                {en ? 'Showing' : 'காட்டப்படுபவை'}{' '}
-                <strong className="font-semibold text-slate-800">{applicants.length}</strong>
-                {stats?.totalEmployees != null && (
-                  <>
-                    {' '}
-                    {en ? 'of' : '/'} <strong className="font-semibold text-slate-800">{stats.totalEmployees}</strong>{' '}
-                    {en ? 'employees' : 'ஊழியர்கள்'}
-                  </>
-                )}
-              </span>
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value as typeof filter)}
-                className="rounded-md border border-slate-200 bg-white px-1.5 py-1 text-[10px] font-medium text-slate-700 outline-none focus:border-[#0066FF]/50"
-              >
-                {filterTabs.map(([id, label, count]) => (
-                  <option key={id} value={id}>
-                    {label}
-                    {count != null ? ` (${count})` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <ul className="mt-1.5 min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5">
-              {applicants.map((a, listIndex) => {
-                const selected = selectedId === a.counselingEmployeeId;
-                return (
-                  <li key={a.counselingEmployeeId}>
-                    <button
-                      type="button"
-                      onClick={() => void selectEmployee(a.counselingEmployeeId)}
-                      className={`flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition ${
-                        selected
-                          ? 'border-[#0066FF]/45 bg-gradient-to-r from-blue-50 to-indigo-50/80 shadow-sm ring-1 ring-[#0066FF]/25'
-                          : 'border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/80'
-                      }`}
-                    >
-                      <span
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold shadow-sm ${avatarListClass(listIndex, selected)}`}
-                      >
-                        {initials(a.employeeName)}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-xs font-semibold text-slate-900">{a.employeeName}</span>
-                        <span className="block font-mono text-[10px] text-slate-500">{a.counselingEmployeeId}</span>
-                        <span className="mt-0.5 flex flex-wrap items-center gap-1">
-                          {a.seniorityNo && (
-                            <span className="text-[9px] font-medium text-violet-600/90">
-                              #{a.seniorityNo}
-                            </span>
-                          )}
-                          <MapPin className="h-2.5 w-2.5 text-orange-400" />
-                          <span className="max-w-[5.5rem] truncate text-[9px] text-slate-500">{a.currentDistrict || '—'}</span>
-                          <span
-                            className={`inline-flex rounded px-1 py-px text-[8px] font-bold uppercase ring-1 ring-inset ${statusStyles(a.counselingStatus || '')}`}
-                          >
-                            {formatDbStatus(a.counselingStatus)}
-                          </span>
-                        </span>
-                      </span>
-                      <ChevronRight className={`h-3.5 w-3.5 shrink-0 ${selected ? 'text-[#0066FF]' : 'text-slate-300'}`} />
-                    </button>
-                  </li>
-                );
-              })}
-              {!applicants.length && (
-                <li className="rounded-xl border border-dashed border-slate-200 bg-white py-10 text-center text-sm text-slate-400">
-                  {en ? 'No employees match.' : 'பொருந்தும் ஊழியர்கள் இல்லை.'}
-                </li>
-              )}
-            </ul>
-          </Panel>
-        </div>
 
-        <div className="flex h-full min-h-0 flex-col gap-2 xl:col-span-5">
-          <Panel
-            tone="indigo"
-            compact
-            title={en ? 'Employee details' : 'ஊழியர் விவரம்'}
-            subtitle={en ? 'Profile & application' : 'சுயவிவரம்'}
-            icon={User}
-            className="shrink-0"
-            bodyGrow={false}
-            bodyClassName="overflow-visible p-2.5"
-          >
-            {!applicant ? (
-              <div className="flex min-h-[72px] flex-col items-center justify-center text-center text-[11px] text-slate-500">
-                <User className="mb-1.5 h-7 w-7 text-slate-300" />
-                {en ? 'Select an employee.' : 'ஊழியரைத் தேர்ந்தெடுக்கவும்.'}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2.5 rounded-md bg-gradient-to-r from-fuchsia-100/80 via-indigo-50 to-cyan-50 p-2 ring-1 ring-indigo-200/60">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 text-[11px] font-bold text-white shadow-md ring-2 ring-white/80">
-                    {initials(applicant.employeeName)}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1">
-                      <h3 className="text-xs font-semibold text-slate-900">{applicant.employeeName}</h3>
-                      <span
-                        className={`rounded-full px-1.5 py-px text-[8px] font-bold uppercase ring-1 ring-inset ${statusStyles(applicant.counselingStatus)}`}
-                      >
-                        {formatDbStatus(applicant.counselingStatus)}
-                      </span>
-                    </div>
-                    <p className="font-mono text-[10px] text-indigo-600/80">{applicant.counselingEmployeeId}</p>
-                  </div>
-                </div>
-                <div className="grid gap-1.5 sm:grid-cols-2">
-                  <Field accent="blue" label={en ? 'Current district' : 'மாவட்டம்'} value={applicant.currentDistrict} />
-                  <Field accent="indigo" label={en ? 'Current Town Panchayat' : 'பேரூராட்சி'} value={applicant.currentTownPanchayat} />
-                  <Field accent="violet" label={en ? 'Date of joining' : 'சேர்ந்த தேதி'} value={history?.presentStationJoiningDate} />
-                  <Field accent="amber" label={en ? 'Grade' : 'தரம்'} value={history?.grade} />
-                  <Field
-                    accent="emerald"
-                    label={en ? 'Counseling category' : 'வகை'}
-                    value={applicant.counselingCategory ? String(applicant.counselingCategory).replace(/_/g, ' ') : undefined}
-                  />
-                  <Field accent="rose" label={en ? 'Transfer application' : 'இடமாற்று நிலை'} value={transferAppStatus} />
-                </div>
-              </div>
-            )}
-          </Panel>
-          <Panel
-            tone="violet"
-            title={en ? 'Transfer / posting history' : 'பணி வரலாறு'}
-            subtitle={en ? 'Service timeline' : 'பணி காலவரிசை'}
-            icon={Clock}
-            className="flex min-h-0 flex-1 flex-col"
-            bodyClassName="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3"
-          >
-            {!postingTimeline.length ? (
-              <p className="py-6 text-center text-xs text-slate-400">{en ? 'No posting history.' : 'வரலாறு இல்லை.'}</p>
-            ) : (
-              <div className="relative ml-1.5 space-y-0 border-l-2 border-slate-200 pl-4">
-                {postingTimeline.map((item, idx) => (
-                  <div key={idx} className="relative pb-4 last:pb-0">
-                    <span
-                      className={`absolute -left-[1.28rem] top-1 h-2.5 w-2.5 rounded-full ring-2 ring-white ${
-                        idx === 0 ? 'bg-[#0066FF]' : 'bg-slate-300'
-                      }`}
-                    />
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
-                          idx === 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
+              <ul className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5">
+                {filteredApplicants.map((a, listIndex) => {
+                  const selected = selectedId === a.counselingEmployeeId;
+                  return (
+                    <li key={a.counselingEmployeeId}>
+                      <button
+                        type="button"
+                        onClick={() => void selectEmployee(a.counselingEmployeeId)}
+                        className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition ${
+                          selected
+                            ? 'border-[#0066FF]/50 bg-gradient-to-r from-blue-50 to-indigo-100/80 shadow-md ring-1 ring-[#0066FF]/30'
+                            : 'border-slate-200/90 bg-white/90 hover:border-blue-200 hover:bg-blue-50/40'
                         }`}
                       >
-                        {idx === 0 ? (en ? 'Current' : 'தற்போது') : en ? 'Previous' : 'முந்தைய'}
-                      </span>
-                      {item.period && <span className="text-[11px] text-slate-400">{item.period}</span>}
-                    </div>
-                    <p className="mt-0.5 text-xs leading-relaxed text-slate-800">{item.label}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Panel>
-        </div>
-
-        <div className="flex h-full min-h-0 flex-col xl:col-span-4">
-          <Panel
-            tone="cyan"
-            compact
-            title={en ? 'Available vacancies' : 'காலியிடங்கள்'}
-            subtitle={en ? 'By district' : 'மாவட்ட வாரியாக'}
-            icon={Building2}
-            className="flex h-full min-h-0 flex-col"
-            bodyClassName="flex min-h-0 flex-1 flex-col p-3"
-          >
-            <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5">
-              {vacanciesByDistrict.map(([district, rows], districtIndex) => {
-                const open = expandedDistrict === district;
-                const districtSlots = rows.reduce((n, r) => n + (r.availableSlots || 0), 0);
-                const theme = vacancyDistrictTheme(district, districtIndex);
-                return (
-                  <div
-                    key={district}
-                    className={`overflow-hidden rounded-lg border bg-white/60 transition-shadow ${
-                      open ? theme.expandedShell : 'border-slate-200/80 shadow-none'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => toggleDistrictAccordion(district)}
-                      className={`flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left transition ${
-                        open ? theme.expandedHeader : theme.collapsed
-                      } ${!open ? 'hover:brightness-[0.98]' : ''}`}
-                    >
-                      <span className={`truncate text-xs font-bold ${theme.title}`}>{district}</span>
-                      <span className={`flex shrink-0 items-center gap-1.5 text-[10px] font-semibold ${theme.meta}`}>
-                        <span className={`rounded-md px-2 py-0.5 text-[10px] ${theme.chip}`}>
-                          {rows.length} TP · {districtSlots}
+                        <span
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold shadow-sm ${avatarListClass(listIndex, selected)}`}
+                        >
+                          {initials(a.employeeName)}
                         </span>
-                        <ChevronDown className={`h-4 w-4 transition ${open ? 'rotate-180' : ''}`} />
-                      </span>
-                    </button>
-                    {open && (
-                      <ul className={`border-t border-black/5 ${theme.expandedBody}`}>
-                        {rows.map((v) => {
-                          const picked = selectedVacancyId === v.vacancyId;
-                          return (
-                            <li key={v.vacancyId} className="border-b border-black/[0.04] last:border-b-0">
-                              <button
-                                type="button"
-                                disabled={!selectedId || isAllocated}
-                                onClick={() => pickVacancy(v)}
-                                className={`flex w-full items-center gap-2.5 px-2.5 py-2 text-left transition ${
-                                  picked ? theme.picked : theme.row
-                                } disabled:cursor-not-allowed disabled:opacity-50`}
-                              >
-                                <span className="min-w-0 flex-1">
-                                  <span className={`block truncate text-xs font-medium leading-snug ${theme.title}`}>
-                                    {v.townPanchayat}
-                                  </span>
-                                </span>
-                                <span className="min-w-[1.35rem] shrink-0 rounded-full bg-emerald-600 px-2 py-0.5 text-center text-[10px] font-bold tabular-nums text-white shadow-sm">
-                                  {v.availableSlots}
-                                </span>
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-semibold text-slate-900">{a.employeeName}</span>
+                          <span className="block font-mono text-[10px] text-slate-500">{a.counselingEmployeeId}</span>
+                        </span>
+                        <ChevronRight className={`h-4 w-4 shrink-0 ${selected ? 'text-[#0066FF]' : 'text-slate-300'}`} />
+                      </button>
+                    </li>
+                  );
+                })}
+                {!filteredApplicants.length && (
+                  <li className="rounded-xl border border-dashed border-blue-200/80 bg-blue-50/30 py-8 text-center text-xs text-slate-500">
+                    {en ? 'No match for this name or ID.' : 'பொருத்தம் இல்லை.'}
+                  </li>
+                )}
+              </ul>
+            </>
+          )}
+
+          {employeeProfileReady && applicant && (
+            <div className="mt-2 max-h-full shrink-0 overflow-y-auto overflow-x-hidden">
+              <div className="overflow-hidden rounded-lg border border-blue-200/70 bg-white shadow-sm ring-1 ring-blue-100/80">
+                <div className="border-b border-blue-100 bg-gradient-to-r from-[#0066FF]/10 via-blue-50/80 to-white px-3 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#0066FF] text-[11px] font-bold text-white shadow-sm">
+                      {initials(applicant.employeeName)}
+                    </span>
+                    <div className="min-w-0 flex-1 text-left">
+                      <h3 className="truncate text-[13px] font-semibold leading-tight text-slate-900">{applicant.employeeName}</h3>
+                      <p className="mt-0.5 truncate font-mono text-[10px] font-medium text-[#0066FF]">{applicant.counselingEmployeeId}</p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-md px-1.5 py-0.5 text-[8px] font-bold uppercase ring-1 ring-inset ${statusStyles(applicant.counselingStatus)}`}
+                    >
+                      {formatDbStatus(applicant.counselingStatus)}
+                    </span>
                   </div>
-                );
-              })}
+                  {(applicant.seniorityNo || applicant.counselingCategory) && (
+                    <div className="mt-1.5 flex flex-wrap gap-1 border-t border-blue-100/80 pt-1.5">
+                      {applicant.seniorityNo && (
+                        <span className="rounded bg-white px-1.5 py-px text-[8px] font-semibold text-violet-800 ring-1 ring-violet-200/80">
+                          {en ? 'Sr.' : 'முன்.'} {applicant.seniorityNo}
+                        </span>
+                      )}
+                      {applicant.counselingCategory && (
+                        <span className="truncate rounded bg-white px-1.5 py-px text-[8px] font-semibold text-emerald-800 ring-1 ring-emerald-200/80">
+                          {String(applicant.counselingCategory).replace(/_/g, ' ')}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="flex items-center gap-2.5 border-b border-slate-200 bg-slate-50 px-3 py-2">
+                  <Clock className="h-3.5 w-3.5 text-slate-600" strokeWidth={2.25} />
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-700">
+                    {en ? 'Work history' : 'பணி வரலாறு'}
+                  </p>
+                </div>
+                <div className="px-3 py-2.5">
+                  {!hasWorkHistory ? (
+                    <p className="py-0.5 text-[9px] text-slate-400">—</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {[
+                        {
+                          key: 'current',
+                          title: en ? 'Current' : 'தற்போது',
+                          tone: 'border-emerald-200 bg-emerald-50/70 text-emerald-900',
+                          items: postingHistoryGrouped.current,
+                        },
+                        {
+                          key: 'recent',
+                          title: en ? 'Previous (last 3 years)' : 'கடந்த 3 ஆண்டு',
+                          tone: 'border-blue-200 bg-blue-50/60 text-blue-900',
+                          items: postingHistoryGrouped.recent,
+                        },
+                        {
+                          key: 'older',
+                          title: en ? 'Older' : 'பழைய பணிகள்',
+                          tone: 'border-slate-200 bg-slate-50/80 text-slate-700',
+                          items: postingHistoryGrouped.older,
+                        },
+                      ].map(
+                        (section) =>
+                          section.items.length > 0 && (
+                            <div key={section.key} className={`rounded-md border px-2 py-1 ${section.tone}`}>
+                              <p className="text-[8px] font-bold uppercase tracking-wide opacity-90">{section.title}</p>
+                              <ul className="mt-0.5 space-y-1">
+                                {section.items.map((item, idx) => (
+                                  <li key={idx} className="border-t border-black/[0.06] pt-1 first:border-t-0 first:pt-0">
+                                    {item.period && (
+                                      <p className="text-[8px] font-medium tabular-nums opacity-75">
+                                        {en ? 'Since' : 'முதல்'} {item.period}
+                                      </p>
+                                    )}
+                                    <p className="whitespace-pre-line text-[9px] font-semibold leading-snug">{item.label}</p>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!searchActive && (
+            <div className="mt-4 flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-blue-200/70 bg-gradient-to-b from-white to-blue-50/50 px-4 py-10 text-center">
+              <Search className="mb-2 h-9 w-9 text-[#0066FF]/45" />
+              <p className="text-sm font-semibold text-slate-700">{en ? 'Start typing to search' : 'தேடத் தொடங்குங்கள்'}</p>
+              <p className="mt-1 max-w-[14rem] text-xs text-slate-500">
+                {en ? 'Enter a name or employee ID — matches appear from the first letter.' : 'முதல் எழுத்திலிருந்தே பொருத்தம் காட்டப்படும்.'}
+              </p>
+            </div>
+          )}
+        </Panel>
+
+        <Panel
+          tone="vacancy"
+          compact
+          title={en ? 'Available vacancies' : 'காலியிடங்கள்'}
+          subtitle={
+            employeeProfileReady
+              ? en
+                ? 'Pick a district · Town Panchayat vacancies below'
+                : 'மாவட்டம் தேர்வு · கீழே காலியிடம்'
+              : en
+                ? 'Select an employee to unlock'
+                : 'முதலில் ஊழியர் தேர்வு'
+          }
+          icon={Building2}
+          allowBodyShadowBleed
+          className="flex h-full min-h-0 flex-col"
+          bodyClassName="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden p-3 sm:p-4"
+        >
+          {!employeeProfileReady ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300/70 bg-white/80 px-6 py-16 text-center">
+              <Building2 className="mb-3 h-12 w-12 text-[#0066FF]/50" />
+              <p className="max-w-sm text-sm font-semibold text-slate-700">
+                {en ? 'Vacancy map will appear here after you select an employee.' : 'ஊழியர் தேர்வுக்குப் பிறகு காலியிடம் காட்டப்படும்.'}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {en ? 'Use the left panel to search by ID, name, or seniority.' : 'இடதுபுறத்தில் தேடல் செய்யவும்.'}
+              </p>
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 px-0.5 py-1">
+              <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {vacanciesByDistrict.map(([district, rows], districtIndex) => {
+                  const districtSlots = rows.reduce((n, r) => n + (r.availableSlots || 0), 0);
+                  const theme = vacancyDistrictTheme(district, districtIndex);
+                  const expanded = expandedVacancyDistrict === district;
+                  const slotsLabel = en ? 'Available slots' : 'காலியிடம்';
+                  const allottedLabel = en ? 'Allotted / full' : 'நிரம்பியது';
+                  return (
+                    <div
+                      key={district}
+                      className={`flex min-w-0 flex-col self-start overflow-hidden rounded-2xl border transition ${theme.shell} ${
+                        expanded
+                          ? 'col-span-full border-[#0066FF]/70 shadow-[0_8px_28px_rgba(0,102,255,0.18)]'
+                          : 'border-white/40'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        aria-expanded={expanded}
+                        onClick={() => setExpandedVacancyDistrict((d) => (d === district ? null : district))}
+                        className={`w-full text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/80 ${
+                          expanded ? '' : 'hover:brightness-[1.03] active:scale-[0.995]'
+                        }`}
+                      >
+                        <div
+                          className={`relative px-4 pb-4 pt-3.5 ${theme.header} ${expanded ? 'rounded-t-2xl' : 'rounded-2xl'}`}
+                        >
+                          <span
+                            className={`absolute left-3.5 top-3.5 flex h-9 w-9 items-center justify-center rounded-lg ${theme.chip}`}
+                          >
+                            <MapPin className="h-[17px] w-[17px] text-white" strokeWidth={2.25} />
+                          </span>
+                          <ChevronDown
+                            className={`absolute right-3.5 top-4 h-5 w-5 text-white/85 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                            aria-hidden
+                          />
+                          <h3
+                            className={`mx-auto max-w-[calc(100%-4.5rem)] px-1 text-center text-lg font-bold leading-snug tracking-tight sm:text-xl ${theme.headerTitle}`}
+                          >
+                            {district}
+                          </h3>
+                          <div
+                            className={`mt-3.5 grid grid-cols-2 gap-3 border-t border-white/25 pt-3.5 text-left ${theme.headerMeta}`}
+                          >
+                            <div className="flex min-w-0 items-center justify-between gap-2 pr-1">
+                              <span className="truncate text-[11px] font-medium leading-tight opacity-95">
+                                {en ? 'Town Panchayat' : 'பேரூராட்சி'}
+                              </span>
+                              <span className="shrink-0 text-base font-bold tabular-nums leading-none">{rows.length}</span>
+                            </div>
+                            <div className="flex min-w-0 items-center justify-between gap-2 border-l border-white/25 pl-3">
+                              <span className="truncate text-[11px] font-medium leading-tight opacity-95">
+                                {en ? 'Open slots' : 'காலியிடம்'}
+                              </span>
+                              <span className="shrink-0 text-base font-bold tabular-nums leading-none">{districtSlots}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+
+                      {expanded && (
+                        <div className={`rounded-b-2xl border-t border-black/10 px-4 pb-4 pt-3 ${theme.body}`}>
+                          <p className={`mb-3 text-left text-[10px] font-semibold uppercase tracking-wider ${theme.cardMuted}`}>
+                            {en ? 'Select Town Panchayat' : 'பேரூராட்சி தேர்வு'}
+                          </p>
+                          <div className={`grid auto-rows-fr items-stretch gap-3 ${vacancySubBlockGridClass(rows.length, false)}`}>
+                            {rows.map((v) => (
+                              <VacancyTpTile
+                                key={v.vacancyId}
+                                vacancy={v}
+                                theme={theme}
+                                picked={selectedVacancyId === v.vacancyId}
+                                disabled={isAllocated}
+                                slotsLabel={slotsLabel}
+                                allottedLabel={allottedLabel}
+                                onSelect={() => pickVacancy(v)}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
               {!vacanciesByDistrict.length && (
-                <p className="py-6 text-center text-xs text-slate-400">{en ? 'No open vacancies.' : 'காலியிடம் இல்லை.'}</p>
+                <p className="py-12 text-center text-sm text-slate-600">{en ? 'No open vacancies.' : 'காலியிடம் இல்லை.'}</p>
               )}
             </div>
-          </Panel>
-        </div>
+          )}
+        </Panel>
       </div>
 
       <Panel
-        tone="emerald"
+        tone="allocations"
         compact
-        title={en ? 'Recent allocations' : 'சமீப ஒதுக்கீடுகள்'}
-        subtitle={en ? 'Today’s counseling outcomes' : 'இன்றைய ஒதுக்கீடுகள்'}
+        title={en ? 'Allocation register' : 'ஒதுக்கீட்டு பதிவேடு'}
+        subtitle={
+          en
+            ? `All allocated records · ${allocationRecords.length} total`
+            : `மொத்த ஒதுக்கீடுகள் · ${allocationRecords.length}`
+        }
         icon={ClipboardList}
         bodyClassName="p-0"
+        action={
+          <button
+            type="button"
+            onClick={exportAllocationsExcel}
+            disabled={!allocationRecords.length}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/30 bg-white/15 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" strokeWidth={2.25} />
+            {en ? 'Excel' : 'Excel'}
+          </button>
+        }
       >
-        <div className="max-h-64 overflow-auto rounded-b-xl">
+        <div className="max-h-80 overflow-auto rounded-b-xl border-t border-emerald-100/80">
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-            <thead className="sticky top-0 z-[1] border-b border-emerald-200/80 bg-emerald-100/90 backdrop-blur-sm">
-              <tr className="text-[10px] font-bold uppercase tracking-wide text-emerald-950">
+            <thead className="sticky top-0 z-[1] border-b border-emerald-200 bg-emerald-50/95 backdrop-blur-sm">
+              <tr className="text-[10px] font-bold uppercase tracking-wider text-emerald-900">
                 <th className="px-3 py-2.5">{en ? 'Date & time' : 'தேதி'}</th>
                 <th className="px-3 py-2.5">{en ? 'Employee ID' : 'ID'}</th>
                 <th className="px-3 py-2.5">{en ? 'Name' : 'பெயர்'}</th>
@@ -949,8 +1232,8 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
                 <th className="px-3 py-2.5">{en ? 'Status' : 'நிலை'}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-emerald-100/80 bg-white/70">
-              {recentAllocRows.map((row) => (
+            <tbody className="divide-y divide-emerald-100/80 bg-white">
+              {allocationRecords.map((row) => (
                 <tr
                   key={row.counselingEmployeeId + String(row.allocatedAt)}
                   className="transition-colors hover:bg-emerald-50/70 even:bg-emerald-50/25"
@@ -981,13 +1264,66 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
               ))}
             </tbody>
           </table>
-          {!recentAllocRows.length && (
-            <p className="bg-white/60 py-10 text-center text-sm text-emerald-800/50">
-              {en ? 'No allocations to show.' : 'ஒதுக்கீடுகள் இல்லை.'}
+          {!allocationRecords.length && (
+            <p className="bg-white py-10 text-center text-sm text-slate-500">
+              {en ? 'No allocation records yet.' : 'ஒதுக்கீட்டு பதிவுகள் இல்லை.'}
             </p>
           )}
         </div>
       </Panel>
+
+      {repeatPostingPrompt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-amber-200 bg-white shadow-xl"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="repeat-posting-title"
+          >
+            <div className="border-b border-amber-200 bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-3.5">
+              <h3 id="repeat-posting-title" className="flex items-center gap-2 text-sm font-bold text-white">
+                <AlertTriangle className="h-5 w-5 shrink-0" strokeWidth={2.25} />
+                {en ? 'Prior posting in last 3 years' : 'கடந்த 3 ஆண்டில் பணி'}
+              </h3>
+            </div>
+            <div className="space-y-3 px-4 py-4 text-sm text-slate-700">
+              <p>
+                {en
+                  ? 'This employee has already served at this Town Panchayat (or the same location) within the last three years.'
+                  : 'இந்த ஊழியர் கடந்த மூன்று ஆண்டுகளில் இந்த பேரூராட்சியில் (அல்லது அதே இடத்தில்) பணியாற்றியுள்ளார்.'}
+              </p>
+              <div className="rounded-lg border border-amber-200/80 bg-amber-50 px-3 py-2.5 text-xs">
+                <p className="font-semibold text-amber-950">{en ? 'Selected vacancy' : 'தேர்ந்தெடுத்த காலியிடம்'}</p>
+                <p className="mt-1 font-medium text-slate-900">
+                  {repeatPostingPrompt.vacancy.townPanchayat}
+                  {repeatPostingPrompt.vacancy.district ? ` · ${repeatPostingPrompt.vacancy.district}` : ''}
+                </p>
+                <p className="mt-2 font-semibold text-amber-950">{en ? 'Matched history' : 'பொருந்தும் வரலாறு'}</p>
+                <p className="mt-1 whitespace-pre-line text-slate-800">{repeatPostingPrompt.matchedLabel}</p>
+              </div>
+              <p className="text-xs text-slate-500">
+                {en ? 'Do you want to continue with this allocation?' : 'இந்த ஒதுக்கீட்டைத் தொடர விரும்புகிறீர்களா?'}
+              </p>
+            </div>
+            <div className="flex gap-2 border-t border-slate-100 bg-slate-50/80 px-4 py-3">
+              <button
+                type="button"
+                onClick={cancelRepeatPostingAllocation}
+                className="inline-flex flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                {en ? 'Cancel' : 'ரத்து'}
+              </button>
+              <button
+                type="button"
+                onClick={confirmRepeatPostingAllocation}
+                className="inline-flex flex-1 items-center justify-center rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 py-2.5 text-sm font-bold text-white shadow-sm hover:from-amber-500 hover:to-orange-500"
+              >
+                {en ? 'Continue' : 'தொடரவும்'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {allocateModalOpen && applicant && selectedVacancy && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-indigo-950/45 p-4 backdrop-blur-sm">

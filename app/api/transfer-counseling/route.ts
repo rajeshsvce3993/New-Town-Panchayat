@@ -10,6 +10,7 @@ import {
   listCounselingApplicants,
   listAvailableVacancies,
   listDistrictsWithVacancies,
+  listAllAllocations,
   listTodayAllocations,
   markEmployeeInCounseling,
   type CounselingApplicantFilter,
@@ -89,6 +90,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, allocations }, { headers: CORS_HEADERS });
     }
 
+    if (view === 'allocations') {
+      const allocations = await listAllAllocations(db);
+      return NextResponse.json({ success: true, allocations }, { headers: CORS_HEADERS });
+    }
+
     return NextResponse.json(
       { success: false, message: 'Unknown view.' },
       { status: 400, headers: CORS_HEADERS }
@@ -161,7 +167,7 @@ export async function POST(req: NextRequest) {
       const searchQ = String(body.search || '');
       const [metrics, allocations] = await Promise.all([
         getCounselingMetrics(db, searchQ),
-        listTodayAllocations(db),
+        listAllAllocations(db),
       ]);
       return NextResponse.json(
         { ...result, stats: metrics.stats, filterCounts: metrics.filterCounts, allocations },
