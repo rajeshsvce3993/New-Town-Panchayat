@@ -988,9 +988,9 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
 
     const rowMatchesScope = (row: any) => {
       if (hodLike) return true;
-      if (userTpId && !workMatchesTp(row, userTpId, filterMasters)) return false;
-      if (userDistrictId && !workMatchesDistrict(row, userDistrictId, filterMasters)) return false;
-      if (userZoneId && !workMatchesZone(row, userZoneId, filterMasters)) return false;
+      if (userTpId) return workMatchesTp(row, userTpId, filterMasters);
+      if (userDistrictId) return workMatchesDistrict(row, userDistrictId, filterMasters);
+      if (userZoneId) return workMatchesZone(row, userZoneId, filterMasters);
       return true;
     };
 

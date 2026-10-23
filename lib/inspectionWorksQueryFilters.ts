@@ -190,6 +190,61 @@ export function isFallbackInspectionWork(w: any): boolean {
   );
 }
 
+export type DashboardStatsScope = {
+  unrestricted?: boolean;
+  tpId?: string | null;
+  districtId?: string | null;
+  zoneId?: string | null;
+};
+
+/** Bootstrap dashboard stats rows → user scope (same rules as dashboard abstract). */
+export function filterDashboardStatsForScope(
+  stats: any[],
+  masters: InspectionWorksFilterMasters,
+  scope: DashboardStatsScope
+): any[] {
+  const rowMatches = (row: any) => {
+    if (scope.unrestricted) return true;
+    if (scope.tpId) return workMatchesTp(row, scope.tpId, masters);
+    if (scope.districtId) return workMatchesDistrict(row, scope.districtId, masters);
+    if (scope.zoneId) return workMatchesZone(row, scope.zoneId, masters);
+    return true;
+  };
+  return (stats || []).filter((row) => !isFallbackInspectionWork(row) && rowMatches(row));
+}
+
+export function dashboardStatsIncludeCategories(stats: any[]): boolean {
+  return (stats || []).some((row) => {
+    const c = String(row.categoryId || '').trim();
+    return c && c !== '_unknown';
+  });
+}
+
+export function buildSubjectCategoryRollupsFromDashboardStats(
+  stats: any[]
+): Array<{ subjectId: string; categoryId: string; count: number }> {
+  const merged = new Map<string, { subjectId: string; categoryId: string; count: number }>();
+  for (const row of stats || []) {
+    if (isFallbackInspectionWork(row)) continue;
+    const subjectId = String(row.subjectId || 'unknown').trim();
+    const categoryId = String(row.categoryId || '_unknown').trim();
+    const key = `${subjectId}|${categoryId}`;
+    const add = Number(row.count ?? 1);
+    const cur = merged.get(key) || { subjectId, categoryId, count: 0 };
+    cur.count += add;
+    merged.set(key, cur);
+  }
+  return [...merged.values()];
+}
+
+export function categoryCountsFromSubjectRollups(
+  rollups: Array<{ subjectId: string; categoryId: string; count: number }>,
+  categories: any[] = []
+): Record<string, number> {
+  const pseudo = rollups.map((r) => ({ categoryId: r.categoryId, categoryNameEn: '' }));
+  return computeCategoryCounts(pseudo, categories);
+}
+
 export function workMatchesSubject(w: any, subjectId: string, ctx: InspectionWorksFilterMasters): boolean {
   const sSubj = String(subjectId).toLowerCase();
   const matchedSubject = (ctx.inspectionSubjects || []).find(
@@ -372,18 +427,25 @@ function bumpCount(counts: Record<string, number>, key: string, n = 1) {
 
 export function computeCategoryCounts(works: any[], categories: any[] = []): Record<string, number> {
   const counts: Record<string, number> = {};
+  const byId = new Map<string, any>();
+  const byCode = new Map<string, any>();
+  const byNameEn = new Map<string, any>();
+  for (const c of categories) {
+    const cId = String(c.id || '').trim();
+    const cCode = String(c.code || '').trim().toLowerCase();
+    const cName = String(c.nameEn || '').trim().toLowerCase();
+    if (cId) byId.set(cId, c);
+    if (cCode) byCode.set(cCode, c);
+    if (cName) byNameEn.set(cName, c);
+  }
+
   for (const w of works) {
     let catId = String(w.categoryId || '').trim();
     const wName = String(w.categoryNameEn || '').trim().toLowerCase();
-    const cat = categories.find((c: any) => {
-      const cId = String(c.id || '').trim();
-      const cCode = String(c.code || '').trim().toLowerCase();
-      const cName = String(c.nameEn || '').trim().toLowerCase();
-      return (
-        (catId && (cId === catId || cCode === catId.toLowerCase())) ||
-        (wName && cName === wName)
-      );
-    });
+    const cat =
+      (catId && (byId.get(catId) || byCode.get(catId.toLowerCase()))) ||
+      (wName && byNameEn.get(wName)) ||
+      undefined;
     if (cat) {
       catId = String(cat.id || catId).trim();
       bumpCount(counts, catId);
@@ -524,14 +586,25 @@ export function buildInspectionWorksViewResponse(
   rawWorks: any[],
   query: InspectionWorksFilterQuery,
   ctx: InspectionWorksFilterMasters,
-  options?: { limit?: number; lite?: boolean; mongoPrefiltered?: boolean }
+  options?: {
+    limit?: number;
+    lite?: boolean;
+    mongoPrefiltered?: boolean;
+    countsOnly?: boolean;
+    rowsOnly?: boolean;
+  }
 ): InspectionWorksViewResult {
   const baseList = (Array.isArray(rawWorks) ? rawWorks : []).filter((w) => !isFallbackInspectionWork(w));
 
   let withoutCategory: any[];
-  let works: any[];
+  let works: any[] = [];
 
-  if (options?.mongoPrefiltered) {
+  if (options?.countsOnly) {
+    const queryWithoutCategory: InspectionWorksFilterQuery = { ...query, categoryId: null };
+    withoutCategory = options.mongoPrefiltered
+      ? filterInspectionWorksPostMongo(baseList, queryWithoutCategory, ctx)
+      : filterInspectionWorksByQuery(baseList, queryWithoutCategory, ctx);
+  } else if (options?.mongoPrefiltered) {
     const queryWithoutCategory: InspectionWorksFilterQuery = { ...query, categoryId: null };
     withoutCategory = filterInspectionWorksPostMongo(baseList, queryWithoutCategory, ctx);
     works = query.categoryId
@@ -546,19 +619,22 @@ export function buildInspectionWorksViewResponse(
     works = sortInspectionWorksNewestFirst(works);
   }
 
-  const categoryCounts = computeCategoryCounts(withoutCategory, ctx.inspectionCategories || []);
+  const categoryCounts = options?.rowsOnly
+    ? {}
+    : computeCategoryCounts(withoutCategory, ctx.inspectionCategories || []);
 
-  const limit = options?.limit && options.limit > 0 ? options.limit : 0;
-  if (limit > 0 && works.length > limit) {
-    works = works.slice(0, limit);
-  }
-
-  if (options?.lite) {
-    works = works.map(stripInspectionWorkForLite);
+  if (!options?.countsOnly) {
+    const limit = options?.limit && options.limit > 0 ? options.limit : 0;
+    if (limit > 0 && works.length > limit) {
+      works = works.slice(0, limit);
+    }
+    if (options?.lite) {
+      works = works.map(stripInspectionWorkForLite);
+    }
   }
 
   return {
-    works,
+    works: options?.countsOnly ? [] : works,
     categoryCounts,
     totalWithoutCategoryFilter: withoutCategory.length,
   };

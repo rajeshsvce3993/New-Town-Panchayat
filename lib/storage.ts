@@ -1247,6 +1247,10 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
       db.collection('inspectionWorks').createIndex({ submittedByUserName: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ submittedByUserId: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ username: 1 }, { background: true }),
+      db.collection('inspectionWorks').createIndex({ submittedDateYmd: -1 }, { background: true }),
+      db.collection('inspectionWorks').createIndex({ submittedDateYmd: -1, tpId: 1, categoryId: 1 }, { background: true }),
+      db.collection('inspectionWorks').createIndex({ submittedDateYmd: -1, districtId: 1, subjectId: 1 }, { background: true }),
+      db.collection('inspectionWorks').createIndex({ submittedDateYmd: -1, zoneId: 1 }, { background: true }),
       db.collection('user_activity').createIndex({ username: 1, status: 1 }, { background: true }),
       db.collection('user_activity').createIndex({ userId: 1, status: 1 }, { background: true }),
       db.collection('user_activity').createIndex({ status: 1 }, { background: true }),
@@ -2111,14 +2115,18 @@ function aggregateEnrichedWorksForDashboardStats(works: any[]): any[] {
   for (const w of works) {
     if (isFallbackInspectionWork(w)) continue;
     const subjectId = String(w.subjectId || 'unknown').trim();
+    const categoryId = String(w.categoryId || '_unknown').trim();
     const zoneId = String(w.zoneId || '').trim();
     const districtId = String(w.districtId || '').trim();
     const tpId = String(w.tpId || w.townPanchayatId || '').trim();
-    const key = `${subjectId}|${zoneId}|${districtId}|${tpId}`;
+    const key = `${subjectId}|${categoryId}|${zoneId}|${districtId}|${tpId}`;
     let row = groups.get(key);
     if (!row) {
       row = {
         subjectId,
+        categoryId,
+        categoryNameEn: w.categoryNameEn || '',
+        categoryNameTa: w.categoryNameTa || '',
         subjectNameEn: w.subjectNameEn || 'General Inspection',
         subjectNameTa: w.subjectNameTa || 'பொது ஆய்வு',
         zoneId,
@@ -2133,8 +2141,10 @@ function aggregateEnrichedWorksForDashboardStats(works: any[]): any[] {
   return Array.from(groups.values());
 }
 
-let cachedDashboardInspectionStats: { rows: any[]; timestamp: number } | null = null;
+let cachedDashboardInspectionStats: { rows: any[]; timestamp: number; v: number } | null = null;
 const DASHBOARD_INSPECTION_STATS_TTL_MS = 120_000;
+/** Bump when dashboard stats row shape changes (e.g. categoryId added). */
+const DASHBOARD_INSPECTION_STATS_CACHE_VERSION = 2;
 
 export function invalidateInspectionDashboardStatsCache() {
   cachedDashboardInspectionStats = null;
@@ -2145,6 +2155,7 @@ export async function getInspectionWorksDashboardStats(): Promise<any[]> {
   const now = Date.now();
   if (
     cachedDashboardInspectionStats &&
+    cachedDashboardInspectionStats.v === DASHBOARD_INSPECTION_STATS_CACHE_VERSION &&
     now - cachedDashboardInspectionStats.timestamp < DASHBOARD_INSPECTION_STATS_TTL_MS
   ) {
     return cachedDashboardInspectionStats.rows;
@@ -2157,7 +2168,7 @@ export async function getInspectionWorksDashboardStats(): Promise<any[]> {
     let stats = await fetchInspectionWorksDashboardStatsFromMongo();
     if (stats?.length) {
       stats = stats.filter((row) => !isFallbackInspectionWork(row));
-      cachedDashboardInspectionStats = { rows: stats, timestamp: now };
+      cachedDashboardInspectionStats = { rows: stats, timestamp: now, v: DASHBOARD_INSPECTION_STATS_CACHE_VERSION };
       return stats;
     }
 
@@ -2185,7 +2196,7 @@ export async function getInspectionWorksDashboardStats(): Promise<any[]> {
     };
     const enriched = normalizeAndEnrichWorks(rawList, masters);
     stats = aggregateEnrichedWorksForDashboardStats(enriched);
-    cachedDashboardInspectionStats = { rows: stats, timestamp: now };
+    cachedDashboardInspectionStats = { rows: stats, timestamp: now, v: DASHBOARD_INSPECTION_STATS_CACHE_VERSION };
     return stats;
   } catch (e: any) {
     console.warn('Inspection works stats skipped:', e?.message || e);
@@ -3727,15 +3738,17 @@ export async function findExistingInspectionWork(id?: string, workId?: string): 
 // Save a single inspection work atomically to MongoDB and local cache
 export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
   let mongoSaved = false;
+  const { attachInspectionWorkReportIndexFields } = await import('@/lib/inspectionWorkReportIndex');
+  const indexedWork = attachInspectionWorkReportIndexFields(newWork);
   try {
     const client = await getMongoClient();
     if (client) {
       const db = await getActiveMongoDb(client);
       const col = await getCollectionWithAliases(db, 'inspectionWorks');
-      const filter = newWork.id ? { id: newWork.id } : { workId: newWork.workId };
+      const filter = indexedWork.id ? { id: indexedWork.id } : { workId: indexedWork.workId };
       await col.updateOne(
         filter,
-        { $set: newWork },
+        { $set: indexedWork },
         { upsert: true }
       );
       mongoSaved = true;
@@ -3751,12 +3764,12 @@ export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
       localDb.inspectionWorks = [];
     }
     const existingIdx = localDb.inspectionWorks.findIndex((w: any) =>
-      (newWork.id && w.id === newWork.id) || (newWork.workId && w.workId === newWork.workId)
+      (indexedWork.id && w.id === indexedWork.id) || (indexedWork.workId && w.workId === indexedWork.workId)
     );
     if (existingIdx >= 0) {
-      localDb.inspectionWorks[existingIdx] = newWork;
+      localDb.inspectionWorks[existingIdx] = indexedWork;
     } else {
-      localDb.inspectionWorks.unshift(newWork);
+      localDb.inspectionWorks.unshift(indexedWork);
     }
     if (localDb.inspectionWorks.length > 200) {
       localDb.inspectionWorks = localDb.inspectionWorks.slice(0, 200);
@@ -3768,6 +3781,7 @@ export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
 
   if (mongoSaved) {
     invalidateInspectionDashboardStatsCache();
+    void import('@/lib/inspectionWorksLiteLoader').then((m) => m.invalidateInspectionWorksLiteCache());
   }
 
   return mongoSaved;

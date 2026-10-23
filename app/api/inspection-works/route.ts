@@ -35,6 +35,9 @@ import {
 import {
   invalidateInspectionWorksLiteCache,
   loadEnrichedLiteWorksForReports,
+  loadInspectionWorksReportCounts,
+  loadPaginatedEnrichedWorksForReports,
+  loadInspectionWorksReportsBundle,
 } from '@/lib/inspectionWorksLiteLoader';
 import { applyDefaultReportsDateWindow } from '@/lib/inspectionWorksMongoRepository';
 
@@ -86,44 +89,190 @@ export async function GET(req: NextRequest) {
     }
 
     if (lite) {
-      const filterQuery = applyDefaultReportsDateWindow(toInspectionWorksFilterQuery(viewQuery));
-      const loaded = await loadEnrichedLiteWorksForReports(
-        req.nextUrl.origin,
-        filterQuery,
-        viewQuery.limit > 0 ? viewQuery.limit : 0
-      );
-      if (loaded.enriched.length > 0 && loaded.source !== 'empty') {
-        const view = buildInspectionWorksViewResponse(
-          loaded.enriched,
+      const baseFilter = toInspectionWorksFilterQuery(viewQuery);
+      const filterQuery = viewQuery.allTime
+        ? baseFilter
+        : applyDefaultReportsDateWindow(baseFilter);
+      const defaultDateWindowApplied =
+        !viewQuery.allTime &&
+        !viewQuery.fromDate &&
+        !viewQuery.toDate &&
+        !viewQuery.dateParam &&
+        !!(filterQuery.fromDate || filterQuery.toDate);
+      const rowLimit = viewQuery.limit > 0 ? viewQuery.limit : 0;
+      const page = viewQuery.page > 0 ? viewQuery.page : 1;
+      const pageSize = viewQuery.pageSize > 0 ? viewQuery.pageSize : 50;
+
+      if (viewQuery.reportsBundle) {
+        const bundle = await loadInspectionWorksReportsBundle(
+          req.nextUrl.origin,
           filterQuery,
-          loaded.masters,
-          {
-            lite,
-            limit: viewQuery.limit > 0 ? viewQuery.limit : 0,
-            mongoPrefiltered: loaded.source === 'mongo-scoped',
-          }
+          page,
+          pageSize
         );
+        if (bundle) {
+          const responsePayload = {
+            success: true,
+            reportsBundle: true,
+            count: bundle.works.length,
+            total: bundle.total,
+            page: bundle.page,
+            pageSize: bundle.pageSize,
+            works: bundle.works,
+            categoryCounts: bundle.categoryCounts,
+            totalWithoutCategoryFilter: bundle.totalWithoutCategoryFilter,
+            subjectCategoryRollups: bundle.subjectCategoryRollups,
+            meta: {
+              querySource: bundle.source,
+              truncated: false,
+              defaultDateWindowApplied,
+            },
+          };
+          cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
+          return NextResponse.json(responsePayload, {
+            headers: {
+              ...CORS_HEADERS,
+              'X-Inspection-Works-Source': bundle.source,
+              'X-Inspection-Works-Mode': 'bundle',
+            },
+          });
+        }
+
+        const [splitCounts, splitPage] = await Promise.all([
+          loadInspectionWorksReportCounts(req.nextUrl.origin, filterQuery, rowLimit),
+          loadPaginatedEnrichedWorksForReports(req.nextUrl.origin, filterQuery, page, pageSize),
+        ]);
+        if (
+          splitPage.source !== 'empty' ||
+          splitCounts.totalWithoutCategoryFilter > 0 ||
+          (splitCounts.subjectCategoryRollups?.length ?? 0) > 0
+        ) {
+          const splitPayload = {
+            success: true,
+            reportsBundle: true,
+            count: splitPage.enriched.length,
+            total: splitPage.total ?? splitPage.enriched.length,
+            page: splitPage.page ?? page,
+            pageSize: splitPage.pageSize ?? pageSize,
+            works: splitPage.enriched,
+            categoryCounts: splitCounts.categoryCounts,
+            totalWithoutCategoryFilter: splitCounts.totalWithoutCategoryFilter,
+            subjectCategoryRollups: splitCounts.subjectCategoryRollups ?? [],
+            meta: {
+              querySource: splitPage.source,
+              truncated: splitPage.truncated,
+              defaultDateWindowApplied,
+            },
+          };
+          cachedWorksList = { data: splitPayload, timestamp: Date.now(), key: cacheKey };
+          return NextResponse.json(splitPayload, {
+            headers: {
+              ...CORS_HEADERS,
+              'X-Inspection-Works-Source': splitPage.source,
+              'X-Inspection-Works-Mode': 'bundle-split',
+            },
+          });
+        }
+      }
+
+      if (viewQuery.countsOnly) {
+        const counts = await loadInspectionWorksReportCounts(req.nextUrl.origin, filterQuery, rowLimit);
         const responsePayload = {
           success: true,
-          count: view.works.length,
-          works: view.works,
-          categoryCounts: view.categoryCounts,
-          totalWithoutCategoryFilter: view.totalWithoutCategoryFilter,
-          remoteTotal: loaded.enriched.length,
+          countsOnly: true,
+          count: 0,
+          works: [] as any[],
+          categoryCounts: counts.categoryCounts,
+          totalWithoutCategoryFilter: counts.totalWithoutCategoryFilter,
+          subjectCategoryRollups: counts.subjectCategoryRollups,
           meta: {
-            querySource: loaded.source,
-            truncated: loaded.truncated,
-            defaultDateWindowApplied: loaded.appliedDateWindow,
+            querySource: counts.source,
+            truncated: counts.truncated,
+            defaultDateWindowApplied: defaultDateWindowApplied,
           },
         };
         cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
         return NextResponse.json(responsePayload, {
           headers: {
             ...CORS_HEADERS,
-            'X-Inspection-Works-Source': loaded.source,
-            'X-Inspection-Works-Truncated': loaded.truncated ? '1' : '0',
+            'X-Inspection-Works-Source': counts.source,
+            'X-Inspection-Works-Truncated': counts.truncated ? '1' : '0',
+            'X-Inspection-Works-Mode': 'counts',
           },
         });
+      }
+
+      const loaded = viewQuery.rowsOnly
+        ? await loadPaginatedEnrichedWorksForReports(req.nextUrl.origin, filterQuery, page, pageSize)
+        : await loadEnrichedLiteWorksForReports(req.nextUrl.origin, filterQuery, rowLimit);
+
+      if (loaded.source !== 'empty') {
+        const view =
+          viewQuery.rowsOnly && loaded.source === 'mongo-aggregate'
+            ? { works: loaded.enriched, categoryCounts: {}, totalWithoutCategoryFilter: loaded.total ?? 0 }
+            : buildInspectionWorksViewResponse(loaded.enriched, filterQuery, loaded.masters, {
+                lite,
+                limit: rowLimit,
+                mongoPrefiltered:
+                  loaded.source === 'mongo-scoped' || loaded.source === 'mongo-aggregate',
+                rowsOnly: viewQuery.rowsOnly,
+              });
+
+        if (view.works.length > 0 || (loaded.total ?? 0) > 0 || viewQuery.rowsOnly) {
+          const responsePayload = {
+            success: true,
+            count: view.works.length,
+            total: loaded.total ?? view.works.length,
+            page: loaded.page ?? page,
+            pageSize: loaded.pageSize ?? pageSize,
+            works: view.works,
+            ...(viewQuery.rowsOnly
+              ? {}
+              : {
+                  categoryCounts: view.categoryCounts,
+                  totalWithoutCategoryFilter: view.totalWithoutCategoryFilter,
+                }),
+            remoteTotal: loaded.total ?? loaded.enriched.length,
+            meta: {
+              querySource: loaded.source,
+              truncated: loaded.truncated,
+              defaultDateWindowApplied: defaultDateWindowApplied,
+            },
+          };
+          cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
+          return NextResponse.json(responsePayload, {
+            headers: {
+              ...CORS_HEADERS,
+              'X-Inspection-Works-Source': loaded.source,
+              'X-Inspection-Works-Truncated': loaded.truncated ? '1' : '0',
+              'X-Inspection-Works-Mode': viewQuery.rowsOnly ? 'rows-only' : 'rows',
+            },
+          });
+        }
+      }
+
+      if (viewQuery.rowsOnly || viewQuery.countsOnly) {
+        const emptyPayload = viewQuery.countsOnly
+          ? {
+              success: true,
+              countsOnly: true,
+              count: 0,
+              works: [] as any[],
+              categoryCounts: {},
+              totalWithoutCategoryFilter: 0,
+              subjectCategoryRollups: [],
+              meta: { querySource: 'empty', truncated: false, defaultDateWindowApplied },
+            }
+          : {
+              success: true,
+              count: 0,
+              total: 0,
+              page: viewQuery.page > 0 ? viewQuery.page : 1,
+              pageSize: viewQuery.pageSize > 0 ? viewQuery.pageSize : 50,
+              works: [] as any[],
+              meta: { querySource: 'empty', truncated: false, defaultDateWindowApplied },
+            };
+        return NextResponse.json(emptyPayload, { headers: CORS_HEADERS });
       }
     }
 

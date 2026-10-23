@@ -6,6 +6,22 @@ import {
   LITE_INSPECTION_WORKS_PROJECTION,
 } from '@/lib/storage';
 
+/** Smaller Mongo payload for counts-only reports API (no fieldsData / media). */
+export const REPORT_COUNTS_INSPECTION_WORKS_PROJECTION = {
+  photos: 0,
+  documents: 0,
+  photoBase64: 0,
+  locationImage: 0,
+  staticMapUrl: 0,
+  mapImage: 0,
+  fieldsData: 0,
+};
+
+type MongoProjection =
+  | typeof LITE_INSPECTION_WORKS_PROJECTION
+  | typeof REPORT_COUNTS_INSPECTION_WORKS_PROJECTION
+  | (typeof LITE_INSPECTION_WORKS_PROJECTION & { fieldsData: 0 });
+
 /** Hard cap per reports API call (production safety). */
 export const INSPECTION_WORKS_LITE_MAX_ROWS = 50_000;
 
@@ -118,7 +134,8 @@ export function appendLooseUtcDatePrefilter(
 
 export function buildInspectionWorksMongoMatch(
   filter: InspectionWorksFilterQuery,
-  masters: InspectionWorksFilterMasters
+  masters: InspectionWorksFilterMasters,
+  opts?: { skipDatePrefilter?: boolean }
 ): Record<string, unknown> {
   const and: Record<string, unknown>[] = [];
 
@@ -205,7 +222,9 @@ export function buildInspectionWorksMongoMatch(
     and.push({ $or: or });
   }
 
-  appendLooseUtcDatePrefilter(and, filter);
+  if (!opts?.skipDatePrefilter) {
+    appendLooseUtcDatePrefilter(and, filter);
+  }
 
   if (!and.length) return {};
   return and.length === 1 ? (and[0] as Record<string, unknown>) : { $and: and };
@@ -223,8 +242,11 @@ export async function fetchInspectionWorksDashboardStatsFromMongo(): Promise<any
         {
           $project: {
             subjectId: { $ifNull: ['$subjectId', 'unknown'] },
+            categoryId: { $ifNull: ['$categoryId', '_unknown'] },
             subjectNameEn: 1,
             subjectNameTa: 1,
+            categoryNameEn: 1,
+            categoryNameTa: 1,
             zoneId: { $ifNull: ['$zoneId', ''] },
             districtId: { $ifNull: ['$districtId', ''] },
             tpId: { $ifNull: [{ $ifNull: ['$tpId', '$townPanchayatId'] }, ''] },
@@ -236,6 +258,7 @@ export async function fetchInspectionWorksDashboardStatsFromMongo(): Promise<any
           $group: {
             _id: {
               subjectId: '$subjectId',
+              categoryId: '$categoryId',
               zoneId: '$zoneId',
               districtId: '$districtId',
               tpId: '$tpId',
@@ -243,18 +266,23 @@ export async function fetchInspectionWorksDashboardStatsFromMongo(): Promise<any
             count: { $sum: 1 },
             subjectNameEn: { $first: '$subjectNameEn' },
             subjectNameTa: { $first: '$subjectNameTa' },
+            categoryNameEn: { $first: '$categoryNameEn' },
+            categoryNameTa: { $first: '$categoryNameTa' },
           },
         },
         {
           $project: {
             _id: 0,
             subjectId: '$_id.subjectId',
+            categoryId: '$_id.categoryId',
             zoneId: '$_id.zoneId',
             districtId: '$_id.districtId',
             tpId: '$_id.tpId',
             count: 1,
             subjectNameEn: 1,
             subjectNameTa: 1,
+            categoryNameEn: 1,
+            categoryNameTa: 1,
           },
         },
       ])
@@ -269,7 +297,8 @@ export async function fetchInspectionWorksDashboardStatsFromMongo(): Promise<any
 /** When scoped geo+date returns nothing, try date window only (still capped). */
 export async function fetchLiteInspectionWorksByDateLooseOnly(
   filter: InspectionWorksFilterQuery,
-  limit = INSPECTION_WORKS_LITE_MAX_ROWS
+  limit = INSPECTION_WORKS_LITE_MAX_ROWS,
+  projection: MongoProjection = LITE_INSPECTION_WORKS_PROJECTION
 ): Promise<{ rows: any[]; truncated: boolean } | null> {
   try {
     const client = await getMongoClient();
@@ -282,7 +311,7 @@ export async function fetchLiteInspectionWorksByDateLooseOnly(
       and.length === 0 ? {} : and.length === 1 ? and[0] : { $and: and };
     const cap = limit > 0 ? Math.min(limit, INSPECTION_WORKS_LITE_MAX_ROWS) : INSPECTION_WORKS_LITE_MAX_ROWS;
     const items = await col
-      .find(match, { projection: LITE_INSPECTION_WORKS_PROJECTION })
+      .find(match, { projection })
       .sort({ submittedAt: -1, createdAt: -1 })
       .limit(cap + 1)
       .toArray();
@@ -301,7 +330,8 @@ export async function fetchLiteInspectionWorksByDateLooseOnly(
 
 /** Newest rows only — used when strict $match misses (mixed date field formats). */
 export async function fetchRecentLiteInspectionWorksCap(
-  limit = INSPECTION_WORKS_LITE_MAX_ROWS
+  limit = INSPECTION_WORKS_LITE_MAX_ROWS,
+  projection: MongoProjection = LITE_INSPECTION_WORKS_PROJECTION
 ): Promise<{ rows: any[]; truncated: boolean } | null> {
   try {
     const client = await getMongoClient();
@@ -310,7 +340,7 @@ export async function fetchRecentLiteInspectionWorksCap(
     const col = await getCollectionWithAliases(db, 'inspectionWorks');
     const cap = limit > 0 ? Math.min(limit, INSPECTION_WORKS_LITE_MAX_ROWS) : INSPECTION_WORKS_LITE_MAX_ROWS;
     const items = await col
-      .find({}, { projection: LITE_INSPECTION_WORKS_PROJECTION })
+      .find({}, { projection })
       .sort({ submittedAt: -1, createdAt: -1 })
       .limit(cap + 1)
       .toArray();
@@ -330,7 +360,8 @@ export async function fetchRecentLiteInspectionWorksCap(
 export async function fetchLiteInspectionWorksFromMongoScoped(
   filter: InspectionWorksFilterQuery,
   masters: InspectionWorksFilterMasters,
-  limit = INSPECTION_WORKS_LITE_MAX_ROWS
+  limit = INSPECTION_WORKS_LITE_MAX_ROWS,
+  projection: MongoProjection = LITE_INSPECTION_WORKS_PROJECTION
 ): Promise<{ rows: any[]; truncated: boolean } | null> {
   try {
     const client = await getMongoClient();
@@ -340,7 +371,7 @@ export async function fetchLiteInspectionWorksFromMongoScoped(
     const match = buildInspectionWorksMongoMatch(filter, masters);
     const cap = limit > 0 ? Math.min(limit, INSPECTION_WORKS_LITE_MAX_ROWS) : INSPECTION_WORKS_LITE_MAX_ROWS;
     const cursor = col
-      .find(match, { projection: LITE_INSPECTION_WORKS_PROJECTION })
+      .find(match, { projection })
       .sort({ submittedAt: -1, createdAt: -1 })
       .limit(cap + 1);
     const items = await cursor.toArray();

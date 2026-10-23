@@ -26,7 +26,13 @@ export function parseInspectionWorksViewQuery(searchParams: URLSearchParams) {
     scopeZoneId: pick('scopeZoneId'),
     scopeDistrictId: pick('scopeDistrictId'),
     lite: searchParams.get('lite') === '1',
+    countsOnly: searchParams.get('countsOnly') === '1',
+    rowsOnly: searchParams.get('rowsOnly') === '1',
     limit: searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 0,
+    page: searchParams.get('page') ? parseInt(searchParams.get('page')!, 10) : 1,
+    pageSize: searchParams.get('pageSize') ? parseInt(searchParams.get('pageSize')!, 10) : 50,
+    allTime: searchParams.get('allTime') === '1',
+    reportsBundle: searchParams.get('reportsBundle') === '1',
   };
 }
 
@@ -51,7 +57,12 @@ export function buildInspectionWorksCacheKey(searchParams: URLSearchParams): str
     q.scopeZoneId || '',
     q.scopeDistrictId || '',
     q.lite ? 'lite' : 'full',
+    q.countsOnly ? 'counts' : q.rowsOnly ? 'rows-only' : 'rows',
     q.limit || '',
+    q.page || '',
+    q.pageSize || '',
+    q.allTime ? 'all' : '',
+    q.reportsBundle ? 'bundle' : '',
   ].join('|');
 }
 
