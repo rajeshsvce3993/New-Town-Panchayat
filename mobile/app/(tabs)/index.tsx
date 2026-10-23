@@ -16,11 +16,18 @@ import {
   View,
 } from 'react-native';
 import { api, isRemotePhotoUrl, resolveProfilePhotoUrl } from '../../src/api/client';
-import { HeaderBell } from '../../src/components/AppHeader';
+import { HeaderActions } from '../../src/components/AppHeader';
 import { HeaderBrand } from '../../src/components/HeaderBrand';
 import { useApp } from '../../src/context/AppContext';
 import { prefs, profilePhotoFile } from '../../src/storage/preferences';
-import { QUEUE_STATUS, effectivePhotoUrl, effectiveWards, queuedDisplayStatus, type QueuedWorkEntry } from '../../src/types/models';
+import {
+  QUEUE_STATUS,
+  effectivePhotoUrl,
+  effectiveWards,
+  queuedDisplayStatus,
+  resolveOfficerDesignation,
+  type QueuedWorkEntry,
+} from '../../src/types/models';
 import { formatTo12Hr, todayDdMmYyyy } from '../../src/utils/dates';
 import { normalizeWard } from '../../src/utils/wards';
 import { filterByDateRange, filterUserWorks, sortRecentFirst } from '../../src/utils/workFilters';
@@ -51,7 +58,7 @@ function queueStatusColor(status: string) {
 
 
 export default function DashboardScreen() {
-  const { user, palette, isTamil, works, appIcon, loginLogo, setBrandingUrls } = useApp();
+  const { user, palette, isTamil, works, appIcon, loginLogo, setBrandingUrls, portal } = useApp();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [fromDate, setFromDate] = useState(todayDdMmYyyy);
@@ -70,7 +77,7 @@ export default function DashboardScreen() {
     useCallback(() => {
       let live = true;
       (async () => {
-        const q = await prefs.getQueue();
+        const q = (await prefs.getQueue()).filter((e) => e.status !== QUEUE_STATUS.SUBMITTED);
         if (live) setQueue(q);
         try {
           const fetched = await api.getNotifications(user?.id || user?.username, user?.zone, user?.tpId);
@@ -79,7 +86,10 @@ export default function DashboardScreen() {
           /* */
         }
       })();
-      const t = setInterval(async () => setQueue(await prefs.getQueue()), 1000);
+      const t = setInterval(async () => {
+        const q = (await prefs.getQueue()).filter((e) => e.status !== QUEUE_STATUS.SUBMITTED);
+        setQueue(q);
+      }, 1000);
       return () => {
         live = false;
         clearInterval(t);
@@ -155,7 +165,7 @@ export default function DashboardScreen() {
 
   const tpName = isTamil ? user?.townPanchayatTa || user?.townPanchayat || '—' : user?.townPanchayat || '—';
   const districtName = isTamil ? user?.districtTa || user?.district || '—' : user?.district || '—';
-  const roleName = isTamil ? user?.roleNameTa || user?.role || '—' : user?.role || '—';
+  const designationLabel = resolveOfficerDesignation(user, portal, isTamil);
   const wardList = effectiveWards(user);
   const wardText = wardList.length ? wardList.join(', ') : isTamil ? 'அனைத்தும்' : 'All';
   const isAdmin = (user?.role || '').toLowerCase().includes('admin');
@@ -240,24 +250,25 @@ export default function DashboardScreen() {
           <View style={styles.heroTop}>
             <HeaderBrand />
             <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.kicker}>{isTamil ? 'கள ஆய்வு மேடை' : 'FIELD COMMAND'}</Text>
-              <Text style={styles.heroTitle} numberOfLines={1}>
+              <Text style={styles.heroTitle} numberOfLines={2}>
                 {isTamil ? 'பேரூராட்சி மேலாண்மை' : 'Town Panchayat EMS'}
               </Text>
             </View>
-            <HeaderBell />
-            {isAdmin && (
-              <Pressable
-                onPress={() => {
-                  setIconInput(appIcon);
-                  setLogoInput(loginLogo);
-                  setLogoDlg(true);
-                }}
-                style={styles.heroBtn}
-              >
-                <Ionicons name="color-wand" size={18} color="#fff" />
-              </Pressable>
-            )}
+            <View style={styles.heroActions}>
+              <HeaderActions showLogout />
+              {isAdmin && (
+                <Pressable
+                  onPress={() => {
+                    setIconInput(appIcon);
+                    setLogoInput(loginLogo);
+                    setLogoDlg(true);
+                  }}
+                  style={styles.heroBtn}
+                >
+                  <Ionicons name="color-wand" size={18} color="#fff" />
+                </Pressable>
+              )}
+            </View>
           </View>
         </LinearGradient>
 
@@ -282,10 +293,16 @@ export default function DashboardScreen() {
             </View>
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={styles.officerName} numberOfLines={1}>{user?.name || 'Officer'}</Text>
-              <Text style={styles.officerMeta} numberOfLines={1}>
-                {roleName}
-                {user?.mobile ? `  ·  ${user.mobile}` : ''}
-              </Text>
+              {!!designationLabel && (
+                <Text style={styles.officerDesig} numberOfLines={1}>
+                  {designationLabel}
+                </Text>
+              )}
+              {!!user?.mobile && (
+                <Text style={styles.officerMeta} numberOfLines={1}>
+                  {user.mobile}
+                </Text>
+              )}
             </View>
           </View>
           <View style={styles.detailGrid}>
@@ -602,9 +619,10 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   hero: { paddingHorizontal: 20, paddingBottom: 22 },
   heroTop: { flexDirection: 'row', alignItems: 'center' },
+  heroActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   kicker: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1.6 },
   heroTitle: { color: '#fff', fontSize: 17, fontWeight: '800', marginTop: 2 },
-  heroBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
+  heroBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' },
   pinned: { marginTop: -14, paddingHorizontal: 16, zIndex: 2 },
   sheet: { paddingHorizontal: 16, paddingTop: 12, gap: 14 },
   identity: {
@@ -621,6 +639,7 @@ const styles = StyleSheet.create({
   avatar: { width: 36, height: 36, borderRadius: 10, borderWidth: 1.5, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   avatarImg: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   officerName: { fontSize: 14, fontWeight: '800', color: '#0F172A' },
+  officerDesig: { fontSize: 12, fontWeight: '600', color: '#475569', marginTop: 2 },
   officerMeta: { fontSize: 11, color: '#64748B', marginTop: 1, fontWeight: '500' },
   detailGrid: { flexDirection: 'row', marginTop: 8, borderTopWidth: 1, borderTopColor: '#EEF2F7', paddingTop: 8 },
   detailCol: { flex: 1, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: '#EEF2F7' },

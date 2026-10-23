@@ -9,6 +9,17 @@ import { showInspectionNotification, showSimpleNotification } from './notificati
 
 let syncLock = false;
 
+function isRetryableNetworkError(reason: string) {
+  return /network|timeout|fetch|unreachable|abort|connection|timed out/i.test(reason);
+}
+
+async function purgeSubmittedQueueEntries() {
+  const entries = await prefs.getQueue();
+  const active = entries.filter((e) => e.status !== QUEUE_STATUS.SUBMITTED);
+  if (active.length !== entries.length) await prefs.setQueue(active);
+  return active;
+}
+
 async function exists(path?: string | null) {
   if (!path) return false;
   try {
@@ -77,8 +88,7 @@ export async function syncPendingWorks(): Promise<InspectionWork[]> {
     if (!(await api.isReachable())) return [];
 
     await ensureOfflineWorksAreQueued();
-    const entries = await prefs.getQueue();
-    const pending = entries.filter((e) => e.status !== QUEUE_STATUS.SUBMITTED);
+    const pending = (await purgeSubmittedQueueEntries()).filter((e) => e.status !== QUEUE_STATUS.SUBMITTED);
     for (const item of pending) {
       const saved = await processOneEntry(item);
       if (!saved) break;
@@ -154,6 +164,7 @@ async function onConfirmed(
   await cleanLocalPhotosFromWork(item?.work);
   await prefs.removeOfflineWork(original.id);
   await prefs.removeQueuedWorkMatching((e) => e.clientTaskId === taskId || e.work.id === original.id);
+  await purgeSubmittedQueueEntries();
   try {
     await showInspectionNotification(workId, original.subjectNameEn || 'Field Work', false);
   } catch {
@@ -163,16 +174,24 @@ async function onConfirmed(
 }
 
 async function handleSlow(taskId: string, reason: string) {
+  if (!(await api.isReachable())) return;
   const current = await prefs.getQueue();
   const index = current.findIndex((e) => e.clientTaskId === taskId);
-  if (index >= 0) {
-    const item = current.splice(index, 1)[0];
-    item.status = QUEUE_STATUS.REJECTED_RETRY;
-    item.errorMessage = reason;
-    item.attemptCount += 1;
-    current.push(item);
-    await prefs.setQueue(current);
+  if (index < 0) return;
+  const item = current[index];
+  const nextAttempt = (item.attemptCount || 0) + 1;
+  if (!isRetryableNetworkError(reason) && nextAttempt >= 2) {
+    await prefs.removeQueuedWork(taskId);
+    await showSimpleNotification(
+      'Sync paused',
+      reason || 'Work could not be submitted. Open the app when online to retry from pending works.'
+    );
+    return;
   }
+  const moved = { ...item, status: QUEUE_STATUS.REJECTED_RETRY, errorMessage: reason, attemptCount: nextAttempt };
+  current.splice(index, 1);
+  current.push(moved);
+  await prefs.setQueue(current);
 }
 
 export { exists, isLocalPhotoPath };

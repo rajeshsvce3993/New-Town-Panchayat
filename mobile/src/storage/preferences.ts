@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
-import { DEFAULT_SERVER_URL } from '../constants/config';
+import { DEFAULT_SERVER_URL, IS_PROD_MOBILE, isNonProductionServerUrl } from '../constants/config';
 import type { AppUser, InspectionWork, NotificationItem, PortalState, QueuedWorkEntry, UserScopeData } from '../types/models';
 import { effectivePhotoUrl } from '../types/models';
 
@@ -13,6 +13,7 @@ const K = {
   savedUser: 'saved_username',
   lastUser: 'last_logged_username',
   loginDate: 'login_date',
+  loginSessionPeriod: 'login_session_period',
   lastInteract: 'last_interaction_time',
   offline: 'offline_works',
   portal: 'cached_portal_state',
@@ -80,10 +81,23 @@ export const prefs = {
     await setStr(K.tamil, v ? 'true' : 'false');
   },
   async getServerUrl() {
-    return (await getStr(K.server)) || DEFAULT_SERVER_URL;
+    const stored = (await getStr(K.server))?.trim();
+    if (IS_PROD_MOBILE) {
+      if (!stored || isNonProductionServerUrl(stored)) {
+        if (stored && isNonProductionServerUrl(stored)) await setStr(K.server, DEFAULT_SERVER_URL);
+        return DEFAULT_SERVER_URL;
+      }
+      return stored.replace(/\/$/, '');
+    }
+    return (stored || DEFAULT_SERVER_URL).replace(/\/$/, '');
   },
   async setServerUrl(v: string) {
-    await setStr(K.server, v);
+    const clean = v.trim().replace(/\/$/, '');
+    if (IS_PROD_MOBILE && isNonProductionServerUrl(clean)) {
+      await setStr(K.server, DEFAULT_SERVER_URL);
+      return;
+    }
+    await setStr(K.server, clean);
   },
   async getCurrentUser(): Promise<AppUser | null> {
     const json = await getStr(K.user);
@@ -112,6 +126,12 @@ export const prefs = {
   },
   async setLoginDate(v: string | null) {
     await setStr(K.loginDate, v);
+  },
+  async getLoginSessionPeriod() {
+    return getStr(K.loginSessionPeriod);
+  },
+  async setLoginSessionPeriod(v: string | null) {
+    await setStr(K.loginSessionPeriod, v);
   },
   async getLastInteraction(): Promise<number> {
     const v = await getStr(K.lastInteract);
@@ -283,6 +303,7 @@ export const prefs = {
     await this.setAuthToken(null);
     await this.setCurrentUser(null);
     await this.setLoginDate(null);
+    await this.setLoginSessionPeriod(null);
     await this.setLastInteraction(0);
   },
 };

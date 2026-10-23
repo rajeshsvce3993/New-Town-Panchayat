@@ -478,22 +478,75 @@ export function filterInspectionWorksByQuery(
   return list;
 }
 
+/** After Mongo $match: only filters Mongo cannot apply reliably (IST dates, text search, admin fields). */
+export function filterInspectionWorksPostMongo(
+  works: any[],
+  query: InspectionWorksFilterQuery,
+  ctx: InspectionWorksFilterMasters = {}
+): any[] {
+  let list = (Array.isArray(works) ? works : []).filter((w) => !isFallbackInspectionWork(w));
+  const { fromDate, toDate, dateParam, street, search, adminFieldId, adminFieldValue, categoryId } = query;
+
+  if (fromDate || toDate) {
+    list = list.filter((w) => {
+      const itemYmd = workSubmittedYmd(w);
+      if (!itemYmd) return true;
+      if (fromDate && itemYmd < fromDate) return false;
+      if (toDate && itemYmd > toDate) return false;
+      return true;
+    });
+  } else if (dateParam) {
+    const targetYmd = extractCalendarDateYMD(dateParam) || dateParam;
+    list = list.filter((w) => {
+      const itemYmd = workSubmittedYmd(w);
+      if (itemYmd) return itemYmd === targetYmd;
+      const itemDate = String(w.submittedAt || w.createdAt || w.date || '');
+      return itemDate.includes(targetYmd) || itemDate.includes(dateParam);
+    });
+  }
+
+  if (categoryId) {
+    list = list.filter((w) => workMatchesCategory(w, categoryId, ctx));
+  }
+  if (street) {
+    list = list.filter((w) => workMatchesStreet(w, street));
+  }
+  if (search) {
+    list = list.filter((w) => workMatchesSearch(w, search));
+  }
+  if (adminFieldId) {
+    list = list.filter((w) => workMatchesAdminField(w, adminFieldId, adminFieldValue, ctx));
+  }
+  return list;
+}
+
 export function buildInspectionWorksViewResponse(
   rawWorks: any[],
   query: InspectionWorksFilterQuery,
   ctx: InspectionWorksFilterMasters,
-  options?: { limit?: number; lite?: boolean }
+  options?: { limit?: number; lite?: boolean; mongoPrefiltered?: boolean }
 ): InspectionWorksViewResult {
   const baseList = (Array.isArray(rawWorks) ? rawWorks : []).filter((w) => !isFallbackInspectionWork(w));
-  const queryWithoutCategory: InspectionWorksFilterQuery = { ...query, categoryId: null };
-  const withoutCategory = filterInspectionWorksByQuery(baseList, queryWithoutCategory, ctx);
+
+  let withoutCategory: any[];
+  let works: any[];
+
+  if (options?.mongoPrefiltered) {
+    const queryWithoutCategory: InspectionWorksFilterQuery = { ...query, categoryId: null };
+    withoutCategory = filterInspectionWorksPostMongo(baseList, queryWithoutCategory, ctx);
+    works = query.categoryId
+      ? filterInspectionWorksPostMongo(baseList, query, ctx)
+      : withoutCategory;
+  } else {
+    const queryWithoutCategory: InspectionWorksFilterQuery = { ...query, categoryId: null };
+    withoutCategory = filterInspectionWorksByQuery(baseList, queryWithoutCategory, ctx);
+    works = query.categoryId
+      ? filterInspectionWorksByQuery(baseList, query, ctx)
+      : withoutCategory;
+    works = sortInspectionWorksNewestFirst(works);
+  }
+
   const categoryCounts = computeCategoryCounts(withoutCategory, ctx.inspectionCategories || []);
-
-  let works = query.categoryId
-    ? filterInspectionWorksByQuery(baseList, query, ctx)
-    : withoutCategory;
-
-  works = sortInspectionWorksNewestFirst(works);
 
   const limit = options?.limit && options.limit > 0 ? options.limit : 0;
   if (limit > 0 && works.length > limit) {

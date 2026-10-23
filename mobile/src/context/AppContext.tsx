@@ -22,11 +22,22 @@ import { prefs, profilePhotoFile } from '../storage/preferences';
 import { DEFAULT_PALETTE_ID, getPaletteById, type AppPalette } from '../theme/palettes';
 import type { AppUser, InspectionWork, LoginRequest, LoginResponse, PortalState, UserScopeData } from '../types/models';
 import { emptyPortal, isInspectionUser, portalWorks } from '../types/models';
-import { todayYyyyMmDd } from '../utils/dates';
+import { currentLoginSessionPeriod, todayYyyyMmDd } from '../utils/dates';
 
 function toast(msg: string) {
   if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.LONG);
   else Alert.alert('', msg);
+}
+
+async function isLoginSessionExpired(): Promise<boolean> {
+  const today = todayYyyyMmDd();
+  const period = await prefs.getLoginSessionPeriod();
+  if (period) {
+    const normalized = period.replace(/-(AM|PM)$/i, '');
+    return normalized !== today;
+  }
+  const loginDate = await prefs.getLoginDate();
+  return !loginDate || loginDate !== today;
 }
 
 function hydratePortalFromScope(scope: UserScopeData): PortalState {
@@ -153,7 +164,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setServerUrl(url);
       setPalette(getPaletteById(theme));
       setIsTamil(tamil);
-      applyUser(u);
+      let activeUser = u;
+      if (u && (await isLoginSessionExpired())) {
+        await prefs.logoutClear();
+        activeUser = null;
+      }
+      applyUser(activeUser);
       if (cached) {
         setPortal(cached);
         setWorks(portalWorks(cached));
@@ -319,28 +335,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    (async () => {
+    const expireSession = async (notify: boolean) => {
+      if (cancelled || !userRef.current) return;
+      if (!(await isLoginSessionExpired())) return;
+      applyUser(null);
+      await prefs.logoutClear();
+      if (notify) {
+        toast(
+          isTamil
+            ? 'அமர்வு காலாவதியானது (நள்ளிரவு 12). மீண்டும் உள்நுழையவும்.'
+            : 'Your session expired at midnight. Please sign in again.'
+        );
+      }
+    };
+    void (async () => {
       if (!(await prefs.getLoginDate())) await prefs.setLoginDate(todayYyyyMmDd());
       if (!(await prefs.getLastInteraction())) await prefs.setLastInteraction(Date.now());
+      await expireSession(true);
     })();
     const t = setInterval(async () => {
       if (cancelled) return;
-      if ((await prefs.getLoginDate()) !== todayYyyyMmDd()) {
-        applyUser(null);
-        await prefs.logoutClear();
-        return;
-      }
+      await expireSession(true);
+      if (cancelled || !userRef.current) return;
       const elapsed = Date.now() - lastInteract.current;
       if (elapsed > INACTIVITY_MS) {
         applyUser(null);
         await prefs.logoutClear();
       }
     }, SESSION_CHECK_MS);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void expireSession(true);
+    });
     return () => {
       cancelled = true;
       clearInterval(t);
+      sub.remove();
     };
-  }, [user, applyUser]);
+  }, [user, applyUser, isTamil]);
 
   useEffect(() => {
     if (!user) return;
@@ -435,6 +466,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     applyUser(next);
     await prefs.setCurrentUser(next);
     await prefs.setLoginDate(todayYyyyMmDd());
+    await prefs.setLoginSessionPeriod(currentLoginSessionPeriod());
     await prefs.setLastInteraction(Date.now());
     lastInteract.current = Date.now();
     try {

@@ -122,6 +122,9 @@ export default function LoginScreen() {
                   style={styles.input}
                   autoCapitalize="none"
                   autoCorrect={false}
+                  spellCheck={false}
+                  keyboardType="default"
+                  textContentType="username"
                 />
               </View>
 
@@ -140,6 +143,11 @@ export default function LoginScreen() {
                   placeholderTextColor="#94A3B8"
                   style={styles.input}
                   secureTextEntry={!showPass}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  keyboardType="default"
+                  textContentType="password"
                   onSubmitEditing={() => void submit()}
                 />
                 <Pressable onPress={() => setShowPass((s) => !s)} hitSlop={8} style={styles.eyeBtn}>

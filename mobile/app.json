@@ -3,7 +3,7 @@
     "name": "Town Panchayat Management System",
     "slug": "town-panchayat-ems",
     "scheme": "tpems",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "com.tn.townpanchayat.ems",
-      "versionCode": 100,
+      "versionCode": 101,
       "adaptiveIcon": {
         "backgroundColor": "#1A3D66",
         "foregroundImage": "./assets/android-icon-foreground.png",

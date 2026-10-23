@@ -18,14 +18,13 @@ import {
   getTargetedInspectionWorks,
   getActiveMongoDb,
   getCollectionWithAliases,
-  fetchAllLiteInspectionWorksFromMongo,
   LITE_INSPECTION_WORKS_PROJECTION,
 } from '@/lib/storage';
 import { enqueueInspectionWork } from '@/lib/serverQueue';
 import { getUserScopeDetails } from '@/lib/userScopeCache';
 import { logServerProcess } from '@/lib/serverLogger';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
-import { fetchRemoteInspectionWorksRaw, invalidateRemoteInspectionWorksCache } from '@/lib/remoteInspectionWorksCache';
+import { invalidateRemoteInspectionWorksCache } from '@/lib/remoteInspectionWorksCache';
 import { buildInspectionWorksViewResponse } from '@/lib/inspectionWorksQueryFilters';
 import { resolveInspectionFilterMasters } from '@/lib/inspectionWorksFilterMastersServer';
 import {
@@ -33,6 +32,11 @@ import {
   parseInspectionWorksViewQuery,
   toInspectionWorksFilterQuery,
 } from '@/lib/inspectionWorksViewQuery';
+import {
+  invalidateInspectionWorksLiteCache,
+  loadEnrichedLiteWorksForReports,
+} from '@/lib/inspectionWorksLiteLoader';
+import { applyDefaultReportsDateWindow } from '@/lib/inspectionWorksMongoRepository';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -52,7 +56,7 @@ export async function OPTIONS() {
 
 // In-memory short-lived cache for inspection works list to prevent event-loop congestion from rapid polling
 let cachedWorksList: { data: any; timestamp: number; key: string } | null = null;
-const WORKS_CACHE_TTL_MS = 45_000; // filtered response cache (raw list cached separately ~15 min)
+const WORKS_CACHE_TTL_MS = 120_000; // filtered response cache (raw list cached separately ~15 min)
 
 // GET: Retrieve inspection works from MongoDB (sorted newest first)
 export async function GET(req: NextRequest) {
@@ -72,6 +76,7 @@ export async function GET(req: NextRequest) {
 
     if (searchParams.get('refreshRemote') === '1') {
       invalidateRemoteInspectionWorksCache();
+      invalidateInspectionWorksLiteCache();
       cachedWorksList = null;
     }
 
@@ -80,36 +85,46 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(cachedWorksList.data, { headers: CORS_HEADERS });
     }
 
-    let rawList: any[] | null = null;
     if (lite) {
-      rawList = await fetchAllLiteInspectionWorksFromMongo();
-    }
-    if (!rawList?.length) {
-      rawList = await fetchRemoteInspectionWorksRaw(req.nextUrl.origin);
-    }
-    if (rawList) {
-      const masters = await resolveInspectionFilterMasters(req.nextUrl.origin);
-      const enrichedList = normalizeAndEnrichWorks(rawList, masters);
-      const view = buildInspectionWorksViewResponse(
-        enrichedList,
-        toInspectionWorksFilterQuery(viewQuery),
-        masters,
-        { lite, limit: viewQuery.limit > 0 ? viewQuery.limit : 0 }
+      const filterQuery = applyDefaultReportsDateWindow(toInspectionWorksFilterQuery(viewQuery));
+      const loaded = await loadEnrichedLiteWorksForReports(
+        req.nextUrl.origin,
+        filterQuery,
+        viewQuery.limit > 0 ? viewQuery.limit : 0
       );
-      const responsePayload = {
-        success: true,
-        count: view.works.length,
-        works: view.works,
-        categoryCounts: view.categoryCounts,
-        totalWithoutCategoryFilter: view.totalWithoutCategoryFilter,
-        remoteTotal: rawList.length,
-      };
-      const shouldCache =
-        view.works.length > 0 || rawList.length === 0 || !(fromDate || toDate || dateParam);
-      if (shouldCache) {
+      if (loaded.enriched.length > 0 && loaded.source !== 'empty') {
+        const view = buildInspectionWorksViewResponse(
+          loaded.enriched,
+          filterQuery,
+          loaded.masters,
+          {
+            lite,
+            limit: viewQuery.limit > 0 ? viewQuery.limit : 0,
+            mongoPrefiltered: loaded.source === 'mongo-scoped',
+          }
+        );
+        const responsePayload = {
+          success: true,
+          count: view.works.length,
+          works: view.works,
+          categoryCounts: view.categoryCounts,
+          totalWithoutCategoryFilter: view.totalWithoutCategoryFilter,
+          remoteTotal: loaded.enriched.length,
+          meta: {
+            querySource: loaded.source,
+            truncated: loaded.truncated,
+            defaultDateWindowApplied: loaded.appliedDateWindow,
+          },
+        };
         cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
+        return NextResponse.json(responsePayload, {
+          headers: {
+            ...CORS_HEADERS,
+            'X-Inspection-Works-Source': loaded.source,
+            'X-Inspection-Works-Truncated': loaded.truncated ? '1' : '0',
+          },
+        });
       }
-      return NextResponse.json(responsePayload, { headers: CORS_HEADERS });
     }
 
     if (shouldUseRemotePortalApi(req.nextUrl.origin)) {

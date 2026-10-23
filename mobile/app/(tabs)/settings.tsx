@@ -28,7 +28,7 @@ import { createNotificationChannel } from '../../src/services/notifications';
 import { pickAndUploadProfile } from '../../src/services/profilePhoto';
 import { prefs, profilePhotoFile } from '../../src/storage/preferences';
 import { palettes } from '../../src/theme/palettes';
-import { designationNameEn, effectivePhotoUrl, effectiveSubjectIds, effectiveWards } from '../../src/types/models';
+import { effectivePhotoUrl, effectiveSubjectIds, effectiveWards, resolveOfficerDesignation } from '../../src/types/models';
 
 function toast(msg: string) {
   if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.LONG);
@@ -45,7 +45,7 @@ const TONE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
 };
 
 export default function SettingsScreen() {
-  const { user, palette, isTamil, setLanguage, setThemeId, logout, updateUserPhoto, appIcon } = useApp();
+  const { user, palette, isTamil, setLanguage, setThemeId, logout, updateUserPhoto, appIcon, portal } = useApp();
   const insets = useSafeAreaInsets();
   const heroEnd = palette.isGradient && palette.gradientColors[1] ? palette.gradientColors[1] : palette.secondary;
   const [photo, setPhoto] = useState<string | null>(effectivePhotoUrl(user));
@@ -97,7 +97,7 @@ export default function SettingsScreen() {
   const photoUri = resolveProfilePhotoUrl(photo);
   const wards = effectiveWards(user);
   const subjects = user?.assignedSubjectNames?.length ? user.assignedSubjectNames : effectiveSubjectIds(user);
-  const desig = isTamil ? user?.designationNameTa || user?.designation : designationNameEn(user) || user?.designation;
+  const designationLabel = resolveOfficerDesignation(user, portal, isTamil);
   const versionName = Application.nativeApplicationVersion || APP_VERSION_NAME;
   const versionCode = Application.nativeBuildVersion || String(APP_VERSION_CODE);
   const pkg = Application.applicationId || PACKAGE_NAME;
@@ -196,9 +196,16 @@ export default function SettingsScreen() {
           </Pressable>
           <View style={{ marginLeft: 10, flex: 1 }}>
             <Text style={{ fontWeight: '800', fontSize: 14, color: '#0F172A' }}>{user?.name || 'Officer'}</Text>
-            <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }} numberOfLines={1}>
-              {user?.role}{user?.mobile ? `  ·  ${user.mobile}` : ''}
-            </Text>
+            {!!designationLabel && (
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginTop: 2 }} numberOfLines={1}>
+                {designationLabel}
+              </Text>
+            )}
+            {!!user?.mobile && (
+              <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }} numberOfLines={1}>
+                {user.mobile}
+              </Text>
+            )}
             {!!photoMsg && (
               <Text style={{ fontSize: 10, marginTop: 2, fontWeight: '500', color: /வெற்றி|successfully/i.test(photoMsg) ? '#16A34A' : '#EA580C' }}>
                 {photoMsg}
@@ -216,8 +223,8 @@ export default function SettingsScreen() {
             <Text style={styles.miniVal} numberOfLines={2}>{!wards.length ? (isTamil ? 'அனைத்தும்' : 'All') : wards.join(', ')}</Text>
           </View>
           <View style={[styles.detailCol, { borderRightWidth: 0 }]}>
-            <Text style={styles.miniLbl}>{isTamil ? 'பதவி' : 'Role'}</Text>
-            <Text style={styles.miniVal} numberOfLines={2}>{desig || user?.role || '—'}</Text>
+            <Text style={styles.miniLbl}>{isTamil ? 'பதவி' : 'Designation'}</Text>
+            <Text style={styles.miniVal} numberOfLines={2}>{designationLabel || '—'}</Text>
           </View>
         </View>
         {!!subjects.length && (

@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "c9f6cd98-5045-4e7c-960f-1033348a3b98"
+      }
+    },
+    "android": {
+      "package": "com.rajeshsvce3993.aistudioapplet"
+    }
+  }
+}

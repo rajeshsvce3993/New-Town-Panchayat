@@ -1,19 +1,38 @@
-const PROD_API = 'https://townpanchayat.com';
+export const PROD_API = 'https://townpanchayat.com';
 const LOCAL_API = 'http://localhost:3000';
 
-function getMobileAppEnv(): 'local' | 'prod' {
-  const v = String(process.env.EXPO_PUBLIC_APP_ENV || 'local').toLowerCase().trim();
-  return v === 'prod' || v === 'production' ? 'prod' : 'local';
+export function getMobileAppEnv(): 'local' | 'prod' {
+  const v = String(process.env.EXPO_PUBLIC_APP_ENV || '').toLowerCase().trim();
+  if (v === 'prod' || v === 'production') return 'prod';
+  if (v === 'local' || v === 'development' || v === 'dev') return 'local';
+  // EAS/release builds often have no .env — use prod when not in dev mode.
+  if (typeof __DEV__ !== 'undefined' && !__DEV__) return 'prod';
+  return 'local';
 }
 
-/** Set EXPO_PUBLIC_APP_ENV=local or prod in mobile/.env */
-export const DEFAULT_SERVER_URL = (
-  getMobileAppEnv() === 'prod' ? PROD_API : LOCAL_API
-).replace(/\/$/, '');
+export const IS_PROD_MOBILE = getMobileAppEnv() === 'prod';
 
-export const APP_VERSION_NAME = '2.0.0';
-export const APP_VERSION_CODE = 100;
-export const FCM_APP_VERSION_LABEL = '2.4.0';
+/** Set EXPO_PUBLIC_APP_ENV=local or prod in mobile/.env (or eas.json env for cloud builds). */
+export const DEFAULT_SERVER_URL = (IS_PROD_MOBILE ? PROD_API : LOCAL_API).replace(/\/$/, '');
+
+/** Dev / LAN URLs saved from login “Configure Server” must not stick on production builds. */
+export function isNonProductionServerUrl(url?: string | null): boolean {
+  const u = String(url || '')
+    .trim()
+    .toLowerCase();
+  if (!u) return false;
+  if (u.includes('localhost') || u.includes('127.0.0.1') || u.includes('10.0.2.2')) return true;
+  if (/^https?:\/\/192\.168\.\d+\.\d+/.test(u)) return true;
+  if (/^https?:\/\/10\.\d+\.\d+\.\d+/.test(u)) return true;
+  if (/^https?:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+/.test(u)) return true;
+  if (u.includes(':5000')) return true;
+  if (IS_PROD_MOBILE && !u.includes('townpanchayat.com')) return true;
+  return false;
+}
+
+export const APP_VERSION_NAME = '2.0.1';
+export const APP_VERSION_CODE = 101;
+export const FCM_APP_VERSION_LABEL = '2.0.1';
 export const PACKAGE_NAME = 'com.tn.townpanchayat.ems';
 export const REQUEST_TIMEOUT_MS = 30000;
 /** Non-critical startup calls (config, version check) — fail fast so splash does not hang. */

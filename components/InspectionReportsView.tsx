@@ -1224,6 +1224,8 @@ export default function InspectionReportsView({
   };
 
   // Deduplicate inspection works to eliminate duplicate rows and resolve real subjects and categories
+  const worksFromApi = fetchedWorks !== null;
+
   const rawWorks: any[] = useMemo(() => {
     const list = fetchedWorks !== null ? fetchedWorks : (state.inspectionWorks || []);
     const seen = new Set<string>();
@@ -1233,7 +1235,9 @@ export default function InspectionReportsView({
     const fields = state.inspectionFields || [];
 
     for (const rawItem of list) {
-      const w = resolveWorkSubjectAndCategory(rawItem, subjects, categories, fields);
+      const w = worksFromApi
+        ? rawItem
+        : resolveWorkSubjectAndCategory(rawItem, subjects, categories, fields);
 
       const key = (w.workId || w.id || '').trim();
       if (!key) {
@@ -1244,7 +1248,14 @@ export default function InspectionReportsView({
       }
     }
     return deduplicated;
-  }, [fetchedWorks, state.inspectionWorks, state.inspectionSubjects, state.inspectionCategories, state.inspectionFields]);
+  }, [
+    fetchedWorks,
+    worksFromApi,
+    state.inspectionWorks,
+    state.inspectionSubjects,
+    state.inspectionCategories,
+    state.inspectionFields,
+  ]);
 
   // Helper to determine if the logged in user is Admin or Director (full unrestricted state-wide access)
   const isAdminOrDirector = useMemo(() => isHodLikeUser(currentUser), [currentUser]);
@@ -1579,6 +1590,15 @@ export default function InspectionReportsView({
       });
     }
 
+    if (
+      worksFromApi &&
+      detailedSortField === 'submittedAt' &&
+      detailedSortDirection === 'desc' &&
+      !adminFilterFieldId
+    ) {
+      return list;
+    }
+
     const sorted = [...list].sort((a: any, b: any) => {
       let valA: any = '';
       let valB: any = '';
@@ -1625,6 +1645,7 @@ export default function InspectionReportsView({
     return sorted;
   }, [
     rawWorks,
+    worksFromApi,
     adminFilterFieldId,
     adminFilterValue,
     state.inspectionFields,

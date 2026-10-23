@@ -5,12 +5,14 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Alert,
   BackHandler,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -54,6 +56,24 @@ import { nextWorkId } from '../../src/utils/workId';
 function toast(msg: string) {
   if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.LONG);
   else Alert.alert('', msg);
+}
+
+function openLocationSettings(isTamil: boolean) {
+  Alert.alert(
+    isTamil ? 'இருப்பிடம் இயக்கவும்' : 'Turn on location',
+    isTamil
+      ? 'இந்த பணியை ஜிபிஎஸ் இடத்துடன் பதிவு செய்ய, சாதன அமைப்புகளில் இருப்பிடத்தை இயக்கி, பயன்பாட்டிற்கு அனுமதி வழங்கவும்.'
+      : 'To geotag this work, enable location on your device and allow access for this app.',
+    [
+      { text: isTamil ? 'பின்னர்' : 'Not now', style: 'cancel' },
+      {
+        text: isTamil ? 'அமைப்புகள்' : 'Open settings',
+        onPress: () => {
+          void Linking.openSettings();
+        },
+      },
+    ]
+  );
 }
 
 export default function AddWorkScreen() {
@@ -164,26 +184,72 @@ export default function AddWorkScreen() {
     return () => sub.remove();
   }, [step]);
 
-  useEffect(() => {
-    (async () => {
-      const has = await prefs.hasDownloadedScope(user, await prefs.getUserScope(), portal);
-      setScopeMissing(!has && (!subjects.length || !wards.length));
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        toast(isTamil ? 'GPS அனுமதி தேவை' : 'GPS location permission is required');
-        return;
+  const acquireGps = useCallback(
+    async (opts?: { silent?: boolean; forSubmit?: boolean }): Promise<{ lat: number; lng: number } | null> => {
+      const forSubmit = !!opts?.forSubmit;
+      let perm = await Location.getForegroundPermissionsAsync();
+      if (perm.status !== 'granted') {
+        if (forSubmit && !opts?.silent) {
+          toast(isTamil ? 'ஜிபிஎஸ் அனுமதி தேவை — அனுமதிக்கவும்' : 'Location permission is required — please allow access');
+        }
+        perm = await Location.requestForegroundPermissionsAsync();
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
-      setLat(Math.round(loc.coords.latitude * 1e6) / 1e6);
-      setLng(Math.round(loc.coords.longitude * 1e6) / 1e6);
-      setGpsOk(true);
-      toast(
-        isTamil
-          ? `GPS அமைவிடம் பெறப்பட்டது (±${Math.round((loc.coords.accuracy || 0) * 10) / 10}m): ${lat}, ${lng}`
-          : `GPS location acquired (±${Math.round((loc.coords.accuracy || 0) * 10) / 10}m)`
-      );
-    })();
-  }, []);
+      if (perm.status !== 'granted') {
+        setGpsOk(false);
+        if (forSubmit) openLocationSettings(isTamil);
+        else if (!opts?.silent) toast(isTamil ? 'GPS அனுமதி தேவை' : 'GPS location permission is required');
+        return null;
+      }
+      let enabled = await Location.hasServicesEnabledAsync();
+      if (!enabled && forSubmit) {
+        openLocationSettings(isTamil);
+        enabled = await Location.hasServicesEnabledAsync();
+      }
+      if (!enabled) {
+        setGpsOk(false);
+        if (!opts?.silent && !forSubmit) {
+          toast(
+            isTamil ? 'உங்கள் சாதனத்தின் ஜிபிஎஸ் முடக்கப்பட்டுள்ளது' : 'Location services are turned off on your device'
+          );
+        }
+        return null;
+      }
+      try {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+        const newLat = Math.round(loc.coords.latitude * 1e6) / 1e6;
+        const newLng = Math.round(loc.coords.longitude * 1e6) / 1e6;
+        setLat(newLat);
+        setLng(newLng);
+        setGpsOk(true);
+        if (!opts?.silent && !forSubmit) {
+          toast(
+            isTamil
+              ? `GPS அமைவிடம் பெறப்பட்டது (±${Math.round((loc.coords.accuracy || 0) * 10) / 10}m): ${newLat}, ${newLng}`
+              : `GPS location acquired (±${Math.round((loc.coords.accuracy || 0) * 10) / 10}m)`
+          );
+        }
+        return { lat: newLat, lng: newLng };
+      } catch {
+        setGpsOk(false);
+        if (forSubmit) openLocationSettings(isTamil);
+        else if (!opts?.silent) {
+          toast(isTamil ? 'ஜிபிஎஸ் இருப்பிடத்தை பெற முடியவில்லை' : 'Could not read GPS location yet');
+        }
+        return null;
+      }
+    },
+    [isTamil]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void (async () => {
+        const has = await prefs.hasDownloadedScope(user, await prefs.getUserScope(), portal);
+        setScopeMissing(!has && (!subjects.length || !wards.length));
+        await acquireGps({ silent: true });
+      })();
+    }, [user, portal, subjects.length, wards.length, acquireGps])
+  );
 
   const capture = async (key?: string) => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -220,20 +286,11 @@ export default function AddWorkScreen() {
       );
       return;
     }
-    const locPerm = await Location.getForegroundPermissionsAsync();
-    if (locPerm.status !== 'granted') {
-      toast(isTamil ? 'பிழை: ஜிபிஎஸ் அனுமதி வழங்கப்படவில்லை!' : 'Error: GPS location permission is not granted!');
+    const liveGps = await acquireGps({ forSubmit: true });
+    if (!liveGps) {
       return;
     }
-    const enabled = await Location.hasServicesEnabledAsync();
-    if (!enabled) {
-      toast(isTamil ? 'பிழை: உங்கள் சாதனத்தின் ஜிபிஎஸ் முடக்கப்பட்டுள்ளது!' : "Error: Your device's GPS is turned off! Please enable it.");
-      return;
-    }
-    if (!gpsOk) {
-      toast(isTamil ? 'பிழை: நேரடி ஜிபிஎஸ் இருப்பிடத்தை இன்னும் பெற முடியவில்லை!' : 'Error: Could not acquire live GPS coordinates yet!');
-      return;
-    }
+    const { lat: submitLat, lng: submitLng } = liveGps;
     const scope = await prefs.getUserScope();
     const err = validateVisibleFields({
       fields: visible,
@@ -306,8 +363,8 @@ export default function AddWorkScreen() {
       districtNameTa: user?.districtTa || 'செங்கல்பட்டு மாவட்டம்',
       wardNumber: ward,
       streetName: street,
-      latitude: lat,
-      longitude: lng,
+      latitude: submitLat,
+      longitude: submitLng,
       fieldsData: fieldCopy,
       imageUrl: s3,
       imageCaption: caption || `Field verification confirmed at Ward ${ward} ${street}.`,
@@ -332,33 +389,70 @@ export default function AddWorkScreen() {
 
     let finalWork = newWork;
     let online = false;
-    try {
-      if (reachable && !workHasLocalPhotos(newWork)) {
+
+    if (reachable) {
+      if (workHasLocalPhotos(newWork)) {
+        setSubmitting(false);
+        toast(
+          isTamil
+            ? 'புகைப்படம் பதிவேற்றம் முடிக்கப்படவில்லை. இணையத்தை சரிபார்த்து மீண்டும் முயற்சிக்கவும்.'
+            : 'Photo upload did not finish. Check connection and try again.'
+        );
+        return;
+      }
+      try {
         const res = await api.submitInspectionWork(newWork);
         if (res.success && res.work) {
           finalWork = res.work;
-          actualWorkId = res.work.workId;
+          actualWorkId = res.work.workId || actualWorkId;
+          online = true;
+        } else if (res.success && res.workId) {
+          finalWork = { ...newWork, workId: res.workId };
+          actualWorkId = res.workId;
           online = true;
         }
-      }
-    } catch {
-      /* offline */
-    }
-    if (online) {
-      await cleanLocalPhotoUris([primaryPhoto, s3, ...Object.values(photos), ...Object.values(fieldCopy).map((v) => String(v || ''))]);
-      try {
-        await refreshPortal();
       } catch {
-        /* keep submitted work in memory */
+        /* fall through — may still be offline */
       }
-    } else {
+      if (online) {
+        await prefs.removeOfflineWork(clientWorkId);
+        await prefs.removeQueuedWork(clientWorkId);
+        await cleanLocalPhotoUris([primaryPhoto, s3, ...Object.values(photos), ...Object.values(fieldCopy).map((v) => String(v || ''))]);
+        try {
+          await refreshPortal();
+        } catch {
+          /* keep submitted work in memory */
+        }
+      } else if (await api.isReachable()) {
+        setSubmitting(false);
+        toast(
+          isTamil
+            ? 'சர்வரில் பணி சேமிக்க முடியவில்லை. விவரங்களை சரிபார்த்து மீண்டும் சமர்ப்பிக்கவும்.'
+            : 'Could not save work on server. Please check details and submit again.'
+        );
+        return;
+      }
+    }
+
+    if (!online) {
       await prefs.enqueueWork(entry);
       const off = { ...newWork, workId: '' };
       await prefs.upsertOfflineWork(off);
       finalWork = off;
       actualWorkId = '';
-      if (reachable) void syncPendingWorks();
+      if (await api.isReachable()) {
+        const synced = await syncPendingWorks();
+        const saved = synced.find((w) => w.id === clientWorkId);
+        if (saved?.workId) {
+          finalWork = saved;
+          actualWorkId = saved.workId;
+          online = true;
+          await prefs.removeOfflineWork(clientWorkId);
+          await prefs.removeQueuedWork(clientWorkId);
+        }
+      }
     }
+
     setWorks((w) => [finalWork, ...w.filter((x) => x.id !== finalWork.id)]);
     setLastId(actualWorkId);
     setSubmitting(false);
@@ -373,6 +467,7 @@ export default function AddWorkScreen() {
     setCaption('');
     setSuccess(false);
     setStep(toStep);
+    void acquireGps({ silent: true });
   };
 
   const dropdown = (
@@ -686,6 +781,7 @@ export default function AddWorkScreen() {
                   toast(isTamil ? 'வரம்பு பதிவிறக்கப்படவில்லை. ஆய்வு தொடர முடியாது!' : 'No scope downloaded. Cannot continue!');
                   return;
                 }
+                void acquireGps({ silent: true });
                 setStep(2);
               }}
             >

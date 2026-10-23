@@ -1238,6 +1238,10 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
       db.collection('inspectionWorks').createIndex({ submittedAt: -1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ submittedAt: -1, createdAt: -1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ tpId: 1, submittedAt: -1 }, { background: true }),
+      db.collection('inspectionWorks').createIndex({ districtId: 1, submittedAt: -1 }, { background: true }),
+      db.collection('inspectionWorks').createIndex({ zoneId: 1, submittedAt: -1 }, { background: true }),
+      db.collection('inspectionWorks').createIndex({ subjectId: 1, submittedAt: -1 }, { background: true }),
+      db.collection('inspectionWorks').createIndex({ categoryId: 1, submittedAt: -1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ tpId: 1, wardNumber: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ submittedByUserName: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ submittedByUserId: 1 }, { background: true }),
@@ -1910,47 +1914,126 @@ export function enrichUserForApp(user: any, masters?: any): any {
   return applyUserPasswordFields(enriched);
 }
 
+function lowerKey(v: unknown) {
+  return String(v || '').trim().toLowerCase();
+}
+
+function buildEnrichMasterLookups(tps: any[], districts: any[], subjects: any[], categories: any[]) {
+  const tpById = new Map<string, any>();
+  const tpByNameEn = new Map<string, any>();
+  for (const t of tps) {
+    const id = lowerKey(t.id);
+    if (id) tpById.set(id, t);
+    const name = lowerKey(t.nameEn);
+    if (name) tpByNameEn.set(name, t);
+  }
+  const districtById = new Map<string, any>();
+  for (const d of districts) {
+    const id = lowerKey(d.id);
+    if (id) districtById.set(id, d);
+  }
+  const subjectById = new Map<string, any>();
+  const subjectByCode = new Map<string, any>();
+  const subjectByNameEn = new Map<string, any>();
+  const subjectByNameTa = new Map<string, any>();
+  for (const s of subjects) {
+    const id = lowerKey(s.id);
+    const code = lowerKey(s.code);
+    if (id) subjectById.set(id, s);
+    if (code) subjectByCode.set(code, s);
+    const nameEn = lowerKey(s.nameEn || s.name);
+    const nameTa = lowerKey(s.nameTa);
+    if (nameEn) subjectByNameEn.set(nameEn, s);
+    if (nameTa) subjectByNameTa.set(nameTa, s);
+  }
+  const categoryById = new Map<string, any>();
+  const categoryByCode = new Map<string, any>();
+  const categoryByNameEn = new Map<string, any>();
+  const categoryByNameTa = new Map<string, any>();
+  for (const c of categories) {
+    const id = lowerKey(c.id);
+    const code = lowerKey(c.code);
+    if (id) categoryById.set(id, c);
+    if (code) categoryByCode.set(code, c);
+    const nameEn = lowerKey(c.nameEn || c.name);
+    const nameTa = lowerKey(c.nameTa);
+    if (nameEn) categoryByNameEn.set(nameEn, c);
+    if (nameTa) categoryByNameTa.set(nameTa, c);
+  }
+  return {
+    tpById,
+    tpByNameEn,
+    districtById,
+    subjectById,
+    subjectByCode,
+    subjectByNameEn,
+    subjectByNameTa,
+    categoryById,
+    categoryByCode,
+    categoryByNameEn,
+    categoryByNameTa,
+  };
+}
+
 // Normalize and enrich inspection works with Town Panchayat, District, Subject, and Category names
 export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
-  const localDb = readLocalDb();
-  const tps = masters?.townPanchayats || localDb.townPanchayats || INITIAL_DATA.townPanchayats || [];
-  const districts = masters?.districts || localDb.districts || INITIAL_DATA.districts || [];
-  const subjects = masters?.inspectionSubjects || localDb.inspectionSubjects || INITIAL_DATA.inspectionSubjects || [];
-  const categories = masters?.inspectionCategories || localDb.inspectionCategories || INITIAL_DATA.inspectionCategories || [];
+  const localDb = masters ? null : readLocalDb();
+  const tps = masters?.townPanchayats || localDb?.townPanchayats || INITIAL_DATA.townPanchayats || [];
+  const districts = masters?.districts || localDb?.districts || INITIAL_DATA.districts || [];
+  const subjects = masters?.inspectionSubjects || localDb?.inspectionSubjects || INITIAL_DATA.inspectionSubjects || [];
+  const categories = masters?.inspectionCategories || localDb?.inspectionCategories || INITIAL_DATA.inspectionCategories || [];
+  const lookups = buildEnrichMasterLookups(tps, districts, subjects, categories);
 
   return (works || []).map((w: any) => {
-    const tp = tps.find((t: any) => t.id === w.tpId || String(t.nameEn || '').toLowerCase() === String(w.tpNameEn || '').toLowerCase());
-    const dist = districts.find((d: any) => d.id === (w.districtId || tp?.districtId));
+    const tpIdKey = lowerKey(w.tpId);
+    const tpNameKey = lowerKey(w.tpNameEn);
+    const tp =
+      (tpIdKey && lookups.tpById.get(tpIdKey)) ||
+      (tpNameKey && lookups.tpByNameEn.get(tpNameKey)) ||
+      undefined;
+    const distKey = lowerKey(w.districtId || tp?.districtId);
+    const dist = distKey ? lookups.districtById.get(distKey) : undefined;
 
-    const wCatId = String(w.categoryId || '').trim().toLowerCase();
-    const wCatName = String(w.categoryNameEn || w.categoryName || w.category || '').trim().toLowerCase();
-    const wSubjId = String(w.subjectId || '').trim().toLowerCase();
-    const wSubjName = String(w.subjectNameEn || w.subjectName || w.subject || '').trim().toLowerCase();
+    const wCatId = lowerKey(w.categoryId);
+    const wCatName = lowerKey(w.categoryNameEn || w.categoryName || w.category);
+    const wSubjId = lowerKey(w.subjectId);
+    const wSubjName = lowerKey(w.subjectNameEn || w.subjectName || w.subject);
 
-    // Resolve Category first from actual created categories
-    let cat = categories.find((c: any) => {
-      const cId = String(c.id || '').trim().toLowerCase();
-      const cCode = String(c.code || '').trim().toLowerCase();
-      const cNameEn = String(c.nameEn || c.name || '').trim().toLowerCase();
-      const cNameTa = String(c.nameTa || '').trim().toLowerCase();
-      return (wCatId && (cId === wCatId || cCode === wCatId)) ||
-             (wCatName && wCatName !== 'field check' && wCatName !== 'general category' && (cNameEn === wCatName || cNameTa === wCatName)) ||
-             (wCatId && (cNameEn === wCatId || cNameTa === wCatId));
-    });
+    let cat =
+      (wCatId && (lookups.categoryById.get(wCatId) || lookups.categoryByCode.get(wCatId))) ||
+      (wCatId && (lookups.categoryByNameEn.get(wCatId) || lookups.categoryByNameTa.get(wCatId))) ||
+      undefined;
+    if (
+      !cat &&
+      wCatName &&
+      wCatName !== 'field check' &&
+      wCatName !== 'general category'
+    ) {
+      cat =
+        lookups.categoryByNameEn.get(wCatName) ||
+        lookups.categoryByNameTa.get(wCatName) ||
+        undefined;
+    }
 
-    // Resolve Subject from actual created subjects
-    let subj = subjects.find((s: any) => {
-      const sId = String(s.id || '').trim().toLowerCase();
-      const sCode = String(s.code || '').trim().toLowerCase();
-      const sNameEn = String(s.nameEn || s.name || '').trim().toLowerCase();
-      const sNameTa = String(s.nameTa || '').trim().toLowerCase();
-      return (wSubjId && (sId === wSubjId || sCode === wSubjId)) ||
-             (cat && (sId === String(cat.subjectId || '').toLowerCase() || sCode === String(cat.subjectId || '').toLowerCase())) ||
-             (wSubjName && wSubjName !== 'general inspection' && wSubjName !== 'general' && (sNameEn === wSubjName || sNameTa === wSubjName));
-    });
-
+    let subj =
+      (wSubjId && (lookups.subjectById.get(wSubjId) || lookups.subjectByCode.get(wSubjId))) ||
+      undefined;
     if (!subj && cat?.subjectId) {
-      subj = subjects.find((s: any) => String(s.id || '').toLowerCase() === String(cat.subjectId || '').toLowerCase() || String(s.code || '').toLowerCase() === String(cat.subjectId || '').toLowerCase());
+      const catSubj = lowerKey(cat.subjectId);
+      subj =
+        (catSubj && (lookups.subjectById.get(catSubj) || lookups.subjectByCode.get(catSubj))) ||
+        undefined;
+    }
+    if (
+      !subj &&
+      wSubjName &&
+      wSubjName !== 'general inspection' &&
+      wSubjName !== 'general'
+    ) {
+      subj =
+        lookups.subjectByNameEn.get(wSubjName) ||
+        lookups.subjectByNameTa.get(wSubjName) ||
+        undefined;
     }
 
     const resolvedSubjectId = subj ? subj.id : (w.subjectId || '');
@@ -2000,46 +2083,22 @@ export const LITE_INSPECTION_WORKS_PROJECTION = {
   mapImage: 0,
 };
 
-const INSPECTION_WORKS_COLLECTION_ALIASES = [
-  'inspectionWorks',
-  'inspection_works',
-  'inspections',
-  'inspectionworks',
-  'works',
-];
-
-/** Full lite rows for dashboard/reports (no row cap). Merges alias collections and dedupes by workId. */
+/** Full lite rows for dashboard/reports (no row cap). Reads canonical inspectionWorks collection only. */
 export async function fetchAllLiteInspectionWorksFromMongo(): Promise<any[] | null> {
   try {
     const client = await getMongoClient();
     if (!client) return null;
     const db = await getActiveMongoDb(client);
-    const primary = await getCollectionWithAliases(db, 'inspectionWorks');
-    const namesToQuery = new Set<string>([primary.collectionName, ...INSPECTION_WORKS_COLLECTION_ALIASES]);
-
-    const merged: any[] = [];
-    const seen = new Set<string>();
-    for (const name of namesToQuery) {
-      let items: any[] = [];
-      try {
-        items = await db
-          .collection(name)
-          .find({}, { projection: LITE_INSPECTION_WORKS_PROJECTION })
-          .sort({ submittedAt: -1, createdAt: -1 })
-          .toArray();
-      } catch {
-        continue;
-      }
-      for (const item of items) {
-        const dedupeKey = String(item.workId || item.id || item._id || '').trim();
-        if (!dedupeKey || seen.has(dedupeKey)) continue;
-        seen.add(dedupeKey);
-        const { _id, ...rest } = item;
-        merged.push({ id: item.id || item.workId || (_id ? _id.toString() : ''), ...rest });
-      }
-    }
-    if (!merged.length) return null;
-    return merged;
+    const col = await getCollectionWithAliases(db, 'inspectionWorks');
+    const items = await col
+      .find({}, { projection: LITE_INSPECTION_WORKS_PROJECTION })
+      .sort({ submittedAt: -1, createdAt: -1 })
+      .toArray();
+    if (!items.length) return null;
+    return items.map((item: any) => {
+      const { _id, ...rest } = item;
+      return { id: item.id || item.workId || (_id ? _id.toString() : ''), ...rest };
+    });
   } catch (err) {
     console.warn('[storage] Mongo full inspection works list read failed:', err);
     return null;

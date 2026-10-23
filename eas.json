@@ -1,0 +1,40 @@
+{
+  "cli": {
+    "version": ">= 24.13.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "workingDirectory": "mobile",
+      "android": { "buildType": "apk" }
+    },
+    "preview": {
+      "distribution": "internal",
+      "workingDirectory": "mobile",
+      "android": { "buildType": "apk" },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "prod"
+      }
+    },
+    "production": {
+      "workingDirectory": "mobile",
+      "android": { "buildType": "app-bundle" },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "prod"
+      }
+    },
+    "production-apk": {
+      "distribution": "internal",
+      "workingDirectory": "mobile",
+      "android": { "buildType": "apk" },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "prod"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

@@ -12,6 +12,11 @@ export function todayYyyyMmDd(): string {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
+/** Calendar day for login session (auto-logout at local midnight / 12:00 AM). */
+export function currentLoginSessionPeriod(): string {
+  return todayYyyyMmDd();
+}
+
 export function now12Hr(): string {
   const d = new Date();
   const dd = String(d.getDate()).padStart(2, '0');
