@@ -78,6 +78,44 @@ export function applyDefaultReportsDateWindow(filter: InspectionWorksFilterQuery
   return { ...filter, fromDate: from, toDate: to };
 }
 
+/** Narrow Mongo reads; final IST calendar filter stays in memory. */
+export function appendLooseUtcDatePrefilter(
+  and: Record<string, unknown>[],
+  filter: InspectionWorksFilterQuery
+): void {
+  const effective = applyDefaultReportsDateWindow(filter);
+  if (effective.fromDate || effective.toDate) {
+    const fromDate = effective.fromDate || effective.toDate!;
+    const toDate = effective.toDate || effective.fromDate!;
+    const fromD = new Date(`${fromDate}T00:00:00.000Z`);
+    fromD.setUTCDate(fromD.getUTCDate() - 1);
+    const toD = new Date(`${toDate}T23:59:59.999Z`);
+    toD.setUTCDate(toD.getUTCDate() + 1);
+    const isoFrom = fromD.toISOString();
+    const isoTo = toD.toISOString();
+    and.push({
+      $or: [
+        { submittedAt: { $gte: isoFrom, $lte: isoTo } },
+        { createdAt: { $gte: isoFrom, $lte: isoTo } },
+        { date: { $gte: fromDate, $lte: toDate } },
+      ],
+    });
+  } else if (effective.dateParam) {
+    const ymd = effective.dateParam;
+    const fromD = new Date(`${ymd}T00:00:00.000Z`);
+    fromD.setUTCDate(fromD.getUTCDate() - 1);
+    const toD = new Date(`${ymd}T23:59:59.999Z`);
+    toD.setUTCDate(toD.getUTCDate() + 1);
+    and.push({
+      $or: [
+        { submittedAt: { $gte: fromD.toISOString(), $lte: toD.toISOString() } },
+        { createdAt: { $gte: fromD.toISOString(), $lte: toD.toISOString() } },
+        { date: ymd },
+      ],
+    });
+  }
+}
+
 export function buildInspectionWorksMongoMatch(
   filter: InspectionWorksFilterQuery,
   masters: InspectionWorksFilterMasters
@@ -167,11 +205,126 @@ export function buildInspectionWorksMongoMatch(
     and.push({ $or: or });
   }
 
-  // Calendar dates (Asia/Kolkata) are applied in memory after fetch — Mongo UTC/string
-  // date fields often miss valid rows when matched here.
+  appendLooseUtcDatePrefilter(and, filter);
 
   if (!and.length) return {};
   return and.length === 1 ? (and[0] as Record<string, unknown>) : { $and: and };
+}
+
+/** Dashboard KPI groups — no full collection scan in Node. */
+export async function fetchInspectionWorksDashboardStatsFromMongo(): Promise<any[] | null> {
+  try {
+    const client = await getMongoClient();
+    if (!client) return null;
+    const db = await getActiveMongoDb(client);
+    const col = await getCollectionWithAliases(db, 'inspectionWorks');
+    const rows = await col
+      .aggregate([
+        {
+          $project: {
+            subjectId: { $ifNull: ['$subjectId', 'unknown'] },
+            subjectNameEn: 1,
+            subjectNameTa: 1,
+            zoneId: { $ifNull: ['$zoneId', ''] },
+            districtId: { $ifNull: ['$districtId', ''] },
+            tpId: { $ifNull: [{ $ifNull: ['$tpId', '$townPanchayatId'] }, ''] },
+            workId: 1,
+            id: 1,
+          },
+        },
+        {
+          $group: {
+            _id: {
+              subjectId: '$subjectId',
+              zoneId: '$zoneId',
+              districtId: '$districtId',
+              tpId: '$tpId',
+            },
+            count: { $sum: 1 },
+            subjectNameEn: { $first: '$subjectNameEn' },
+            subjectNameTa: { $first: '$subjectNameTa' },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            subjectId: '$_id.subjectId',
+            zoneId: '$_id.zoneId',
+            districtId: '$_id.districtId',
+            tpId: '$_id.tpId',
+            count: 1,
+            subjectNameEn: 1,
+            subjectNameTa: 1,
+          },
+        },
+      ])
+      .toArray();
+    return rows;
+  } catch (err) {
+    console.warn('[inspectionWorksMongoRepository] dashboard stats aggregate failed:', err);
+    return null;
+  }
+}
+
+/** When scoped geo+date returns nothing, try date window only (still capped). */
+export async function fetchLiteInspectionWorksByDateLooseOnly(
+  filter: InspectionWorksFilterQuery,
+  limit = INSPECTION_WORKS_LITE_MAX_ROWS
+): Promise<{ rows: any[]; truncated: boolean } | null> {
+  try {
+    const client = await getMongoClient();
+    if (!client) return null;
+    const db = await getActiveMongoDb(client);
+    const col = await getCollectionWithAliases(db, 'inspectionWorks');
+    const and: Record<string, unknown>[] = [];
+    appendLooseUtcDatePrefilter(and, filter);
+    const match =
+      and.length === 0 ? {} : and.length === 1 ? and[0] : { $and: and };
+    const cap = limit > 0 ? Math.min(limit, INSPECTION_WORKS_LITE_MAX_ROWS) : INSPECTION_WORKS_LITE_MAX_ROWS;
+    const items = await col
+      .find(match, { projection: LITE_INSPECTION_WORKS_PROJECTION })
+      .sort({ submittedAt: -1, createdAt: -1 })
+      .limit(cap + 1)
+      .toArray();
+    const truncated = items.length > cap;
+    const slice = truncated ? items.slice(0, cap) : items;
+    const rows = slice.map((item: any) => {
+      const { _id, ...rest } = item;
+      return { id: item.id || item.workId || (_id ? _id.toString() : ''), ...rest };
+    });
+    return { rows, truncated };
+  } catch (err) {
+    console.warn('[inspectionWorksMongoRepository] date-loose fetch failed:', err);
+    return null;
+  }
+}
+
+/** Newest rows only — used when strict $match misses (mixed date field formats). */
+export async function fetchRecentLiteInspectionWorksCap(
+  limit = INSPECTION_WORKS_LITE_MAX_ROWS
+): Promise<{ rows: any[]; truncated: boolean } | null> {
+  try {
+    const client = await getMongoClient();
+    if (!client) return null;
+    const db = await getActiveMongoDb(client);
+    const col = await getCollectionWithAliases(db, 'inspectionWorks');
+    const cap = limit > 0 ? Math.min(limit, INSPECTION_WORKS_LITE_MAX_ROWS) : INSPECTION_WORKS_LITE_MAX_ROWS;
+    const items = await col
+      .find({}, { projection: LITE_INSPECTION_WORKS_PROJECTION })
+      .sort({ submittedAt: -1, createdAt: -1 })
+      .limit(cap + 1)
+      .toArray();
+    const truncated = items.length > cap;
+    const slice = truncated ? items.slice(0, cap) : items;
+    const rows = slice.map((item: any) => {
+      const { _id, ...rest } = item;
+      return { id: item.id || item.workId || (_id ? _id.toString() : ''), ...rest };
+    });
+    return { rows, truncated };
+  } catch (err) {
+    console.warn('[inspectionWorksMongoRepository] recent cap fetch failed:', err);
+    return null;
+  }
 }
 
 export async function fetchLiteInspectionWorksFromMongoScoped(

@@ -32,7 +32,7 @@ export async function OPTIONS() {
 }
 
 let cachedFullState: { data: any; timestamp: number; mode: string } | null = null;
-const STATE_CACHE_TTL_MS = 45000;
+const STATE_CACHE_TTL_MS = 120_000;
 
 async function runDataStructureDiagnostics() {
   const diagnosticLogs: string[] = [];

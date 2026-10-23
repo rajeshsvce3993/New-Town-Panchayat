@@ -39,6 +39,76 @@ export async function fetchRemotePortalJson(
   }
 }
 
+/** Forward multipart upload to live portal (uses production S3 on server). */
+export async function postRemotePortalUpload(
+  requestOrigin: string | undefined,
+  fields: {
+    fileBuffer: Buffer;
+    fileName: string;
+    contentType: string;
+    purpose?: string;
+    userId?: string;
+    username?: string;
+  },
+  timeoutMs = 300_000
+): Promise<{ status: number; data: any }> {
+  if (!shouldUseRemotePortalApi(requestOrigin)) {
+    return {
+      status: 503,
+      data: { success: false, message: 'Remote portal upload is only used when APP_ENV=prod on localhost.' },
+    };
+  }
+  const base = getRemotePortalApiBase();
+  const url = `${base}/api/upload`;
+  try {
+    const form = new FormData();
+    const blob = new Blob([fields.fileBuffer], {
+      type: fields.contentType || 'application/octet-stream',
+    });
+    form.append('file', blob, fields.fileName);
+    if (fields.purpose) form.append('purpose', fields.purpose);
+    if (fields.userId) form.append('userId', fields.userId);
+    if (fields.username) form.append('username', fields.username);
+
+    const res = await fetch(url, {
+      method: 'POST',
+      body: form,
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    let data: any = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = { success: false, message: `Remote upload returned HTTP ${res.status}` };
+    }
+    if (!res.ok) {
+      if (res.status === 413) {
+        data = {
+          success: false,
+          message:
+            'Production server rejected file size (HTTP 413). Increase nginx client_max_body_size (e.g. 128m) on townpanchayat.com, or upload APK on the live site after deploy.',
+          ...(data && typeof data === 'object' ? data : {}),
+        };
+      }
+      console.warn(`[RemotePortal] upload ${url} -> HTTP ${res.status}`, data?.message || '');
+    } else {
+      console.info(`[RemotePortal] upload proxied to ${base} (${fields.fileName})`);
+    }
+    return { status: res.status, data };
+  } catch (err: any) {
+    console.warn('[RemotePortal] upload proxy failed:', err?.message || err);
+    return {
+      status: 502,
+      data: {
+        success: false,
+        message: `Could not upload via ${base}. ${err?.message || 'Network error'}`,
+      },
+    };
+  }
+}
+
 export async function postRemotePortalJson(
   pathWithQuery: string,
   requestOrigin: string | undefined,

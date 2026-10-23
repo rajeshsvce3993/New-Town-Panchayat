@@ -177,16 +177,26 @@ export default function NotificationApkManagementView({ state, lang, onSaveColle
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('purpose', 'apk');
       const res = await fetch('/api/upload', {
         method: 'POST',
         body: formData
       });
       const data = await res.json();
-      if (data.success && data.url) {
+      if (data.success && data.url && !String(data.url).startsWith('/uploads/')) {
         setApkFileUrl(data.url);
         setApkFileName(file.name);
       } else {
-        alert('Upload failed: ' + (data.message || 'Unknown error'));
+        const msg =
+          data.message ||
+          (String(data.url || '').startsWith('/uploads/')
+            ? 'APK cannot be saved on this computer.'
+            : `HTTP ${res.status}`);
+        alert(
+          lang === 'ta'
+            ? `APK பதிவேற்றம் தோல்வி: ${msg}\n\nhttps://townpanchayat.com → அறிவிப்புகள் → App Update இல் பதிவேற்றவும்.`
+            : `APK upload failed: ${msg}\n\nUpload the APK only on the live site: https://townpanchayat.com → Notifications → App Update (S3).`
+        );
       }
     } catch (err) {
       console.error(err);

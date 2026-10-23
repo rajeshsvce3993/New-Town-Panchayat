@@ -2,15 +2,14 @@ import type {
   InspectionWorksFilterMasters,
   InspectionWorksFilterQuery,
 } from '@/lib/inspectionWorksQueryFilters';
-import {
-  fetchAllLiteInspectionWorksFromMongo,
-  getTargetedInspectionWorks,
-  normalizeAndEnrichWorks,
-} from '@/lib/storage';
+import { getTargetedInspectionWorks, normalizeAndEnrichWorks } from '@/lib/storage';
+import { filterInspectionWorksPostMongo } from '@/lib/inspectionWorksQueryFilters';
 import { resolveInspectionFilterMasters } from '@/lib/inspectionWorksFilterMastersServer';
 import {
   applyDefaultReportsDateWindow,
+  fetchLiteInspectionWorksByDateLooseOnly,
   fetchLiteInspectionWorksFromMongoScoped,
+  fetchRecentLiteInspectionWorksCap,
 } from '@/lib/inspectionWorksMongoRepository';
 import { fetchRemoteInspectionWorksRaw, invalidateRemoteInspectionWorksCache } from '@/lib/remoteInspectionWorksCache';
 import { shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
@@ -18,13 +17,36 @@ import { shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 export type LiteWorksLoadResult = {
   enriched: any[];
   masters: InspectionWorksFilterMasters;
-  source: 'mongo-scoped' | 'mongo-full' | 'local-cache' | 'remote-full' | 'empty';
+  source:
+    | 'mongo-scoped'
+    | 'mongo-date-loose'
+    | 'mongo-recent-cap'
+    | 'local-cache'
+    | 'remote-full'
+    | 'empty';
   truncated: boolean;
   appliedDateWindow: boolean;
 };
 
 export function invalidateInspectionWorksLiteCache() {
   invalidateRemoteInspectionWorksCache();
+}
+
+function enrichReportsCandidateRows(
+  rows: any[],
+  filter: InspectionWorksFilterQuery,
+  masters: InspectionWorksFilterMasters
+): any[] {
+  const dateAndTextQuery: InspectionWorksFilterQuery = {
+    ...filter,
+    categoryId: null,
+    street: null,
+    search: null,
+    adminFieldId: null,
+    adminFieldValue: null,
+  };
+  const narrowed = filterInspectionWorksPostMongo(rows, dateAndTextQuery, masters);
+  return normalizeAndEnrichWorks(narrowed, masters);
 }
 
 /**
@@ -43,7 +65,7 @@ export async function loadEnrichedLiteWorksForReports(
   const scoped = await fetchLiteInspectionWorksFromMongoScoped(withDates, masters, limit);
   if (scoped?.rows.length) {
     return {
-      enriched: normalizeAndEnrichWorks(scoped.rows, masters),
+      enriched: enrichReportsCandidateRows(scoped.rows, withDates, masters),
       masters,
       source: 'mongo-scoped',
       truncated: scoped.truncated,
@@ -51,14 +73,24 @@ export async function loadEnrichedLiteWorksForReports(
     };
   }
 
-  // Scoped query can miss rows (UTC vs IST dates) or Mongo may be empty while db.json cache has works.
-  const fullLite = await fetchAllLiteInspectionWorksFromMongo();
-  if (fullLite?.length) {
+  const dateLoose = await fetchLiteInspectionWorksByDateLooseOnly(withDates, limit);
+  if (dateLoose?.rows.length) {
     return {
-      enriched: normalizeAndEnrichWorks(fullLite, masters),
+      enriched: enrichReportsCandidateRows(dateLoose.rows, withDates, masters),
       masters,
-      source: 'mongo-full',
-      truncated: fullLite.length >= 50_000,
+      source: 'mongo-date-loose',
+      truncated: dateLoose.truncated,
+      appliedDateWindow,
+    };
+  }
+
+  const recentCap = await fetchRecentLiteInspectionWorksCap(limit);
+  if (recentCap?.rows.length) {
+    return {
+      enriched: enrichReportsCandidateRows(recentCap.rows, withDates, masters),
+      masters,
+      source: 'mongo-recent-cap',
+      truncated: recentCap.truncated,
       appliedDateWindow,
     };
   }
@@ -66,7 +98,7 @@ export async function loadEnrichedLiteWorksForReports(
   const cachedWorks = await getTargetedInspectionWorks({ limit: 100_000 });
   if (cachedWorks?.length) {
     return {
-      enriched: normalizeAndEnrichWorks(cachedWorks, masters),
+      enriched: enrichReportsCandidateRows(cachedWorks, withDates, masters),
       masters,
       source: 'local-cache',
       truncated: false,

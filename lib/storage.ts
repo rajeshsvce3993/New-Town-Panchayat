@@ -7,6 +7,7 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, List
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { OFFICIAL_PF_INTEREST_RATES } from './pfInterestRatesData';
+import { getAppEnv, isLocalDevHost } from '@/lib/appEnvironment';
 import { isFallbackInspectionWork } from '@/lib/inspectionWorksQueryFilters';
 import { applyUserPasswordFields, mergeUserRecordPreservingPassword } from '@/lib/userCredentials';
 
@@ -2132,9 +2133,34 @@ function aggregateEnrichedWorksForDashboardStats(works: any[]): any[] {
   return Array.from(groups.values());
 }
 
-/** Counts only — never pulls photo/document payloads from inspectionWorks. */
+let cachedDashboardInspectionStats: { rows: any[]; timestamp: number } | null = null;
+const DASHBOARD_INSPECTION_STATS_TTL_MS = 120_000;
+
+export function invalidateInspectionDashboardStatsCache() {
+  cachedDashboardInspectionStats = null;
+}
+
+/** Counts only — Mongo aggregation + short cache (bootstrap/dashboard). */
 export async function getInspectionWorksDashboardStats(): Promise<any[]> {
+  const now = Date.now();
+  if (
+    cachedDashboardInspectionStats &&
+    now - cachedDashboardInspectionStats.timestamp < DASHBOARD_INSPECTION_STATS_TTL_MS
+  ) {
+    return cachedDashboardInspectionStats.rows;
+  }
+
   try {
+    const { fetchInspectionWorksDashboardStatsFromMongo } = await import(
+      '@/lib/inspectionWorksMongoRepository'
+    );
+    let stats = await fetchInspectionWorksDashboardStatsFromMongo();
+    if (stats?.length) {
+      stats = stats.filter((row) => !isFallbackInspectionWork(row));
+      cachedDashboardInspectionStats = { rows: stats, timestamp: now };
+      return stats;
+    }
+
     let rawList: any[] | null = await fetchAllLiteInspectionWorksFromMongo();
     if (!rawList?.length) {
       const { fetchRemoteInspectionWorksRaw } = await import('@/lib/remoteInspectionWorksCache');
@@ -2142,13 +2168,14 @@ export async function getInspectionWorksDashboardStats(): Promise<any[]> {
     }
     if (!rawList?.length) return [];
 
-    const [districts, townPanchayats, zones, inspectionSubjects, inspectionCategories] = await Promise.all([
-      getCollectionData('districts'),
-      getCollectionData('townPanchayats'),
-      getCollectionData('zones'),
-      getCollectionData('inspectionSubjects'),
-      getCollectionData('inspectionCategories'),
-    ]);
+    const [districts, townPanchayats, zones, inspectionSubjects, inspectionCategories] =
+      await Promise.all([
+        getCollectionData('districts'),
+        getCollectionData('townPanchayats'),
+        getCollectionData('zones'),
+        getCollectionData('inspectionSubjects'),
+        getCollectionData('inspectionCategories'),
+      ]);
     const masters = {
       districts: districts || [],
       townPanchayats: townPanchayats || [],
@@ -2157,7 +2184,9 @@ export async function getInspectionWorksDashboardStats(): Promise<any[]> {
       inspectionCategories: inspectionCategories || [],
     };
     const enriched = normalizeAndEnrichWorks(rawList, masters);
-    return aggregateEnrichedWorksForDashboardStats(enriched);
+    stats = aggregateEnrichedWorksForDashboardStats(enriched);
+    cachedDashboardInspectionStats = { rows: stats, timestamp: now };
+    return stats;
   } catch (e: any) {
     console.warn('Inspection works stats skipped:', e?.message || e);
   }
@@ -3001,12 +3030,247 @@ export async function resolveInspectionUsername(userId?: string, userName?: stri
   return cleaned || 'inspector';
 }
 
+function allowLocalInspectionUploadFallback(requestOrigin?: string): boolean {
+  return (
+    getAppEnv() === 'local' ||
+    String(process.env.S3_LOCAL_FALLBACK || '').trim() === '1' ||
+    isLocalDevHost(requestOrigin)
+  );
+}
+
+type S3CredentialSet = {
+  accessKeyId: string;
+  secretAccessKey: string;
+  region: string;
+  source: string;
+};
+
+function getS3BucketName(): string {
+  const dbConfig = readLocalDb().settings || {};
+  return (
+    process.env.S3_BUCKET_NAME ||
+    process.env.S3_BUCKET ||
+    dbConfig.s3Bucket ||
+    'tms-2026'
+  );
+}
+
+function getS3Region(): string {
+  const dbConfig = readLocalDb().settings || {};
+  return process.env.S3_REGION || dbConfig.s3Region || 'ap-south-1';
+}
+
+function appendS3CredentialCandidate(
+  out: S3CredentialSet[],
+  seen: Set<string>,
+  accessKeyId: string,
+  secretAccessKey: string,
+  source: string,
+  region?: string
+) {
+  const id = String(accessKeyId || '').trim();
+  const sec = String(secretAccessKey || '').trim();
+  if (!id || !sec) return;
+  const key = `${id}:${sec}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  out.push({
+    accessKeyId: id,
+    secretAccessKey: sec,
+    region: region || getS3Region(),
+    source,
+  });
+}
+
+/** Env keys first, then Webapp Settings / Mongo (when they differ). */
+function getS3CredentialCandidatesSync(): S3CredentialSet[] {
+  const dbConfig = readLocalDb().settings || {};
+  const seen = new Set<string>();
+  const out: S3CredentialSet[] = [];
+  appendS3CredentialCandidate(
+    out,
+    seen,
+    process.env.S3_ACCESS_KEY_ID || '',
+    process.env.S3_SECRET_ACCESS_KEY || '',
+    'env'
+  );
+  appendS3CredentialCandidate(
+    out,
+    seen,
+    dbConfig.s3AccessKeyId || '',
+    dbConfig.s3SecretAccessKey || '',
+    'webapp-settings'
+  );
+  return out;
+}
+
+async function getS3CredentialCandidates(preferSettingsOverEnv = false): Promise<S3CredentialSet[]> {
+  const seen = new Set<string>();
+  const out: S3CredentialSet[] = [];
+  const sync = getS3CredentialCandidatesSync();
+  const ordered = preferSettingsOverEnv
+    ? [...sync.filter((c) => c.source !== 'env'), ...sync.filter((c) => c.source === 'env')]
+    : sync;
+  for (const c of ordered) {
+    appendS3CredentialCandidate(out, seen, c.accessKeyId, c.secretAccessKey, c.source, c.region);
+  }
+  try {
+    const client = await getMongoClient();
+    if (client) {
+      const db = await getActiveMongoDb(client);
+      for (const colName of ['settings', 'appSettings', 'portalSettings']) {
+        const doc = await db.collection(colName).findOne({});
+        if (doc?.s3AccessKeyId && doc?.s3SecretAccessKey) {
+          appendS3CredentialCandidate(
+            out,
+            seen,
+            doc.s3AccessKeyId,
+            doc.s3SecretAccessKey,
+            `mongo-${colName}`
+          );
+        }
+      }
+    }
+  } catch (_) {}
+  return out;
+}
+
+function buildEphemeralS3Client(creds: S3CredentialSet): S3Client | null {
+  try {
+    if (!s3RequestHandler) {
+      getS3Client();
+    }
+    return new S3Client({
+      region: creds.region,
+      credentials: {
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
+      },
+      requestHandler: s3RequestHandler!,
+      maxAttempts: 3,
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function putObjectToS3WithCredentialFallback(
+  fileBuffer: Buffer,
+  s3Key: string,
+  contentType: string,
+  requestOrigin?: string
+): Promise<{ ok: true; bucket: string; region: string; source: string } | { ok: false; message: string }> {
+  const bucket = getS3BucketName();
+  const preferSettings = isLocalDevHost(requestOrigin) || getAppEnv() === 'local';
+  const candidates = await getS3CredentialCandidates(preferSettings);
+  if (!candidates.length) {
+    return { ok: false, message: 'AWS S3 is not configured (no credentials in .env or Webapp Settings).' };
+  }
+
+  let lastMessage = 'S3 upload failed';
+  for (const creds of candidates) {
+    const client = buildEphemeralS3Client(creds);
+    if (!client) continue;
+    try {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: s3Key,
+          Body: fileBuffer,
+          ContentType: contentType,
+        })
+      );
+      if (creds.source !== 'env') {
+        console.log(`[S3] Upload succeeded using ${creds.source} credentials (env credentials failed or differ)`);
+      }
+      return { ok: true, bucket, region: creds.region, source: creds.source };
+    } catch (err: any) {
+      lastMessage = String(err?.message || 'S3 upload failed');
+      console.warn(`S3 upload error for ${s3Key} (${creds.source}):`, lastMessage);
+    }
+  }
+
+  const hint = lastMessage.toLowerCase().includes('not signed up for the s3 service')
+    ? ' Use the same IAM keys as production (Webapp Settings or .env). Wrong keys in .env override Settings.'
+    : '';
+  return { ok: false, message: lastMessage + hint };
+}
+
+/** APK releases must use S3 only — never local disk; on laptop with APP_ENV=prod skip broken .env keys. */
+async function putObjectToS3ForApkRelease(
+  fileBuffer: Buffer,
+  s3Key: string,
+  contentType: string,
+  requestOrigin?: string
+): Promise<{ ok: true; bucket: string; region: string; source: string } | { ok: false; message: string }> {
+  const bucket = getS3BucketName();
+  let candidates = await getS3CredentialCandidates(
+    isLocalDevHost(requestOrigin) || getAppEnv() === 'local'
+  );
+  if (getAppEnv() === 'prod') {
+    candidates = candidates.filter((c) => c.source !== 'env');
+  }
+  if (!candidates.length) {
+    return {
+      ok: false,
+      message:
+        'No production S3 credentials (Webapp Settings / server). Upload the APK at https://townpanchayat.com → Notifications → App Update, or add working S3 keys in Webapp Settings and remove invalid keys from local .env.',
+    };
+  }
+
+  let lastMessage = 'S3 upload failed';
+  for (const creds of candidates) {
+    const client = buildEphemeralS3Client(creds);
+    if (!client) continue;
+    try {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: s3Key,
+          Body: fileBuffer,
+          ContentType: contentType,
+        })
+      );
+      return { ok: true, bucket, region: creds.region, source: creds.source };
+    } catch (err: any) {
+      lastMessage = String(err?.message || 'S3 upload failed');
+      console.warn(`S3 APK upload error for ${s3Key} (${creds.source}):`, lastMessage);
+    }
+  }
+
+  return {
+    ok: false,
+    message: `${lastMessage} Upload this APK on the live portal (https://townpanchayat.com) so it is stored in S3 for field staff.`,
+  };
+}
+
+function saveInspectionMediaToLocalDisk(
+  fileBuffer: Buffer,
+  cleanUser: string,
+  finalFileName: string,
+  s3Key: string
+): { success: boolean; url: string; s3Key: string; message?: string } {
+  const relDir = path.join('inspection', cleanUser);
+  const localDir = path.join(UPLOADS_DIR, relDir);
+  fs.mkdirSync(localDir, { recursive: true });
+  fs.writeFileSync(path.join(localDir, finalFileName), fileBuffer);
+  const url = `/uploads/inspection/${cleanUser}/${finalFileName}`;
+  console.warn(`[upload] S3 unavailable — saved locally: ${url}`);
+  return {
+    success: true,
+    url,
+    s3Key,
+    message: `Saved locally at ${url} (S3 unavailable)`,
+  };
+}
+
 // Upload inspection media directly to AWS S3 under folder pattern: inspection/{username}/
 export async function uploadInspectionMediaToS3(
   fileBuffer: Buffer,
   fileName: string,
   contentType: string = 'image/jpeg',
-  username: string = 'inspector'
+  username: string = 'inspector',
+  options?: { requestOrigin?: string }
 ): Promise<{ success: boolean; url: string; s3Key: string; message?: string }> {
   const cleanUser = username.toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'inspector';
   const ext = (fileName.split('.').pop() || 'jpg').toLowerCase();
@@ -3016,42 +3280,53 @@ export async function uploadInspectionMediaToS3(
   const finalFileName = `${uniqueId}.${ext}`;
   const s3Key = `inspection/${cleanUser}/${finalFileName}`;
 
-  const s3 = getS3Client();
-  const bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || readLocalDb().settings.s3Bucket || 'tms-2026';
-  const region = process.env.S3_REGION || readLocalDb().settings.s3Region || 'ap-south-1';
-
-  if (s3 && bucket) {
-    try {
-      await s3.send(new PutObjectCommand({
-        Bucket: bucket,
-        Key: s3Key,
-        Body: fileBuffer,
-        ContentType: contentType,
-      }));
-      const url = `https://${bucket}.s3.${region}.amazonaws.com/${s3Key}`;
-      return {
-        success: true,
-        url,
-        s3Key,
-        message: `Successfully saved to AWS S3 at ${s3Key}`,
-      };
-    } catch (err: any) {
-      console.warn(`S3 upload error for ${s3Key}:`, err?.message || err);
-      return {
-        success: false,
-        url: '',
-        s3Key,
-        message: err?.message || 'S3 upload failed',
-      };
-    }
+  const put = await putObjectToS3WithCredentialFallback(
+    fileBuffer,
+    s3Key,
+    contentType,
+    options?.requestOrigin
+  );
+  if (put.ok) {
+    const url = `https://${put.bucket}.s3.${put.region}.amazonaws.com/${s3Key}`;
+    return {
+      success: true,
+      url,
+      s3Key,
+      message: `Successfully saved to AWS S3 at ${s3Key}`,
+    };
   }
 
-  return {
-    success: false,
-    url: '',
+  if (allowLocalInspectionUploadFallback(options?.requestOrigin)) {
+    return saveInspectionMediaToLocalDisk(fileBuffer, cleanUser, finalFileName, s3Key);
+  }
+
+  return { success: false, url: '', s3Key, message: put.message };
+}
+
+/** APK releases — separate prefix (same bucket/credentials as inspection photos). */
+export async function uploadApkReleaseToS3(
+  fileBuffer: Buffer,
+  fileName: string,
+  contentType: string = 'application/vnd.android.package-archive',
+  options?: { requestOrigin?: string }
+): Promise<{ success: boolean; url: string; s3Key: string; message?: string }> {
+  const ext = (fileName.split('.').pop() || 'apk').toLowerCase();
+  const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+  const finalFileName = `${uniqueId}.${ext}`;
+  const s3Key = `apk/releases/${finalFileName}`;
+
+  const put = await putObjectToS3ForApkRelease(
+    fileBuffer,
     s3Key,
-    message: 'AWS S3 is not configured or client is unavailable',
-  };
+    contentType || 'application/vnd.android.package-archive',
+    options?.requestOrigin
+  );
+  if (put.ok) {
+    const url = `https://${put.bucket}.s3.${put.region}.amazonaws.com/${s3Key}`;
+    return { success: true, url, s3Key, message: `APK saved to S3 at ${s3Key}` };
+  }
+
+  return { success: false, url: '', s3Key, message: put.message };
 }
 
 // In-memory cache for presigned URLs (valid for 6 days) to avoid redundant signing across 3000+ records
@@ -3060,7 +3335,13 @@ const presignedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 // Generate an officially signed S3 URL with direct secure temporary access
 export async function getPresignedS3Url(s3UrlOrKey: string): Promise<string> {
   if (!s3UrlOrKey || typeof s3UrlOrKey !== 'string') return '';
-  if (!s3UrlOrKey.includes('s3.amazonaws.com') && !s3UrlOrKey.includes('s3.ap-south-1.amazonaws.com') && !s3UrlOrKey.startsWith('inspection/') && !s3UrlOrKey.startsWith('profiles/')) {
+  if (
+    !s3UrlOrKey.includes('s3.amazonaws.com') &&
+    !s3UrlOrKey.includes('s3.ap-south-1.amazonaws.com') &&
+    !s3UrlOrKey.startsWith('inspection/') &&
+    !s3UrlOrKey.startsWith('profiles/') &&
+    !s3UrlOrKey.startsWith('apk/')
+  ) {
     return s3UrlOrKey; // Relative or non-S3 path, return as is
   }
 
@@ -3088,23 +3369,22 @@ export async function getPresignedS3Url(s3UrlOrKey: string): Promise<string> {
   }
 
   const cleanS3Key = s3Key.replace(/^\/+/, '');
-  const s3 = getS3Client();
-  const dbConfig = readLocalDb().settings;
-  const bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || dbConfig.s3Bucket || 'tms-2026';
+  const bucket = getS3BucketName();
+  const candidates = await getS3CredentialCandidates();
 
-  if (s3 && bucket) {
+  for (const creds of candidates) {
+    const s3 = buildEphemeralS3Client(creds);
+    if (!s3 || !bucket) continue;
     try {
       const command = new GetObjectCommand({
         Bucket: bucket,
         Key: cleanS3Key,
       });
-      // Sign for 7 days (604800 seconds)
       const signed = await getSignedUrl(s3, command, { expiresIn: 604800 });
-      // Cache for 6 days
       presignedUrlCache.set(s3UrlOrKey, { url: signed, expiresAt: now + 518400000 });
       return signed;
     } catch (err) {
-      console.warn(`[S3_PRESIGN_ERROR] Failed to presign key "${cleanS3Key}":`, err);
+      console.warn(`[S3_PRESIGN_ERROR] Failed to presign key "${cleanS3Key}" (${creds.source}):`, err);
     }
   }
 
@@ -3484,6 +3764,10 @@ export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
     writeLocalDb(localDb);
   } catch (err) {
     console.warn('Failed local DB write for single inspection work:', err);
+  }
+
+  if (mongoSaved) {
+    invalidateInspectionDashboardStatsCache();
   }
 
   return mongoSaved;
