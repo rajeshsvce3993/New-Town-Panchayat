@@ -7,14 +7,12 @@ import {
   resolveInspectionUsername,
   uploadInspectionMediaToS3,
   saveInspectionDetailsToS3,
-  getNextUserInspectionSeq,
-  generateUserWorkId,
   getMongoClient,
   readLocalDb,
   normalizeAndEnrichWorks,
   getPresignedS3Url,
   extractCalendarDateYMD,
-  findExistingInspectionWork,
+  resolveInspectionWorkIdentity,
   getTargetedInspectionWorks,
   getActiveMongoDb,
   getCollectionWithAliases,
@@ -38,6 +36,7 @@ import {
   loadInspectionWorksReportCounts,
   loadPaginatedEnrichedWorksForReports,
   loadInspectionWorksReportsBundle,
+  getInspectionWorksReportsDataGeneration,
 } from '@/lib/inspectionWorksLiteLoader';
 import { applyDefaultReportsDateWindow } from '@/lib/inspectionWorksMongoRepository';
 
@@ -58,7 +57,7 @@ export async function OPTIONS() {
 }
 
 // In-memory short-lived cache for inspection works list to prevent event-loop congestion from rapid polling
-let cachedWorksList: { data: any; timestamp: number; key: string } | null = null;
+let cachedWorksList: { data: any; timestamp: number; key: string; gen: number } | null = null;
 const WORKS_CACHE_TTL_MS = 120_000; // filtered response cache (raw list cached separately ~15 min)
 
 // GET: Retrieve inspection works from MongoDB (sorted newest first)
@@ -76,6 +75,25 @@ export async function GET(req: NextRequest) {
     const ward = viewQuery.ward;
     const username = viewQuery.username;
     const lite = viewQuery.lite;
+    const lookupId = String(searchParams.get('lookupId') || '').trim();
+    if (lookupId) {
+      const client = await getMongoClient();
+      if (!client) {
+        return NextResponse.json({ success: false, work: null }, { headers: CORS_HEADERS });
+      }
+      const db = await getActiveMongoDb(client);
+      const col = await getCollectionWithAliases(db, 'inspectionWorks');
+      const found = await col.findOne({ $or: [{ id: lookupId }, { workId: lookupId }] });
+      if (!found) {
+        return NextResponse.json({ success: true, work: null }, { headers: CORS_HEADERS });
+      }
+      const { _id, ...rest } = found as { _id?: unknown } & Record<string, unknown>;
+      void _id;
+      return NextResponse.json(
+        { success: true, work: { ...rest, id: found.id || found.workId || lookupId } },
+        { headers: CORS_HEADERS }
+      );
+    }
 
     if (searchParams.get('refreshRemote') === '1') {
       invalidateRemoteInspectionWorksCache();
@@ -84,7 +102,13 @@ export async function GET(req: NextRequest) {
     }
 
     const now = Date.now();
-    if (cachedWorksList && cachedWorksList.key === cacheKey && (now - cachedWorksList.timestamp) < WORKS_CACHE_TTL_MS) {
+    const reportsGen = getInspectionWorksReportsDataGeneration();
+    if (
+      cachedWorksList &&
+      cachedWorksList.key === cacheKey &&
+      cachedWorksList.gen === reportsGen &&
+      now - cachedWorksList.timestamp < WORKS_CACHE_TTL_MS
+    ) {
       return NextResponse.json(cachedWorksList.data, { headers: CORS_HEADERS });
     }
 
@@ -128,7 +152,7 @@ export async function GET(req: NextRequest) {
               defaultDateWindowApplied,
             },
           };
-          cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
+          cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
           return NextResponse.json(responsePayload, {
             headers: {
               ...CORS_HEADERS,
@@ -142,37 +166,31 @@ export async function GET(req: NextRequest) {
           loadInspectionWorksReportCounts(req.nextUrl.origin, filterQuery, rowLimit),
           loadPaginatedEnrichedWorksForReports(req.nextUrl.origin, filterQuery, page, pageSize),
         ]);
-        if (
-          splitPage.source !== 'empty' ||
-          splitCounts.totalWithoutCategoryFilter > 0 ||
-          (splitCounts.subjectCategoryRollups?.length ?? 0) > 0
-        ) {
-          const splitPayload = {
-            success: true,
-            reportsBundle: true,
-            count: splitPage.enriched.length,
-            total: splitPage.total ?? splitPage.enriched.length,
-            page: splitPage.page ?? page,
-            pageSize: splitPage.pageSize ?? pageSize,
-            works: splitPage.enriched,
-            categoryCounts: splitCounts.categoryCounts,
-            totalWithoutCategoryFilter: splitCounts.totalWithoutCategoryFilter,
-            subjectCategoryRollups: splitCounts.subjectCategoryRollups ?? [],
-            meta: {
-              querySource: splitPage.source,
-              truncated: splitPage.truncated,
-              defaultDateWindowApplied,
-            },
-          };
-          cachedWorksList = { data: splitPayload, timestamp: Date.now(), key: cacheKey };
-          return NextResponse.json(splitPayload, {
-            headers: {
-              ...CORS_HEADERS,
-              'X-Inspection-Works-Source': splitPage.source,
-              'X-Inspection-Works-Mode': 'bundle-split',
-            },
-          });
-        }
+        const splitPayload = {
+          success: true,
+          reportsBundle: true,
+          count: splitPage.enriched.length,
+          total: splitPage.total ?? splitPage.enriched.length,
+          page: splitPage.page ?? page,
+          pageSize: splitPage.pageSize ?? pageSize,
+          works: splitPage.enriched,
+          categoryCounts: splitCounts.categoryCounts,
+          totalWithoutCategoryFilter: splitCounts.totalWithoutCategoryFilter,
+          subjectCategoryRollups: splitCounts.subjectCategoryRollups ?? [],
+          meta: {
+            querySource: splitPage.source,
+            truncated: splitPage.truncated,
+            defaultDateWindowApplied,
+          },
+        };
+        cachedWorksList = { data: splitPayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
+        return NextResponse.json(splitPayload, {
+          headers: {
+            ...CORS_HEADERS,
+            'X-Inspection-Works-Source': splitPage.source,
+            'X-Inspection-Works-Mode': 'bundle-split',
+          },
+        });
       }
 
       if (viewQuery.countsOnly) {
@@ -191,7 +209,7 @@ export async function GET(req: NextRequest) {
             defaultDateWindowApplied: defaultDateWindowApplied,
           },
         };
-        cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
+        cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
         return NextResponse.json(responsePayload, {
           headers: {
             ...CORS_HEADERS,
@@ -207,14 +225,17 @@ export async function GET(req: NextRequest) {
         : await loadEnrichedLiteWorksForReports(req.nextUrl.origin, filterQuery, rowLimit);
 
       if (loaded.source !== 'empty') {
+        const mongoPaged =
+          loaded.source === 'mongo-aggregate' ||
+          loaded.source === 'mongo-indexed' ||
+          loaded.source === 'mongo-rollup';
         const view =
-          viewQuery.rowsOnly && loaded.source === 'mongo-aggregate'
+          viewQuery.rowsOnly && mongoPaged
             ? { works: loaded.enriched, categoryCounts: {}, totalWithoutCategoryFilter: loaded.total ?? 0 }
             : buildInspectionWorksViewResponse(loaded.enriched, filterQuery, loaded.masters, {
                 lite,
                 limit: rowLimit,
-                mongoPrefiltered:
-                  loaded.source === 'mongo-scoped' || loaded.source === 'mongo-aggregate',
+                mongoPrefiltered: loaded.source === 'mongo-scoped' || mongoPaged,
                 rowsOnly: viewQuery.rowsOnly,
               });
 
@@ -239,7 +260,7 @@ export async function GET(req: NextRequest) {
               defaultDateWindowApplied: defaultDateWindowApplied,
             },
           };
-          cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
+          cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
           return NextResponse.json(responsePayload, {
             headers: {
               ...CORS_HEADERS,
@@ -430,7 +451,7 @@ export async function GET(req: NextRequest) {
         totalWithoutCategoryFilter: view.totalWithoutCategoryFilter,
       };
       if (view.works.length > 0) {
-        cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
+        cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
       }
       return NextResponse.json(responsePayload, { headers: CORS_HEADERS });
     }
@@ -556,7 +577,7 @@ export async function GET(req: NextRequest) {
       works: normalizedWorks,
     };
     if (normalizedWorks.length > 0) {
-      cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey };
+      cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
     }
 
     return NextResponse.json(responsePayload, { headers: CORS_HEADERS });
@@ -854,34 +875,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Prepare work record and check if this work entry was already submitted (prevent duplicate work ID & preserve S3 URL)
+    // 3. Client uuid retry updates same row; server always assigns WRK- (ignore mobile TP-style ids).
     const recordId = data.id || `iw_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     const nowIso = new Date().toISOString();
 
-    // Check if an existing work already exists for this client UUID (id) or workId
-    const existingWork = await findExistingInspectionWork(recordId, data.workId);
+    const identity = await resolveInspectionWorkIdentity(recordId, data.workId, username, data.userSequence);
+    if (!identity.ok) {
+      return NextResponse.json({ success: false, message: identity.message }, { status: 409, headers: CORS_HEADERS });
+    }
+    const { workId, userSeq, existing: existingWork } = identity;
 
     const isMobilePath = (str: any) =>
       typeof str === 'string' &&
       (str.startsWith('/data/') || str.startsWith('/storage/') || str.includes('offline_images') || str.includes('raw_uploads'));
 
-    let workId = data.workId;
-    let userSeq: number;
-
     if (existingWork) {
-      // Re-use existing Work ID and sequence - DO NOT CREATE A DUPLICATE WORK ID!
-      workId = existingWork.workId || workId || generateUserWorkId(username, new Date());
-      if (workId && (workId.toUpperCase().startsWith('TP01-') || workId.toUpperCase().startsWith('TP-') || workId.toUpperCase().startsWith('TP'))) {
-        workId = workId.replace(/^TP01-/i, 'WRK-').replace(/^TP-/i, 'WRK-').replace(/^TP/i, 'WRK-');
-      }
-      userSeq = existingWork.userSequence || (await getNextUserInspectionSeq(username));
-
-      // Preserve existing valid S3 image URL if the incoming request has empty or local mobile path
       if ((!imageUrl || isMobilePath(imageUrl)) && existingWork.imageUrl && !isMobilePath(existingWork.imageUrl)) {
         imageUrl = existingWork.imageUrl;
       }
-
-      // Preserve existing S3 image URLs in fieldsData
       if (existingWork.fieldsData) {
         for (const [k, v] of Object.entries(existingWork.fieldsData)) {
           if (typeof v === 'string' && !isMobilePath(v) && (v.startsWith('http') || v.includes('s3.amazonaws.com'))) {
@@ -892,11 +903,6 @@ export async function POST(req: NextRequest) {
           }
         }
       }
-    } else {
-      if (!workId || workId.toUpperCase().startsWith('TP') || !workId.startsWith('WRK-')) {
-        workId = generateUserWorkId(username, new Date());
-      }
-      userSeq = data.userSequence || (await getNextUserInspectionSeq(username));
     }
 
     // Clean any remaining local mobile device paths from imageUrl and updatedFieldsData so mobile paths never get saved
@@ -1087,10 +1093,22 @@ export async function DELETE(req: NextRequest) {
     const client = await getMongoClient();
     if (client) {
       try {
-        const db = client.db('dtp_enterprise');
-        await db.collection('inspectionWorks').deleteOne({
+        const db = await getActiveMongoDb(client);
+        const col = await getCollectionWithAliases(db, 'inspectionWorks');
+        const existing = await col.findOne({
           $or: [{ id: idToDelete }, { workId: idToDelete }],
         });
+        await col.deleteOne({
+          $or: [{ id: idToDelete }, { workId: idToDelete }],
+        });
+        if (existing) {
+          try {
+            const { decrementInspectionWorkReportRollup } = await import('@/lib/inspectionWorkReportRollups');
+            await decrementInspectionWorkReportRollup(existing);
+          } catch (rollupErr) {
+            console.warn('Failed to decrement inspection work report rollup:', rollupErr);
+          }
+        }
       } catch (delErr) {
         console.warn('MongoDB delete warning:', delErr);
       }

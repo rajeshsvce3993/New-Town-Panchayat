@@ -58,7 +58,7 @@ function queueStatusColor(status: string) {
 
 
 export default function DashboardScreen() {
-  const { user, palette, isTamil, works, appIcon, loginLogo, setBrandingUrls, portal } = useApp();
+  const { user, palette, isTamil, works, worksHydrated, appIcon, loginLogo, setBrandingUrls, portal } = useApp();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [fromDate, setFromDate] = useState(todayDdMmYyyy);
@@ -78,6 +78,20 @@ export default function DashboardScreen() {
       let live = true;
       (async () => {
         const q = (await prefs.getQueue()).filter((e) => e.status !== QUEUE_STATUS.SUBMITTED);
+        const off = await prefs.getOfflineWorks();
+        for (const w of off) {
+          if (w.workId || !w.id) continue;
+          if (q.some((e) => e.clientTaskId === w.id || e.work?.id === w.id)) continue;
+          q.push({
+            clientTaskId: w.id,
+            work: w,
+            localPhotoPath: w.imageUrl,
+            status: QUEUE_STATUS.IN_QUEUE,
+            progress: 10,
+            attemptCount: 0,
+            createdAt: Date.now(),
+          });
+        }
         if (live) setQueue(q);
         try {
           const fetched = await api.getNotifications(user?.id || user?.username, user?.zone, user?.tpId);
@@ -88,6 +102,20 @@ export default function DashboardScreen() {
       })();
       const t = setInterval(async () => {
         const q = (await prefs.getQueue()).filter((e) => e.status !== QUEUE_STATUS.SUBMITTED);
+        const off = await prefs.getOfflineWorks();
+        for (const w of off) {
+          if (w.workId || !w.id) continue;
+          if (q.some((e) => e.clientTaskId === w.id || e.work?.id === w.id)) continue;
+          q.push({
+            clientTaskId: w.id,
+            work: w,
+            localPhotoPath: w.imageUrl,
+            status: QUEUE_STATUS.IN_QUEUE,
+            progress: 10,
+            attemptCount: 0,
+            createdAt: Date.now(),
+          });
+        }
         setQueue(q);
       }, 1000);
       return () => {
@@ -122,8 +150,12 @@ export default function DashboardScreen() {
   const userWorks = useMemo(() => filterUserWorks(works, user, 'dashboard'), [works, user]);
   const filtered = useMemo(() => sortRecentFirst(filterByDateRange(userWorks, fromDate, toDate)), [userWorks, fromDate, toDate]);
   const totalCount = filtered.length;
-  const syncedCount = filtered.filter((w) => w.workId).length;
-  const unsyncedCount = filtered.filter((w) => !w.workId).length;
+  const submittedWorks = useMemo(
+    () => filtered.filter((w) => /^WRK-/i.test(String(w.workId || '').trim())),
+    [filtered]
+  );
+  const syncedCount = submittedWorks.length;
+  const unsyncedCount = queue.length;
 
   const subjectStats = useMemo(() => {
     const map = new Map<string, { ta: string; n: number }>();
@@ -293,14 +325,9 @@ export default function DashboardScreen() {
             </View>
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={styles.officerName} numberOfLines={1}>{user?.name || 'Officer'}</Text>
-              {!!designationLabel && (
+              {(!!designationLabel || !!user?.mobile) && (
                 <Text style={styles.officerDesig} numberOfLines={1}>
-                  {designationLabel}
-                </Text>
-              )}
-              {!!user?.mobile && (
-                <Text style={styles.officerMeta} numberOfLines={1}>
-                  {user.mobile}
+                  {[designationLabel, user?.mobile].filter(Boolean).join('  ·  ')}
                 </Text>
               )}
             </View>
@@ -326,8 +353,8 @@ export default function DashboardScreen() {
         <View style={styles.sheet}>
           <View style={styles.statsRow}>
             {[
-              { n: totalCount, l: isTamil ? 'சமர்ப்பிப்பு' : 'Filed', c: palette.primary, ic: 'documents-outline' as const },
-              { n: syncedCount, l: isTamil ? 'ஒத்திசைவு' : 'Synced', c: '#0F766E', ic: 'checkmark-done-outline' as const },
+              { n: worksHydrated ? totalCount : '—', l: isTamil ? 'சமர்ப்பிப்பு' : 'Filed', c: palette.primary, ic: 'documents-outline' as const },
+              { n: worksHydrated ? syncedCount : '—', l: isTamil ? 'ஒத்திசைவு' : 'Synced', c: '#0F766E', ic: 'checkmark-done-outline' as const },
               { n: unsyncedCount, l: isTamil ? 'நிலுவை' : 'Pending', c: '#B45309', ic: 'time-outline' as const },
             ].map((k) => (
               <View key={k.l} style={[styles.statChip, { backgroundColor: withAlpha(k.c, 0.12), borderColor: withAlpha(k.c, 0.22) }]}>
@@ -464,7 +491,7 @@ export default function DashboardScreen() {
               <Text style={styles.sectionTitle}>{isTamil ? 'ஆய்வு பகுப்பாய்வு' : 'Field insights'}</Text>
               <View style={[styles.totalChip, { backgroundColor: withAlpha(palette.primary, 0.1) }]}>
                 <Text style={{ fontSize: 10, fontWeight: '800', color: palette.primary }}>
-                  {filtered.length} {isTamil ? 'ஆய்வு' : 'works'}
+                  {worksHydrated ? filtered.length : '—'} {isTamil ? 'ஆய்வு' : 'works'}
                 </Text>
               </View>
             </View>
@@ -557,18 +584,18 @@ export default function DashboardScreen() {
                 <Ionicons name="chevron-forward" size={12} color={palette.primary} />
               </Pressable>
             </View>
-            {!filtered.length ? (
+            {!worksHydrated || !submittedWorks.length ? (
               <View style={styles.emptyBox}>
                 <Ionicons name="clipboard-outline" size={28} color="#CBD5E1" />
                 <Text style={styles.emptyChart}>{isTamil ? 'இந்த காலத்தில் ஆய்வு இல்லை' : 'No inspections in this window'}</Text>
               </View>
             ) : (
-              filtered.slice(0, 5).map((work) => {
-                const done = /submitted|completed/i.test(work.status || '');
+              submittedWorks.slice(0, 5).map((work, idx) => {
                 const subj = isTamil ? work.subjectNameTa || work.subjectNameEn : work.subjectNameEn;
                 const cat = isTamil ? work.categoryNameTa || work.categoryNameEn : work.categoryNameEn;
+                const rowKey = [work.id, work.workId, work.submittedAt, idx].filter(Boolean).join('-') || `insp-${idx}`;
                 return (
-                  <Pressable key={work.workId || work.id} onPress={() => router.push('/(tabs)/reports')} style={styles.inspectItem}>
+                  <Pressable key={rowKey} onPress={() => router.push('/(tabs)/reports')} style={styles.inspectItem}>
                     <View style={[styles.inspectIcon, { backgroundColor: withAlpha(palette.primary, 0.1) }]}>
                       <Ionicons name="clipboard-outline" size={15} color={palette.primary} />
                     </View>
@@ -578,8 +605,8 @@ export default function DashboardScreen() {
                         {cat} · {isTamil ? 'வார்டு' : 'Ward'} {work.wardNumber} · {formatTo12Hr(work.submittedAt)}
                       </Text>
                     </View>
-                    <View style={[styles.statusPill, { backgroundColor: done ? '#ECFDF5' : '#FFFBEB' }]}>
-                      <Text style={{ color: done ? '#047857' : '#B45309', fontSize: 9, fontWeight: '800' }}>{work.status || 'Submitted'}</Text>
+                    <View style={[styles.statusPill, { backgroundColor: '#ECFDF5' }]}>
+                      <Text style={{ color: '#047857', fontSize: 9, fontWeight: '800' }}>{isTamil ? 'சமர்ப்பிப்பு' : 'Submitted'}</Text>
                     </View>
                   </Pressable>
                 );

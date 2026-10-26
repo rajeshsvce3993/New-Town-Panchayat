@@ -1,12 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
@@ -34,23 +32,20 @@ import {
 import { HeaderBrand } from '../../src/components/HeaderBrand';
 import { FALLBACK_STREETS_EN, FALLBACK_STREETS_TA, SAMPLE_PHOTO } from '../../src/constants/config';
 import { useApp } from '../../src/context/AppContext';
+import { scheduleQueueDrain, submitAddWork } from '../../src/services/workPipeline';
 import { showInspectionNotification } from '../../src/services/notifications';
-import { syncPendingWorks } from '../../src/services/queueSync';
+import { dedupeInspectionWorks } from '../../src/utils/dedupeWorks';
 import { prefs } from '../../src/storage/preferences';
-import type { Category, FieldDefinition, InspectionWork, QueuedWorkEntry, Subject } from '../../src/types/models';
-import { QUEUE_STATUS, effectiveCategoryIds, effectiveSubjectIds, effectiveWards, portalCategories, portalFields, portalSubjects, portalWorks } from '../../src/types/models';
+import type { Category, FieldDefinition, InspectionWork, Subject } from '../../src/types/models';
+import { effectiveCategoryIds, effectiveSubjectIds, effectiveWards, portalCategories, portalFields, portalSubjects, portalWorks } from '../../src/types/models';
 import { fieldKey, isCameraField, visibleDynamicFields } from '../../src/utils/fieldVisibility';
-import { compressImageLocally, ensureDir } from '../../src/utils/imageCompression';
-import {
-  cleanLocalPhotoUris,
-  persistPhotosInParallel,
-  persistPhotosLocalOnly,
-  uniquePhotoFileName,
-  workHasLocalPhotos,
-} from '../../src/utils/photoPersist';
+import { compressImageLocally } from '../../src/utils/imageCompression';
+import { uniquePhotoFileName } from '../../src/utils/photoPersist';
 import { now12Hr } from '../../src/utils/dates';
 import { validateVisibleFields } from '../../src/utils/validateFields';
 import { matchesTp, normalizeWard, resolveUserTpId } from '../../src/utils/wards';
+import * as Location from 'expo-location';
+import { acquireGpsFix, gpsFixFromLocation, isPlaceholderCoord, type GpsFix } from '../../src/utils/gpsLocation';
 import { nextWorkId } from '../../src/utils/workId';
 
 function toast(msg: string) {
@@ -93,6 +88,18 @@ export default function AddWorkScreen() {
   const [lng, setLng] = useState(80.1873);
   const [gpsOk, setGpsOk] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submitInFlightRef = useRef(false);
+  const draftClientWorkIdRef = useRef<string | null>(null);
+  const lastGpsFixRef = useRef<GpsFix | null>(null);
+  const lastSubmittedGpsRef = useRef<GpsFix | null>(null);
+
+  const ensureDraftClientWorkId = () => {
+    if (!draftClientWorkIdRef.current) {
+      draftClientWorkIdRef.current = `work_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+    }
+    return draftClientWorkIdRef.current;
+  };
+
   const [success, setSuccess] = useState(false);
   const [lastId, setLastId] = useState('');
   const [scopeMissing, setScopeMissing] = useState(false);
@@ -187,67 +194,87 @@ export default function AddWorkScreen() {
   const acquireGps = useCallback(
     async (opts?: { silent?: boolean; forSubmit?: boolean }): Promise<{ lat: number; lng: number } | null> => {
       const forSubmit = !!opts?.forSubmit;
-      let perm = await Location.getForegroundPermissionsAsync();
-      if (perm.status !== 'granted') {
-        if (forSubmit && !opts?.silent) {
-          toast(isTamil ? 'ஜிபிஎஸ் அனுமதி தேவை — அனுமதிக்கவும்' : 'Location permission is required — please allow access');
-        }
-        perm = await Location.requestForegroundPermissionsAsync();
-      }
-      if (perm.status !== 'granted') {
+      const result = await acquireGpsFix(lastGpsFixRef.current, {
+        forSubmit,
+        lastSubmitted: forSubmit ? lastSubmittedGpsRef.current : null,
+      });
+      if (!result.ok) {
         setGpsOk(false);
-        if (forSubmit) openLocationSettings(isTamil);
-        else if (!opts?.silent) toast(isTamil ? 'GPS அனுமதி தேவை' : 'GPS location permission is required');
-        return null;
-      }
-      let enabled = await Location.hasServicesEnabledAsync();
-      if (!enabled && forSubmit) {
-        openLocationSettings(isTamil);
-        enabled = await Location.hasServicesEnabledAsync();
-      }
-      if (!enabled) {
-        setGpsOk(false);
-        if (!opts?.silent && !forSubmit) {
-          toast(
-            isTamil ? 'உங்கள் சாதனத்தின் ஜிபிஎஸ் முடக்கப்பட்டுள்ளது' : 'Location services are turned off on your device'
-          );
-        }
-        return null;
-      }
-      try {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
-        const newLat = Math.round(loc.coords.latitude * 1e6) / 1e6;
-        const newLng = Math.round(loc.coords.longitude * 1e6) / 1e6;
-        setLat(newLat);
-        setLng(newLng);
-        setGpsOk(true);
-        if (!opts?.silent && !forSubmit) {
+        if (result.reason === 'permission') {
+          if (forSubmit && lastGpsFixRef.current) {
+            /* submit will use last known coords */
+          } else if (forSubmit) {
+            if (!opts?.silent) {
+              toast(isTamil ? 'ஜிபிஎஸ் அனுமதி தேவை — அனுமதிக்கவும்' : 'Location permission is required — please allow access');
+            }
+            openLocationSettings(isTamil);
+          } else if (!opts?.silent) toast(isTamil ? 'GPS அனுமதி தேவை' : 'GPS location permission is required');
+        } else if (result.reason === 'disabled') {
+          if (forSubmit && lastGpsFixRef.current) {
+            /* submit will use last known coords */
+          } else if (forSubmit && !opts?.silent) {
+            openLocationSettings(isTamil);
+          } else if (!opts?.silent) {
+            toast(
+              isTamil ? 'உங்கள் சாதனத்தின் ஜிபிஎஸ் முடக்கப்பட்டுள்ளது' : 'Location services are turned off on your device'
+            );
+          }
+        } else if (!opts?.silent) {
           toast(
             isTamil
-              ? `GPS அமைவிடம் பெறப்பட்டது (±${Math.round((loc.coords.accuracy || 0) * 10) / 10}m): ${newLat}, ${newLng}`
-              : `GPS location acquired (±${Math.round((loc.coords.accuracy || 0) * 10) / 10}m)`
+              ? 'GPS fix தயாராகவில்லை. வெளியில் சிறிது நேரம் காத்து மீண்டும் Submit செய்யவும்.'
+              : 'GPS fix not ready yet. Wait in open sky for a moment, then tap Submit again.'
           );
-        }
-        return { lat: newLat, lng: newLng };
-      } catch {
-        setGpsOk(false);
-        if (forSubmit) openLocationSettings(isTamil);
-        else if (!opts?.silent) {
-          toast(isTamil ? 'ஜிபிஎஸ் இருப்பிடத்தை பெற முடியவில்லை' : 'Could not read GPS location yet');
         }
         return null;
       }
+
+      const { fix } = result;
+      lastGpsFixRef.current = fix;
+      setLat(fix.lat);
+      setLng(fix.lng);
+      setGpsOk(true);
+      if (!opts?.silent && !forSubmit) {
+        const acc = fix.accuracy != null ? ` (±${Math.round(fix.accuracy * 10) / 10}m)` : '';
+        toast(isTamil ? `GPS அமைவிடம்${acc}` : `GPS location ready${acc}`);
+      }
+      return { lat: fix.lat, lng: fix.lng };
     },
     [isTamil]
   );
 
   useFocusEffect(
     useCallback(() => {
+      let cancelled = false;
+      let watch: Location.LocationSubscription | null = null;
       void (async () => {
         const has = await prefs.hasDownloadedScope(user, await prefs.getUserScope(), portal);
         setScopeMissing(!has && (!subjects.length || !wards.length));
         await acquireGps({ silent: true });
+        if (cancelled) return;
+        try {
+          const perm = await Location.getForegroundPermissionsAsync();
+          if (perm.status !== 'granted') return;
+          watch = await Location.watchPositionAsync(
+            { accuracy: Location.Accuracy.High, distanceInterval: 3, timeInterval: 2000 },
+            (loc) => {
+              if (cancelled) return;
+              const fix = gpsFixFromLocation(loc);
+              if (isPlaceholderCoord(fix.lat, fix.lng)) return;
+              lastGpsFixRef.current = fix;
+              setLat(fix.lat);
+              setLng(fix.lng);
+              setGpsOk(true);
+            }
+          );
+        } catch {
+          /* submit still takes a live reading */
+        }
       })();
+      return () => {
+        cancelled = true;
+        watch?.remove();
+      };
     }, [user, portal, subjects.length, wards.length, acquireGps])
   );
 
@@ -277,6 +304,10 @@ export default function AddWorkScreen() {
   };
 
   const submit = async () => {
+    if (submitInFlightRef.current || submitting || success) return;
+    submitInFlightRef.current = true;
+    setSubmitting(true);
+    try {
     const hasScope = await prefs.hasDownloadedScope(user, await prefs.getUserScope(), portal);
     if (!hasScope || !subjects.length || !wards.length) {
       toast(
@@ -286,11 +317,10 @@ export default function AddWorkScreen() {
       );
       return;
     }
-    const liveGps = await acquireGps({ forSubmit: true });
-    if (!liveGps) {
-      return;
-    }
-    const { lat: submitLat, lng: submitLng } = liveGps;
+    const liveGps = await acquireGps({ forSubmit: true, silent: true });
+    const fallbackFix = lastGpsFixRef.current;
+    const submitLat = liveGps?.lat ?? fallbackFix?.lat ?? lat;
+    const submitLng = liveGps?.lng ?? fallbackFix?.lng ?? lng;
     const scope = await prefs.getUserScope();
     const err = validateVisibleFields({
       fields: visible,
@@ -304,21 +334,18 @@ export default function AddWorkScreen() {
       toast(err);
       return;
     }
-    setSubmitting(true);
     const subject = subjects.find((s) => s.id === subjectId);
     const category = categories.find((c) => c.id === categoryId);
     const ids = nextWorkId(user, portal, ward);
-    let actualWorkId = ids.workId;
+    let actualWorkId = '';
     const zoneName = user?.zone || 'Kanchipuram';
     const districtName = user?.district || 'Chengalpattu';
     const tpName = user?.townPanchayat || 'Thiruporur';
     const fieldCopy = { ...values };
     let s3 = SAMPLE_PHOTO;
-    const clientWorkId = `work_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
-    const offlineDir = `${FileSystem.documentDirectory}offline_images/${clientWorkId}`;
-    await ensureDir(offlineDir);
+    const clientWorkId = ensureDraftClientWorkId();
     const photoMeta = {
-      workId: actualWorkId,
+      workId: clientWorkId,
       userId: user?.id || user?.username,
       username: user?.username,
       zone: zoneName,
@@ -328,21 +355,6 @@ export default function AddWorkScreen() {
 
     const photoJobs = Object.entries(photos).map(([k, uri]) => ({ key: k, uri }));
     if (primaryPhoto) photoJobs.push({ key: '__primary__', uri: primaryPhoto });
-    const reachable = await api.isReachable();
-    if (photoJobs.length > 1 && reachable) {
-      toast(isTamil ? `${photoJobs.length} புகைப்படங்கள் ஒரே நேரத்தில் பதிவேற்றப்படுகின்றன...` : `Uploading ${photoJobs.length} photos together...`);
-    }
-    if (photoJobs.length) {
-      const uploaded = reachable
-        ? await persistPhotosInParallel(photoJobs, offlineDir, photoMeta)
-        : await persistPhotosLocalOnly(photoJobs, offlineDir);
-      for (const [k, url] of Object.entries(uploaded)) {
-        if (k === '__primary__') continue;
-        fieldCopy[k] = url;
-        if (s3 === SAMPLE_PHOTO) s3 = url;
-      }
-      if (uploaded.__primary__) s3 = uploaded.__primary__;
-    }
 
     const newWork: InspectionWork = {
       id: clientWorkId,
@@ -371,93 +383,42 @@ export default function AddWorkScreen() {
       submittedAt: now12Hr(),
       submittedByUserName: user?.name || user?.username || 'Field Inspector',
       submittedByUserId: user?.id || user?.username || '',
-      status: 'Completed',
+      status: 'Pending',
     };
 
-    const firstLocal =
-      [s3, ...Object.values(fieldCopy).map((v) => String(v || ''))].find((u) => typeof u === 'string' && !u.startsWith('http') && !u.startsWith('data:')) ||
-      null;
-    const entry: QueuedWorkEntry = {
-      clientTaskId: clientWorkId,
-      work: { ...newWork, workId: '' },
-      localPhotoPath: firstLocal,
-      status: QUEUE_STATUS.IN_QUEUE,
-      progress: 10,
-      attemptCount: 0,
-      createdAt: Date.now(),
-    };
-
-    let finalWork = newWork;
-    let online = false;
-
-    if (reachable) {
-      if (workHasLocalPhotos(newWork)) {
-        setSubmitting(false);
-        toast(
-          isTamil
-            ? 'புகைப்படம் பதிவேற்றம் முடிக்கப்படவில்லை. இணையத்தை சரிபார்த்து மீண்டும் முயற்சிக்கவும்.'
-            : 'Photo upload did not finish. Check connection and try again.'
-        );
-        return;
-      }
+    const result = await submitAddWork({ work: newWork, photoJobs, photoMeta });
+    if (result.status === 'error') {
+      toast(result.message);
+      return;
+    }
+    lastSubmittedGpsRef.current = { lat: submitLat, lng: submitLng, at: Date.now() };
+    draftClientWorkIdRef.current = null;
+    if (result.status === 'online') {
+      const saved = result.saved;
+      setWorks((w) => dedupeInspectionWorks([saved, ...w.filter((x) => x.id !== clientWorkId && x.workId !== saved.workId)]));
+      setLastId(saved.workId || '');
+      setSuccess(true);
+      toast(isTamil ? 'பணி வெற்றிகரமாக சேமிக்கப்பட்டது' : 'Work saved successfully');
       try {
-        const res = await api.submitInspectionWork(newWork);
-        if (res.success && res.work) {
-          finalWork = res.work;
-          actualWorkId = res.work.workId || actualWorkId;
-          online = true;
-        } else if (res.success && res.workId) {
-          finalWork = { ...newWork, workId: res.workId };
-          actualWorkId = res.workId;
-          online = true;
-        }
+        await showInspectionNotification(saved.workId || '', subject?.nameEn || 'Field Work', isTamil);
       } catch {
-        /* fall through — may still be offline */
+        /* ignore */
       }
-      if (online) {
-        await prefs.removeOfflineWork(clientWorkId);
-        await prefs.removeQueuedWork(clientWorkId);
-        await cleanLocalPhotoUris([primaryPhoto, s3, ...Object.values(photos), ...Object.values(fieldCopy).map((v) => String(v || ''))]);
-        try {
-          await refreshPortal();
-        } catch {
-          /* keep submitted work in memory */
-        }
-      } else if (await api.isReachable()) {
-        setSubmitting(false);
-        toast(
-          isTamil
-            ? 'சர்வரில் பணி சேமிக்க முடியவில்லை. விவரங்களை சரிபார்த்து மீண்டும் சமர்ப்பிக்கவும்.'
-            : 'Could not save work on server. Please check details and submit again.'
-        );
-        return;
-      }
+      scheduleQueueDrain();
+      void refreshPortal();
+      return;
     }
-
-    if (!online) {
-      await prefs.enqueueWork(entry);
-      const off = { ...newWork, workId: '' };
-      await prefs.upsertOfflineWork(off);
-      finalWork = off;
-      actualWorkId = '';
-      if (await api.isReachable()) {
-        const synced = await syncPendingWorks();
-        const saved = synced.find((w) => w.id === clientWorkId);
-        if (saved?.workId) {
-          finalWork = saved;
-          actualWorkId = saved.workId;
-          online = true;
-          await prefs.removeOfflineWork(clientWorkId);
-          await prefs.removeQueuedWork(clientWorkId);
-        }
-      }
-    }
-
-    setWorks((w) => [finalWork, ...w.filter((x) => x.id !== finalWork.id)]);
-    setLastId(actualWorkId);
-    setSubmitting(false);
+    setLastId('');
     setSuccess(true);
-    await showInspectionNotification(actualWorkId, subject?.nameEn || 'Field Work', isTamil);
+    toast(isTamil ? 'பணி வெற்றிகரமாக சேமிக்கப்பட்டது' : 'Work saved successfully');
+    scheduleQueueDrain();
+    } catch (e) {
+      console.warn('submit failed', e);
+      toast(isTamil ? 'பணி சேமிப்பு தோல்வி. மீண்டும் முயற்சிக்கவும்.' : 'Could not save work. Please try again.');
+    } finally {
+      submitInFlightRef.current = false;
+      setSubmitting(false);
+    }
   };
 
   const resetFields = (toStep: number) => {
@@ -466,6 +427,10 @@ export default function AddWorkScreen() {
     setPrimaryPhoto(null);
     setCaption('');
     setSuccess(false);
+    setLastId('');
+    draftClientWorkIdRef.current = null;
+    submitInFlightRef.current = false;
+    setSubmitting(false);
     setStep(toStep);
     void acquireGps({ silent: true });
   };
@@ -640,7 +605,13 @@ export default function AddWorkScreen() {
             </View>
           </Pressable>
           <View style={styles.stepLine} />
-          <Pressable style={styles.step} onPress={() => setStep(2)}>
+          <Pressable
+            style={styles.step}
+            onPress={() => {
+              ensureDraftClientWorkId();
+              setStep(2);
+            }}
+          >
             <View style={[styles.num, { backgroundColor: step === 2 ? palette.primary : '#E2E8F0' }]}>
               <Text style={{ color: step === 2 ? '#fff' : '#64748B', fontWeight: '700', fontSize: 12 }}>2</Text>
             </View>
@@ -782,6 +753,7 @@ export default function AddWorkScreen() {
                   return;
                 }
                 void acquireGps({ silent: true });
+                ensureDraftClientWorkId();
                 setStep(2);
               }}
             >
@@ -841,7 +813,14 @@ export default function AddWorkScreen() {
               <Pressable style={styles.back} onPress={() => setStep(1)}>
                 <Text style={styles.btnSecondaryText}>{isTamil ? 'பின்செல்' : 'Back'}</Text>
               </Pressable>
-              <Pressable style={[styles.next, { flex: 2, backgroundColor: palette.primary, marginTop: 0 }]} onPress={() => void submit()} disabled={submitting}>
+              <Pressable
+                style={[
+                  styles.next,
+                  { flex: 2, backgroundColor: success || submitting ? '#94A3B8' : palette.primary, marginTop: 0 },
+                ]}
+                onPress={() => void submit()}
+                disabled={submitting || success}
+              >
                 {submitting ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
@@ -878,18 +857,23 @@ export default function AddWorkScreen() {
         />
       )}
 
-      <Modal visible={success} transparent animationType="fade">
+      <Modal visible={success} transparent animationType="fade" onRequestClose={() => resetFields(2)}>
         <View style={styles.modalBack}>
           <View style={styles.modalCard}>
             <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start' }}>
               <View style={styles.ok}>
                 <Ionicons name="checkmark" size={20} color="#16A34A" />
               </View>
-              <Text style={{ fontWeight: '700', fontSize: 16, marginLeft: 12 }}>{isTamil ? 'பணி சமர்ப்பிக்கப்பட்டது!' : 'Work Submitted!'}</Text>
+              <Text style={{ fontWeight: '700', fontSize: 16, marginLeft: 12 }}>{isTamil ? 'பணி சேமிக்கப்பட்டது!' : 'Work saved!'}</Text>
             </View>
             <Text style={{ color: '#475569', marginVertical: 12, textAlign: 'center', fontSize: 13 }}>
-              {isTamil ? 'பணி வெற்றிகரமாக சமர்ப்பிக்கப்பட்டது.' : 'Work has been submitted successfully.'}
-              {lastId ? `\n${lastId}` : ''}
+              {lastId
+                ? isTamil
+                  ? `பணி வெற்றிகரமாக சேமிக்கப்பட்டது\n${lastId}`
+                  : `Work saved successfully\n${lastId}`
+                : isTamil
+                  ? 'பணி வெற்றிகரமாக சேமிக்கப்பட்டது'
+                  : 'Work saved successfully'}
             </Text>
             <Pressable style={[styles.next, { backgroundColor: palette.primary, alignSelf: 'stretch' }]} onPress={() => resetFields(2)}>
               <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{isTamil ? 'பணி சேர்க்க+' : '+ Add Work'}</Text>

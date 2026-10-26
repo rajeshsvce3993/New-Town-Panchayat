@@ -3,8 +3,9 @@ import type {
   InspectionWorksFilterQuery,
 } from '@/lib/inspectionWorksQueryFilters';
 import {
-  buildInspectionWorksViewResponse,
   filterInspectionWorksPostMongo,
+  isFallbackInspectionWork,
+  stripInspectionWorkForLite,
 } from '@/lib/inspectionWorksQueryFilters';
 import { getTargetedInspectionWorks, LITE_INSPECTION_WORKS_PROJECTION, normalizeAndEnrichWorks } from '@/lib/storage';
 import { resolveInspectionFilterMasters } from '@/lib/inspectionWorksFilterMastersServer';
@@ -19,7 +20,6 @@ import {
   aggregateInspectionWorksReportsBundle,
   invalidateInspectionWorksAggregateCache,
   REPORTS_PAGE_SIZE_DEFAULT,
-  reportsFiltersNeedFullDocumentScan,
 } from '@/lib/inspectionWorksReportsAggregate';
 import { fetchRemoteInspectionWorksRaw, invalidateRemoteInspectionWorksCache } from '@/lib/remoteInspectionWorksCache';
 import { shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
@@ -32,6 +32,8 @@ export type LiteWorksLoadResult = {
     | 'mongo-date-loose'
     | 'mongo-recent-cap'
     | 'mongo-aggregate'
+    | 'mongo-rollup'
+    | 'mongo-indexed'
     | 'local-cache'
     | 'remote-full'
     | 'empty';
@@ -55,12 +57,18 @@ export type ReportCountsLoadResult = {
 const ENRICHED_REPORTS_CACHE_TTL_MS = 120_000;
 let enrichedReportsCache: { key: string; ts: number; data: LiteWorksLoadResult } | null = null;
 const enrichedReportsInFlight = new Map<string, Promise<LiteWorksLoadResult>>();
+let reportsDataGeneration = 0;
+
+export function getInspectionWorksReportsDataGeneration(): number {
+  return reportsDataGeneration;
+}
 
 export function invalidateInspectionWorksLiteCache() {
   invalidateRemoteInspectionWorksCache();
   invalidateInspectionWorksAggregateCache();
   enrichedReportsCache = null;
   enrichedReportsInFlight.clear();
+  reportsDataGeneration += 1;
 }
 
 function reportsDataCacheKey(filter: InspectionWorksFilterQuery, limit: number, page: number, pageSize: number): string {
@@ -108,6 +116,12 @@ function enrichReportsCandidateRows(
   };
   const narrowed = filterInspectionWorksPostMongo(rows, dateAndTextQuery, masters);
   return normalizeAndEnrichWorks(narrowed, masters);
+}
+
+/** Paginated Mongo rows are already matched — do not re-filter or rows disappear from that page. */
+function enrichReportsPageRows(rows: any[], masters: InspectionWorksFilterMasters): any[] {
+  const withoutFallback = (rows || []).filter((w) => !isFallbackInspectionWork(w));
+  return normalizeAndEnrichWorks(withoutFallback, masters).map(stripInspectionWorkForLite);
 }
 
 type RawLiteLoadResult = Omit<LiteWorksLoadResult, 'enriched'> & { rows: any[] };
@@ -230,45 +244,26 @@ export async function loadPaginatedEnrichedWorksForReports(
 ): Promise<LiteWorksLoadResult> {
   const masters = await resolveInspectionFilterMasters(requestOrigin);
   const safePageSize = Math.min(Math.max(1, pageSize || REPORTS_PAGE_SIZE_DEFAULT), 200);
-
-  if (!reportsFiltersNeedFullDocumentScan(filter)) {
-    const pageResult = await aggregateInspectionWorksReportPage(filter, masters, page, safePageSize);
-    if (pageResult) {
-      const enriched = pageResult.rows.length
-        ? enrichReportsCandidateRows(pageResult.rows, filter, masters)
-        : [];
-      const view = buildInspectionWorksViewResponse(enriched, filter, masters, {
-        lite: true,
-        mongoPrefiltered: true,
-        rowsOnly: true,
-      });
-      return {
-        enriched: view.works,
-        masters,
-        source: 'mongo-aggregate',
-        truncated: false,
-        appliedDateWindow: false,
-        total: pageResult.total,
-        page: pageResult.page,
-        pageSize: pageResult.pageSize,
-      };
-    }
+  const pageResult = await aggregateInspectionWorksReportPage(filter, masters, page, safePageSize);
+  if (pageResult) {
+    return {
+      enriched: pageResult.rows.length ? enrichReportsPageRows(pageResult.rows, masters) : [],
+      masters,
+      source: pageResult.source === 'mongo-indexed' ? 'mongo-indexed' : 'mongo-aggregate',
+      truncated: false,
+      appliedDateWindow: false,
+      total: pageResult.total,
+      page: pageResult.page,
+      pageSize: pageResult.pageSize,
+    };
   }
-
-  const legacy = await getOrLoadEnrichedReportsData(requestOrigin, filter, 0);
-  const view = buildInspectionWorksViewResponse(legacy.enriched, filter, masters, {
-    lite: true,
-    mongoPrefiltered: legacy.source === 'mongo-scoped',
-    rowsOnly: true,
-  });
-  const start = (Math.max(1, page) - 1) * safePageSize;
   return {
-    enriched: view.works.slice(start, start + safePageSize),
-    masters: legacy.masters,
-    source: legacy.source,
-    truncated: legacy.truncated,
+    enriched: [],
+    masters,
+    source: 'empty',
+    truncated: false,
     appliedDateWindow: false,
-    total: view.works.length,
+    total: 0,
     page: Math.max(1, page),
     pageSize: safePageSize,
   };
@@ -297,31 +292,18 @@ export async function loadInspectionWorksReportsBundle(
   pageSize: number;
   source: LiteWorksLoadResult['source'];
 } | null> {
-  if (reportsFiltersNeedFullDocumentScan(filter)) return null;
   const masters = await resolveInspectionFilterMasters(requestOrigin);
   const bundle = await aggregateInspectionWorksReportsBundle(filter, masters, page, pageSize);
   if (!bundle) return null;
-  const enriched = bundle.rows.length ? enrichReportsCandidateRows(bundle.rows, filter, masters) : [];
-  const view = buildInspectionWorksViewResponse(enriched, filter, masters, {
-    lite: true,
-    mongoPrefiltered: true,
-    rowsOnly: true,
-  });
-  const emptyBundle =
-    bundle.totalWithoutCategoryFilter === 0 &&
-    bundle.subjectCategoryRollups.length === 0 &&
-    bundle.total === 0 &&
-    view.works.length === 0;
-  if (emptyBundle) return null;
   return {
     categoryCounts: bundle.categoryCounts,
     totalWithoutCategoryFilter: bundle.totalWithoutCategoryFilter,
     subjectCategoryRollups: bundle.subjectCategoryRollups,
-    works: view.works,
+    works: bundle.rows.length ? enrichReportsPageRows(bundle.rows, masters) : [],
     total: bundle.total,
     page: bundle.page,
     pageSize: bundle.pageSize,
-    source: 'mongo-aggregate',
+    source: bundle.source === 'mongo-rollup' ? 'mongo-rollup' : 'mongo-aggregate',
   };
 }
 
@@ -331,37 +313,25 @@ export async function loadInspectionWorksReportCounts(
   _limit = 0
 ): Promise<ReportCountsLoadResult> {
   const masters = await resolveInspectionFilterMasters(requestOrigin);
-
-  if (!reportsFiltersNeedFullDocumentScan(filter)) {
-    const agg = await aggregateInspectionWorksReportCounts(filter, masters);
-    if (
-      agg &&
-      (agg.totalWithoutCategoryFilter > 0 || agg.subjectCategoryRollups.length > 0)
-    ) {
-      return {
-        categoryCounts: agg.categoryCounts,
-        totalWithoutCategoryFilter: agg.totalWithoutCategoryFilter,
-        subjectCategoryRollups: agg.subjectCategoryRollups,
-        masters,
-        source: 'mongo-aggregate',
-        truncated: false,
-        appliedDateWindow: false,
-      };
-    }
+  const agg = await aggregateInspectionWorksReportCounts(filter, masters);
+  if (agg) {
+    return {
+      categoryCounts: agg.categoryCounts,
+      totalWithoutCategoryFilter: agg.totalWithoutCategoryFilter,
+      subjectCategoryRollups: agg.subjectCategoryRollups,
+      masters,
+      source: agg.source === 'mongo-rollup' ? 'mongo-rollup' : 'mongo-aggregate',
+      truncated: false,
+      appliedDateWindow: false,
+    };
   }
-
-  const loaded = await getOrLoadEnrichedReportsData(requestOrigin, filter, 0);
-  const view = buildInspectionWorksViewResponse(loaded.enriched, filter, loaded.masters, {
-    countsOnly: true,
-    mongoPrefiltered: loaded.source === 'mongo-scoped' || loaded.source === 'mongo-aggregate',
-  });
   return {
-    categoryCounts: view.categoryCounts,
-    totalWithoutCategoryFilter: view.totalWithoutCategoryFilter,
+    categoryCounts: {},
+    totalWithoutCategoryFilter: 0,
     subjectCategoryRollups: [],
-    masters: loaded.masters,
-    source: loaded.source,
-    truncated: loaded.truncated,
+    masters,
+    source: 'empty',
+    truncated: false,
     appliedDateWindow: false,
   };
 }

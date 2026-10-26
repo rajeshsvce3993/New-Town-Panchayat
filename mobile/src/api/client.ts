@@ -199,7 +199,37 @@ export const api = {
     return null;
   },
 
-  async submitInspectionWork(work: InspectionWork): Promise<SubmitWorkResponse> {
+  /** Online Add Work photo — never used by offline save or queue sync. */
+  async uploadPhotoOnlineApi(opts: {
+    uri: string;
+    fileName: string;
+    mimeType: string;
+    workId?: string | null;
+    userId?: string | null;
+    username?: string | null;
+    zone?: string | null;
+    district?: string | null;
+    tp?: string | null;
+  }): Promise<string | null> {
+    return this.uploadFile(opts);
+  },
+
+  /** Queue-sync photo — never used by the online Add Work button. */
+  async uploadQueuedPhotoApi(opts: {
+    uri: string;
+    fileName: string;
+    mimeType: string;
+    workId?: string | null;
+    userId?: string | null;
+    username?: string | null;
+    zone?: string | null;
+    district?: string | null;
+    tp?: string | null;
+  }): Promise<string | null> {
+    return this.uploadFile(opts);
+  },
+
+  async postInspectionWork(work: InspectionWork): Promise<SubmitWorkResponse> {
     try {
       const response = await fetchWithTimeout(
         `${baseUrl}/api/inspection-works`,
@@ -222,6 +252,41 @@ export const api = {
     } catch (e) {
       return { success: false, message: `Network error: ${e instanceof Error ? e.message : 'Connection failed'}` };
     }
+  },
+
+  async lookupInspectionWork(clientId: string): Promise<InspectionWork | null> {
+    const id = String(clientId || '').trim();
+    if (!id) return null;
+    try {
+      const response = await fetchWithTimeout(
+        `${baseUrl}/api/inspection-works?lookupId=${encodeURIComponent(id)}`,
+        { headers: { 'Cache-Control': 'no-cache, no-store' } },
+        REQUEST_TIMEOUT_MS
+      );
+      const json = (await response.json().catch(() => null)) as {
+        work?: InspectionWork;
+        works?: unknown;
+      } | null;
+      if (!json?.work || Array.isArray(json.works)) return null;
+      if (!/^WRK-/i.test(String(json.work.workId || '').trim())) return null;
+      return json.work;
+    } catch {
+      return null;
+    }
+  },
+
+  /** Add Work while online — never used by the offline queue. */
+  async submitWorkOnlineApi(work: InspectionWork): Promise<SubmitWorkResponse> {
+    return this.postInspectionWork({ ...work, workId: '' });
+  },
+
+  /** Queue sync only — never used by the Add Work online button. */
+  async submitWorkFromQueueApi(work: InspectionWork): Promise<SubmitWorkResponse> {
+    return this.postInspectionWork({ ...work, workId: '' });
+  },
+
+  async submitInspectionWork(work: InspectionWork): Promise<SubmitWorkResponse> {
+    return this.submitWorkOnlineApi(work);
   },
 
   async enqueueInspectionWork(work: InspectionWork): Promise<QueueEnqueueResponse> {

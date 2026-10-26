@@ -30,9 +30,9 @@ export function isNonProductionServerUrl(url?: string | null): boolean {
   return false;
 }
 
-export const APP_VERSION_NAME = '2.0.1';
-export const APP_VERSION_CODE = 101;
-export const FCM_APP_VERSION_LABEL = '2.0.1';
+export const APP_VERSION_NAME = '2.0.6';
+export const APP_VERSION_CODE = 106;
+export const FCM_APP_VERSION_LABEL = '2.0.6';
 export const PACKAGE_NAME = 'com.tn.townpanchayat.ems';
 export const REQUEST_TIMEOUT_MS = 30000;
 /** Non-critical startup calls (config, version check) — fail fast so splash does not hang. */

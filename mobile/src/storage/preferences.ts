@@ -4,6 +4,17 @@ import * as SecureStore from 'expo-secure-store';
 import { DEFAULT_SERVER_URL, IS_PROD_MOBILE, isNonProductionServerUrl } from '../constants/config';
 import type { AppUser, InspectionWork, NotificationItem, PortalState, QueuedWorkEntry, UserScopeData } from '../types/models';
 import { effectivePhotoUrl } from '../types/models';
+import {
+  importLegacyLists,
+  listOfflineWorks,
+  listQueuedWorks,
+  removeOfflineWorkFile,
+  removeQueuedWorkFile,
+  saveOfflineWorkAtomic,
+  updateQueuedWorkFile,
+  writeOfflineWork,
+  writeQueuedWork,
+} from './offlineQueueStore';
 
 const K = {
   theme: 'theme_id',
@@ -22,6 +33,7 @@ const K = {
   scopeVer: 'scope_version_int',
   userScope: 'cached_user_scope_data',
   queue: 'work_queue_entries',
+  queueMigrated: 'offline_queue_files_migrated_v1',
   tone: 'notification_alert_tone',
   fcm: 'fcm_token',
   readIds: 'read_notification_ids',
@@ -150,10 +162,21 @@ export const prefs = {
     }
   },
   async getOfflineWorks() {
-    return this.getJson<InspectionWork[]>(K.offline, []);
+    await this.migrateQueueToFiles();
+    return listOfflineWorks();
   },
   async setOfflineWorks(v: InspectionWork[]) {
-    await setStr(K.offline, JSON.stringify(v));
+    const keep = new Set(v.map((w) => w.id).filter(Boolean));
+    const current = await listOfflineWorks();
+    for (const w of current) {
+      if (!keep.has(w.id)) await removeOfflineWorkFile(w.id);
+    }
+    for (const w of v) await writeOfflineWork(w);
+  },
+  async mutateOfflineWorks(fn: (list: InspectionWork[]) => InspectionWork[]) {
+    const next = fn(await listOfflineWorks());
+    await this.setOfflineWorks(next);
+    return next;
   },
   async getPortal(): Promise<PortalState | null> {
     return this.getJson<PortalState | null>(K.portal, null);
@@ -174,44 +197,59 @@ export const prefs = {
   async setUserScope(v: UserScopeData | null) {
     await setStr(K.userScope, v ? JSON.stringify(v) : null);
   },
+  async migrateQueueToFiles() {
+    const queue = await this.getJson<QueuedWorkEntry[]>(K.queue, []);
+    const works = await this.getJson<InspectionWork[]>(K.offline, []);
+    if (queue.length || works.length) {
+      await importLegacyLists(queue, works);
+      await setStr(K.queue, null);
+      await setStr(K.offline, null);
+    }
+    await setStr(K.queueMigrated, '1');
+  },
   async getQueue(): Promise<QueuedWorkEntry[]> {
-    return this.getJson<QueuedWorkEntry[]>(K.queue, []);
+    await this.migrateQueueToFiles();
+    return listQueuedWorks();
   },
   async setQueue(v: QueuedWorkEntry[]) {
-    await setStr(K.queue, JSON.stringify(v));
+    const keep = new Set(v.map((e) => e.clientTaskId).filter(Boolean));
+    const current = await listQueuedWorks();
+    for (const e of current) {
+      if (!keep.has(e.clientTaskId)) await removeQueuedWorkFile(e.clientTaskId);
+    }
+    for (const e of v) await writeQueuedWork(e);
+  },
+  async mutateQueue(fn: (current: QueuedWorkEntry[]) => QueuedWorkEntry[]) {
+    const next = fn(await listQueuedWorks());
+    await this.setQueue(next);
+    return next;
   },
   async enqueueWork(entry: QueuedWorkEntry) {
-    const current = await this.getQueue();
-    if (current.some((e) => e.clientTaskId === entry.clientTaskId || e.work.id === entry.work.id)) return;
-    current.push(entry);
-    await this.setQueue(current);
+    await writeQueuedWork(entry);
   },
   async upsertOfflineWork(work: InspectionWork) {
-    const list = await this.getOfflineWorks();
-    const i = list.findIndex((w) => w.id === work.id);
-    if (i >= 0) list[i] = work;
-    else list.push(work);
-    await this.setOfflineWorks(list);
+    await writeOfflineWork(work);
+  },
+  async enqueueOfflineWorkAtomic(entry: QueuedWorkEntry, pendingWork: InspectionWork) {
+    await saveOfflineWorkAtomic(entry, pendingWork);
   },
   async removeOfflineWork(id: string) {
-    const list = await this.getOfflineWorks();
-    await this.setOfflineWorks(list.filter((w) => w.id !== id));
+    if (!String(id || '').trim()) return;
+    await removeOfflineWorkFile(id);
   },
   async updateQueuedWork(clientTaskId: string, update: (e: QueuedWorkEntry) => void) {
-    const current = await this.getQueue();
-    const i = current.findIndex((e) => e.clientTaskId === clientTaskId);
-    if (i >= 0) {
-      update(current[i]);
-      await this.setQueue(current);
-    }
+    if (!String(clientTaskId || '').trim()) return;
+    await updateQueuedWorkFile(clientTaskId, update);
   },
   async removeQueuedWork(clientTaskId: string) {
-    const current = await this.getQueue();
-    await this.setQueue(current.filter((e) => e.clientTaskId !== clientTaskId));
+    if (!String(clientTaskId || '').trim()) return;
+    await removeQueuedWorkFile(clientTaskId);
   },
   async removeQueuedWorkMatching(pred: (e: QueuedWorkEntry) => boolean) {
-    const current = await this.getQueue();
-    await this.setQueue(current.filter((e) => !pred(e)));
+    const current = await listQueuedWorks();
+    for (const e of current) {
+      if (pred(e)) await removeQueuedWorkFile(e.clientTaskId);
+    }
   },
   async getTone() {
     return (await getStr(K.tone)) || 'default';

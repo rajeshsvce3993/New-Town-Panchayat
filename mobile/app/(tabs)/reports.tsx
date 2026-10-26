@@ -77,20 +77,26 @@ export default function ReportsScreen() {
     useCallback(() => {
       let live = true;
       const load = async () => {
-        const q = [...(await prefs.getQueue())];
-        const off = await prefs.getOfflineWorks();
-        for (const w of off) {
-          if (!q.some((e) => e.work.id === w.id) && !w.workId) {
-            q.push({
-              clientTaskId: `off-${w.id}`,
-              work: w,
-              localPhotoPath: w.imageUrl,
-              status: 'IN_QUEUE',
-              progress: 30,
-              attemptCount: 0,
-              createdAt: Date.now(),
-            });
-          }
+        const seen = new Set<string>();
+        const q: QueuedWorkEntry[] = [];
+        const add = (entry: QueuedWorkEntry) => {
+          const key = String(entry.work?.id || entry.clientTaskId || '').trim();
+          if (!key || seen.has(key) || String(entry.work?.workId || '').trim()) return;
+          if (entry.status === QUEUE_STATUS.SUBMITTED) return;
+          seen.add(key);
+          q.push({ ...entry, clientTaskId: entry.clientTaskId || key });
+        };
+        for (const e of await prefs.getQueue()) add(e);
+        for (const w of await prefs.getOfflineWorks()) {
+          add({
+            clientTaskId: w.id,
+            work: w,
+            localPhotoPath: w.imageUrl,
+            status: QUEUE_STATUS.IN_QUEUE,
+            progress: 10,
+            attemptCount: 0,
+            createdAt: Date.now(),
+          });
         }
         if (live) setQueued(q);
       };
@@ -100,7 +106,7 @@ export default function ReportsScreen() {
         live = false;
         clearInterval(t);
       };
-    }, [])
+    }, [works])
   );
 
   const userWorks = useMemo(() => filterUserWorks(works, user, 'reports'), [works, user]);
@@ -125,6 +131,7 @@ export default function ReportsScreen() {
   const filtered = useMemo(() => {
     return sortRecentFirst(
       dated.filter((w) => {
+        if (!String(w.workId || '').trim()) return false;
         if (ward !== 'all' && normalizeWard(w.wardNumber) !== normalizeWard(ward)) return false;
         if (street !== 'all' && localizedStreet(portal, w.streetName, w.wardNumber, isTamil) !== street) return false;
         if (search.trim()) {
@@ -308,6 +315,27 @@ export default function ReportsScreen() {
           onValueChange={onPickDate}
           onDismiss={() => setPicker(null)}
         />
+      )}
+
+      {tab === 0 && queuedFiltered.length > 0 && (
+        <Pressable
+          onPress={() => setTab(1)}
+          style={{
+            marginHorizontal: 16,
+            marginBottom: 8,
+            backgroundColor: '#FFFBEB',
+            borderRadius: 12,
+            padding: 12,
+            borderWidth: 1,
+            borderColor: '#FDE68A',
+          }}
+        >
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#B45309' }}>
+            {isTamil
+              ? `${queuedFiltered.length} நிலுவை பணிகள் வரிசையில் உள்ளன. பார்க்க தட்டவும்.`
+              : `${queuedFiltered.length} offline work(s) are in the queue. Tap to view.`}
+          </Text>
+        </Pressable>
       )}
 
       {tab === 0 ? (

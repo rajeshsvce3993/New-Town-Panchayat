@@ -1,5 +1,4 @@
 import type { InspectionWorksFilterMasters, InspectionWorksFilterQuery } from '@/lib/inspectionWorksQueryFilters';
-import { computeCategoryCounts } from '@/lib/inspectionWorksQueryFilters';
 import {
   appendLooseUtcDatePrefilter,
   buildInspectionWorksMongoMatch,
@@ -10,6 +9,11 @@ import {
   getMongoClient,
   LITE_INSPECTION_WORKS_PROJECTION,
 } from '@/lib/storage';
+import {
+  ensureInspectionWorkReportIndexes,
+  queryInspectionWorkReportRollupCounts,
+  queryInspectionWorkReportRollupTotal,
+} from '@/lib/inspectionWorkReportRollups';
 
 export const REPORTS_PAGE_SIZE_DEFAULT = 50;
 export const REPORTS_PAGE_SIZE_MAX = 200;
@@ -39,8 +43,90 @@ export function invalidateInspectionWorksAggregateCache() {
   aggCache.clear();
 }
 
+/** Street/search/admin field cannot use pre-aggregated rollups; they still stay in Mongo (never a Node full scan). */
 export function reportsFiltersNeedFullDocumentScan(filter: InspectionWorksFilterQuery): boolean {
   return !!(filter.street?.trim() || filter.search?.trim() || filter.adminFieldId);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function appendFallbackWorkExclusion(and: Record<string, unknown>[]): void {
+  and.push({
+    $nor: [
+      { subjectId: { $in: ['subj_general', 'general_inspection'] } },
+      { categoryId: { $in: ['cat_field_check', 'cat_general', 'field_check'] } },
+    ],
+  });
+}
+
+function adminFieldMongoPaths(filter: InspectionWorksFilterQuery, masters: InspectionWorksFilterMasters): string[] {
+  const id = String(filter.adminFieldId || '').trim();
+  if (!id) return [];
+  const keys = new Set<string>([id]);
+  const field = (masters.inspectionFields || []).find(
+    (f: any) =>
+      String(f.id || '') === id ||
+      String(f.fieldKey || '') === id ||
+      String(f.code || '') === id
+  );
+  if (field) {
+    for (const k of [field.id, field.fieldKey, field.fieldName, field.nameEn, field.nameTa, field.code]) {
+      if (k) keys.add(String(k));
+    }
+  }
+  return [...keys];
+}
+
+function appendReportsSecondaryMongoMatch(
+  and: Record<string, unknown>[],
+  filter: InspectionWorksFilterQuery,
+  masters: InspectionWorksFilterMasters
+): void {
+  const street = filter.street?.trim();
+  if (street) {
+    const rx = new RegExp(escapeRegex(street), 'i');
+    and.push({
+      $or: [
+        { streetName: street },
+        { streetName: rx },
+        { street: rx },
+        { streetNameEn: rx },
+        { streetNameTa: rx },
+      ],
+    });
+  }
+
+  const search = filter.search?.trim();
+  if (search) {
+    const rx = new RegExp(escapeRegex(search), 'i');
+    const or: Record<string, unknown>[] = [
+      { workId: rx },
+      { streetName: rx },
+      { submittedByUserName: rx },
+      { username: rx },
+      { subjectNameEn: rx },
+      { subjectNameTa: rx },
+      { imageCaption: rx },
+    ];
+    and.push({ $or: or });
+  }
+
+  if (filter.adminFieldId) {
+    const paths = adminFieldMongoPaths(filter, masters);
+    const value = filter.adminFieldValue?.trim();
+    const fieldOr: Record<string, unknown>[] = [];
+    for (const p of paths) {
+      const dotted = `fieldsData.${p}`;
+      if (value) {
+        fieldOr.push({ [dotted]: new RegExp(escapeRegex(value), 'i') });
+      } else {
+        fieldOr.push({ [dotted]: { $exists: true, $nin: [null, ''] } });
+      }
+    }
+    if (fieldOr.length) and.push({ $or: fieldOr });
+  }
 }
 
 function stripCategoryFromFilter(filter: InspectionWorksFilterQuery): InspectionWorksFilterQuery {
@@ -83,21 +169,30 @@ export function appendReportDateMongoMatch(
 export function buildReportsMongoMatch(
   filter: InspectionWorksFilterQuery,
   masters: InspectionWorksFilterMasters,
-  opts?: { omitCategory?: boolean; useReportDate?: boolean }
+  opts?: { omitCategory?: boolean; useReportDate?: boolean; includeSecondary?: boolean }
 ): Record<string, unknown> {
   const f = opts?.omitCategory ? stripCategoryFromFilter(filter) : filter;
-  if (!opts?.useReportDate) {
-    return buildInspectionWorksMongoMatch(f, masters);
-  }
-
   const and: Record<string, unknown>[] = [];
-  const geoMatch = buildInspectionWorksMongoMatch(f, masters, { skipDatePrefilter: true });
-  if (geoMatch.$and && Array.isArray(geoMatch.$and)) {
-    and.push(...(geoMatch.$and as Record<string, unknown>[]));
-  } else if (Object.keys(geoMatch).length > 0) {
-    and.push(geoMatch);
+  if (!opts?.useReportDate) {
+    const geoAndDate = buildInspectionWorksMongoMatch(f, masters);
+    if (geoAndDate.$and && Array.isArray(geoAndDate.$and)) {
+      and.push(...(geoAndDate.$and as Record<string, unknown>[]));
+    } else if (Object.keys(geoAndDate).length > 0) {
+      and.push(geoAndDate);
+    }
+  } else {
+    const geoMatch = buildInspectionWorksMongoMatch(f, masters, { skipDatePrefilter: true });
+    if (geoMatch.$and && Array.isArray(geoMatch.$and)) {
+      and.push(...(geoMatch.$and as Record<string, unknown>[]));
+    } else if (Object.keys(geoMatch).length > 0) {
+      and.push(geoMatch);
+    }
+    appendReportDateMongoMatch(and, filter);
   }
-  appendReportDateMongoMatch(and, filter);
+  if (opts?.includeSecondary !== false) {
+    appendReportsSecondaryMongoMatch(and, filter, masters);
+  }
+  appendFallbackWorkExclusion(and);
   if (!and.length) return {};
   return and.length === 1 ? and[0] : { $and: and };
 }
@@ -106,18 +201,91 @@ export type ReportAggregateCountsResult = {
   categoryCounts: Record<string, number>;
   totalWithoutCategoryFilter: number;
   subjectCategoryRollups: Array<{ subjectId: string; categoryId: string; count: number }>;
-  source: 'mongo-aggregate';
+  source: 'mongo-aggregate' | 'mongo-rollup';
 };
 
 function normalizeAggregateCategoryCounts(
   groups: Array<{ _id: string | null; count: number }>,
   masters: InspectionWorksFilterMasters
 ): Record<string, number> {
-  const pseudoWorks = groups.map((g) => ({
-    categoryId: g._id || '_unknown',
-    categoryNameEn: g._id || '',
-  }));
-  return computeCategoryCounts(pseudoWorks, masters.inspectionCategories || []);
+  const counts: Record<string, number> = {};
+  const categories = masters.inspectionCategories || [];
+  const byId = new Map<string, any>();
+  const byCode = new Map<string, any>();
+  const byName = new Map<string, any>();
+  for (const c of categories) {
+    if (c.id) byId.set(String(c.id), c);
+    if (c.code) byCode.set(String(c.code).toLowerCase(), c);
+    if (c.nameEn) byName.set(String(c.nameEn).trim().toLowerCase(), c);
+  }
+  for (const g of groups) {
+    const n = Number(g.count) || 0;
+    if (!n) continue;
+    const raw = String(g._id || '_unknown').trim();
+    const cat = byId.get(raw) || byCode.get(raw.toLowerCase()) || byName.get(raw.toLowerCase());
+    if (cat) {
+      counts[String(cat.id)] = (counts[String(cat.id)] || 0) + n;
+      if (cat.code) counts[String(cat.code)] = (counts[String(cat.code)] || 0) + n;
+      if (cat.nameEn) {
+        const name = String(cat.nameEn).trim().toLowerCase();
+        counts[name] = (counts[name] || 0) + n;
+      }
+    } else {
+      counts[raw] = (counts[raw] || 0) + n;
+    }
+  }
+  return counts;
+}
+
+function emptyCountsResult(source: ReportAggregateCountsResult['source']): ReportAggregateCountsResult {
+  return {
+    categoryCounts: {},
+    totalWithoutCategoryFilter: 0,
+    subjectCategoryRollups: [],
+    source,
+  };
+}
+
+async function aggregateLiveReportCounts(
+  filter: InspectionWorksFilterQuery,
+  masters: InspectionWorksFilterMasters
+): Promise<ReportAggregateCountsResult | null> {
+  const client = await getMongoClient();
+  if (!client) return null;
+  const db = await getActiveMongoDb(client);
+  const col = await getCollectionWithAliases(db, 'inspectionWorks');
+  const match = buildReportsMongoMatch(filter, masters, { omitCategory: true, useReportDate: true });
+  const pipeline: Record<string, unknown>[] = [];
+  if (Object.keys(match).length) pipeline.push({ $match: match });
+  pipeline.push({
+    $group: {
+      _id: {
+        subjectId: { $ifNull: ['$subjectId', 'unknown'] },
+        categoryId: { $ifNull: ['$categoryId', '_unknown'] },
+      },
+      count: { $sum: 1 },
+    },
+  });
+  const grouped = await col.aggregate(pipeline, { allowDiskUse: true }).toArray();
+  const subjectCategoryRollups = (grouped as Array<{ _id: { subjectId: string; categoryId: string }; count: number }>).map(
+    (r) => ({
+      subjectId: String(r._id?.subjectId || 'unknown'),
+      categoryId: String(r._id?.categoryId || '_unknown'),
+      count: r.count,
+    })
+  );
+  const byCategoryMap = new Map<string, number>();
+  for (const row of subjectCategoryRollups) {
+    const k = row.categoryId || '_unknown';
+    byCategoryMap.set(k, (byCategoryMap.get(k) || 0) + row.count);
+  }
+  const byCategory = [...byCategoryMap.entries()].map(([id, count]) => ({ _id: id, count }));
+  return {
+    categoryCounts: normalizeAggregateCategoryCounts(byCategory, masters),
+    totalWithoutCategoryFilter: subjectCategoryRollups.reduce((s, r) => s + r.count, 0),
+    subjectCategoryRollups,
+    source: 'mongo-aggregate',
+  };
 }
 
 export async function aggregateInspectionWorksReportCounts(
@@ -125,63 +293,23 @@ export async function aggregateInspectionWorksReportCounts(
   masters: InspectionWorksFilterMasters
 ): Promise<ReportAggregateCountsResult | null> {
   try {
-    const client = await getMongoClient();
-    if (!client) return null;
-    const db = await getActiveMongoDb(client);
-    const col = await getCollectionWithAliases(db, 'inspectionWorks');
     const cacheKey = aggCacheKey('counts', filter);
     const cached = readAggCache<ReportAggregateCountsResult>(cacheKey);
     if (cached) return cached;
 
-    const match = buildReportsMongoMatch(filter, masters, { omitCategory: true, useReportDate: true });
-
-    const pipeline: Record<string, unknown>[] = [];
-    if (Object.keys(match).length) pipeline.push({ $match: match });
-
-    pipeline.push({
-      $facet: {
-        byCategory: [{ $group: { _id: { $ifNull: ['$categoryId', '_unknown'] }, count: { $sum: 1 } } }],
-        bySubjectCategory: [
-          {
-            $group: {
-              _id: {
-                subjectId: { $ifNull: ['$subjectId', 'unknown'] },
-                categoryId: { $ifNull: ['$categoryId', '_unknown'] },
-              },
-              count: { $sum: 1 },
-            },
-          },
-        ],
-        total: [{ $count: 'n' }],
-      },
-    });
-
-    const [facetResult] = await col.aggregate(pipeline).toArray();
-    if (!facetResult) return null;
-
-    const byCategory = (facetResult.byCategory || []) as Array<{ _id: string | null; count: number }>;
-    const totalN = facetResult.total?.[0]?.n ?? 0;
-    const categoryCounts = normalizeAggregateCategoryCounts(byCategory, masters);
-    const subjectCategoryRollups = ((facetResult.bySubjectCategory || []) as Array<{
-      _id: { subjectId: string; categoryId: string };
-      count: number;
-    }>).map((r) => ({
-      subjectId: String(r._id?.subjectId || 'unknown'),
-      categoryId: String(r._id?.categoryId || '_unknown'),
-      count: r.count,
-    }));
-
-    const result = {
-      categoryCounts,
-      totalWithoutCategoryFilter: totalN,
-      subjectCategoryRollups,
-      source: 'mongo-aggregate' as const,
-    };
-    if (totalN > 0 || subjectCategoryRollups.length > 0) {
-      writeAggCache(cacheKey, result);
-      return result;
+    await ensureInspectionWorkReportIndexes();
+    if (!reportsFiltersNeedFullDocumentScan(filter)) {
+      const rollup = await queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: true });
+      if (rollup) {
+        writeAggCache(cacheKey, rollup);
+        return rollup;
+      }
     }
-    return null;
+
+    const result = await aggregateLiveReportCounts(filter, masters);
+    if (!result) return emptyCountsResult('mongo-aggregate');
+    writeAggCache(cacheKey, result);
+    return result;
   } catch (err) {
     console.warn('[inspectionWorksReportsAggregate] counts aggregate failed:', err);
     return null;
@@ -193,8 +321,59 @@ export type ReportAggregatePageResult = {
   total: number;
   page: number;
   pageSize: number;
-  source: 'mongo-aggregate';
+  source: 'mongo-aggregate' | 'mongo-indexed';
 };
+
+async function fetchIndexedReportPage(
+  filter: InspectionWorksFilterQuery,
+  masters: InspectionWorksFilterMasters,
+  page: number,
+  pageSize: number
+): Promise<ReportAggregatePageResult | null> {
+  const client = await getMongoClient();
+  if (!client) return null;
+  const db = await getActiveMongoDb(client);
+  const col = await getCollectionWithAliases(db, 'inspectionWorks');
+  const safePage = Math.max(1, page);
+  const cap = Math.min(Math.max(1, pageSize), REPORTS_PAGE_SIZE_MAX);
+  const skip = (safePage - 1) * cap;
+  const match = buildReportsMongoMatch(filter, masters, { omitCategory: false, useReportDate: true });
+  const projection = filter.adminFieldId
+    ? LITE_INSPECTION_WORKS_PROJECTION
+    : { ...LITE_INSPECTION_WORKS_PROJECTION, fieldsData: 0 as const };
+
+  const findCursor = col
+    .find(match, { projection })
+    .sort({ submittedDateYmd: -1, submittedAt: -1, workId: -1 })
+    .skip(skip)
+    .limit(cap);
+
+  const liveScan = reportsFiltersNeedFullDocumentScan(filter);
+  const [items, rollupTotal] = await Promise.all([
+    findCursor.toArray(),
+    liveScan ? Promise.resolve(null) : queryInspectionWorkReportRollupTotal(filter, masters),
+  ]);
+
+  let total = rollupTotal;
+  if (total == null) {
+    total = await col.countDocuments(match);
+  } else if (items.length > 0 && total < skip + items.length) {
+    total = skip + items.length;
+  }
+
+  const rows = items.map((item) => ({
+    ...item,
+    id: item.id || item.workId || '',
+  }));
+
+  return {
+    rows,
+    total,
+    page: safePage,
+    pageSize: cap,
+    source: 'mongo-indexed',
+  };
+}
 
 export async function aggregateInspectionWorksReportPage(
   filter: InspectionWorksFilterQuery,
@@ -203,54 +382,15 @@ export async function aggregateInspectionWorksReportPage(
   pageSize: number
 ): Promise<ReportAggregatePageResult | null> {
   try {
-    const client = await getMongoClient();
-    if (!client) return null;
-    const db = await getActiveMongoDb(client);
-    const col = await getCollectionWithAliases(db, 'inspectionWorks');
     const safePage = Math.max(1, page);
     const cap = Math.min(Math.max(1, pageSize), REPORTS_PAGE_SIZE_MAX);
     const cacheKey = aggCacheKey('page', filter, `${safePage}|${cap}`);
     const cached = readAggCache<ReportAggregatePageResult>(cacheKey);
     if (cached) return cached;
 
-    const match = buildReportsMongoMatch(filter, masters, { omitCategory: false, useReportDate: true });
-    const skip = (safePage - 1) * cap;
-
-    const projection = filter.adminFieldId
-      ? LITE_INSPECTION_WORKS_PROJECTION
-      : { ...LITE_INSPECTION_WORKS_PROJECTION, fieldsData: 0 as const };
-
-    const pipeline: Record<string, unknown>[] = [];
-    if (Object.keys(match).length) pipeline.push({ $match: match });
-    pipeline.push({
-      $facet: {
-        meta: [{ $count: 'total' }],
-        rows: [
-          { $sort: { submittedAt: -1, createdAt: -1, workId: -1 } },
-          { $skip: skip },
-          { $limit: cap },
-          { $project: projection },
-        ],
-      },
-    });
-
-    const [facetResult] = await col.aggregate(pipeline).toArray();
-    if (!facetResult) return null;
-
-    const total = facetResult.meta?.[0]?.total ?? 0;
-    const items = (facetResult.rows || []) as any[];
-    const rows = items.map((item) => ({
-      ...item,
-      id: item.id || item.workId || '',
-    }));
-
-    const result = {
-      rows,
-      total,
-      page: safePage,
-      pageSize: cap,
-      source: 'mongo-aggregate' as const,
-    };
+    await ensureInspectionWorkReportIndexes();
+    const result = await fetchIndexedReportPage(filter, masters, safePage, cap);
+    if (!result) return null;
     writeAggCache(cacheKey, result);
     return result;
   } catch (err) {
@@ -266,7 +406,7 @@ export type ReportAggregateBundleResult = ReportAggregateCountsResult & {
   total: number;
 };
 
-/** One Mongo round-trip: counts + page rows (reports Apply). */
+/** Parallel rollup Abstract + indexed Detailed page. Never loads the collection into Node. */
 export async function aggregateInspectionWorksReportsBundle(
   filter: InspectionWorksFilterQuery,
   masters: InspectionWorksFilterMasters,
@@ -280,93 +420,25 @@ export async function aggregateInspectionWorksReportsBundle(
     const cached = readAggCache<ReportAggregateBundleResult>(cacheKey);
     if (cached) return cached;
 
-    const client = await getMongoClient();
-    if (!client) return null;
-    const db = await getActiveMongoDb(client);
-    const col = await getCollectionWithAliases(db, 'inspectionWorks');
-    const matchCounts = buildReportsMongoMatch(filter, masters, { omitCategory: true, useReportDate: true });
-    const matchRows = buildReportsMongoMatch(filter, masters, { omitCategory: false, useReportDate: true });
-    const skip = (safePage - 1) * cap;
-    const projection = filter.adminFieldId
-      ? LITE_INSPECTION_WORKS_PROJECTION
-      : { ...LITE_INSPECTION_WORKS_PROJECTION, fieldsData: 0 as const };
+    await ensureInspectionWorkReportIndexes();
+    const [counts, pageResult] = await Promise.all([
+      aggregateInspectionWorksReportCounts(filter, masters),
+      fetchIndexedReportPage(filter, masters, safePage, cap),
+    ]);
+    if (!counts && !pageResult) return null;
 
-    const matchCountsStages: Record<string, unknown>[] = Object.keys(matchCounts).length
-      ? [{ $match: matchCounts }]
-      : [];
-    const matchRowsStages: Record<string, unknown>[] = Object.keys(matchRows).length
-      ? [{ $match: matchRows }]
-      : [];
-
-    const pipeline: Record<string, unknown>[] = [
-      {
-        $facet: {
-          subjectCategoryRollups: [
-            ...matchCountsStages,
-            {
-              $group: {
-                _id: {
-                  subjectId: { $ifNull: ['$subjectId', 'unknown'] },
-                  categoryId: { $ifNull: ['$categoryId', '_unknown'] },
-                },
-                count: { $sum: 1 },
-              },
-            },
-          ],
-          countsTotal: [...matchCountsStages, { $count: 'n' }],
-          rowTotal: [...matchRowsStages, { $count: 'total' }],
-          rows: [
-            ...matchRowsStages,
-            { $sort: { submittedAt: -1, createdAt: -1, workId: -1 } },
-            { $skip: skip },
-            { $limit: cap },
-            { $project: projection },
-          ],
-        },
-      },
-    ];
-
-    const [root] = await col.aggregate(pipeline).toArray();
-    if (!root) return null;
-
-    const subjectCategoryRollups = ((root.subjectCategoryRollups || []) as Array<{
-      _id: { subjectId: string; categoryId: string };
-      count: number;
-    }>).map((r) => ({
-      subjectId: String(r._id?.subjectId || 'unknown'),
-      categoryId: String(r._id?.categoryId || '_unknown'),
-      count: r.count,
-    }));
-
-    const totalN = root.countsTotal?.[0]?.n ?? 0;
-    const byCategoryMap = new Map<string, number>();
-    for (const row of subjectCategoryRollups) {
-      const k = row.categoryId || '_unknown';
-      byCategoryMap.set(k, (byCategoryMap.get(k) || 0) + row.count);
-    }
-    const byCategory = [...byCategoryMap.entries()].map(([id, count]) => ({ _id: id, count }));
-    const categoryCounts = normalizeAggregateCategoryCounts(byCategory, masters);
-
-    const totalRows = root.rowTotal?.[0]?.total ?? 0;
-    const items = (root.rows || []) as any[];
-    const rows = items.map((item) => ({ ...item, id: item.id || item.workId || '' }));
-
+    const resolvedCounts = counts || emptyCountsResult('mongo-rollup');
+    const rows = pageResult?.rows || [];
     const result: ReportAggregateBundleResult = {
-      categoryCounts,
-      totalWithoutCategoryFilter: totalN,
-      subjectCategoryRollups,
-      source: 'mongo-aggregate',
+      ...resolvedCounts,
       rows,
-      page: safePage,
-      pageSize: cap,
-      total: totalRows,
+      page: pageResult?.page ?? safePage,
+      pageSize: pageResult?.pageSize ?? cap,
+      total: pageResult?.total ?? rows.length,
     };
 
-    if (totalN > 0 || subjectCategoryRollups.length > 0 || totalRows > 0 || rows.length > 0) {
-      writeAggCache(cacheKey, result);
-      return result;
-    }
-    return null;
+    writeAggCache(cacheKey, result);
+    return result;
   } catch (err) {
     console.warn('[inspectionWorksReportsAggregate] bundle aggregate failed:', err);
     return null;

@@ -6,11 +6,9 @@ import {
   saveSingleInspectionWork,
   uploadInspectionMediaToS3,
   saveInspectionDetailsToS3,
-  getNextUserInspectionSeq,
-  generateUserWorkId,
   resolveInspectionUsername,
   getPresignedS3Url,
-  findExistingInspectionWork,
+  resolveInspectionWorkIdentity,
 } from './storage';
 import { logServerProcess } from './serverLogger';
 
@@ -270,26 +268,16 @@ async function processInspectionJob(jobData: InspectionJobData): Promise<any> {
   const recordId = data.id || `iw_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
   const nowIso = new Date().toISOString();
 
-  // Check if an existing work already exists for this client UUID (id) or workId
-  const existingWork = await findExistingInspectionWork(recordId, data.workId);
-
-  let workId = data.workId;
-  let userSeq: number;
+  const identity = await resolveInspectionWorkIdentity(recordId, data.workId, username, data.userSequence);
+  if (!identity.ok) {
+    throw new Error(identity.message);
+  }
+  const { workId, userSeq, existing: existingWork } = identity;
 
   if (existingWork) {
-    // Re-use existing Work ID and sequence - DO NOT CREATE A DUPLICATE WORK ID!
-    workId = existingWork.workId || workId || generateUserWorkId(username, new Date());
-    if (workId && (workId.toUpperCase().startsWith('TP01-') || workId.toUpperCase().startsWith('TP-') || workId.toUpperCase().startsWith('TP'))) {
-      workId = workId.replace(/^TP01-/i, 'WRK-').replace(/^TP-/i, 'WRK-').replace(/^TP/i, 'WRK-');
-    }
-    userSeq = existingWork.userSequence || (await getNextUserInspectionSeq(username));
-
-    // Preserve existing valid S3 image URL if the incoming request has empty or local mobile path
     if ((!imageUrl || isMobilePath(imageUrl)) && existingWork.imageUrl && !isMobilePath(existingWork.imageUrl)) {
       imageUrl = existingWork.imageUrl;
     }
-
-    // Preserve existing S3 image URLs in fieldsData
     if (existingWork.fieldsData) {
       for (const [k, v] of Object.entries(existingWork.fieldsData)) {
         if (typeof v === 'string' && !isMobilePath(v) && (v.startsWith('http') || v.includes('s3.amazonaws.com'))) {
@@ -300,11 +288,6 @@ async function processInspectionJob(jobData: InspectionJobData): Promise<any> {
         }
       }
     }
-  } else {
-    if (!workId || workId.toUpperCase().startsWith('TP') || !workId.startsWith('WRK-')) {
-      workId = generateUserWorkId(username, new Date());
-    }
-    userSeq = data.userSequence || (await getNextUserInspectionSeq(username));
   }
 
   // Clean any remaining local mobile device paths from imageUrl and updatedFieldsData so mobile paths never get saved

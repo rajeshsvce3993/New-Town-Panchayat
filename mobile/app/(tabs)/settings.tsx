@@ -26,6 +26,7 @@ import { APP_VERSION_CODE, APP_VERSION_NAME, PACKAGE_NAME } from '../../src/cons
 import { useApp } from '../../src/context/AppContext';
 import { createNotificationChannel } from '../../src/services/notifications';
 import { pickAndUploadProfile } from '../../src/services/profilePhoto';
+import { sweepLeftoverOfflineCache } from '../../src/storage/offlineQueueStore';
 import { prefs, profilePhotoFile } from '../../src/storage/preferences';
 import { palettes } from '../../src/theme/palettes';
 import { effectivePhotoUrl, effectiveSubjectIds, effectiveWards, resolveOfficerDesignation } from '../../src/types/models';
@@ -196,14 +197,9 @@ export default function SettingsScreen() {
           </Pressable>
           <View style={{ marginLeft: 10, flex: 1 }}>
             <Text style={{ fontWeight: '800', fontSize: 14, color: '#0F172A' }}>{user?.name || 'Officer'}</Text>
-            {!!designationLabel && (
+            {(!!designationLabel || !!user?.mobile) && (
               <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginTop: 2 }} numberOfLines={1}>
-                {designationLabel}
-              </Text>
-            )}
-            {!!user?.mobile && (
-              <Text style={{ fontSize: 11, color: '#64748B', marginTop: 1 }} numberOfLines={1}>
-                {user.mobile}
+                {[designationLabel, user?.mobile].filter(Boolean).join('  ·  ')}
               </Text>
             )}
             {!!photoMsg && (
@@ -224,7 +220,9 @@ export default function SettingsScreen() {
           </View>
           <View style={[styles.detailCol, { borderRightWidth: 0 }]}>
             <Text style={styles.miniLbl}>{isTamil ? 'பதவி' : 'Designation'}</Text>
-            <Text style={styles.miniVal} numberOfLines={2}>{designationLabel || '—'}</Text>
+            <Text style={styles.miniVal} numberOfLines={2}>
+              {[designationLabel, user?.mobile].filter(Boolean).join('  ·  ') || '—'}
+            </Text>
           </View>
         </View>
         {!!subjects.length && (
@@ -242,32 +240,22 @@ export default function SettingsScreen() {
             </View>
             <View style={{ marginLeft: 10, flex: 1 }}>
               <Text style={styles.cardTitle}>{isTamil ? 'ஒத்திசைவு நினைவகம்' : 'Clear synced cache'}</Text>
-              <Text style={styles.cardSub}>{isTamil ? 'ஒத்திசைக்கப்பட்ட புகைப்படங்களை நீக்கு' : 'Remove local photos of synced works'}</Text>
+              <Text style={styles.cardSub}>
+                {isTamil
+                  ? 'ஒத்திசைக்கப்பட்ட கோப்புகளை நீக்கு. நிலுவை பணிகள் பாதுகாக்கப்படும்.'
+                  : 'Remove leftover synced files. Pending unsynced works are kept.'}
+              </Text>
             </View>
           </View>
           <Pressable
             style={[styles.smallBtn, { backgroundColor: palette.primary }]}
             onPress={async () => {
-              const active = new Set<string>();
-              (await prefs.getOfflineWorks()).forEach((w) => {
-                if (w.imageUrl) active.add(w.imageUrl);
-                Object.values(w.fieldsData).forEach((v) => active.add(String(v)));
-              });
-              const dir = `${FileSystem.documentDirectory}offline_images`;
-              let deleted = 0;
-              try {
-                const files = await FileSystem.readDirectoryAsync(dir);
-                for (const f of files) {
-                  const p = `${dir}/${f}`;
-                  if (!active.has(p)) {
-                    await FileSystem.deleteAsync(p, { idempotent: true });
-                    deleted++;
-                  }
-                }
-              } catch {
-                /* */
-              }
-              toast(isTamil ? `ஒத்திசைக்கப்பட்ட பணி நினைவகம் வெற்றிகரமாக நீக்கப்பட்டது (${deleted} கோப்புகள்)` : `Synced entry cache cleared successfully! (${deleted} files deleted)`);
+              const deleted = await sweepLeftoverOfflineCache(true);
+              toast(
+                isTamil
+                  ? `நினைவகம் நீக்கப்பட்டது (${deleted}). ஒத்திசைக்கப்படாத பணிகள் வைக்கப்பட்டன.`
+                  : `Cache cleared (${deleted}). Unsynced works were kept.`
+              );
             }}
           >
             <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{isTamil ? 'நீக்கு' : 'Clear'}</Text>

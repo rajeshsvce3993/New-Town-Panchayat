@@ -3,7 +3,7 @@
     "name": "Town Panchayat Management System",
     "slug": "town-panchayat-ems",
     "scheme": "tpems",
-    "version": "2.0.1",
+    "version": "2.0.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -23,7 +23,7 @@
     },
     "android": {
       "package": "com.tn.townpanchayat.ems",
-      "versionCode": 101,
+      "versionCode": 106,
       "adaptiveIcon": {
         "backgroundColor": "#1A3D66",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -41,18 +41,23 @@
         "android.permission.VIBRATE",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.RECORD_AUDIO",
-        "android.permission.WAKE_LOCK"
+        "android.permission.WAKE_LOCK",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
       ],
       "predictiveBackGestureEnabled": false
     },
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "db4e8188-dc32-4377-bd98-330f8d5f1a0c"
+        "projectId": "dd738221-b5cf-48ef-badb-97ebccff73c3"
       }
     },
     "autolinking": {
-      "exclude": ["@expo/ui"]
+      "exclude": [
+        "@expo/ui"
+      ]
     },
     "plugins": [
       [
@@ -75,7 +80,9 @@
             "gifEnabled": false,
             "useLegacyPackaging": true,
             "networkInspector": false,
-            "buildArchs": ["arm64-v8a"],
+            "buildArchs": [
+              "arm64-v8a"
+            ],
             "extraProguardRules": "-keep class fr.greweb.reactnativeviewshot.** { *; }\n-keep class com.reactnativecommunity.webview.** { *; }\n",
             "packagingOptions": {
               "exclude": [
@@ -121,6 +128,7 @@
       "expo-document-picker",
       "expo-asset",
       "./plugins/withApkSize"
-    ]
+    ],
+    "owner": "aifiportal"
   }
 }

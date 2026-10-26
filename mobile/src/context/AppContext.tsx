@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, AppState, BackHandler, InteractionManager, Linking, Platform, ToastAndroid } from 'react-native';
+import { Alert, AppState, BackHandler, Linking, Platform, ToastAndroid } from 'react-native';
 import { api, getApiBaseUrl, isRemotePhotoUrl, setApiBaseUrl } from '../api/client';
 import {
   APP_VERSION_CODE,
@@ -18,10 +18,13 @@ import {
   subscribeNotificationResponses,
 } from '../services/notifications';
 import { syncPendingWorks } from '../services/queueSync';
+import { dedupeInspectionWorks } from '../utils/dedupeWorks';
+import { filterUserWorks } from '../utils/workFilters';
 import { prefs, profilePhotoFile } from '../storage/preferences';
 import { DEFAULT_PALETTE_ID, getPaletteById, type AppPalette } from '../theme/palettes';
 import type { AppUser, InspectionWork, LoginRequest, LoginResponse, PortalState, UserScopeData } from '../types/models';
 import { emptyPortal, isInspectionUser, portalWorks } from '../types/models';
+import { isAssignedWorkId } from '../utils/workSaveResult';
 import { currentLoginSessionPeriod, todayYyyyMmDd } from '../utils/dates';
 
 function toast(msg: string) {
@@ -66,6 +69,7 @@ export interface AppCtx {
   user: AppUser | null;
   portal: PortalState;
   works: InspectionWork[];
+  worksHydrated: boolean;
   loginLogo: string;
   appIcon: string;
   serverUrl: string;
@@ -104,6 +108,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [portal, setPortal] = useState<PortalState>(emptyPortal());
   const [works, setWorks] = useState<InspectionWork[]>([]);
+  const [worksHydrated, setWorksHydrated] = useState(false);
   const [loginLogo, setLoginLogo] = useState('');
   const [appIcon, setAppIcon] = useState('');
   const [serverUrl, setServerUrl] = useState(getApiBaseUrl());
@@ -114,6 +119,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const userRef = useRef<AppUser | null>(null);
   const sessionIdRef = useRef(0);
   const portalRefreshInFlight = useRef(false);
+  const portalRefreshAgain = useRef(false);
 
   const applyUser = useCallback((next: AppUser | null) => {
     if (!next && userRef.current) sessionIdRef.current += 1;
@@ -170,10 +176,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         activeUser = null;
       }
       applyUser(activeUser);
-      if (cached) {
-        setPortal(cached);
-        setWorks(portalWorks(cached));
-      }
+      if (cached) setPortal(cached);
+      setWorks([]);
+      setWorksHydrated(false);
       if (isUsableLogoUrl(logo)) setLoginLogo(logo);
       if (isUsableLogoUrl(icon)) setAppIcon(icon);
 
@@ -182,7 +187,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       void createNotificationChannel(tone).catch(() => undefined);
       void registerBackgroundSync();
 
-      InteractionManager.runAfterInteractions(() => {
+      const runAfterIdle = (fn: () => void) => {
+        const ric = (globalThis as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void })
+          .requestIdleCallback;
+        if (typeof ric === 'function') ric(fn, { timeout: 1500 });
+        else setTimeout(fn, 400);
+      };
+      runAfterIdle(() => {
         void (async () => {
           try {
             await Location.requestForegroundPermissionsAsync();
@@ -249,8 +260,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshPortal = useCallback(async () => {
     const current = userRef.current;
-    if (!current) return;
-    if (portalRefreshInFlight.current) return;
+    if (!current) {
+      setWorksHydrated(true);
+      return;
+    }
+    if (portalRefreshInFlight.current) {
+      portalRefreshAgain.current = true;
+      return;
+    }
     portalRefreshInFlight.current = true;
     const sid = sessionIdRef.current;
     touch();
@@ -260,11 +277,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setPortal(remote);
       await prefs.setPortal(remote);
       if (sid !== sessionIdRef.current || !userRef.current) return;
-      const remoteWorks = portalWorks(remote);
-      const offline = await prefs.getOfflineWorks();
+      const remoteWorks = filterUserWorks(portalWorks(remote), current, 'reports').filter((w) =>
+        isAssignedWorkId(w.workId)
+      );
       const remoteIds = new Set(remoteWorks.map((w) => w.id));
-      const unsynced = offline.filter((w) => !w.workId && !remoteIds.has(w.id));
-      setWorks([...unsynced, ...remoteWorks]);
+      const remoteWorkIds = new Set(remoteWorks.map((w) => w.workId).filter(Boolean));
+      setWorks((prev) =>
+        dedupeInspectionWorks([
+          ...remoteWorks,
+          ...prev.filter(
+            (w) =>
+              isAssignedWorkId(w.workId) &&
+              !remoteIds.has(w.id) &&
+              !remoteWorkIds.has(w.workId)
+          ),
+        ])
+      );
       const resolve = (raw?: string | null) => {
         if (!raw?.trim()) return '';
         if (raw.startsWith('http')) return raw;
@@ -318,18 +346,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch {
-      /* cache */
+      const cached = await prefs.getPortal();
+      setWorks((prev) =>
+        dedupeInspectionWorks([
+          ...filterUserWorks(portalWorks(cached), current, 'reports'),
+          ...prev,
+        ].filter((w) => isAssignedWorkId(w.workId)))
+      );
     } finally {
       portalRefreshInFlight.current = false;
+      setWorksHydrated(true);
+      if (portalRefreshAgain.current) {
+        portalRefreshAgain.current = false;
+        void refreshPortal();
+      }
     }
   }, [touch, applyUser]);
 
   useEffect(() => {
     if (!ready || !user?.username) return;
-    const t = setTimeout(() => {
-      void refreshPortal();
-    }, 300);
-    return () => clearTimeout(t);
+    void refreshPortal();
   }, [ready, user?.username, refreshPortal]);
 
   useEffect(() => {
@@ -412,22 +448,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!user) return;
-    const t = setInterval(async () => {
-      if (AppState.currentState !== 'active') return;
+    let cancelled = false;
+    const run = async () => {
+      if (cancelled || AppState.currentState !== 'active') return;
       const synced = await syncPendingWorks();
-      if (synced.length) {
-        setWorks((prev) => {
-          const ids = new Set(synced.map((s) => s.id));
-          const workIds = new Set(synced.map((s) => s.workId).filter(Boolean));
-          return [
-            ...synced,
-            ...prev.filter((w) => !ids.has(w.id) && (!w.workId || !workIds.has(w.workId))),
-          ];
-        });
+      if (cancelled || !synced.length) return;
+      setWorks((prev) => {
+        const ids = new Set(synced.map((s) => s.id));
+        const workIds = new Set(synced.map((s) => s.workId).filter(Boolean));
+        return dedupeInspectionWorks([
+          ...synced.filter((w) => isAssignedWorkId(w.workId)),
+          ...prev.filter((w) => isAssignedWorkId(w.workId) && !ids.has(w.id) && !workIds.has(w.workId)),
+        ]);
+      });
+      try {
+        await refreshPortal();
+      } catch {
+        /* keep merged list */
       }
-    }, OFFLINE_SYNC_MS);
-    return () => clearInterval(t);
-  }, [user]);
+    };
+    void run();
+    const t = setInterval(() => void run(), OFFLINE_SYNC_MS);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void run();
+    });
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+      sub.remove();
+    };
+  }, [user, refreshPortal]);
 
   const performLogin = useCallback(
     async (req: LoginRequest): Promise<LoginResponse> => {
@@ -464,6 +514,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const canonical = photo.includes('amazonaws.com') && photo.includes('?') ? photo.split('?')[0] : photo;
     const next = canonical ? { ...u, profilePhotoUrl: canonical, avatarUrl: canonical } : u;
     applyUser(next);
+    setWorks([]);
+    setWorksHydrated(false);
     await prefs.setCurrentUser(next);
     await prefs.setLoginDate(todayYyyyMmDd());
     await prefs.setLoginSessionPeriod(currentLoginSessionPeriod());
@@ -488,6 +540,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     const u = userRef.current;
+    setWorks([]);
+    setWorksHydrated(false);
     applyUser(null);
     try {
       await prefs.logoutClear();
@@ -536,6 +590,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       user,
       portal,
       works,
+      worksHydrated,
       loginLogo,
       appIcon,
       serverUrl,
@@ -588,6 +643,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       user,
       portal,
       works,
+      worksHydrated,
       loginLogo,
       appIcon,
       serverUrl,

@@ -62,6 +62,8 @@ import {
   filterDashboardStatsForScope,
   getWorkDynamicFieldValue,
   isFallbackInspectionWork,
+  workMatchesCategory,
+  workMatchesSubject,
 } from '@/lib/inspectionWorksQueryFilters';
 import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
 import MapViewReport from './MapViewReport';
@@ -1448,20 +1450,12 @@ export default function InspectionReportsView({
     (extra?: { countsOnly?: boolean; rowsOnly?: boolean; reportsBundle?: boolean; page?: number; pageSize?: number }) => {
       const p = filterQueryRef.current;
       const qParams = new URLSearchParams();
-      if (embedMode) {
-        qParams.set('allTime', '1');
-      } else {
-        if (p.fromDate) qParams.set('fromDate', p.fromDate);
-        if (p.toDate) qParams.set('toDate', p.toDate);
-        if (!p.fromDate && !p.toDate) qParams.set('allTime', '1');
-        if (isAdminOrDirector) {
-          if (p.selectedTpId && p.selectedTpId !== 'all') qParams.set('tpId', p.selectedTpId);
-          if (p.selectedDistrictId && p.selectedDistrictId !== 'all') {
-            qParams.set('districtId', p.selectedDistrictId);
-          }
-          if (p.selectedZoneId && p.selectedZoneId !== 'all') qParams.set('zoneId', p.selectedZoneId);
-        }
-      }
+      if (p.fromDate) qParams.set('fromDate', p.fromDate);
+      if (p.toDate) qParams.set('toDate', p.toDate);
+      if (!p.fromDate && !p.toDate) qParams.set('allTime', '1');
+      if (p.selectedTpId && p.selectedTpId !== 'all') qParams.set('tpId', p.selectedTpId);
+      if (p.selectedDistrictId && p.selectedDistrictId !== 'all') qParams.set('districtId', p.selectedDistrictId);
+      if (p.selectedZoneId && p.selectedZoneId !== 'all') qParams.set('zoneId', p.selectedZoneId);
       if (p.selectedWard && p.selectedWard !== 'all') qParams.set('ward', p.selectedWard);
       if (p.selectedSubjectId && p.selectedSubjectId !== 'all') qParams.set('subjectId', p.selectedSubjectId);
       if (p.selectedCategoryId && p.selectedCategoryId !== 'all') qParams.set('categoryId', p.selectedCategoryId);
@@ -1493,16 +1487,16 @@ export default function InspectionReportsView({
       }
       return qParams;
     },
-    [isAdminOrDirector, embedMode]
+    [isAdminOrDirector]
   );
 
   const applyCountsPayload = React.useCallback((json: any) => {
     let applied = false;
-    if (Array.isArray(json?.subjectCategoryRollups) && json.subjectCategoryRollups.length > 0) {
+    if (Array.isArray(json?.subjectCategoryRollups)) {
       setApiSubjectRollups(json.subjectCategoryRollups);
       applied = true;
     }
-    if (json?.categoryCounts && typeof json.categoryCounts === 'object' && Object.keys(json.categoryCounts).length > 0) {
+    if (json?.categoryCounts && typeof json.categoryCounts === 'object') {
       setApiCategoryCounts(json.categoryCounts);
       applied = true;
     } else if (Array.isArray(json?.subjectCategoryRollups) && json.subjectCategoryRollups.length > 0) {
@@ -1511,46 +1505,52 @@ export default function InspectionReportsView({
       );
       applied = true;
     }
-    if (typeof json?.totalWithoutCategoryFilter === 'number' && json.totalWithoutCategoryFilter > 0) {
+    if (typeof json?.totalWithoutCategoryFilter === 'number') {
       setApiTotalWithoutCategory(json.totalWithoutCategoryFilter);
       applied = true;
-    } else if (Array.isArray(json?.subjectCategoryRollups) && json.subjectCategoryRollups.length > 0) {
+    } else if (Array.isArray(json?.subjectCategoryRollups)) {
       const total = json.subjectCategoryRollups.reduce((s: number, r: { count: number }) => s + (r.count || 0), 0);
-      if (total > 0) setApiTotalWithoutCategory(total);
+      setApiTotalWithoutCategory(total);
     }
     return applied;
   }, [state.inspectionCategories]);
 
-  const fetchReportCountsFromApi = React.useCallback(
-    async (seq?: number) => {
-      const res = await fetch(
-        `/api/inspection-works?${buildInspectionWorksQueryParams({ countsOnly: true }).toString()}`,
-        { cache: 'no-store' }
-      );
-      if (seq != null && seq !== fetchSeqRef.current) return false;
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json.success === false) return false;
-      return applyCountsPayload(json);
-    },
-    [buildInspectionWorksQueryParams, applyCountsPayload]
-  );
-
   const applyBootstrapStatsFallback = React.useCallback(() => {
     const stats = state.inspectionWorkStats;
     if (!Array.isArray(stats) || stats.length === 0) return false;
+    const p = filterQueryRef.current;
+    const selectedTp = p.selectedTpId && p.selectedTpId !== 'all' ? p.selectedTpId : '';
+    const selectedDistrict = p.selectedDistrictId && p.selectedDistrictId !== 'all' ? p.selectedDistrictId : '';
+    const selectedZone = p.selectedZoneId && p.selectedZoneId !== 'all' ? p.selectedZoneId : '';
+    const tpId = selectedTp || userTpId || null;
+    const districtId = selectedTp ? null : selectedDistrict || userDistrictId || null;
+    const zoneId = selectedTp || selectedDistrict ? null : selectedZone || userZoneId || null;
     const masters = {
       districts: state.districts || [],
       zones: state.zones || [],
       townPanchayats: state.townPanchayats || [],
+      inspectionSubjects: state.inspectionSubjects || [],
+      inspectionCategories: state.inspectionCategories || [],
     };
-    const scoped = filterDashboardStatsForScope(stats, masters, {
-      unrestricted: isAdminOrDirector,
-      tpId: userTpId,
-      districtId: userDistrictId,
-      zoneId: userZoneId,
+    let scoped = filterDashboardStatsForScope(stats, masters, {
+      unrestricted: !tpId && !districtId && !zoneId,
+      tpId,
+      districtId,
+      zoneId,
     });
+    if (p.selectedSubjectId && p.selectedSubjectId !== 'all') {
+      scoped = scoped.filter((row) => workMatchesSubject(row, p.selectedSubjectId, masters));
+    }
+    if (p.selectedCategoryId && p.selectedCategoryId !== 'all') {
+      scoped = scoped.filter((row) => workMatchesCategory(row, p.selectedCategoryId, masters));
+    }
     const rollups = buildSubjectCategoryRollupsFromDashboardStats(scoped);
-    if (!rollups.length) return false;
+    if (!rollups.length) {
+      setApiSubjectRollups([]);
+      setApiTotalWithoutCategory(0);
+      setApiCategoryCounts({});
+      return false;
+    }
     setApiSubjectRollups(rollups);
     const total = rollups.reduce((s, r) => s + r.count, 0);
     setApiTotalWithoutCategory(total);
@@ -1559,10 +1559,10 @@ export default function InspectionReportsView({
   }, [
     state.inspectionWorkStats,
     state.inspectionCategories,
+    state.inspectionSubjects,
     state.districts,
     state.zones,
     state.townPanchayats,
-    isAdminOrDirector,
     userTpId,
     userDistrictId,
     userZoneId,
@@ -1606,7 +1606,6 @@ export default function InspectionReportsView({
   const requestInspectionWorks = React.useCallback(async () => {
     if (embedMode) {
       applyBootstrapStatsFallback();
-      return;
     }
     const seq = ++fetchSeqRef.current;
     isFetchingRef.current = true;
@@ -1626,25 +1625,12 @@ export default function InspectionReportsView({
         setFetchedWorks(works);
         if (typeof json.total === 'number') setApiWorksTotal(json.total);
         else setApiWorksTotal(works.length);
-        const hasBundleRollups =
-          Array.isArray(json.subjectCategoryRollups) && json.subjectCategoryRollups.length > 0;
-        if (hasBundleRollups) {
-          applyCountsPayload(json);
-        } else if (json.categoryCounts && typeof json.categoryCounts === 'object') {
-          setApiCategoryCounts(json.categoryCounts);
-        }
-        if (hasBundleRollups) {
+        applyCountsPayload(json);
+        if (Array.isArray(json.subjectCategoryRollups)) {
           setApiSubjectRollups(json.subjectCategoryRollups);
-        } else {
-          const fromCounts = await fetchReportCountsFromApi(seq);
-          if (!fromCounts && !applyBootstrapStatsFallback()) {
-            setApiSubjectRollups([]);
-          }
         }
-        if (typeof json.totalWithoutCategoryFilter === 'number' && json.totalWithoutCategoryFilter > 0) {
+        if (typeof json.totalWithoutCategoryFilter === 'number') {
           setApiTotalWithoutCategory(json.totalWithoutCategoryFilter);
-        } else if (hasBundleRollups) {
-          setApiTotalWithoutCategory(json.totalWithoutCategoryFilter ?? 0);
         }
         setLastRefreshed(new Date().toLocaleTimeString());
         if (seq === fetchSeqRef.current) setFetchError(null);
@@ -1673,13 +1659,13 @@ export default function InspectionReportsView({
     embedMode,
     applyBootstrapStatsFallback,
     applyCountsPayload,
-    fetchReportCountsFromApi,
   ]);
 
-  // Hydrate abstract/category stats from bootstrap (dashboard parity) until API Apply returns.
+  // Hydrate abstract/category stats from bootstrap until the reports API returns.
   useEffect(() => {
+    if (fetchedWorks !== null) return;
     applyBootstrapStatsFallback();
-  }, [state.inspectionWorkStats, applyBootstrapStatsFallback]);
+  }, [state.inspectionWorkStats, applyBootstrapStatsFallback, fetchedWorks]);
 
   const applyFiltersAndLoad = React.useCallback((opts?: { refreshRemote?: boolean }) => {
     if (opts?.refreshRemote) refreshRemoteOnFetchRef.current = true;
@@ -1749,7 +1735,6 @@ export default function InspectionReportsView({
 
     if (embedMode) {
       queueMicrotask(() => applyBootstrapStatsFallback());
-      return;
     }
     queueMicrotask(() => applyFiltersAndLoad());
   }, [
@@ -1765,10 +1750,17 @@ export default function InspectionReportsView({
     applyBootstrapStatsFallback,
   ]);
 
-  // Reset pages to 1 when filters change
+  // Reset pages and reload when filters change (debounced so cascading dropdowns settle).
+  const filterLoadSkipRef = React.useRef(true);
   useEffect(() => {
     setAbstractPage(1);
     setDetailedPage(1);
+    if (filterLoadSkipRef.current) {
+      filterLoadSkipRef.current = false;
+      return;
+    }
+    const t = window.setTimeout(() => applyFiltersAndLoad(), 400);
+    return () => window.clearTimeout(t);
   }, [
     selectedSubjectId,
     selectedCategoryId,
@@ -1782,12 +1774,14 @@ export default function InspectionReportsView({
     searchQuery,
     adminFilterFieldId,
     adminFilterValue,
+    embedMode,
+    applyFiltersAndLoad,
   ]);
 
   // Rows from API (primary filters server-side) + client guard for dynamic field filter/columns
   const filteredWorks = useMemo(() => {
     let list = rawWorks;
-    if (adminFilterFieldId) {
+    if (adminFilterFieldId && !worksFromApi) {
       const q = (adminFilterValue || '').toLowerCase().trim();
       list = list.filter((w: any) => {
         const val = getWorkDynamicFieldValue(w, adminFilterFieldId, state.inspectionFields || []);
@@ -1798,15 +1792,6 @@ export default function InspectionReportsView({
         if (q === 'no' || q === 'இல்லை') return vStr === 'no' || vStr === 'இல்லை';
         return vStr.includes(q);
       });
-    }
-
-    if (
-      worksFromApi &&
-      detailedSortField === 'submittedAt' &&
-      detailedSortDirection === 'desc' &&
-      !adminFilterFieldId
-    ) {
-      return list;
     }
 
     const sorted = [...list].sort((a: any, b: any) => {
@@ -1892,7 +1877,7 @@ export default function InspectionReportsView({
 
   // Paginated detailed works (server page when loaded from API)
   const paginatedDetailedWorks = useMemo(() => {
-    if (worksFromApi && apiWorksTotal > 0) return filteredWorks;
+    if (worksFromApi) return filteredWorks;
     const startIndex = (detailedPage - 1) * 50;
     return filteredWorks.slice(startIndex, startIndex + 50);
   }, [filteredWorks, detailedPage, worksFromApi, apiWorksTotal]);
@@ -2300,9 +2285,32 @@ export default function InspectionReportsView({
       }));
   }, [editingWork, editingTpWardsAndStreets]);
 
+  const filterMasters = useMemo(
+    () => ({
+      inspectionSubjects: state.inspectionSubjects || [],
+      inspectionCategories: state.inspectionCategories || [],
+    }),
+    [state.inspectionSubjects, state.inspectionCategories]
+  );
+
+  const filteredApiSubjectRollups = useMemo(() => {
+    let rows = apiSubjectRollups;
+    if (selectedSubjectId !== 'all') {
+      rows = rows.filter((row) =>
+        workMatchesSubject({ subjectId: row.subjectId }, selectedSubjectId, filterMasters)
+      );
+    }
+    if (selectedCategoryId !== 'all') {
+      rows = rows.filter((row) =>
+        workMatchesCategory({ categoryId: row.categoryId }, selectedCategoryId, filterMasters)
+      );
+    }
+    return rows;
+  }, [apiSubjectRollups, selectedSubjectId, selectedCategoryId, filterMasters]);
+
   // Abstract calculations
   const abstractData = useMemo(() => {
-    if (apiSubjectRollups.length > 0) {
+    if (filteredApiSubjectRollups.length > 0) {
       const subjectsMap: Record<string, {
         subjectId: string;
         subjectNameEn: string;
@@ -2319,7 +2327,7 @@ export default function InspectionReportsView({
         }>;
       }> = {};
 
-      for (const row of apiSubjectRollups) {
+      for (const row of filteredApiSubjectRollups) {
         const sId = row.subjectId || 'unknown';
         const cId = row.categoryId || 'unknown';
         const subj = (state.inspectionSubjects || []).find((s: any) => s.id === sId || s.code === sId);
@@ -2419,12 +2427,12 @@ export default function InspectionReportsView({
     });
 
     return Object.values(subjectsMap);
-  }, [filteredWorks, apiSubjectRollups, state.inspectionSubjects, state.inspectionCategories]);
+  }, [filteredWorks, filteredApiSubjectRollups, state.inspectionSubjects, state.inspectionCategories]);
 
   // Subject-wise grouping calculations
   const subjectWiseData = useMemo(() => {
-    if (apiSubjectRollups.length > 0) {
-      return apiSubjectRollups.map((row) => {
+    if (filteredApiSubjectRollups.length > 0) {
+      return filteredApiSubjectRollups.map((row) => {
         const sId = row.subjectId || 'unknown';
         const cId = row.categoryId || 'unknown';
         const subj = (state.inspectionSubjects || []).find((s: any) => s.id === sId || s.code === sId);
@@ -2481,7 +2489,7 @@ export default function InspectionReportsView({
     });
 
     return Object.values(groups);
-  }, [filteredWorks, worksFromApi, apiSubjectRollups, state.inspectionSubjects, state.inspectionCategories]);
+  }, [filteredWorks, worksFromApi, filteredApiSubjectRollups, state.inspectionSubjects, state.inspectionCategories]);
 
   // User-wise grouping calculations
   const userWiseData = useMemo(() => {
@@ -5160,9 +5168,11 @@ export default function InspectionReportsView({
                   if (fromDate === today && toDate === today) {
                     setFromDate('');
                     setToDate('');
+                    queueMicrotask(() => applyFiltersAndLoad());
                   } else {
                     setFromDate(today);
                     setToDate(today);
+                    queueMicrotask(() => applyFiltersAndLoad());
                   }
                 }}
                 className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
@@ -6307,8 +6317,8 @@ export default function InspectionReportsView({
             <div className="flex items-center justify-between p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
               <span className="text-xs font-bold text-slate-500">
                 {lang === 'ta'
-                  ? `பக்கம் ${detailedPage} / ${detailedTotalPages} (மொத்தம் ${filteredWorks.length} வரிசைகள்)`
-                  : `Page ${detailedPage} of ${detailedTotalPages} (Total ${filteredWorks.length} rows)`}
+                  ? `பக்கம் ${detailedPage} / ${detailedTotalPages} (மொத்தம் ${worksFromApi && apiWorksTotal > 0 ? apiWorksTotal : filteredWorks.length} வரிசைகள்)`
+                  : `Page ${detailedPage} of ${detailedTotalPages} (Total ${worksFromApi && apiWorksTotal > 0 ? apiWorksTotal : filteredWorks.length} rows)`}
               </span>
               <div className="flex items-center gap-2">
                 <button

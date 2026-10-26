@@ -1251,6 +1251,24 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
       db.collection('inspectionWorks').createIndex({ submittedDateYmd: -1, tpId: 1, categoryId: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ submittedDateYmd: -1, districtId: 1, subjectId: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ submittedDateYmd: -1, zoneId: 1 }, { background: true }),
+      db.collection('inspectionWorks').createIndex(
+        { submittedDateYmd: -1, submittedAt: -1, workId: -1 },
+        { background: true }
+      ),
+      db.collection('inspectionWorks').createIndex(
+        { submittedDateYmd: -1, tpId: 1, submittedAt: -1, workId: -1 },
+        { background: true }
+      ),
+      db.collection('inspectionWorks').createIndex({ streetName: 1, submittedDateYmd: -1 }, { background: true }),
+      db.collection('inspectionWorkReportRollups').createIndex(
+        { submittedDateYmd: 1, tpId: 1, subjectId: 1, categoryId: 1 },
+        { background: true }
+      ),
+      db.collection('inspectionWorkReportRollups').createIndex(
+        { submittedDateYmd: 1, districtId: 1, subjectId: 1 },
+        { background: true }
+      ),
+      db.collection('inspectionWorkReportRollups').createIndex({ submittedDateYmd: 1, zoneId: 1 }, { background: true }),
       db.collection('user_activity').createIndex({ username: 1, status: 1 }, { background: true }),
       db.collection('user_activity').createIndex({ userId: 1, status: 1 }, { background: true }),
       db.collection('user_activity').createIndex({ status: 1 }, { background: true }),
@@ -1438,6 +1456,7 @@ export async function getCollectionWithAliases(db: Db, key: string) {
     const aliasesMap: Record<string, string[]> = {
       inspectionUsers: ['inspection_users', 'inspectionEmployees', 'inspection_employees', 'field_users', 'inspectionusers'],
       inspectionWorks: ['inspection_works', 'inspections', 'inspectionworks', 'works'],
+      inspectionWorkReportRollups: ['inspection_work_report_rollups', 'inspectionworkreportrollups', 'report_rollups'],
       townPanchayats: ['town_panchayats', 'townpanchayats', 'panchayats', 'tps'],
       districts: ['districts_master', 'districts_list'],
       zones: ['zones_master', 'zones_list'],
@@ -3553,7 +3572,9 @@ export function generateUserWorkId(username: string, dateObj: Date = new Date())
   const ss = getPart('second');
 
   const dateTimeStr = `${dd}${mm}${yy}${hh}${min}${ss}`;
-  return `WRK-${cleanUser}-${dateTimeStr}`;
+  const ms = String(dateObj.getMilliseconds()).padStart(3, '0');
+  const rand = Math.random().toString(36).slice(2, 5).toUpperCase();
+  return `WRK-${cleanUser}-${dateTimeStr}${ms}${rand}`;
 }
 
 // Backwards-compatible getNextWorkId
@@ -3704,35 +3725,100 @@ export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}
   return [];
 }
 
-// Find an existing inspection work by client id or workId to ensure idempotency and prevent duplicate work IDs
-export async function findExistingInspectionWork(id?: string, workId?: string): Promise<any | null> {
-  if (!id && !workId) return null;
+/** Same mobile submission retried — match **client uuid only** (not workId). */
+export async function findInspectionWorkByClientId(id?: string): Promise<any | null> {
+  if (!id) return null;
   try {
     const client = await getMongoClient();
     if (client) {
       const db = await getActiveMongoDb(client);
       const col = await getCollectionWithAliases(db, 'inspectionWorks');
-      const conditions: any[] = [];
-      if (id) conditions.push({ id });
-      if (workId) conditions.push({ workId });
-      
-      const query = conditions.length === 1 ? conditions[0] : { $or: conditions };
-      const found = await col.findOne(query);
+      const found = await col.findOne({ id });
       if (found) return found;
     }
   } catch (e: any) {
-    console.warn('Error querying MongoDB for existing work:', e?.message || e);
+    console.warn('Error querying MongoDB for existing work by client id:', e?.message || e);
   }
 
-  // Fallback to local db cache
   try {
     const localDb = readLocalDb();
     const works = Array.isArray(localDb.inspectionWorks) ? localDb.inspectionWorks : [];
-    const found = works.find((w: any) => (id && w.id === id) || (workId && w.workId === workId));
+    const found = works.find((w: any) => w.id === id);
     if (found) return found;
   } catch (_) {}
 
   return null;
+}
+
+export async function findInspectionWorkByWorkId(workId?: string): Promise<any | null> {
+  if (!workId) return null;
+  try {
+    const client = await getMongoClient();
+    if (client) {
+      const db = await getActiveMongoDb(client);
+      const col = await getCollectionWithAliases(db, 'inspectionWorks');
+      const found = await col.findOne({ workId });
+      if (found) return found;
+    }
+  } catch (e: any) {
+    console.warn('Error querying MongoDB for existing work by workId:', e?.message || e);
+  }
+  return null;
+}
+
+/** @deprecated Use findInspectionWorkByClientId — workId lookup caused duplicate/merge issues. */
+export async function findExistingInspectionWork(id?: string, _workId?: string): Promise<any | null> {
+  return findInspectionWorkByClientId(id);
+}
+
+function normalizeAssignedWorkId(workId: string): string {
+  if (workId.toUpperCase().startsWith('TP01-') || workId.toUpperCase().startsWith('TP-') || workId.toUpperCase().startsWith('TP')) {
+    return workId.replace(/^TP01-/i, 'WRK-').replace(/^TP-/i, 'WRK-').replace(/^TP/i, 'WRK-');
+  }
+  return workId;
+}
+
+/** One WRK- id per new submission; same client id = update retry only. */
+export async function resolveInspectionWorkIdentity(
+  recordId: string,
+  incomingWorkId: string | undefined | null,
+  username: string,
+  dataUserSequence?: number
+): Promise<
+  | { ok: true; workId: string; userSeq: number; existing: any | null }
+  | { ok: false; message: string }
+> {
+  const existingByClient = await findInspectionWorkByClientId(recordId);
+  if (existingByClient) {
+    let workId =
+      existingByClient.workId ||
+      (incomingWorkId && String(incomingWorkId).startsWith('WRK-') ? String(incomingWorkId) : '') ||
+      generateUserWorkId(username, new Date());
+    workId = normalizeAssignedWorkId(workId);
+    const userSeq = existingByClient.userSequence || (await getNextUserInspectionSeq(username));
+    return { ok: true, workId, userSeq, existing: existingByClient };
+  }
+
+  const proposed = String(incomingWorkId || '').trim();
+  if (proposed.startsWith('WRK-')) {
+    const taken = await findInspectionWorkByWorkId(proposed);
+    if (taken && taken.id !== recordId) {
+      return { ok: false, message: `Work ID already exists: ${proposed}` };
+    }
+    const userSeq = dataUserSequence || (await getNextUserInspectionSeq(username));
+    return { ok: true, workId: proposed, userSeq, existing: null };
+  }
+
+  const userSeq = dataUserSequence || (await getNextUserInspectionSeq(username));
+  let workId = generateUserWorkId(username, new Date());
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const taken = await findInspectionWorkByWorkId(workId);
+    if (!taken || taken.id === recordId) {
+      return { ok: true, workId, userSeq, existing: null };
+    }
+    workId = `${generateUserWorkId(username, new Date())}${userSeq}${attempt}`;
+  }
+  return { ok: true, workId: `${generateUserWorkId(username, new Date())}${userSeq}`, userSeq, existing: null };
 }
 
 // Save a single inspection work atomically to MongoDB and local cache
@@ -3740,17 +3826,47 @@ export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
   let mongoSaved = false;
   const { attachInspectionWorkReportIndexFields } = await import('@/lib/inspectionWorkReportIndex');
   const indexedWork = attachInspectionWorkReportIndexFields(newWork);
+  let previousWork: any | null = null;
   try {
     const client = await getMongoClient();
     if (client) {
       const db = await getActiveMongoDb(client);
       const col = await getCollectionWithAliases(db, 'inspectionWorks');
-      const filter = indexedWork.id ? { id: indexedWork.id } : { workId: indexedWork.workId };
-      await col.updateOne(
-        filter,
-        { $set: indexedWork },
-        { upsert: true }
-      );
+      const identityFilter = indexedWork.id
+        ? { id: indexedWork.id }
+        : indexedWork.workId
+          ? { workId: indexedWork.workId }
+          : null;
+      if (identityFilter) {
+        previousWork = await col.findOne(identityFilter, {
+          projection: {
+            submittedDateYmd: 1,
+            zoneId: 1,
+            districtId: 1,
+            tpId: 1,
+            townPanchayatId: 1,
+            wardNumber: 1,
+            wardNo: 1,
+            ward: 1,
+            submittedByUserName: 1,
+            username: 1,
+            subjectId: 1,
+            categoryId: 1,
+            submittedAt: 1,
+            createdAt: 1,
+            date: 1,
+            subjectNameEn: 1,
+            categoryNameEn: 1,
+          },
+        });
+      }
+      if (indexedWork.id) {
+        await col.updateOne({ id: indexedWork.id }, { $set: indexedWork }, { upsert: true });
+      } else if (indexedWork.workId) {
+        await col.updateOne({ workId: indexedWork.workId }, { $set: indexedWork }, { upsert: true });
+      } else {
+        await col.insertOne(indexedWork);
+      }
       mongoSaved = true;
     }
   } catch (e: any) {
@@ -3782,6 +3898,12 @@ export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
   if (mongoSaved) {
     invalidateInspectionDashboardStatsCache();
     void import('@/lib/inspectionWorksLiteLoader').then((m) => m.invalidateInspectionWorksLiteCache());
+    try {
+      const { syncInspectionWorkReportRollupOnSave } = await import('@/lib/inspectionWorkReportRollups');
+      await syncInspectionWorkReportRollupOnSave(previousWork, indexedWork);
+    } catch (err) {
+      console.warn('Failed to sync inspection work report rollup:', err);
+    }
   }
 
   return mongoSaved;

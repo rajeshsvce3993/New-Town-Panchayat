@@ -42,6 +42,9 @@ function padCode(code: string | undefined | null): string {
 }
 
 function workSubmittedYmd(w: any): string | null {
+  if (w?.submittedDateYmd && /^\d{4}-\d{2}-\d{2}$/.test(String(w.submittedDateYmd))) {
+    return String(w.submittedDateYmd);
+  }
   return extractCalendarDateYMD(
     w.submittedAt ||
       w.createdAt ||
@@ -552,7 +555,7 @@ export function filterInspectionWorksPostMongo(
   if (fromDate || toDate) {
     list = list.filter((w) => {
       const itemYmd = workSubmittedYmd(w);
-      if (!itemYmd) return true;
+      if (!itemYmd) return false;
       if (fromDate && itemYmd < fromDate) return false;
       if (toDate && itemYmd > toDate) return false;
       return true;
