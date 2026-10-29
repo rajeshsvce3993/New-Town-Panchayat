@@ -63,8 +63,12 @@ import {
   getWorkDynamicFieldValue,
   storedValueMatchesAdminFilter,
   isFallbackInspectionWork,
+  collapseDimensionRollupsToSubjectCategory,
   workMatchesCategory,
+  workMatchesDistrict,
   workMatchesSubject,
+  workMatchesTp,
+  workMatchesZone,
   type InspectionWorkReportDimensionRollup,
 } from '@/lib/inspectionWorksQueryFilters';
 import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
@@ -1076,6 +1080,11 @@ export default function InspectionReportsView({
   const [slideLang, setSlideLang] = useState<'ta' | 'en'>(lang);
   const [isSlideDownloading, setIsSlideDownloading] = useState(false);
   const slideContainerRef = useRef<HTMLDivElement | null>(null);
+  const slidePageCacheRef = useRef<Map<number, any[]>>(new Map());
+  const slideCacheGenRef = useRef(0);
+  const lastSlideWorkRef = useRef<any>(null);
+  const [slideCacheTick, setSlideCacheTick] = useState(0);
+  const [slideWorkFields, setSlideWorkFields] = useState<any | null>(null);
 
   // Sync slideLang with main lang prop
   useEffect(() => {
@@ -1239,6 +1248,8 @@ export default function InspectionReportsView({
   }, [currentUser]);
 
   const [isExportingZip, setIsExportingZip] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const isExportingExcelRef = React.useRef(false);
   const [exportStatusText, setExportStatusText] = useState('');
 
   const isFetchingRef = React.useRef(false);
@@ -1500,9 +1511,27 @@ export default function InspectionReportsView({
       if (p.fromDate) qParams.set('fromDate', p.fromDate);
       if (p.toDate) qParams.set('toDate', p.toDate);
       if (!p.fromDate && !p.toDate) qParams.set('allTime', '1');
-      if (p.selectedTpId && p.selectedTpId !== 'all') qParams.set('tpId', p.selectedTpId);
-      if (p.selectedDistrictId && p.selectedDistrictId !== 'all') qParams.set('districtId', p.selectedDistrictId);
-      if (p.selectedZoneId && p.selectedZoneId !== 'all') qParams.set('zoneId', p.selectedZoneId);
+      if (p.selectedTpId && p.selectedTpId !== 'all') {
+        qParams.set('tpId', p.selectedTpId);
+        const tp = (state.townPanchayats || []).find(
+          (t: any) => String(t.id || '').toLowerCase() === String(p.selectedTpId).toLowerCase()
+        );
+        if (tp?.nameEn) qParams.set('tpNameEn', String(tp.nameEn));
+      }
+      if (p.selectedDistrictId && p.selectedDistrictId !== 'all') {
+        qParams.set('districtId', p.selectedDistrictId);
+        const dist = (state.districts || []).find(
+          (d: any) => String(d.id || '').toLowerCase() === String(p.selectedDistrictId).toLowerCase()
+        );
+        if (dist?.nameEn) qParams.set('districtNameEn', String(dist.nameEn));
+      }
+      if (p.selectedZoneId && p.selectedZoneId !== 'all') {
+        qParams.set('zoneId', p.selectedZoneId);
+        const zone = (state.zones || []).find(
+          (z: any) => String(z.id || '').toLowerCase() === String(p.selectedZoneId).toLowerCase()
+        );
+        if (zone?.nameEn) qParams.set('zoneNameEn', String(zone.nameEn));
+      }
       if (p.selectedWard && p.selectedWard !== 'all') qParams.set('ward', p.selectedWard);
       if (p.selectedSubjectId && p.selectedSubjectId !== 'all') qParams.set('subjectId', p.selectedSubjectId);
       if (p.selectedCategoryId && p.selectedCategoryId !== 'all') qParams.set('categoryId', p.selectedCategoryId);
@@ -1534,7 +1563,7 @@ export default function InspectionReportsView({
       }
       return qParams;
     },
-    [isAdminOrDirector]
+    [isAdminOrDirector, state.townPanchayats, state.districts, state.zones]
   );
 
   const applyCountsPayload = React.useCallback((json: any) => {
@@ -1657,6 +1686,27 @@ export default function InspectionReportsView({
       }
     },
     [buildInspectionWorksQueryParams, lang]
+  );
+
+  const fetchRowsOnlyPage = React.useCallback(
+    async (page: number, pageSize: number) => {
+      const res = await fetch(
+        `/api/inspection-works?${buildInspectionWorksQueryParams({
+          rowsOnly: true,
+          page,
+          pageSize,
+        }).toString()}`,
+        { cache: 'no-store' }
+      );
+      const json = await res.json().catch(() => ({}));
+      const works = extractWorksFromInspectionApiPayload(json);
+      return {
+        ok: res.ok && json.success !== false,
+        works: Array.isArray(works) ? works : [],
+        total: typeof json.total === 'number' ? json.total : (Array.isArray(works) ? works.length : 0),
+      };
+    },
+    [buildInspectionWorksQueryParams]
   );
 
   const requestInspectionWorks = React.useCallback(async () => {
@@ -1837,9 +1887,29 @@ export default function InspectionReportsView({
     applyFiltersAndLoad,
   ]);
 
+  const filterMasters = useMemo(
+    () => ({
+      inspectionSubjects: state.inspectionSubjects || [],
+      inspectionCategories: state.inspectionCategories || [],
+      zones: state.zones || [],
+      districts: state.districts || [],
+      townPanchayats: state.townPanchayats || [],
+    }),
+    [state.inspectionSubjects, state.inspectionCategories, state.zones, state.districts, state.townPanchayats]
+  );
+
   // Rows from API (primary filters server-side) + client guard for dynamic field filter/columns
   const filteredWorks = useMemo(() => {
     let list = rawWorks;
+    if (selectedZoneId && selectedZoneId !== 'all') {
+      list = list.filter((w: any) => workMatchesZone(w, selectedZoneId, filterMasters));
+    }
+    if (selectedDistrictId && selectedDistrictId !== 'all') {
+      list = list.filter((w: any) => workMatchesDistrict(w, selectedDistrictId, filterMasters));
+    }
+    if (selectedTpId && selectedTpId !== 'all') {
+      list = list.filter((w: any) => workMatchesTp(w, selectedTpId, filterMasters));
+    }
     if (adminFilterFieldId && !worksFromApi) {
       list = list.filter((w: any) => {
         const val = getWorkDynamicFieldValue(w, adminFilterFieldId, state.inspectionFields || []);
@@ -1901,6 +1971,10 @@ export default function InspectionReportsView({
   }, [
     rawWorks,
     worksFromApi,
+    selectedZoneId,
+    selectedDistrictId,
+    selectedTpId,
+    filterMasters,
     adminFilterFieldId,
     adminFilterValue,
     state.inspectionFields,
@@ -1948,9 +2022,6 @@ export default function InspectionReportsView({
     return Math.ceil(filteredWorks.length / 50) || 1;
   }, [worksFromApi, apiWorksTotal, filteredWorks.length]);
 
-  // Currently active work for the Fullscreen Detailed Slideview
-  const currentSlideWork = filteredWorks[detailedSlideIndex] || filteredWorks[0] || null;
-
   // Zones available from state, filtered by user scope
   const filteredZones = useMemo(() => {
     const list = state.zones || [];
@@ -1979,13 +2050,26 @@ export default function InspectionReportsView({
     const effZoneId = userZoneId || selectedZoneId;
     if (effZoneId && effZoneId !== 'all') {
       const sZone = String(effZoneId).toLowerCase();
-      list = list.filter((d: any) => 
-        String(d.zoneId || '').toLowerCase() === sZone ||
-        String(d.zoneNameEn || '').toLowerCase() === sZone
+      const zone = (state.zones || []).find(
+        (z: any) =>
+          String(z.id || '').toLowerCase() === sZone ||
+          String(z.nameEn || '').toLowerCase() === sZone ||
+          String(z.nameTa || '').toLowerCase() === sZone ||
+          String(z.code || '').toLowerCase() === sZone
       );
+      const zoneKeys = new Set(
+        [sZone, zone?.id, zone?.nameEn, zone?.nameTa, zone?.code]
+          .filter(Boolean)
+          .map((v) => String(v).toLowerCase())
+      );
+      list = list.filter((d: any) => {
+        const dZone = String(d.zoneId || '').toLowerCase();
+        const dZoneName = String(d.zoneNameEn || '').toLowerCase();
+        return (dZone && zoneKeys.has(dZone)) || (dZoneName && zoneKeys.has(dZoneName));
+      });
     }
     return list;
-  }, [state.districts, selectedZoneId, userZoneId, userDistrictId]);
+  }, [state.districts, state.zones, selectedZoneId, userZoneId, userDistrictId]);
 
   // Town Panchayats available from state, filtered by selected district and zone and restricted by scope
   const availableTownPanchayats = useMemo(() => {
@@ -2024,20 +2108,35 @@ export default function InspectionReportsView({
       const effZoneId = userZoneId || selectedZoneId;
       if (effZoneId && effZoneId !== 'all') {
         const sZone = String(effZoneId).toLowerCase();
+        const zone = (state.zones || []).find(
+          (z: any) =>
+            String(z.id || '').toLowerCase() === sZone ||
+            String(z.nameEn || '').toLowerCase() === sZone ||
+            String(z.nameTa || '').toLowerCase() === sZone ||
+            String(z.code || '').toLowerCase() === sZone
+        );
+        const zoneKeys = new Set(
+          [sZone, zone?.id, zone?.nameEn, zone?.nameTa, zone?.code]
+            .filter(Boolean)
+            .map((v) => String(v).toLowerCase())
+        );
         list = list.filter((tp: any) => {
+          const tpZone = String(tp.zoneId || '').toLowerCase();
+          const tpZoneName = String(tp.zoneNameEn || '').toLowerCase();
+          if ((tpZone && zoneKeys.has(tpZone)) || (tpZoneName && zoneKeys.has(tpZoneName))) return true;
           const dist = (state.districts || []).find((d: any) => 
             String(d.id).toLowerCase() === String(tp.districtId || '').toLowerCase() ||
             String(d.nameEn || '').toLowerCase() === String(tp.districtNameEn || '').toLowerCase()
           );
-          return dist && (
-            String(dist.zoneId || '').toLowerCase() === sZone || 
-            String(dist.zoneNameEn || '').toLowerCase() === sZone
-          );
+          if (!dist) return false;
+          const dZone = String(dist.zoneId || '').toLowerCase();
+          const dZoneName = String(dist.zoneNameEn || '').toLowerCase();
+          return (dZone && zoneKeys.has(dZone)) || (dZoneName && zoneKeys.has(dZoneName));
         });
       }
     }
     return list;
-  }, [state.townPanchayats, state.districts, selectedDistrictId, selectedZoneId, userZoneId, userTpId]);
+  }, [state.townPanchayats, state.districts, state.zones, selectedDistrictId, selectedZoneId, userZoneId, userTpId]);
 
   // Wards available from state, filtered strictly by selected town panchayat if applicable
   const availableWards = useMemo(() => {
@@ -2371,15 +2470,47 @@ export default function InspectionReportsView({
       }));
   }, [editingWork, editingTpWardsAndStreets]);
 
-  const filterMasters = useMemo(
-    () => ({
-      inspectionSubjects: state.inspectionSubjects || [],
-      inspectionCategories: state.inspectionCategories || [],
-    }),
-    [state.inspectionSubjects, state.inspectionCategories]
-  );
+  const filteredApiDimensionRollups = useMemo(() => {
+    let rows = apiDimensionRollups;
+    if (selectedZoneId !== 'all') {
+      rows = rows.filter((row) => workMatchesZone(row, selectedZoneId, filterMasters));
+    }
+    if (selectedDistrictId !== 'all') {
+      rows = rows.filter((row) => workMatchesDistrict(row, selectedDistrictId, filterMasters));
+    }
+    if (selectedTpId !== 'all') {
+      rows = rows.filter((row) => workMatchesTp(row, selectedTpId, filterMasters));
+    }
+    if (selectedSubjectId !== 'all') {
+      rows = rows.filter((row) =>
+        workMatchesSubject({ subjectId: row.subjectId }, selectedSubjectId, filterMasters)
+      );
+    }
+    if (selectedCategoryId !== 'all') {
+      rows = rows.filter((row) =>
+        workMatchesCategory({ categoryId: row.categoryId }, selectedCategoryId, filterMasters)
+      );
+    }
+    return rows;
+  }, [
+    apiDimensionRollups,
+    selectedZoneId,
+    selectedDistrictId,
+    selectedTpId,
+    selectedSubjectId,
+    selectedCategoryId,
+    filterMasters,
+  ]);
+
+  const hasGeoFilter =
+    (selectedZoneId && selectedZoneId !== 'all') ||
+    (selectedDistrictId && selectedDistrictId !== 'all') ||
+    (selectedTpId && selectedTpId !== 'all');
 
   const filteredApiSubjectRollups = useMemo(() => {
+    if (hasGeoFilter) {
+      return collapseDimensionRollupsToSubjectCategory(filteredApiDimensionRollups);
+    }
     let rows = apiSubjectRollups;
     if (selectedSubjectId !== 'all') {
       rows = rows.filter((row) =>
@@ -2392,26 +2523,98 @@ export default function InspectionReportsView({
       );
     }
     return rows;
-  }, [apiSubjectRollups, selectedSubjectId, selectedCategoryId, filterMasters]);
+  }, [
+    hasGeoFilter,
+    filteredApiDimensionRollups,
+    apiSubjectRollups,
+    selectedSubjectId,
+    selectedCategoryId,
+    filterMasters,
+  ]);
 
-  const filteredApiDimensionRollups = useMemo(() => {
-    let rows = apiDimensionRollups;
-    if (selectedSubjectId !== 'all') {
-      rows = rows.filter((row) =>
-        workMatchesSubject({ subjectId: row.subjectId }, selectedSubjectId, filterMasters)
-      );
-    }
-    if (selectedCategoryId !== 'all') {
-      rows = rows.filter((row) =>
-        workMatchesCategory({ categoryId: row.categoryId }, selectedCategoryId, filterMasters)
-      );
-    }
-    return rows;
-  }, [apiDimensionRollups, selectedSubjectId, selectedCategoryId, filterMasters]);
+  const filteredWorksTotal = hasGeoFilter
+    ? filteredApiDimensionRollups.reduce((sum, row) => sum + (row.count || 0), 0)
+    : worksFromApi
+      ? apiWorksTotal
+      : filteredWorks.length;
 
-  const filteredWorksTotal = worksFromApi
-    ? apiWorksTotal
+  const slideRecordTotal = worksFromApi
+    ? Math.max(Number(filteredWorksTotal) || 0, Number(apiWorksTotal) || 0, filteredWorks.length)
     : filteredWorks.length;
+
+  const fetchAllFilteredWorksForExport = React.useCallback(async () => {
+    if (!worksFromApi) return filteredWorks;
+    const pageSize = REPORTS_SERVER_PAGE_SIZE;
+    const maxRows = 50000;
+    const all: any[] = [];
+    let page = 1;
+    let total = Math.max(slideRecordTotal, 1);
+    while (all.length < maxRows) {
+      const loaded = await fetchRowsOnlyPage(page, pageSize);
+      if (!loaded.ok) break;
+      if (loaded.total > 0) total = loaded.total;
+      if (!loaded.works.length) break;
+      all.push(...loaded.works);
+      if (all.length >= total || loaded.works.length < pageSize) break;
+      page += 1;
+    }
+    return all;
+  }, [worksFromApi, filteredWorks, slideRecordTotal, fetchRowsOnlyPage]);
+
+  const currentSlideWork = useMemo(() => {
+    const pageSize = REPORTS_SERVER_PAGE_SIZE;
+    let work: any = null;
+    if (!worksFromApi) {
+      work = filteredWorks[detailedSlideIndex] || filteredWorks[0] || null;
+    } else {
+      const page = Math.floor(detailedSlideIndex / pageSize) + 1;
+      const local = detailedSlideIndex % pageSize;
+      const cached = slidePageCacheRef.current.get(page);
+      work = cached?.[local];
+      if (!work && page === detailedPage) work = filteredWorks[local];
+      if (!work) work = filteredWorks[local] || null;
+    }
+    if (
+      work &&
+      slideWorkFields &&
+      (slideWorkFields.id === work.id || slideWorkFields.workId === work.workId) &&
+      slideWorkFields.fieldsData
+    ) {
+      work = { ...work, fieldsData: slideWorkFields.fieldsData };
+    }
+    if (work) lastSlideWorkRef.current = work;
+    return work || lastSlideWorkRef.current;
+  }, [
+    worksFromApi,
+    filteredWorks,
+    detailedSlideIndex,
+    detailedPage,
+    slideCacheTick,
+    slideWorkFields,
+  ]);
+
+  const openSlideAtGlobalIndex = React.useCallback(
+    (globalIndex: number) => {
+      slideCacheGenRef.current += 1;
+      slidePageCacheRef.current.clear();
+      if (worksFromApi) {
+        slidePageCacheRef.current.set(detailedPage, filteredWorks);
+      }
+      setSlideWorkFields(null);
+      setDetailedSlideIndex(Math.max(0, globalIndex));
+      setIsDetailedSlideOpen(true);
+      setSlideCacheTick((t) => t + 1);
+    },
+    [worksFromApi, detailedPage, filteredWorks]
+  );
+
+  const goToSlideIndex = React.useCallback(
+    (nextIndex: number) => {
+      const max = Math.max(0, slideRecordTotal - 1);
+      setDetailedSlideIndex(Math.min(Math.max(nextIndex, 0), max));
+    },
+    [slideRecordTotal]
+  );
 
   const resolveGeoNames = React.useCallback(
     (
@@ -2425,32 +2628,32 @@ export default function InspectionReportsView({
       const tpName = String(names?.tpNameEn || '').trim();
       const zone = (state.zones || []).find(
         (z: any) =>
+          (zoneName && String(z.nameEn || '') === zoneName) ||
           String(z.id) === zoneId ||
           String(z.code || '') === zoneId ||
-          String(z.nameEn || '') === zoneId ||
-          (zoneName && String(z.nameEn || '') === zoneName)
+          String(z.nameEn || '') === zoneId
       );
       const dist = (state.districts || []).find(
         (d: any) =>
+          (distName && String(d.nameEn || '') === distName) ||
           String(d.id) === districtId ||
           String(d.code || '') === districtId ||
-          String(d.nameEn || '') === districtId ||
-          (distName && String(d.nameEn || '') === distName)
+          String(d.nameEn || '') === districtId
       );
       const tp = (state.townPanchayats || []).find(
         (t: any) =>
+          (tpName && String(t.nameEn || '') === tpName) ||
           String(t.id) === tpId ||
           String(t.code || '') === tpId ||
-          String(t.nameEn || '') === tpId ||
-          (tpName && String(t.nameEn || '') === tpName)
+          String(t.nameEn || '') === tpId
       );
       return {
-        zoneNameEn: zone?.nameEn || zoneName || zoneId || '-',
-        zoneNameTa: zone?.nameTa || zone?.nameEn || zoneName || zoneId || '-',
-        districtNameEn: dist?.nameEn || distName || districtId || '-',
-        districtNameTa: dist?.nameTa || dist?.nameEn || distName || districtId || '-',
-        tpNameEn: tp?.nameEn || tpName || tpId || '-',
-        tpNameTa: tp?.nameTa || tp?.nameEn || tpName || tpId || '-',
+        zoneNameEn: zoneName || zone?.nameEn || zoneId || '-',
+        zoneNameTa: zoneName || zone?.nameTa || zone?.nameEn || zoneId || '-',
+        districtNameEn: distName || dist?.nameEn || districtId || '-',
+        districtNameTa: distName || dist?.nameTa || dist?.nameEn || districtId || '-',
+        tpNameEn: tpName || tp?.nameEn || tpId || '-',
+        tpNameTa: tpName || tp?.nameTa || tp?.nameEn || tpId || '-',
       };
     },
     [state.zones, state.districts, state.townPanchayats]
@@ -4142,8 +4345,12 @@ export default function InspectionReportsView({
   };
 
   // Download Detailed Field Register as Excel with full Tamil/English support
-  const handleExportDetailedExcel = () => {
+  const handleExportDetailedExcel = async () => {
+    if (isExportingExcelRef.current) return;
+    isExportingExcelRef.current = true;
+    setIsExportingExcel(true);
     try {
+      const exportWorks = await fetchAllFilteredWorksForExport();
       const targetCats = selectedCategoryId !== 'all'
         ? (availableCategories || []).filter((c: any) => {
             const sCat = String(selectedCategoryId).trim().toLowerCase();
@@ -4159,7 +4366,7 @@ export default function InspectionReportsView({
         const targetNameTa = String(cat.nameTa || '').trim().toLowerCase();
         const targetCode = String(cat.code || '').trim().toLowerCase();
 
-        const catWorks = filteredWorks.filter(w => {
+        const catWorks = exportWorks.filter(w => {
           const wCat = String(w.categoryId || '').trim().toLowerCase();
           const wCatName = String(w.categoryNameEn || '').trim().toLowerCase();
           const wCatNameTa = String(w.categoryNameTa || '').trim().toLowerCase();
@@ -4244,13 +4451,17 @@ export default function InspectionReportsView({
     } catch (err: any) {
       console.error('Error exporting Detailed Excel:', err);
       alert('Error: ' + err.message);
+    } finally {
+      isExportingExcelRef.current = false;
+      setIsExportingExcel(false);
     }
   };
 
   // Download Detailed Field Register as PDF with native Tamil font support
   const handleExportDetailedPDF = async () => {
     try {
-      if (filteredWorks.length === 0) {
+      const exportWorks = await fetchAllFilteredWorksForExport();
+      if (exportWorks.length === 0) {
         alert(lang === 'ta' ? 'பதிவிறக்கம் செய்ய ஆய்வுகள் எதுவும் இல்லை' : 'No inspection records found');
         return;
       }
@@ -4270,7 +4481,7 @@ export default function InspectionReportsView({
         lang === 'ta' ? 'நிலை' : 'Status'
       ];
 
-      const rows = filteredWorks.map((w, idx) => [
+      const rows = exportWorks.map((w, idx) => [
         idx + 1,
         w.workId || w.id || '',
         formatIndianTime(w.submittedAt),
@@ -4291,7 +4502,7 @@ export default function InspectionReportsView({
         title: lang === 'ta' ? 'கள ஆய்வுப் பதிவேடு (விரிவான அறிக்கை)' : 'Field Inspection Detailed Register',
         subtitle: lang === 'ta' ? 'முழுமையான கள ஆய்வு விவரங்கள் மற்றும் அலுவலர் தகவல்கள்' : 'Comprehensive Inspection Entries with Inspector Details',
         metadata: [
-          { label: lang === 'ta' ? 'மொத்தப் பதிவுகள்' : 'Total Entries', value: String(filteredWorksTotal) },
+          { label: lang === 'ta' ? 'மொத்தப் பதிவுகள்' : 'Total Entries', value: String(exportWorks.length) },
           { label: lang === 'ta' ? 'தேதி வரம்பு' : 'Period', value: `${fromDate} - ${toDate}` },
           { label: lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat', value: selectedTpId === 'all' ? (lang === 'ta' ? 'அனைத்தும்' : 'All') : selectedTpId }
         ],
@@ -4518,16 +4729,16 @@ export default function InspectionReportsView({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isDetailedSlideOpen) return;
       if (e.key === 'ArrowLeft') {
-        setDetailedSlideIndex(prev => Math.max(prev - 1, 0));
+        goToSlideIndex(detailedSlideIndex - 1);
       } else if (e.key === 'ArrowRight') {
-        setDetailedSlideIndex(prev => Math.min(prev + 1, filteredWorks.length - 1));
+        goToSlideIndex(detailedSlideIndex + 1);
       } else if (e.key === 'Escape') {
         setIsDetailedSlideOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDetailedSlideOpen, filteredWorks.length]);
+  }, [isDetailedSlideOpen, detailedSlideIndex, goToSlideIndex]);
 
   // Touch Swipe navigation (swipe left/right) on mobile devices
   const touchStartXRef = useRef<number | null>(null);
@@ -4566,10 +4777,10 @@ export default function InspectionReportsView({
     if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 30) {
       if (deltaX < 0) {
         // Swiped Left -> View Next Slide
-        setDetailedSlideIndex(prev => Math.min(prev + 1, filteredWorks.length - 1));
+        goToSlideIndex(detailedSlideIndex + 1);
       } else {
         // Swiped Right -> View Previous Slide
-        setDetailedSlideIndex(prev => Math.max(prev - 1, 0));
+        goToSlideIndex(detailedSlideIndex - 1);
       }
     }
     touchStartXRef.current = null;
@@ -4645,6 +4856,55 @@ export default function InspectionReportsView({
       }
     });
   }, [isDetailedSlideOpen, detailedSlideIndex, filteredWorks]);
+
+  // Slide-only page cache: walk all filtered records without changing the table page.
+  useEffect(() => {
+    if (!isDetailedSlideOpen || !worksFromApi) return;
+    const pageSize = REPORTS_SERVER_PAGE_SIZE;
+    const page = Math.floor(detailedSlideIndex / pageSize) + 1;
+    const gen = slideCacheGenRef.current;
+    const loadPage = async (targetPage: number) => {
+      if (slidePageCacheRef.current.has(targetPage)) return;
+      const loaded = await fetchRowsOnlyPage(targetPage, pageSize);
+      if (gen !== slideCacheGenRef.current) return;
+      if (loaded.ok && loaded.works.length) {
+        slidePageCacheRef.current.set(targetPage, loaded.works);
+        setSlideCacheTick((t) => t + 1);
+      }
+    };
+    void loadPage(page);
+    const maxPage = Math.max(1, Math.ceil(slideRecordTotal / pageSize));
+    if (page + 1 <= maxPage) void loadPage(page + 1);
+    if (page - 1 >= 1) void loadPage(page - 1);
+  }, [
+    isDetailedSlideOpen,
+    detailedSlideIndex,
+    worksFromApi,
+    slideRecordTotal,
+    fetchRowsOnlyPage,
+  ]);
+
+  useEffect(() => {
+    if (!isDetailedSlideOpen || !currentSlideWork) return;
+    const fd = currentSlideWork.fieldsData;
+    if (fd && typeof fd === 'object' && Object.keys(fd).length > 0) return;
+    const id = currentSlideWork.id || currentSlideWork.workId;
+    if (!id) return;
+    let cancelled = false;
+    fetch(`/api/inspection-works?lookupId=${encodeURIComponent(String(id))}`, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        const work = json?.work;
+        if (work?.fieldsData && typeof work.fieldsData === 'object') {
+          setSlideWorkFields(work);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isDetailedSlideOpen, currentSlideWork]);
 
   // Inspector profile matching for slide view top header
   const slideInspector = useMemo(() => {
@@ -6240,12 +6500,20 @@ export default function InspectionReportsView({
               {/* Download Excel */}
               <button
                 onClick={handleExportDetailedExcel}
-                disabled={filteredWorks.length === 0}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs disabled:opacity-40 border-none"
+                disabled={filteredWorks.length === 0 || isExportingExcel}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs disabled:opacity-40 disabled:cursor-wait border-none"
                 title={selectedCategoryId === 'all' ? (lang === 'ta' ? 'அனைத்து வகைகளும் தனித்தனி தாள்களில் எக்செல் பதிவிறக்கம்' : 'Download Excel with each category in a separate sheet') : (lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட வகைக்கு எக்செல்' : 'Download Excel for selected category')}
               >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>{lang === 'ta' ? 'எக்செல் பதிவிறக்கம்' : 'Download Excel'}</span>
+                {isExportingExcel ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {isExportingExcel
+                    ? (lang === 'ta' ? 'பதிவிறக்குகிறது...' : 'Downloading...')
+                    : (lang === 'ta' ? 'எக்செல் பதிவிறக்கம்' : 'Download Excel')}
+                </span>
               </button>
 
               {/* Download PDF */}
@@ -6293,8 +6561,9 @@ export default function InspectionReportsView({
               {filteredWorks.length > 0 && (
                 <button
                   onClick={() => {
-                    setDetailedSlideIndex(0);
-                    setIsDetailedSlideOpen(true);
+                    openSlideAtGlobalIndex(
+                      worksFromApi ? (detailedPage - 1) * REPORTS_SERVER_PAGE_SIZE : 0
+                    );
                   }}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs border-none"
                   title={lang === 'ta' ? 'விளக்க காட்சி' : 'Slide View'}
@@ -6609,9 +6878,13 @@ export default function InspectionReportsView({
                             {/* Slideview Button */}
                             <button
                               onClick={() => {
-                                const originalIdx = filteredWorks.findIndex(w => (w.id === work.id || w.workId === work.workId));
-                                setDetailedSlideIndex(originalIdx >= 0 ? originalIdx : 0);
-                                setIsDetailedSlideOpen(true);
+                                const localIdx = paginatedDetailedWorks.findIndex(
+                                  (w: any) => w.id === work.id || w.workId === work.workId
+                                );
+                                const globalIdx = worksFromApi
+                                  ? (detailedPage - 1) * REPORTS_SERVER_PAGE_SIZE + Math.max(localIdx, 0)
+                                  : (localIdx >= 0 ? localIdx : 0);
+                                openSlideAtGlobalIndex(globalIdx);
                               }}
                               className="p-1.5 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 hover:bg-indigo-100 transition cursor-pointer"
                               title={lang === 'ta' ? 'விளக்க காட்சி' : 'Open Slide View'}
@@ -7359,11 +7632,11 @@ export default function InspectionReportsView({
               {/* Left: Work index & Nav & Inspector info */}
               <div className="flex items-center gap-2 md:gap-2.5 shrink-0">
                 <span className="bg-indigo-600 text-[11px] font-mono font-bold px-2 py-1 rounded-lg text-white shrink-0">
-                  {detailedSlideIndex + 1} / {filteredWorks.length}
+                  {detailedSlideIndex + 1} / {slideRecordTotal}
                 </span>
                 <div className={`hide-on-export flex items-center rounded-lg p-0.5 border transition-colors duration-200 shrink-0 ${slideTheme === 'light' ? 'bg-slate-100 border-slate-200' : 'bg-slate-800 border-slate-700'}`}>
                   <button
-                    onClick={() => setDetailedSlideIndex(prev => Math.max(prev - 1, 0))}
+                    onClick={() => goToSlideIndex(detailedSlideIndex - 1)}
                     disabled={detailedSlideIndex === 0}
                     className={`p-1 rounded disabled:opacity-30 transition cursor-pointer ${slideTheme === 'light' ? 'hover:bg-slate-200 text-slate-600 hover:text-slate-900' : 'hover:bg-slate-700 text-slate-300 hover:text-white'}`}
                     title={slideLang === 'ta' ? 'முந்தைய பணிப் பதிவு (இடது அம்பு)' : 'PREVIOUS WORK (LEFT ARROW)'}
@@ -7371,8 +7644,8 @@ export default function InspectionReportsView({
                     <ChevronLeft className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => setDetailedSlideIndex(prev => Math.min(prev + 1, filteredWorks.length - 1))}
-                    disabled={detailedSlideIndex === filteredWorks.length - 1}
+                    onClick={() => goToSlideIndex(detailedSlideIndex + 1)}
+                    disabled={detailedSlideIndex >= slideRecordTotal - 1}
                     className={`p-1 rounded disabled:opacity-30 transition cursor-pointer ${slideTheme === 'light' ? 'hover:bg-slate-200 text-slate-600 hover:text-slate-900' : 'hover:bg-slate-700 text-slate-300 hover:text-white'}`}
                     title={slideLang === 'ta' ? 'அடுத்த பணிப் பதிவு (வலது அம்பு)' : 'NEXT WORK (RIGHT ARROW)'}
                   >
@@ -7594,7 +7867,7 @@ export default function InspectionReportsView({
             {/* Mobile swipe helper bar on mobile viewport */}
             <div className="md:hidden flex items-center justify-between px-3 py-1 bg-indigo-950/80 text-[10px] text-indigo-200 border-b border-indigo-900/50 select-none">
               <span>{slideLang === 'ta' ? '👈 👉 இடது/வலது ஸ்வைப் செய்து அடுத்த காட்சியைக் காண்க' : '👈 👉 SWIPE LEFT / RIGHT TO CHANGE SLIDES'}</span>
-              <span className="font-bold">{detailedSlideIndex + 1}/{filteredWorks.length}</span>
+              <span className="font-bold">{detailedSlideIndex + 1}/{slideRecordTotal}</span>
             </div>
 
             {/* Main Content Area: Left 60% Photos / Right 40% Columns & Fields (Responsive Landscape side-by-side) */}
@@ -7816,7 +8089,7 @@ export default function InspectionReportsView({
                 {/* Bottom Navigation Buttons */}
                 <div className={`hide-on-export pt-2.5 flex items-center justify-between gap-3 border-t shrink-0 ${slideTheme === 'light' ? 'border-slate-200' : 'border-slate-800'}`}>
                   <button
-                    onClick={() => setDetailedSlideIndex(prev => Math.max(prev - 1, 0))}
+                    onClick={() => goToSlideIndex(detailedSlideIndex - 1)}
                     disabled={detailedSlideIndex === 0}
                     className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold disabled:opacity-30 transition flex items-center justify-center gap-1 cursor-pointer ${slideTheme === 'light' ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
                   >
@@ -7825,8 +8098,8 @@ export default function InspectionReportsView({
                   </button>
 
                   <button
-                    onClick={() => setDetailedSlideIndex(prev => Math.min(prev + 1, filteredWorks.length - 1))}
-                    disabled={detailedSlideIndex === filteredWorks.length - 1}
+                    onClick={() => goToSlideIndex(detailedSlideIndex + 1)}
+                    disabled={detailedSlideIndex >= slideRecordTotal - 1}
                     className="flex-1 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white disabled:opacity-30 transition flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <span>{slideLang === 'ta' ? 'அடுத்தது' : 'NEXT'}</span>

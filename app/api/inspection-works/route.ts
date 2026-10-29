@@ -21,9 +21,14 @@ import {
 import { enqueueInspectionWork } from '@/lib/serverQueue';
 import { getUserScopeDetails } from '@/lib/userScopeCache';
 import { logServerProcess } from '@/lib/serverLogger';
+import { getAppEnv, logPortalEnvironmentOnce } from '@/lib/appEnvironment';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { invalidateRemoteInspectionWorksCache } from '@/lib/remoteInspectionWorksCache';
-import { buildInspectionWorksViewResponse } from '@/lib/inspectionWorksQueryFilters';
+import {
+  buildInspectionWorksViewResponse,
+  collapseDimensionRollupsToSubjectCategory,
+  rowMatchesRemoteGeoSelection,
+} from '@/lib/inspectionWorksQueryFilters';
 import { resolveInspectionFilterMasters } from '@/lib/inspectionWorksFilterMastersServer';
 import {
   buildInspectionWorksCacheKey,
@@ -61,9 +66,54 @@ export async function OPTIONS() {
 let cachedWorksList: { data: any; timestamp: number; key: string; gen: number } | null = null;
 const WORKS_CACHE_TTL_MS = 120_000; // filtered response cache (raw list cached separately ~15 min)
 
+function applyExactGeoFilterToRemoteReports(
+  remote: any,
+  viewQuery: ReturnType<typeof parseInspectionWorksViewQuery>
+) {
+  if (!viewQuery.zoneId && !viewQuery.districtId && !viewQuery.tpId) return remote;
+  const sel = {
+    zoneId: viewQuery.zoneId,
+    zoneNameEn: viewQuery.zoneNameEn,
+    districtId: viewQuery.districtId,
+    districtNameEn: viewQuery.districtNameEn,
+    tpId: viewQuery.tpId,
+    tpNameEn: viewQuery.tpNameEn,
+  };
+  const next = { ...remote };
+  if (Array.isArray(next.works)) {
+    next.works = next.works.filter((row: any) => rowMatchesRemoteGeoSelection(row, sel));
+  }
+  if (Array.isArray(next.dimensionRollups)) {
+    next.dimensionRollups = next.dimensionRollups.filter((row: any) =>
+      rowMatchesRemoteGeoSelection(row, sel)
+    );
+    next.subjectCategoryRollups = collapseDimensionRollupsToSubjectCategory(next.dimensionRollups);
+    const total = next.dimensionRollups.reduce(
+      (sum: number, row: { count?: number }) => sum + (Number(row.count) || 0),
+      0
+    );
+    next.total = total;
+    next.totalWithoutCategoryFilter = total;
+  } else if (Array.isArray(next.works)) {
+    next.total = next.works.length;
+    next.count = next.works.length;
+  }
+  return next;
+}
+
+function inspectionWorksRequestOrigin(req: NextRequest): string {
+  const forwarded = req.headers.get('x-forwarded-host');
+  const host = (forwarded || req.headers.get('host') || '').split(',')[0].trim();
+  const proto = (req.headers.get('x-forwarded-proto') || req.nextUrl.protocol.replace(':', '') || 'http').trim();
+  if (host) return `${proto}://${host}`;
+  return req.nextUrl.origin;
+}
+
 // GET: Retrieve inspection works from MongoDB (sorted newest first)
 export async function GET(req: NextRequest) {
   try {
+    const requestOrigin = inspectionWorksRequestOrigin(req);
+    logPortalEnvironmentOnce(requestOrigin);
     const { searchParams } = new URL(req.url);
     const viewQuery = parseInspectionWorksViewQuery(searchParams);
     const cacheKey = buildInspectionWorksCacheKey(searchParams);
@@ -77,6 +127,45 @@ export async function GET(req: NextRequest) {
     const username = viewQuery.username;
     const lite = viewQuery.lite;
     const lookupId = String(searchParams.get('lookupId') || '').trim();
+
+    if (searchParams.get('refreshRemote') === '1') {
+      invalidateRemoteInspectionWorksCache();
+      invalidateInspectionWorksLiteCache();
+      cachedWorksList = null;
+    }
+
+    // APP_ENV=prod on this PC → production API (production Mongo). Never use laptop Mongo.
+    if (shouldUseRemotePortalApi(requestOrigin)) {
+      const qs = searchParams.toString();
+      const remote = await fetchRemotePortalJson(
+        `/api/inspection-works${qs ? `?${qs}` : ''}`,
+        requestOrigin,
+        { timeoutMs: 180000 }
+      );
+      if (remote && typeof remote === 'object') {
+        const filtered = lookupId ? remote : applyExactGeoFilterToRemoteReports(remote, viewQuery);
+        console.info(`[inspection-works] APP_ENV=${getAppEnv()} data=remote-prod-api`);
+        return NextResponse.json(
+          { ...filtered, dataSource: 'remote-prod-api' },
+          {
+            headers: {
+              ...CORS_HEADERS,
+              'X-Inspection-Works-Source': 'remote-prod-api',
+            },
+          }
+        );
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            'Production API did not respond. This app did not use the local database. Check network access to townpanchayat.com and try again.',
+          dataSource: 'remote-prod-api-failed',
+        },
+        { status: 502, headers: CORS_HEADERS }
+      );
+    }
+
     if (lookupId) {
       const client = await getMongoClient();
       if (!client) {
@@ -94,12 +183,6 @@ export async function GET(req: NextRequest) {
         { success: true, work: { ...rest, id: found.id || found.workId || lookupId } },
         { headers: CORS_HEADERS }
       );
-    }
-
-    if (searchParams.get('refreshRemote') === '1') {
-      invalidateRemoteInspectionWorksCache();
-      invalidateInspectionWorksLiteCache();
-      cachedWorksList = null;
     }
 
     const now = Date.now();

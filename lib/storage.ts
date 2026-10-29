@@ -2070,9 +2070,13 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
     const resolvedCategoryNameEn = cat ? (cat.nameEn || cat.name) : (w.categoryNameEn || '');
     const resolvedCategoryNameTa = cat ? (cat.nameTa || cat.nameEn) : (w.categoryNameTa || resolvedCategoryNameEn || '');
 
+    const hasWorkDistrictName = !!String(w.districtNameEn || '').trim();
+    const hasWorkZoneName = !!String(w.zoneNameEn || w.zone || '').trim();
     const resolvedTpId = String(w.tpId || w.townPanchayatId || tp?.id || '').trim();
-    const resolvedDistrictId = String(w.districtId || tp?.districtId || dist?.id || '').trim();
-    const resolvedZoneId = String(w.zoneId || dist?.zoneId || '').trim();
+    const resolvedDistrictId = String(w.districtId || '').trim()
+      || (hasWorkDistrictName ? '' : String(tp?.districtId || dist?.id || '').trim());
+    const resolvedZoneId = String(w.zoneId || '').trim()
+      || (hasWorkZoneName ? '' : String(dist?.zoneId || '').trim());
 
     return {
       ...w,
@@ -2082,12 +2086,12 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
       townPanchayatId: resolvedTpId || w.townPanchayatId,
       districtId: resolvedDistrictId || w.districtId,
       zoneId: resolvedZoneId || w.zoneId,
-      tpNameEn: w.tpNameEn || tp?.nameEn || 'Thiruporur TP',
-      tpNameTa: w.tpNameTa || tp?.nameTa || 'திருப்போரூர் பேரூராட்சி',
-      districtNameEn: w.districtNameEn || dist?.nameEn || 'Chengalpattu Dist',
-      districtNameTa: w.districtNameTa || dist?.nameTa || 'செங்கல்பட்டு மாவட்டம்',
-      zoneNameEn: w.zoneNameEn || 'Kanchipuram Zone',
-      zoneNameTa: w.zoneNameTa || 'காஞ்சிபுரம் மண்டலம்',
+      tpNameEn: w.tpNameEn || tp?.nameEn || '',
+      tpNameTa: w.tpNameTa || tp?.nameTa || '',
+      districtNameEn: w.districtNameEn || dist?.nameEn || '',
+      districtNameTa: w.districtNameTa || dist?.nameTa || '',
+      zoneNameEn: w.zoneNameEn || dist?.zoneNameEn || '',
+      zoneNameTa: w.zoneNameTa || dist?.zoneNameTa || '',
       subjectId: resolvedSubjectId,
       subjectNameEn: resolvedSubjectNameEn,
       subjectNameTa: resolvedSubjectNameTa,

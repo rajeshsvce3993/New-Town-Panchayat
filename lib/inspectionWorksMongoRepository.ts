@@ -70,7 +70,7 @@ export function districtIdsForZone(zoneId: string, masters: InspectionWorksFilte
   for (const d of masters.districts || []) {
     const dZone = normId(d.zoneId).toLowerCase();
     const dZoneName = normId(d.zoneNameEn).toLowerCase();
-    if (zoneKeys.has(dZone) || zoneKeys.has(dZoneName) || zoneKeys.has(needle)) {
+    if ((dZone && zoneKeys.has(dZone)) || (dZoneName && zoneKeys.has(dZoneName))) {
       ids.push(normId(d.id));
       if (d.code) ids.push(normId(d.code));
     }
@@ -218,11 +218,14 @@ export function buildInspectionWorksMongoMatch(
     );
     const or: Record<string, unknown>[] = [];
     for (const v of variants) {
-      or.push({ tpId: v }, { townPanchayatId: v }, { tpCode: v });
+      or.push({ tpId: v }, { townPanchayatId: v });
     }
     if (tp?.id) or.push({ tpId: tp.id }, { townPanchayatId: tp.id });
-    if (tp?.code) or.push({ tpCode: tp.code });
-    if (tp?.nameEn) or.push({ tpNameEn: tp.nameEn });
+    if (tp?.nameEn) {
+      const escaped = String(tp.nameEn).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      or.push({ tpNameEn: tp.nameEn });
+      or.push({ tpNameEn: { $regex: `^${escaped}$`, $options: 'i' } });
+    }
     and.push({ $or: or });
   } else if (scopeDistrict) {
     const variants = idVariants(scopeDistrict);
@@ -249,12 +252,39 @@ export function buildInspectionWorksMongoMatch(
     );
     const districtIds = districtIdsForZone(scopeZone, masters);
     const tpIds = tpIdsForZone(scopeZone, masters);
-    const or: Record<string, unknown>[] = [{ zoneId: { $in: zoneVariants } }];
-    if (zone?.id) or.push({ zoneId: zone.id });
-    if (zone?.nameEn) or.push({ zoneNameEn: zone.nameEn });
-    if (districtIds.length) or.push({ districtId: { $in: districtIds } });
-    if (tpIds.length) or.push({ tpId: { $in: tpIds } }, { townPanchayatId: { $in: tpIds } });
-    and.push({ $or: or });
+    const nameOr: Record<string, unknown>[] = [];
+    if (zone?.nameEn) {
+      const escaped = zone.nameEn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      nameOr.push({ zoneNameEn: zone.nameEn });
+      nameOr.push({ zoneNameEn: { $regex: `^${escaped}$`, $options: 'i' } });
+    }
+    if (zone?.nameTa) nameOr.push({ zoneNameTa: zone.nameTa });
+    const idOr: Record<string, unknown>[] = [{ zoneId: { $in: zoneVariants } }];
+    if (zone?.id) idOr.push({ zoneId: zone.id });
+    const emptyNameOr: Record<string, unknown>[] = [
+      { zoneNameEn: { $exists: false } },
+      { zoneNameEn: null },
+      { zoneNameEn: '' },
+      ...nameOr,
+    ];
+    const identityOr: Record<string, unknown>[] = [
+      ...nameOr,
+      { $and: [{ $or: idOr }, { $or: emptyNameOr }] },
+    ];
+    const childOr: Record<string, unknown>[] = [];
+    if (districtIds.length) childOr.push({ districtId: { $in: districtIds } });
+    if (tpIds.length) childOr.push({ tpId: { $in: tpIds } }, { townPanchayatId: { $in: tpIds } });
+    const zoneOr = [...identityOr];
+    if (childOr.length) {
+      zoneOr.push({
+        $and: [
+          { $or: [{ zoneId: { $exists: false } }, { zoneId: null }, { zoneId: '' }] },
+          { $or: [{ zoneNameEn: { $exists: false } }, { zoneNameEn: null }, { zoneNameEn: '' }] },
+          { $or: childOr },
+        ],
+      });
+    }
+    and.push({ $or: zoneOr });
   }
 
   if (filter.ward) {

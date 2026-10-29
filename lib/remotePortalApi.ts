@@ -1,32 +1,30 @@
-import { getAppEnv, getPortalApiUrl, isLocalDevHost } from '@/lib/appEnvironment';
+import { getPortalApiUrl, shouldUseRemotePortalApi } from '@/lib/appEnvironment';
+
+export { shouldUseRemotePortalApi };
 
 export function getRemotePortalApiBase(): string {
   return getPortalApiUrl();
 }
 
-/** Prod on your laptop → call live API. Prod on server → use local Mongo on that server. */
-export function shouldUseRemotePortalApi(requestOrigin?: string): boolean {
-  if (getAppEnv() === 'local') return false;
-  return isLocalDevHost(requestOrigin);
-}
-
 export async function fetchRemotePortalJson(
   pathWithQuery: string,
   requestOrigin?: string,
-  init?: { method?: string; body?: string; headers?: Record<string, string> }
+  init?: { method?: string; body?: string; headers?: Record<string, string>; timeoutMs?: number }
 ): Promise<any | null> {
   if (!shouldUseRemotePortalApi(requestOrigin)) return null;
   const base = getRemotePortalApiBase();
   const path = pathWithQuery.startsWith('/') ? pathWithQuery : `/${pathWithQuery}`;
   const url = `${base}${path}`;
   const method = (init?.method || 'GET').toUpperCase();
+  const timeoutMs = init?.timeoutMs || 180000;
+  console.info(`[RemotePortal] ${method} ${url}`);
   try {
     const res = await fetch(url, {
       method,
       headers: { Accept: 'application/json', ...(init?.headers || {}) },
       body: method === 'GET' || method === 'HEAD' ? undefined : init?.body,
       cache: 'no-store',
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) {
       console.warn(`[RemotePortal] ${url} -> HTTP ${res.status}`);

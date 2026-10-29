@@ -30,7 +30,7 @@ const AGG_CACHE_TTL_MS = 120_000;
 const aggCache = new Map<string, { ts: number; data: unknown }>();
 
 function aggCacheKey(kind: string, filter: InspectionWorksFilterQuery, extra = ''): string {
-  return `newest-first-1|${kind}|${JSON.stringify(filter)}|${extra}`;
+  return `newest-first-fields-1|${kind}|${JSON.stringify(filter)}|${extra}`;
 }
 
 function readAggCache<T>(key: string): T | null {
@@ -397,9 +397,7 @@ async function fetchIndexedReportPage(
   const cap = Math.min(Math.max(1, pageSize), REPORTS_PAGE_SIZE_MAX);
   const skip = (safePage - 1) * cap;
   const match = buildReportsMongoMatch(filter, masters, { omitCategory: false, useReportDate: true });
-  const projection = filter.adminFieldId
-    ? LITE_INSPECTION_WORKS_PROJECTION
-    : { ...LITE_INSPECTION_WORKS_PROJECTION, fieldsData: 0 as const };
+  const projection = LITE_INSPECTION_WORKS_PROJECTION;
 
   const findCursor = col
     .find(match, { projection })

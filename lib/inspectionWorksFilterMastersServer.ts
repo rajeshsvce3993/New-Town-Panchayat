@@ -1,13 +1,18 @@
 import { getCollectionData } from '@/lib/storage';
-import { fetchRemotePortalJson } from '@/lib/remotePortalApi';
+import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import type { InspectionWorksFilterMasters } from '@/lib/inspectionWorksQueryFilters';
 
-let mastersCache: { data: InspectionWorksFilterMasters; ts: number } | null = null;
+let mastersCache: { data: InspectionWorksFilterMasters; ts: number; remote: boolean } | null = null;
 const MASTERS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 export async function resolveInspectionFilterMasters(requestOrigin?: string): Promise<InspectionWorksFilterMasters> {
   const now = Date.now();
-  if (mastersCache && now - mastersCache.ts < MASTERS_CACHE_TTL_MS) {
+  const useRemoteGeo = shouldUseRemotePortalApi(requestOrigin);
+  if (
+    mastersCache &&
+    now - mastersCache.ts < MASTERS_CACHE_TTL_MS &&
+    mastersCache.remote === useRemoteGeo
+  ) {
     return mastersCache.data;
   }
 
@@ -22,19 +27,23 @@ export async function resolveInspectionFilterMasters(requestOrigin?: string): Pr
     ]);
 
   const needRemote =
+    useRemoteGeo ||
     !Array.isArray(districts) ||
     districts.length === 0 ||
     !Array.isArray(townPanchayats) ||
     townPanchayats.length === 0;
 
   if (needRemote) {
-    const remoteState = await fetchRemotePortalJson('/api/portal-state', requestOrigin);
+    const remoteState =
+      (await fetchRemotePortalJson('/api/portal-state', requestOrigin)) ||
+      (await fetchRemotePortalJson('/api/state?mode=bootstrap', requestOrigin));
     if (remoteState && typeof remoteState === 'object') {
-      districts = districts?.length ? districts : remoteState.districts || remoteState.state?.districts || [];
-      zones = zones?.length ? zones : remoteState.zones || remoteState.state?.zones || [];
-      townPanchayats = townPanchayats?.length
-        ? townPanchayats
-        : remoteState.townPanchayats || remoteState.state?.townPanchayats || [];
+      const remoteDistricts = remoteState.districts || remoteState.state?.districts || [];
+      const remoteZones = remoteState.zones || remoteState.state?.zones || [];
+      const remoteTps = remoteState.townPanchayats || remoteState.state?.townPanchayats || [];
+      districts = useRemoteGeo && remoteDistricts.length ? remoteDistricts : districts?.length ? districts : remoteDistricts;
+      zones = useRemoteGeo && remoteZones.length ? remoteZones : zones?.length ? zones : remoteZones;
+      townPanchayats = useRemoteGeo && remoteTps.length ? remoteTps : townPanchayats?.length ? townPanchayats : remoteTps;
       inspectionSubjects = inspectionSubjects?.length
         ? inspectionSubjects
         : remoteState.inspectionSubjects || remoteState.state?.inspectionSubjects || [];
@@ -55,6 +64,6 @@ export async function resolveInspectionFilterMasters(requestOrigin?: string): Pr
     inspectionCategories: inspectionCategories || [],
     inspectionFields: inspectionFields || [],
   };
-  mastersCache = { data, ts: now };
+  mastersCache = { data, ts: now, remote: useRemoteGeo };
   return data;
 }
