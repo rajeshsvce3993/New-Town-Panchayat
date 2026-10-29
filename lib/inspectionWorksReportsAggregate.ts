@@ -1,4 +1,13 @@
-import type { InspectionWorksFilterMasters, InspectionWorksFilterQuery } from '@/lib/inspectionWorksQueryFilters';
+import type {
+  InspectionWorkReportDimensionRollup,
+  InspectionWorksFilterMasters,
+  InspectionWorksFilterQuery,
+} from '@/lib/inspectionWorksQueryFilters';
+import {
+  adminFieldValueNeedles,
+  collapseDimensionRollupsToSubjectCategory,
+  sumSubjectCategoryRollupsForFilter,
+} from '@/lib/inspectionWorksQueryFilters';
 import {
   appendLooseUtcDatePrefilter,
   buildInspectionWorksMongoMatch,
@@ -12,7 +21,6 @@ import {
 import {
   ensureInspectionWorkReportIndexes,
   queryInspectionWorkReportRollupCounts,
-  queryInspectionWorkReportRollupTotal,
 } from '@/lib/inspectionWorkReportRollups';
 
 export const REPORTS_PAGE_SIZE_DEFAULT = 50;
@@ -22,7 +30,7 @@ const AGG_CACHE_TTL_MS = 120_000;
 const aggCache = new Map<string, { ts: number; data: unknown }>();
 
 function aggCacheKey(kind: string, filter: InspectionWorksFilterQuery, extra = ''): string {
-  return `${kind}|${JSON.stringify(filter)}|${extra}`;
+  return `newest-first-1|${kind}|${JSON.stringify(filter)}|${extra}`;
 }
 
 function readAggCache<T>(key: string): T | null {
@@ -46,6 +54,18 @@ export function invalidateInspectionWorksAggregateCache() {
 /** Street/search/admin field cannot use pre-aggregated rollups; they still stay in Mongo (never a Node full scan). */
 export function reportsFiltersNeedFullDocumentScan(filter: InspectionWorksFilterQuery): boolean {
   return !!(filter.street?.trim() || filter.search?.trim() || filter.adminFieldId);
+}
+
+/** Works often store zone/district/TP as names, while rollups keyed empty IDs — use the live match for geo filters. */
+export function reportsFiltersNeedLiveGeoCounts(filter: InspectionWorksFilterQuery): boolean {
+  return !!(
+    filter.tpId ||
+    filter.districtId ||
+    filter.zoneId ||
+    filter.scopeTpId ||
+    filter.scopeDistrictId ||
+    filter.scopeZoneId
+  );
 }
 
 function escapeRegex(value: string): string {
@@ -116,11 +136,14 @@ function appendReportsSecondaryMongoMatch(
   if (filter.adminFieldId) {
     const paths = adminFieldMongoPaths(filter, masters);
     const value = filter.adminFieldValue?.trim();
+    const needles = value ? adminFieldValueNeedles(value) : [];
     const fieldOr: Record<string, unknown>[] = [];
     for (const p of paths) {
       const dotted = `fieldsData.${p}`;
-      if (value) {
-        fieldOr.push({ [dotted]: new RegExp(escapeRegex(value), 'i') });
+      if (needles.length) {
+        for (const n of needles) {
+          fieldOr.push({ [dotted]: new RegExp(escapeRegex(n), 'i') });
+        }
       } else {
         fieldOr.push({ [dotted]: { $exists: true, $nin: [null, ''] } });
       }
@@ -201,6 +224,7 @@ export type ReportAggregateCountsResult = {
   categoryCounts: Record<string, number>;
   totalWithoutCategoryFilter: number;
   subjectCategoryRollups: Array<{ subjectId: string; categoryId: string; count: number }>;
+  dimensionRollups: InspectionWorkReportDimensionRollup[];
   source: 'mongo-aggregate' | 'mongo-rollup';
 };
 
@@ -242,8 +266,17 @@ function emptyCountsResult(source: ReportAggregateCountsResult['source']): Repor
     categoryCounts: {},
     totalWithoutCategoryFilter: 0,
     subjectCategoryRollups: [],
+    dimensionRollups: [],
     source,
   };
+}
+
+function filteredReportTotal(
+  counts: ReportAggregateCountsResult,
+  filter: InspectionWorksFilterQuery,
+  masters: InspectionWorksFilterMasters
+): number {
+  return sumSubjectCategoryRollupsForFilter(counts.subjectCategoryRollups, filter, masters);
 }
 
 async function aggregateLiveReportCounts(
@@ -260,20 +293,45 @@ async function aggregateLiveReportCounts(
   pipeline.push({
     $group: {
       _id: {
+        zoneId: { $ifNull: ['$zoneId', ''] },
+        districtId: { $ifNull: ['$districtId', ''] },
+        tpId: { $ifNull: [{ $ifNull: ['$tpId', '$townPanchayatId'] }, ''] },
+        zoneNameEn: { $ifNull: ['$zoneNameEn', ''] },
+        districtNameEn: { $ifNull: ['$districtNameEn', ''] },
+        tpNameEn: { $ifNull: ['$tpNameEn', ''] },
+        wardNumber: {
+          $convert: {
+            input: { $ifNull: [{ $ifNull: ['$wardNumber', '$wardNo'] }, { $ifNull: ['$ward', ''] }] },
+            to: 'string',
+            onError: '',
+            onNull: '',
+          },
+        },
+        submittedByUserName: { $ifNull: [{ $ifNull: ['$submittedByUserName', '$username'] }, ''] },
         subjectId: { $ifNull: ['$subjectId', 'unknown'] },
         categoryId: { $ifNull: ['$categoryId', '_unknown'] },
       },
       count: { $sum: 1 },
     },
   });
-  const grouped = await col.aggregate(pipeline, { allowDiskUse: true }).toArray();
-  const subjectCategoryRollups = (grouped as Array<{ _id: { subjectId: string; categoryId: string }; count: number }>).map(
-    (r) => ({
-      subjectId: String(r._id?.subjectId || 'unknown'),
-      categoryId: String(r._id?.categoryId || '_unknown'),
-      count: r.count,
-    })
-  );
+  const grouped = (await col.aggregate(pipeline, { allowDiskUse: true }).toArray()) as Array<{
+    _id: InspectionWorkReportDimensionRollup;
+    count: number;
+  }>;
+  const dimensionRollups: InspectionWorkReportDimensionRollup[] = grouped.map((r) => ({
+    zoneId: String(r._id?.zoneId || ''),
+    districtId: String(r._id?.districtId || ''),
+    tpId: String(r._id?.tpId || ''),
+    zoneNameEn: String(r._id?.zoneNameEn || ''),
+    districtNameEn: String(r._id?.districtNameEn || ''),
+    tpNameEn: String(r._id?.tpNameEn || ''),
+    wardNumber: String(r._id?.wardNumber || ''),
+    submittedByUserName: String(r._id?.submittedByUserName || ''),
+    subjectId: String(r._id?.subjectId || 'unknown'),
+    categoryId: String(r._id?.categoryId || '_unknown'),
+    count: Number(r.count) || 0,
+  }));
+  const subjectCategoryRollups = collapseDimensionRollupsToSubjectCategory(dimensionRollups);
   const byCategoryMap = new Map<string, number>();
   for (const row of subjectCategoryRollups) {
     const k = row.categoryId || '_unknown';
@@ -284,6 +342,7 @@ async function aggregateLiveReportCounts(
     categoryCounts: normalizeAggregateCategoryCounts(byCategory, masters),
     totalWithoutCategoryFilter: subjectCategoryRollups.reduce((s, r) => s + r.count, 0),
     subjectCategoryRollups,
+    dimensionRollups,
     source: 'mongo-aggregate',
   };
 }
@@ -298,7 +357,7 @@ export async function aggregateInspectionWorksReportCounts(
     if (cached) return cached;
 
     await ensureInspectionWorkReportIndexes();
-    if (!reportsFiltersNeedFullDocumentScan(filter)) {
+    if (!reportsFiltersNeedFullDocumentScan(filter) && !reportsFiltersNeedLiveGeoCounts(filter)) {
       const rollup = await queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: true });
       if (rollup) {
         writeAggCache(cacheKey, rollup);
@@ -344,20 +403,26 @@ async function fetchIndexedReportPage(
 
   const findCursor = col
     .find(match, { projection })
-    .sort({ submittedDateYmd: -1, submittedAt: -1, workId: -1 })
+    .sort({ _id: -1 })
     .skip(skip)
     .limit(cap);
 
-  const liveScan = reportsFiltersNeedFullDocumentScan(filter);
-  const [items, rollupTotal] = await Promise.all([
+  const liveScan =
+    reportsFiltersNeedFullDocumentScan(filter) || reportsFiltersNeedLiveGeoCounts(filter);
+  const [items, counts] = await Promise.all([
     findCursor.toArray(),
-    liveScan ? Promise.resolve(null) : queryInspectionWorkReportRollupTotal(filter, masters),
+    liveScan
+      ? Promise.resolve(null)
+      : queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: true }),
   ]);
 
-  let total = rollupTotal;
-  if (total == null) {
+  let total: number;
+  if (counts) {
+    total = filteredReportTotal(counts, filter, masters);
+  } else {
     total = await col.countDocuments(match);
-  } else if (items.length > 0 && total < skip + items.length) {
+  }
+  if (items.length > 0 && total < skip + items.length) {
     total = skip + items.length;
   }
 
@@ -429,12 +494,13 @@ export async function aggregateInspectionWorksReportsBundle(
 
     const resolvedCounts = counts || emptyCountsResult('mongo-rollup');
     const rows = pageResult?.rows || [];
+    const totalFromCounts = filteredReportTotal(resolvedCounts, filter, masters);
     const result: ReportAggregateBundleResult = {
       ...resolvedCounts,
       rows,
       page: pageResult?.page ?? safePage,
       pageSize: pageResult?.pageSize ?? cap,
-      total: pageResult?.total ?? rows.length,
+      total: counts ? totalFromCounts : pageResult?.total ?? rows.length,
     };
 
     writeAggCache(cacheKey, result);

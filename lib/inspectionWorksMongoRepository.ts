@@ -135,21 +135,46 @@ export function tpIdsForZone(zoneId: string, masters: InspectionWorksFilterMaste
 
 export function applyDefaultReportsDateWindow(filter: InspectionWorksFilterQuery): InspectionWorksFilterQuery {
   if (filter.fromDate || filter.toDate || filter.dateParam) return filter;
-  const to = new Intl.DateTimeFormat('en-CA', {
+  const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kolkata',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
-  const d = new Date();
-  d.setDate(d.getDate() - 31);
-  const from = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(d);
-  return { ...filter, fromDate: from, toDate: to };
+  return { ...filter, fromDate: today, toDate: today };
+}
+
+/** Works often store submittedAt as DD-MM-YYYY h:mm AM/PM, not ISO. */
+function indianDatePrefixRegex(fromDate: string, toDate: string): string | null {
+  const start = new Date(`${fromDate}T00:00:00.000Z`);
+  const end = new Date(`${toDate}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return null;
+  const alts: string[] = [];
+  const cur = new Date(start);
+  let n = 0;
+  while (cur <= end && n < 400) {
+    const ymd = cur.toISOString().slice(0, 10);
+    const [year, month, day] = ymd.split('-');
+    alts.push(`${day}-${month}-${year}`, `${day}/${month}/${year}`);
+    cur.setUTCDate(cur.getUTCDate() + 1);
+    n += 1;
+  }
+  if (!alts.length) return null;
+  return `^(?:${alts.join('|')})`;
+}
+
+function dateMatchOrClauses(fromDate: string, toDate: string, isoFrom: string, isoTo: string): Record<string, unknown>[] {
+  const or: Record<string, unknown>[] = [
+    { submittedAt: { $gte: isoFrom, $lte: isoTo } },
+    { createdAt: { $gte: isoFrom, $lte: isoTo } },
+    { date: { $gte: fromDate, $lte: toDate } },
+    { submittedDateYmd: { $gte: fromDate, $lte: toDate } },
+  ];
+  const indianRe = indianDatePrefixRegex(fromDate, toDate);
+  if (indianRe) {
+    or.push({ submittedAt: { $regex: indianRe } }, { createdAt: { $regex: indianRe } });
+  }
+  return or;
 }
 
 /** Narrow Mongo reads; final IST calendar filter stays in memory. */
@@ -157,36 +182,21 @@ export function appendLooseUtcDatePrefilter(
   and: Record<string, unknown>[],
   filter: InspectionWorksFilterQuery
 ): void {
-  const effective = applyDefaultReportsDateWindow(filter);
-  if (effective.fromDate || effective.toDate) {
-    const fromDate = effective.fromDate || effective.toDate!;
-    const toDate = effective.toDate || effective.fromDate!;
+  if (filter.fromDate || filter.toDate) {
+    const fromDate = filter.fromDate || filter.toDate!;
+    const toDate = filter.toDate || filter.fromDate!;
     const fromD = new Date(`${fromDate}T00:00:00.000Z`);
     fromD.setUTCDate(fromD.getUTCDate() - 1);
     const toD = new Date(`${toDate}T23:59:59.999Z`);
     toD.setUTCDate(toD.getUTCDate() + 1);
-    const isoFrom = fromD.toISOString();
-    const isoTo = toD.toISOString();
-    and.push({
-      $or: [
-        { submittedAt: { $gte: isoFrom, $lte: isoTo } },
-        { createdAt: { $gte: isoFrom, $lte: isoTo } },
-        { date: { $gte: fromDate, $lte: toDate } },
-      ],
-    });
-  } else if (effective.dateParam) {
-    const ymd = effective.dateParam;
+    and.push({ $or: dateMatchOrClauses(fromDate, toDate, fromD.toISOString(), toD.toISOString()) });
+  } else if (filter.dateParam) {
+    const ymd = filter.dateParam;
     const fromD = new Date(`${ymd}T00:00:00.000Z`);
     fromD.setUTCDate(fromD.getUTCDate() - 1);
     const toD = new Date(`${ymd}T23:59:59.999Z`);
     toD.setUTCDate(toD.getUTCDate() + 1);
-    and.push({
-      $or: [
-        { submittedAt: { $gte: fromD.toISOString(), $lte: toD.toISOString() } },
-        { createdAt: { $gte: fromD.toISOString(), $lte: toD.toISOString() } },
-        { date: ymd },
-      ],
-    });
+    and.push({ $or: dateMatchOrClauses(ymd, ymd, fromD.toISOString(), toD.toISOString()) });
   }
 }
 
@@ -197,9 +207,9 @@ export function buildInspectionWorksMongoMatch(
 ): Record<string, unknown> {
   const and: Record<string, unknown>[] = [];
 
-  const scopeTp = filter.scopeTpId || filter.tpId;
-  const scopeDistrict = filter.scopeDistrictId || filter.districtId;
-  const scopeZone = filter.scopeZoneId || filter.zoneId;
+  const scopeTp = filter.tpId || filter.scopeTpId;
+  const scopeDistrict = filter.tpId ? null : filter.districtId || filter.scopeDistrictId;
+  const scopeZone = filter.tpId || filter.districtId ? null : filter.zoneId || filter.scopeZoneId;
 
   if (scopeTp) {
     const variants = idVariants(scopeTp);
@@ -368,7 +378,7 @@ export async function fetchInspectionWorksDashboardStatsFromMongo(): Promise<any
             categoryNameTa: 1,
           },
         },
-      ])
+      ], { maxTimeMS: 6000, allowDiskUse: true })
       .toArray();
     return rows;
   } catch (err) {
@@ -395,7 +405,7 @@ export async function fetchLiteInspectionWorksByDateLooseOnly(
     const cap = limit > 0 ? Math.min(limit, INSPECTION_WORKS_LITE_MAX_ROWS) : INSPECTION_WORKS_LITE_MAX_ROWS;
     const items = await col
       .find(match, { projection })
-      .sort({ submittedAt: -1, createdAt: -1 })
+      .sort({ _id: -1 })
       .limit(cap + 1)
       .toArray();
     const truncated = items.length > cap;
@@ -424,7 +434,7 @@ export async function fetchRecentLiteInspectionWorksCap(
     const cap = limit > 0 ? Math.min(limit, INSPECTION_WORKS_LITE_MAX_ROWS) : INSPECTION_WORKS_LITE_MAX_ROWS;
     const items = await col
       .find({}, { projection })
-      .sort({ submittedAt: -1, createdAt: -1 })
+      .sort({ _id: -1 })
       .limit(cap + 1)
       .toArray();
     const truncated = items.length > cap;
@@ -455,7 +465,7 @@ export async function fetchLiteInspectionWorksFromMongoScoped(
     const cap = limit > 0 ? Math.min(limit, INSPECTION_WORKS_LITE_MAX_ROWS) : INSPECTION_WORKS_LITE_MAX_ROWS;
     const cursor = col
       .find(match, { projection })
-      .sort({ submittedAt: -1, createdAt: -1 })
+      .sort({ _id: -1 })
       .limit(cap + 1);
     const items = await cursor.toArray();
     const truncated = items.length > cap;

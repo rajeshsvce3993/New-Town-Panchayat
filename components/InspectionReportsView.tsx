@@ -61,9 +61,11 @@ import {
   extractWorksFromInspectionApiPayload,
   filterDashboardStatsForScope,
   getWorkDynamicFieldValue,
+  storedValueMatchesAdminFilter,
   isFallbackInspectionWork,
   workMatchesCategory,
   workMatchesSubject,
+  type InspectionWorkReportDimensionRollup,
 } from '@/lib/inspectionWorksQueryFilters';
 import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
 import MapViewReport from './MapViewReport';
@@ -401,6 +403,27 @@ function safeParseDate(dateStr: any): Date | null {
   return null;
 }
 
+function toStableMediaSrc(raw: string) {
+  if (!raw) return '';
+  if (raw.startsWith('data:image') || raw.startsWith('blob:') || raw.startsWith('/api/media')) return raw;
+  try {
+    let key = raw;
+    if (/^https?:\/\//i.test(raw)) {
+      key = new URL(raw).pathname.replace(/^\//, '');
+    }
+    key = key.split('?')[0];
+    const cut = key.indexOf('inspection/');
+    if (cut >= 0) key = key.slice(cut);
+    if (key.startsWith('inspection/') || key.startsWith('profiles/')) {
+      const token = typeof window !== 'undefined' ? btoa(key) : Buffer.from(key).toString('base64');
+      return `/api/media?token=${encodeURIComponent(token)}`;
+    }
+  } catch {
+    /* fall through */
+  }
+  return `/api/media?url=${encodeURIComponent(raw.split('?')[0])}`;
+}
+
 // Slide Photo component with eager rendering, loading shimmer, and instant proxy fallback
 function SlidePhotoDisplay({
   url,
@@ -413,11 +436,11 @@ function SlidePhotoDisplay({
   className?: string;
   onZoom?: () => void;
 }) {
-  const [currentSrc, setCurrentSrc] = useState(url);
+  const [currentSrc, setCurrentSrc] = useState(() => toStableMediaSrc(url) || url);
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    setCurrentSrc(url);
+    setCurrentSrc(toStableMediaSrc(url) || url);
     setHasError(false);
   }, [url]);
 
@@ -430,11 +453,13 @@ function SlidePhotoDisplay({
         src={currentSrc}
         alt={label}
         loading="eager"
-        decoding="auto"
+        decoding="sync"
+        crossOrigin="anonymous"
         referrerPolicy="no-referrer"
         onError={() => {
-          if (!currentSrc.startsWith('/api/media') && url && !url.startsWith('data:')) {
-            setCurrentSrc(`/api/media?url=${encodeURIComponent(url)}`);
+          const proxied = toStableMediaSrc(url);
+          if (proxied && proxied !== currentSrc) {
+            setCurrentSrc(proxied);
           } else {
             setHasError(true);
           }
@@ -894,25 +919,14 @@ export default function InspectionReportsView({
     }).format(new Date());
   };
 
-  const getDefaultFromDate = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Kolkata',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(d);
-  };
-
-  // Filter States — default all time (same scope as dashboard summary); set dates + Apply to narrow
+  // Filter States — default to today's IST date; Clear Today still shows all time
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [selectedTpId, setSelectedTpId] = useState<string>('all');
   const [selectedWard, setSelectedWard] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [fromDate, setFromDate] = useState<string>('');
-  const [toDate, setToDate] = useState<string>('');
+  const [fromDate, setFromDate] = useState<string>(() => getTodayYmd());
+  const [toDate, setToDate] = useState<string>(() => getTodayYmd());
 
   // Admin dynamic field filter states
   const [adminFilterFieldId, setAdminFilterFieldId] = useState<string>('');
@@ -990,6 +1004,37 @@ export default function InspectionReportsView({
     return list;
   }, [state.inspectionFields, selectedCategoryId, selectedSubjectId, availableCategories, fieldMatchesCategory]);
 
+  const selectedAdminFilterField = useMemo(
+    () => fieldsForFilter.find((f: any) => String(f.id) === String(adminFilterFieldId)) || null,
+    [fieldsForFilter, adminFilterFieldId]
+  );
+
+  const adminFieldValueOptions = useMemo(() => {
+    if (!selectedAdminFilterField) return [] as string[];
+    const type = String(selectedAdminFilterField.type || selectedAdminFilterField.fieldType || '').toLowerCase();
+    const raw = selectedAdminFilterField.options;
+    let opts: string[] = [];
+    if (Array.isArray(raw)) {
+      opts = raw
+        .map((o: any) => {
+          if (o == null) return '';
+          if (typeof o === 'string' || typeof o === 'number') return String(o).trim();
+          return String(o.label || o.nameEn || o.nameTa || o.name || o.value || o.id || '').trim();
+        })
+        .filter(Boolean);
+    } else if (typeof raw === 'string' && raw.trim()) {
+      opts = raw.split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+    const isYesNo =
+      type === 'yes_no' ||
+      type === 'radio' ||
+      type.includes('option');
+    if (isYesNo && opts.length === 0) {
+      opts = lang === 'ta' ? ['ஆம்', 'இல்லை'] : ['Yes', 'No'];
+    }
+    return [...new Set(opts)];
+  }, [selectedAdminFilterField, lang]);
+
   // Compute dynamic columns for the table based on category & subject selection
   const dynamicColumns = useMemo(() => {
     let fields = state.inspectionFields || [];
@@ -1029,6 +1074,7 @@ export default function InspectionReportsView({
   const [detailedSlideIndex, setDetailedSlideIndex] = useState<number>(0);
   const [slideTheme, setSlideTheme] = useState<'dark' | 'light'>('dark');
   const [slideLang, setSlideLang] = useState<'ta' | 'en'>(lang);
+  const [isSlideDownloading, setIsSlideDownloading] = useState(false);
   const slideContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Sync slideLang with main lang prop
@@ -1148,6 +1194,7 @@ export default function InspectionReportsView({
   const [apiSubjectRollups, setApiSubjectRollups] = useState<
     Array<{ subjectId: string; categoryId: string; count: number }>
   >([]);
+  const [apiDimensionRollups, setApiDimensionRollups] = useState<InspectionWorkReportDimensionRollup[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<string>(() => new Date().toLocaleTimeString());
 
@@ -1512,6 +1559,10 @@ export default function InspectionReportsView({
       const total = json.subjectCategoryRollups.reduce((s: number, r: { count: number }) => s + (r.count || 0), 0);
       setApiTotalWithoutCategory(total);
     }
+    if (Array.isArray(json?.dimensionRollups)) {
+      setApiDimensionRollups(json.dimensionRollups);
+      applied = true;
+    }
     return applied;
   }, [state.inspectionCategories]);
 
@@ -1547,11 +1598,13 @@ export default function InspectionReportsView({
     const rollups = buildSubjectCategoryRollupsFromDashboardStats(scoped);
     if (!rollups.length) {
       setApiSubjectRollups([]);
+      setApiDimensionRollups([]);
       setApiTotalWithoutCategory(0);
       setApiCategoryCounts({});
       return false;
     }
     setApiSubjectRollups(rollups);
+    setApiDimensionRollups([]);
     const total = rollups.reduce((s, r) => s + r.count, 0);
     setApiTotalWithoutCategory(total);
     setApiCategoryCounts(categoryCountsFromSubjectRollups(rollups, state.inspectionCategories || []));
@@ -1594,6 +1647,9 @@ export default function InspectionReportsView({
         if (Array.isArray(json.subjectCategoryRollups)) {
           setApiSubjectRollups(json.subjectCategoryRollups);
         }
+        if (Array.isArray(json.dimensionRollups)) {
+          setApiDimensionRollups(json.dimensionRollups);
+        }
         setLastRefreshed(new Date().toLocaleTimeString());
         if (seq === fetchSeqRef.current) setFetchError(null);
       } else if (!res.ok && seq === fetchSeqRef.current) {
@@ -1631,6 +1687,9 @@ export default function InspectionReportsView({
         }
         if (typeof json.totalWithoutCategoryFilter === 'number') {
           setApiTotalWithoutCategory(json.totalWithoutCategoryFilter);
+        }
+        if (Array.isArray(json.dimensionRollups)) {
+          setApiDimensionRollups(json.dimensionRollups);
         }
         setLastRefreshed(new Date().toLocaleTimeString());
         if (seq === fetchSeqRef.current) setFetchError(null);
@@ -1782,15 +1841,10 @@ export default function InspectionReportsView({
   const filteredWorks = useMemo(() => {
     let list = rawWorks;
     if (adminFilterFieldId && !worksFromApi) {
-      const q = (adminFilterValue || '').toLowerCase().trim();
       list = list.filter((w: any) => {
         const val = getWorkDynamicFieldValue(w, adminFilterFieldId, state.inspectionFields || []);
-        const vStr = String(val).toLowerCase().trim();
-        if (!q) return !!vStr;
-        if (!vStr) return false;
-        if (q === 'yes' || q === 'ஆம்') return vStr === 'yes' || vStr === 'ஆம்';
-        if (q === 'no' || q === 'இல்லை') return vStr === 'no' || vStr === 'இல்லை';
-        return vStr.includes(q);
+        if (!adminFilterValue) return !!String(val).trim();
+        return storedValueMatchesAdminFilter(val, adminFilterValue);
       });
     }
 
@@ -1802,7 +1856,13 @@ export default function InspectionReportsView({
         const dateB = safeParseDate(b.submittedAt || b.createdAt || b.date || b.inspectionDate);
         const timeA = dateA ? dateA.getTime() : 0;
         const timeB = dateB ? dateB.getTime() : 0;
-        return detailedSortDirection === 'asc' ? timeA - timeB : timeB - timeA;
+        if (timeA !== timeB) {
+          return detailedSortDirection === 'asc' ? timeA - timeB : timeB - timeA;
+        }
+        const idA = String(a._id || a.workId || a.id || '');
+        const idB = String(b._id || b.workId || b.id || '');
+        const idCmp = idB.localeCompare(idA);
+        return detailedSortDirection === 'asc' ? -idCmp : idCmp;
       } else if (detailedSortField === 'workId') {
         valA = a.workId || a.id || '';
         valB = b.workId || b.id || '';
@@ -1863,16 +1923,15 @@ export default function InspectionReportsView({
         return sum;
       }, 0);
       if (fromApi > 0) return fromApi;
-      if (selectedCategoryId === 'all') {
-        return filteredWorks.filter((w: any) => {
-          const wCat = String(w.categoryId || '').trim().toLowerCase();
-          const wName = String(w.categoryNameEn || '').trim().toLowerCase();
-          return wCat === id.toLowerCase() || wCat === code || wName === name;
-        }).length;
-      }
-      return fromApi;
+      const masters = {
+        inspectionSubjects: state.inspectionSubjects || [],
+        inspectionCategories: state.inspectionCategories || [],
+      };
+      return apiSubjectRollups
+        .filter((row) => workMatchesCategory({ categoryId: row.categoryId }, id || name || code, masters))
+        .reduce((sum, row) => sum + (row.count || 0), 0);
     },
-    [apiCategoryCounts, filteredWorks, selectedCategoryId]
+    [apiCategoryCounts, apiSubjectRollups, state.inspectionSubjects, state.inspectionCategories]
   );
 
   // Paginated detailed works (server page when loaded from API)
@@ -1883,8 +1942,8 @@ export default function InspectionReportsView({
   }, [filteredWorks, detailedPage, worksFromApi, apiWorksTotal]);
 
   const detailedTotalPages = useMemo(() => {
-    if (worksFromApi && apiWorksTotal > 0) {
-      return Math.max(1, Math.ceil(apiWorksTotal / REPORTS_SERVER_PAGE_SIZE));
+    if (worksFromApi) {
+      return Math.max(1, Math.ceil((apiWorksTotal || 0) / REPORTS_SERVER_PAGE_SIZE));
     }
     return Math.ceil(filteredWorks.length / 50) || 1;
   }, [worksFromApi, apiWorksTotal, filteredWorks.length]);
@@ -2141,7 +2200,26 @@ export default function InspectionReportsView({
 
   // 0-Entry Users list (Not Entered Single Entry User List) with Zone, District, TP, and Last Work Entry
   const zeroEntryUsers = useMemo(() => {
+    const enteredNames = new Set<string>();
+    if (worksFromApi) {
+      for (const row of apiDimensionRollups) {
+        if (selectedSubjectId !== 'all' && !workMatchesSubject({ subjectId: row.subjectId }, selectedSubjectId, {
+          inspectionSubjects: state.inspectionSubjects || [],
+          inspectionCategories: state.inspectionCategories || [],
+        })) continue;
+        if (selectedCategoryId !== 'all' && !workMatchesCategory({ categoryId: row.categoryId }, selectedCategoryId, {
+          inspectionSubjects: state.inspectionSubjects || [],
+          inspectionCategories: state.inspectionCategories || [],
+        })) continue;
+        const name = String(row.submittedByUserName || '').toLowerCase().trim();
+        if (name) enteredNames.add(name);
+      }
+    }
     const list = matchedFilterUsers.filter((user: any) => {
+      if (worksFromApi) {
+        const names = [user.nameEn, user.username, user.id].map((v: any) => String(v || '').toLowerCase().trim()).filter(Boolean);
+        return !names.some((n: string) => enteredNames.has(n));
+      }
       const count = filteredWorks.filter(w => 
         w.submittedByUserId === user.id || 
         w.submittedByUserId === user.username ||
@@ -2216,7 +2294,7 @@ export default function InspectionReportsView({
         lastWorkEntryRaw
       };
     });
-  }, [matchedFilterUsers, filteredWorks, state.inspectionDesignations, state.designations, state.inspectionRoles, state.townPanchayats, state.districts, state.zones, fetchedWorks, state.inspectionWorks, lang]);
+  }, [matchedFilterUsers, filteredWorks, worksFromApi, apiDimensionRollups, selectedSubjectId, selectedCategoryId, state.inspectionSubjects, state.inspectionCategories, state.inspectionDesignations, state.designations, state.inspectionRoles, state.townPanchayats, state.districts, state.zones, fetchedWorks, state.inspectionWorks, lang]);
 
   // 0-Entry Categories list (Not Entered Subject & Category List - only created subjects & categories)
   const zeroEntryCategories = useMemo(() => {
@@ -2233,11 +2311,19 @@ export default function InspectionReportsView({
       if (selectedSubjectId !== 'all' && cat.subjectId !== selectedSubjectId) return;
       const targetId = String(cat.id || '').trim().toLowerCase();
       const targetName = String(cat.nameEn || '').trim().toLowerCase();
-      const count = filteredWorks.filter(w => {
-        const wCat = String(w.categoryId || '').trim().toLowerCase();
-        const wCatName = String(w.categoryNameEn || '').trim().toLowerCase();
-        return wCat === targetId || wCatName === targetName;
-      }).length;
+      const masters = {
+        inspectionSubjects: state.inspectionSubjects || [],
+        inspectionCategories: state.inspectionCategories || [],
+      };
+      const count = worksFromApi
+        ? apiSubjectRollups
+            .filter((row) => workMatchesCategory({ categoryId: row.categoryId }, cat.id || cat.nameEn || '', masters))
+            .reduce((sum, row) => sum + (row.count || 0), 0)
+        : filteredWorks.filter(w => {
+            const wCat = String(w.categoryId || '').trim().toLowerCase();
+            const wCatName = String(w.categoryNameEn || '').trim().toLowerCase();
+            return wCat === targetId || wCatName === targetName;
+          }).length;
       if (count === 0) {
         const subj = allSubjects.find((s: any) => s.id === cat.subjectId);
         list.push({
@@ -2248,7 +2334,7 @@ export default function InspectionReportsView({
       }
     });
     return list;
-  }, [state.inspectionSubjects, state.inspectionCategories, selectedSubjectId, filteredWorks]);
+  }, [state.inspectionSubjects, state.inspectionCategories, selectedSubjectId, filteredWorks, worksFromApi, apiSubjectRollups]);
 
   // Find wards and streets of the town panchayat of the work currently being edited
   const editingTpWardsAndStreets = useMemo(() => {
@@ -2308,9 +2394,71 @@ export default function InspectionReportsView({
     return rows;
   }, [apiSubjectRollups, selectedSubjectId, selectedCategoryId, filterMasters]);
 
+  const filteredApiDimensionRollups = useMemo(() => {
+    let rows = apiDimensionRollups;
+    if (selectedSubjectId !== 'all') {
+      rows = rows.filter((row) =>
+        workMatchesSubject({ subjectId: row.subjectId }, selectedSubjectId, filterMasters)
+      );
+    }
+    if (selectedCategoryId !== 'all') {
+      rows = rows.filter((row) =>
+        workMatchesCategory({ categoryId: row.categoryId }, selectedCategoryId, filterMasters)
+      );
+    }
+    return rows;
+  }, [apiDimensionRollups, selectedSubjectId, selectedCategoryId, filterMasters]);
+
+  const filteredWorksTotal = worksFromApi
+    ? apiWorksTotal
+    : filteredWorks.length;
+
+  const resolveGeoNames = React.useCallback(
+    (
+      zoneId: string,
+      districtId: string,
+      tpId: string,
+      names?: { zoneNameEn?: string; districtNameEn?: string; tpNameEn?: string }
+    ) => {
+      const zoneName = String(names?.zoneNameEn || '').trim();
+      const distName = String(names?.districtNameEn || '').trim();
+      const tpName = String(names?.tpNameEn || '').trim();
+      const zone = (state.zones || []).find(
+        (z: any) =>
+          String(z.id) === zoneId ||
+          String(z.code || '') === zoneId ||
+          String(z.nameEn || '') === zoneId ||
+          (zoneName && String(z.nameEn || '') === zoneName)
+      );
+      const dist = (state.districts || []).find(
+        (d: any) =>
+          String(d.id) === districtId ||
+          String(d.code || '') === districtId ||
+          String(d.nameEn || '') === districtId ||
+          (distName && String(d.nameEn || '') === distName)
+      );
+      const tp = (state.townPanchayats || []).find(
+        (t: any) =>
+          String(t.id) === tpId ||
+          String(t.code || '') === tpId ||
+          String(t.nameEn || '') === tpId ||
+          (tpName && String(t.nameEn || '') === tpName)
+      );
+      return {
+        zoneNameEn: zone?.nameEn || zoneName || zoneId || '-',
+        zoneNameTa: zone?.nameTa || zone?.nameEn || zoneName || zoneId || '-',
+        districtNameEn: dist?.nameEn || distName || districtId || '-',
+        districtNameTa: dist?.nameTa || dist?.nameEn || distName || districtId || '-',
+        tpNameEn: tp?.nameEn || tpName || tpId || '-',
+        tpNameTa: tp?.nameTa || tp?.nameEn || tpName || tpId || '-',
+      };
+    },
+    [state.zones, state.districts, state.townPanchayats]
+  );
+
   // Abstract calculations
   const abstractData = useMemo(() => {
-    if (filteredApiSubjectRollups.length > 0) {
+    if (worksFromApi || filteredApiSubjectRollups.length > 0) {
       const subjectsMap: Record<string, {
         subjectId: string;
         subjectNameEn: string;
@@ -2427,11 +2575,11 @@ export default function InspectionReportsView({
     });
 
     return Object.values(subjectsMap);
-  }, [filteredWorks, filteredApiSubjectRollups, state.inspectionSubjects, state.inspectionCategories]);
+  }, [filteredWorks, worksFromApi, filteredApiSubjectRollups, state.inspectionSubjects, state.inspectionCategories]);
 
   // Subject-wise grouping calculations
   const subjectWiseData = useMemo(() => {
-    if (filteredApiSubjectRollups.length > 0) {
+    if (worksFromApi || filteredApiSubjectRollups.length > 0) {
       return filteredApiSubjectRollups.map((row) => {
         const sId = row.subjectId || 'unknown';
         const cId = row.categoryId || 'unknown';
@@ -2509,6 +2657,49 @@ export default function InspectionReportsView({
       totalInspections: number;
     }> = {};
 
+    const includeSubject = categoryWiseEnabled && userCols.subject;
+    const includeCategory = categoryWiseEnabled && userCols.category;
+
+    if (worksFromApi) {
+      filteredApiDimensionRollups.forEach((row) => {
+        const geo = resolveGeoNames(row.zoneId, row.districtId, row.tpId, row);
+        const uName = row.submittedByUserName || (lang === 'ta' ? 'கள ஆய்வாளர்' : 'Field Inspector');
+        const uDesig = getInspectorDesignation({ submittedByUserName: uName });
+        let key = `${geo.zoneNameEn}_${geo.districtNameEn}_${geo.tpNameEn}_${uName}_${uDesig}`;
+        if (includeSubject) key += `_${row.subjectId || 'unknown'}`;
+        if (includeCategory) key += `_${row.categoryId || 'unknown'}`;
+        if (!groups[key]) {
+          groups[key] = {
+            zoneNameEn: geo.zoneNameEn,
+            zoneNameTa: geo.zoneNameTa,
+            districtNameEn: geo.districtNameEn,
+            districtNameTa: geo.districtNameTa,
+            tpNameEn: geo.tpNameEn,
+            tpNameTa: geo.tpNameTa,
+            userName: uName,
+            userDesignation: uDesig,
+            totalInspections: 0,
+          };
+          if (includeSubject) {
+            const subj = (state.inspectionSubjects || []).find(
+              (s: any) => s.id === row.subjectId || s.code === row.subjectId
+            );
+            groups[key].subjectNameEn = subj?.nameEn || row.subjectId || 'General';
+            groups[key].subjectNameTa = subj?.nameTa || subj?.nameEn || row.subjectId || 'பொது';
+          }
+          if (includeCategory) {
+            const cat = (state.inspectionCategories || []).find(
+              (c: any) => c.id === row.categoryId || c.code === row.categoryId
+            );
+            groups[key].categoryNameEn = cat?.nameEn || row.categoryId || 'General';
+            groups[key].categoryNameTa = cat?.nameTa || cat?.nameEn || row.categoryId || 'பொது';
+          }
+        }
+        groups[key].totalInspections += row.count || 0;
+      });
+      return Object.values(groups);
+    }
+
     filteredWorks.forEach((w) => {
       const uName = w.submittedByUserName || (lang === 'ta' ? 'கள ஆய்வாளர்' : 'Field Inspector');
       const uDesig = getInspectorDesignation(w);
@@ -2557,7 +2748,19 @@ export default function InspectionReportsView({
     });
 
     return Object.values(groups);
-  }, [filteredWorks, categoryWiseEnabled, userCols, state.users, state.employees]);
+  }, [
+    filteredWorks,
+    worksFromApi,
+    filteredApiDimensionRollups,
+    categoryWiseEnabled,
+    userCols,
+    resolveGeoNames,
+    lang,
+    state.users,
+    state.employees,
+    state.inspectionSubjects,
+    state.inspectionCategories,
+  ]);
 
   // Location-wise grouping calculations
   const locationWiseData = useMemo(() => {
@@ -2576,6 +2779,50 @@ export default function InspectionReportsView({
       categoryNameTa?: string;
       totalInspections: number;
     }> = {};
+
+    if (worksFromApi) {
+      const showWard = categoryWiseEnabled && locCols.ward;
+      const showStreet = categoryWiseEnabled && locCols.street;
+      const showSubj = categoryWiseEnabled && locCols.subject;
+      const showCat = categoryWiseEnabled && locCols.category;
+      filteredApiDimensionRollups.forEach((row) => {
+        const geo = resolveGeoNames(row.zoneId, row.districtId, row.tpId, row);
+        let key = `${geo.zoneNameEn}_${row.districtId || geo.districtNameEn}_${row.tpId || geo.tpNameEn}`;
+        if (showWard) key += `_ward_${row.wardNumber || 'unknown'}`;
+        if (showStreet) key += `_street_all`;
+        if (showSubj) key += `_subj_${row.subjectId || 'unknown'}`;
+        if (showCat) key += `_cat_${row.categoryId || 'unknown'}`;
+        if (!groups[key]) {
+          groups[key] = {
+            zoneNameEn: geo.zoneNameEn,
+            zoneNameTa: geo.zoneNameTa,
+            districtNameEn: geo.districtNameEn,
+            districtNameTa: geo.districtNameTa,
+            tpNameEn: geo.tpNameEn,
+            tpNameTa: geo.tpNameTa,
+            totalInspections: 0,
+          };
+          if (showWard) groups[key].wardNumber = row.wardNumber;
+          if (showStreet) groups[key].streetName = '—';
+          if (showSubj) {
+            const subj = (state.inspectionSubjects || []).find(
+              (s: any) => s.id === row.subjectId || s.code === row.subjectId
+            );
+            groups[key].subjectNameEn = subj?.nameEn || row.subjectId;
+            groups[key].subjectNameTa = subj?.nameTa || subj?.nameEn || row.subjectId;
+          }
+          if (showCat) {
+            const cat = (state.inspectionCategories || []).find(
+              (c: any) => c.id === row.categoryId || c.code === row.categoryId
+            );
+            groups[key].categoryNameEn = cat?.nameEn || row.categoryId;
+            groups[key].categoryNameTa = cat?.nameTa || cat?.nameEn || row.categoryId;
+          }
+        }
+        groups[key].totalInspections += row.count || 0;
+      });
+      return Object.values(groups);
+    }
 
     filteredWorks.forEach((w) => {
       const zNameEn = w.zoneNameEn || 'Kanchipuram Zone';
@@ -2628,7 +2875,16 @@ export default function InspectionReportsView({
     });
 
     return Object.values(groups);
-  }, [filteredWorks, categoryWiseEnabled, locCols]);
+  }, [
+    filteredWorks,
+    worksFromApi,
+    filteredApiDimensionRollups,
+    categoryWiseEnabled,
+    locCols,
+    resolveGeoNames,
+    state.inspectionSubjects,
+    state.inspectionCategories,
+  ]);
 
   // Request sort helper
   const requestSort = (key: string) => {
@@ -2710,16 +2966,10 @@ export default function InspectionReportsView({
 
   const activeRowsTotal = useMemo(() => {
     const rowSum = activeRows.reduce((sum, r: any) => sum + (r.totalInspections || 0), 0);
-    if (
-      selectedCategoryId === 'all' &&
-      apiTotalWithoutCategory > 0 &&
-      rowSum > 0 &&
-      rowSum < apiTotalWithoutCategory
-    ) {
-      return apiTotalWithoutCategory;
-    }
-    return rowSum || apiTotalWithoutCategory || 0;
-  }, [activeRows, selectedCategoryId, apiTotalWithoutCategory]);
+    if (rowSum > 0) return rowSum;
+    if (worksFromApi) return filteredWorksTotal;
+    return apiTotalWithoutCategory || 0;
+  }, [activeRows, worksFromApi, filteredWorksTotal, apiTotalWithoutCategory]);
 
   // Paginated Rows (50 items per page)
   const paginatedRows = useMemo(() => {
@@ -4041,7 +4291,7 @@ export default function InspectionReportsView({
         title: lang === 'ta' ? 'கள ஆய்வுப் பதிவேடு (விரிவான அறிக்கை)' : 'Field Inspection Detailed Register',
         subtitle: lang === 'ta' ? 'முழுமையான கள ஆய்வு விவரங்கள் மற்றும் அலுவலர் தகவல்கள்' : 'Comprehensive Inspection Entries with Inspector Details',
         metadata: [
-          { label: lang === 'ta' ? 'மொத்தப் பதிவுகள்' : 'Total Entries', value: String(filteredWorks.length) },
+          { label: lang === 'ta' ? 'மொத்தப் பதிவுகள்' : 'Total Entries', value: String(filteredWorksTotal) },
           { label: lang === 'ta' ? 'தேதி வரம்பு' : 'Period', value: `${fromDate} - ${toDate}` },
           { label: lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat', value: selectedTpId === 'all' ? (lang === 'ta' ? 'அனைத்தும்' : 'All') : selectedTpId }
         ],
@@ -4418,44 +4668,125 @@ export default function InspectionReportsView({
   }, [currentSlideWork, slideInspector]);
 
   // Safe URL generator for canvas drawing and obfuscated media loading
-  const getSafeCanvasUrl = (url: string) => {
-    if (!url) return '';
-    if (url.startsWith('data:image') || url.startsWith('blob:')) return url;
-    if (url.startsWith('/api/media?token=')) return url;
+  const getSafeCanvasUrl = (url: string) => toStableMediaSrc(url);
+
+  const blobToDataUrl = (blob: Blob) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Could not read image data'));
+      reader.readAsDataURL(blob);
+    });
+
+  const dataUrlFromImageElement = (img: HTMLImageElement): string | null => {
+    if (!img.naturalWidth || !img.naturalHeight) return null;
     try {
-      const token = typeof window !== 'undefined' ? btoa(url) : Buffer.from(url).toString('base64');
-      return `/api/media?token=${encodeURIComponent(token)}`;
-    } catch (_) {
-      return `/api/media?url=${encodeURIComponent(url)}`;
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0);
+      return canvas.toDataURL('image/jpeg', 0.92);
+    } catch {
+      return null;
     }
   };
 
-  // Helper to inline all <img> src attributes inside container as Base64 Data URLs prior to html2canvas
+  const fetchPhotoDataUrl = async (url: string): Promise<string | null> => {
+    const safe = getSafeCanvasUrl(url) || url;
+    if (!safe) return null;
+    if (safe.startsWith('data:image')) return safe;
+    try {
+      const res = await fetch(safe);
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      const type = String(blob.type || '');
+      if (type && !type.startsWith('image/') && type !== 'application/octet-stream') return null;
+      const dataUrl = await blobToDataUrl(blob);
+      return dataUrl.startsWith('data:') ? dataUrl : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const findLiveSlideImage = (url: string): HTMLImageElement | null => {
+    const root = slideContainerRef.current;
+    if (!root || !url) return null;
+    const want = getSafeCanvasUrl(url) || url;
+    const imgs = Array.from(root.querySelectorAll('img')) as HTMLImageElement[];
+    return (
+      imgs.find((img) => {
+        const src = img.currentSrc || img.src || '';
+        if (!src) return false;
+        if (src === url || src === want) return true;
+        const stable = getSafeCanvasUrl(src);
+        return !!(stable && (stable === want || stable === url));
+      }) || null
+    );
+  };
+
+  const resolvePhotoDataUrl = async (url: string): Promise<string | null> => {
+    if (!url) return null;
+    if (url.startsWith('data:image')) return url;
+    const live = findLiveSlideImage(url);
+    if (live) {
+      const drawn = dataUrlFromImageElement(live);
+      if (drawn) return drawn;
+    }
+    return (await fetchPhotoDataUrl(url)) || (await fetchPhotoDataUrl(getSafeCanvasUrl(url)));
+  };
+
+  const loadImageFromDataUrl = (dataUrl: string) =>
+    new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Could not decode photo'));
+      img.src = dataUrl;
+    });
+
+  // Inline displayed photos as data URLs and pin pixel sizes so html2canvas keeps them
   const convertImagesToBase64InContainer = async (container: HTMLElement) => {
     const images = Array.from(container.querySelectorAll('img')) as HTMLImageElement[];
-    const originalSources: { img: HTMLImageElement; origSrc: string }[] = [];
+    const originals: Array<{
+      img: HTMLImageElement;
+      origSrc: string;
+      width: string;
+      height: string;
+      maxWidth: string;
+      maxHeight: string;
+      objectFit: string;
+    }> = [];
 
     await Promise.all(
       images.map(async (img) => {
-        const src = img.src || img.getAttribute('src') || '';
-        if (!src || src.startsWith('data:image')) return;
+        const src = img.currentSrc || img.src || img.getAttribute('src') || '';
+        if (!src) return;
 
-        originalSources.push({ img, origSrc: src });
+        const rect = img.getBoundingClientRect();
+        originals.push({
+          img,
+          origSrc: src,
+          width: img.style.width,
+          height: img.style.height,
+          maxWidth: img.style.maxWidth,
+          maxHeight: img.style.maxHeight,
+          objectFit: img.style.objectFit,
+        });
 
         try {
-          const safeUrl = getSafeCanvasUrl(src);
-          let blobUrl = safeUrl;
-          if (!blobUrl.startsWith('data:image')) {
-            const res = await fetch(blobUrl);
-            const blob = await res.blob();
-            blobUrl = await new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result as string);
-              reader.readAsDataURL(blob);
-            });
+          let dataUrl = src.startsWith('data:image') ? src : dataUrlFromImageElement(img);
+          if (!dataUrl) dataUrl = await resolvePhotoDataUrl(src);
+          if (dataUrl && dataUrl.startsWith('data:')) {
+            img.src = dataUrl;
+            await img.decode().catch(() => undefined);
           }
-          if (blobUrl && blobUrl.startsWith('data:image')) {
-            img.src = blobUrl;
+          if (rect.width > 1 && rect.height > 1) {
+            img.style.width = `${Math.round(rect.width)}px`;
+            img.style.height = `${Math.round(rect.height)}px`;
+            img.style.maxWidth = 'none';
+            img.style.maxHeight = 'none';
+            img.style.objectFit = 'contain';
           }
         } catch (err) {
           console.warn('Failed to inline image for full slide capture:', src, err);
@@ -4464,8 +4795,13 @@ export default function InspectionReportsView({
     );
 
     return () => {
-      originalSources.forEach(({ img, origSrc }) => {
+      originals.forEach(({ img, origSrc, width, height, maxWidth, maxHeight, objectFit }) => {
         img.src = origSrc;
+        img.style.width = width;
+        img.style.height = height;
+        img.style.maxWidth = maxWidth;
+        img.style.maxHeight = maxHeight;
+        img.style.objectFit = objectFit;
       });
     };
   };
@@ -4473,19 +4809,13 @@ export default function InspectionReportsView({
   // Helper to download single photo with bigger, bold, high quality golden caption text with white borders
   const downloadSingleCaptionedPhoto = async (work: any, activePhoto: { url: string; label: string }, activeLang: string) => {
     try {
-      let blobUrl = '';
-      const safeUrl = getSafeCanvasUrl(activePhoto.url);
-      if (safeUrl.startsWith('data:image')) {
-        blobUrl = safeUrl;
-      } else {
-        const response = await fetch(safeUrl);
-        const blob = await response.blob();
-        blobUrl = URL.createObjectURL(blob);
+      const dataUrl = await resolvePhotoDataUrl(activePhoto.url);
+      if (!dataUrl) {
+        window.open(getSafeCanvasUrl(activePhoto.url) || activePhoto.url, '_blank');
+        return;
       }
-
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
+      const img = await loadImageFromDataUrl(dataUrl);
+      {
         const targetWidth = Math.max(img.width || 1200, 1000);
         const scale = targetWidth / (img.width || 1200);
         const targetHeight = (img.height || 800) * scale;
@@ -4548,25 +4878,16 @@ export default function InspectionReportsView({
         drawTextWithOutline(`${timeStr} • ${gpsStr} • ${inspectorStr} • WORK ID: ${workIdStr}`, targetWidth / 2, targetHeight + 138, Math.max(16, Math.round(targetWidth * 0.014)));
 
         // Download canvas output
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+        const jpegUrl = canvas.toDataURL('image/jpeg', 0.95);
         const a = document.createElement('a');
-        a.href = dataUrl;
+        a.href = jpegUrl;
         a.download = `Work_${workIdStr}_${photoLbl.replace(/[^a-zA-Z0-9_\u0B80-\u0BFF]/g, '_')}_Captioned.jpg`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-
-        if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
-      };
-
-      img.onerror = () => {
-        window.open(activePhoto.url, '_blank');
-        if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
-      };
-
-      img.src = blobUrl;
+      }
     } catch (e) {
-      window.open(activePhoto.url, '_blank');
+      window.open(getSafeCanvasUrl(activePhoto.url) || activePhoto.url, '_blank');
     }
   };
 
@@ -4580,19 +4901,10 @@ export default function InspectionReportsView({
       const loadedImgs = await Promise.all(
         photos.map(async (p) => {
           try {
-            let blobUrl = getSafeCanvasUrl(p.url);
-            if (!blobUrl.startsWith('data:image')) {
-              const res = await fetch(blobUrl);
-              const blob = await res.blob();
-              blobUrl = URL.createObjectURL(blob);
-            }
-            return new Promise<{ img: HTMLImageElement; label: string; blobUrl: string }>((resolve, reject) => {
-              const img = new Image();
-              img.crossOrigin = 'anonymous';
-              img.onload = () => resolve({ img, label: p.label, blobUrl });
-              img.onerror = () => reject();
-              img.src = blobUrl;
-            });
+            const photoDataUrl = await resolvePhotoDataUrl(p.url);
+            if (!photoDataUrl) return null;
+            const img = await loadImageFromDataUrl(photoDataUrl);
+            return { img, label: p.label, blobUrl: '' };
           } catch (_) {
             return null;
           }
@@ -4756,40 +5068,50 @@ export default function InspectionReportsView({
 
   // Helper to download ENTIRE SLIDE FRAME as a single high-resolution image PNG using html2canvas
   const handleDownloadFullSlideAsImage = async () => {
-    if (!slideContainerRef.current) return;
+    if (!slideContainerRef.current || isSlideDownloading) return;
+    const slideEl = slideContainerRef.current;
+    const hideBtns = slideEl.querySelectorAll('.hide-on-export') as NodeListOf<HTMLElement>;
+    const prevTransform = slideEl.style.transform;
+    const prevWidth = slideEl.style.width;
+    const prevHeight = slideEl.style.height;
+    let restoreImages: (() => void) | null = null;
+    setIsSlideDownloading(true);
     try {
-      const slideEl = slideContainerRef.current;
-      const hideBtns = slideEl.querySelectorAll('.hide-on-export');
-      hideBtns.forEach((btn: any) => {
+      hideBtns.forEach((btn) => {
         btn.style.opacity = '0';
         btn.style.pointerEvents = 'none';
       });
 
-      // 1. Inline all images in slide view to Base64 Data URLs so html2canvas renders photos 100% reliably
-      const restoreImages = await convertImagesToBase64InContainer(slideEl);
+      const width = slideEl.offsetWidth;
+      const height = slideEl.offsetHeight;
+      slideEl.style.transform = 'none';
+      slideEl.style.width = `${width}px`;
+      slideEl.style.height = `${height}px`;
 
-      // 2. Short pause for DOM repaint
-      await new Promise(r => setTimeout(r, 150));
+      restoreImages = await convertImagesToBase64InContainer(slideEl);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-      // 3. Capture canvas with CORS & taint settings
       const canvas = await html2canvas(slideEl, {
         useCORS: true,
-        allowTaint: true,
+        allowTaint: false,
         scale: 2,
         backgroundColor: slideTheme === 'light' ? '#f8fafc' : '#020617',
-        logging: false
+        logging: false,
+        width,
+        height,
+        windowWidth: width,
+        windowHeight: height,
+        x: 0,
+        y: 0,
+        scrollX: 0,
+        scrollY: 0,
+        imageTimeout: 20000,
+        ignoreElements: (el) => (el as HTMLElement).classList?.contains('hide-on-export'),
       });
 
-      // 4. Restore original image URLs & UI buttons
-      restoreImages();
-      hideBtns.forEach((btn: any) => {
-        btn.style.opacity = '1';
-        btn.style.pointerEvents = 'auto';
-      });
-
-      const dataUrl = canvas.toDataURL('image/png', 0.95);
+      const pngUrl = canvas.toDataURL('image/png', 0.95);
       const a = document.createElement('a');
-      a.href = dataUrl;
+      a.href = pngUrl;
       a.download = `Full_Slide_Work_${currentSlideWork?.workId || currentSlideWork?.id || 'entry'}.png`;
       document.body.appendChild(a);
       a.click();
@@ -4797,6 +5119,16 @@ export default function InspectionReportsView({
     } catch (err: any) {
       console.error('Error capturing full slide image:', err);
       alert('Error capturing slide frame image: ' + err.message);
+    } finally {
+      restoreImages?.();
+      slideEl.style.transform = prevTransform;
+      slideEl.style.width = prevWidth;
+      slideEl.style.height = prevHeight;
+      hideBtns.forEach((btn) => {
+        btn.style.opacity = '1';
+        btn.style.pointerEvents = 'auto';
+      });
+      setIsSlideDownloading(false);
     }
   };
 
@@ -4861,7 +5193,7 @@ export default function InspectionReportsView({
           <FileSpreadsheet className="w-4 h-4" />
           <span>{lang === 'ta' ? 'விரிவான அறிக்கை (Detailed)' : 'Detailed Field Register'}</span>
           <span className="ml-1.5 px-2 py-0.5 text-xs rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono font-bold">
-            {filteredWorks.length}
+            {filteredWorksTotal}
           </span>
         </button>
 
@@ -4915,7 +5247,9 @@ export default function InspectionReportsView({
                 setSelectedWard('all');
                 setSelectedStreetName('all');
                 setSearchQuery('');
-                setFromDate(getDefaultFromDate());
+                setAdminFilterFieldId('');
+                setAdminFilterValue('');
+                setFromDate(getTodayYmd());
                 setToDate(getTodayYmd());
                 setUserCols({ subject: false, category: false });
                 setLocCols({
@@ -5138,15 +5472,28 @@ export default function InspectionReportsView({
           {adminFilterFieldId && (
             <div>
               <label className="text-[11px] font-bold text-slate-500 block mb-1">
-                {lang === 'ta' ? 'வடிகட்டி மதிப்பு' : 'Filter Value'}
+                {lang === 'ta' ? 'புல மதிப்பு' : 'Field Value'}
               </label>
-              <input
-                type="text"
-                placeholder={lang === 'ta' ? 'எ.கா. Yes, No, Locked...' : 'e.g. Yes, No, Locked...'}
-                value={adminFilterValue}
-                onChange={(e) => setAdminFilterValue(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
-              />
+              {adminFieldValueOptions.length > 0 ? (
+                <select
+                  value={adminFieldValueOptions.includes(adminFilterValue) ? adminFilterValue : ''}
+                  onChange={(e) => setAdminFilterValue(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                >
+                  <option value="">{lang === 'ta' ? '-- மதிப்பைத் தேர்வுசெய் --' : '-- Select value --'}</option>
+                  {adminFieldValueOptions.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  placeholder={lang === 'ta' ? 'மதிப்பை உள்ளிடவும் (எ.கா. 9894491631)' : 'Type a value (e.g. 9894491631)'}
+                  value={adminFilterValue}
+                  onChange={(e) => setAdminFilterValue(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                />
+              )}
             </div>
           )}
 
@@ -5880,7 +6227,7 @@ export default function InspectionReportsView({
                 <h3 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
                   <span>{lang === 'ta' ? 'முழுமையான கள ஆய்வு பதிவேடு' : 'Detailed Field Work Records'}</span>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono font-bold">
-                    {filteredWorks.length}
+                    {filteredWorksTotal}
                   </span>
                 </h3>
                 <p className="text-[11px] text-slate-400">
@@ -5990,7 +6337,7 @@ export default function InspectionReportsView({
               >
                 <span>{lang === 'ta' ? 'அனைத்து வகைகளும்' : 'All Categories'}</span>
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${selectedCategoryId === 'all' ? 'bg-indigo-800 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                  {apiTotalWithoutCategory || filteredWorks.length}
+                  {worksFromApi ? apiTotalWithoutCategory : filteredWorks.length}
                 </span>
               </button>
               {availableCategories.map((cat: any) => {
@@ -6244,7 +6591,7 @@ export default function InspectionReportsView({
                                     onError={(e) => {
                                       if (!e.currentTarget.dataset.retried) {
                                         e.currentTarget.dataset.retried = 'true';
-                                        e.currentTarget.src = `/api/media?url=${encodeURIComponent(val)}`;
+                                        e.currentTarget.src = toStableMediaSrc(val);
                                       }
                                     }}
                                   />
@@ -6317,8 +6664,8 @@ export default function InspectionReportsView({
             <div className="flex items-center justify-between p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
               <span className="text-xs font-bold text-slate-500">
                 {lang === 'ta'
-                  ? `பக்கம் ${detailedPage} / ${detailedTotalPages} (மொத்தம் ${worksFromApi && apiWorksTotal > 0 ? apiWorksTotal : filteredWorks.length} வரிசைகள்)`
-                  : `Page ${detailedPage} of ${detailedTotalPages} (Total ${worksFromApi && apiWorksTotal > 0 ? apiWorksTotal : filteredWorks.length} rows)`}
+                  ? `பக்கம் ${detailedPage} / ${detailedTotalPages} (மொத்தம் ${filteredWorksTotal} வரிசைகள்)`
+                  : `Page ${detailedPage} of ${detailedTotalPages} (Total ${filteredWorksTotal} rows)`}
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -6566,7 +6913,7 @@ export default function InspectionReportsView({
                       onError={(e) => {
                         if (!e.currentTarget.dataset.retried && selectedWorkModal.imageUrl) {
                           e.currentTarget.dataset.retried = 'true';
-                          e.currentTarget.src = `/api/media?url=${encodeURIComponent(selectedWorkModal.imageUrl)}`;
+                          e.currentTarget.src = toStableMediaSrc(selectedWorkModal.imageUrl);
                         }
                       }}
                       alt="Field evidence"
@@ -6649,7 +6996,7 @@ export default function InspectionReportsView({
                               onError={(e) => {
                                 if (!e.currentTarget.dataset.retried) {
                                   e.currentTarget.dataset.retried = 'true';
-                                  e.currentTarget.src = `/api/media?url=${encodeURIComponent(val)}`;
+                                  e.currentTarget.src = toStableMediaSrc(val);
                                 }
                               }}
                               alt={key}
@@ -7052,8 +7399,9 @@ export default function InspectionReportsView({
                 {/* Profile picture */}
                 {slideInspectorPhoto && (
                   <img 
-                    src={slideInspectorPhoto} 
+                    src={toStableMediaSrc(slideInspectorPhoto) || slideInspectorPhoto} 
                     alt="Inspector profile" 
+                    crossOrigin="anonymous"
                     referrerPolicy="no-referrer"
                     className="w-8 h-8 rounded-full object-cover border border-indigo-500 shadow-xs shrink-0 ml-1" 
                     onError={(e) => {
@@ -7155,12 +7503,19 @@ export default function InspectionReportsView({
                 {/* 3. Download Entire Slide as Image Frame Button */}
                 <button
                   onClick={handleDownloadFullSlideAsImage}
-                  className="hide-on-export inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition shadow-xs cursor-pointer border border-indigo-500 shrink-0"
+                  disabled={isSlideDownloading}
+                  className="hide-on-export inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition shadow-xs cursor-pointer border border-indigo-500 shrink-0 disabled:opacity-60"
                   title={slideLang === 'ta' ? 'முழு ஸ்லைடு காட்சியையும் படமாக பதிவிறக்குகிறது' : 'DOWNLOAD ENTIRE SLIDE FRAME AS IMAGE'}
                 >
-                  <Download className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                  {isSlideDownloading ? (
+                    <Loader2 className="w-3.5 h-3.5 text-white stroke-[2.5] animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                  )}
                   <span className="text-[11px] font-black uppercase">
-                    {slideLang === 'ta' ? 'முழு ஸ்லைடு படம்' : 'DOWNLOAD SLIDE'}
+                    {isSlideDownloading
+                      ? (slideLang === 'ta' ? 'பதிவிறக்குகிறது...' : 'DOWNLOADING...')
+                      : (slideLang === 'ta' ? 'முழு ஸ்லைடு படம்' : 'DOWNLOAD SLIDE')}
                   </span>
                 </button>
 
@@ -7614,12 +7969,14 @@ export default function InspectionReportsView({
             {/* Image Box */}
             <div className="relative rounded-2xl overflow-hidden bg-black border border-slate-700 shadow-2xl max-h-[80vh] flex items-center justify-center">
               <img
-                src={photoPreviewModal.url}
+                src={toStableMediaSrc(photoPreviewModal.url) || photoPreviewModal.url}
                 alt={photoPreviewModal.label}
+                crossOrigin="anonymous"
+                referrerPolicy="no-referrer"
                 onError={(e) => {
                   if (!e.currentTarget.dataset.retried && photoPreviewModal.url) {
                     e.currentTarget.dataset.retried = 'true';
-                    e.currentTarget.src = `/api/media?url=${encodeURIComponent(photoPreviewModal.url)}`;
+                    e.currentTarget.src = toStableMediaSrc(photoPreviewModal.url);
                   }
                 }}
                 className="max-h-[80vh] max-w-full object-contain"
@@ -7631,15 +7988,32 @@ export default function InspectionReportsView({
               <span className="font-bold text-amber-300 uppercase tracking-wide">
                 {photoPreviewModal.label}
               </span>
-              <a
-                href={photoPreviewModal.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-indigo-400 hover:underline flex items-center gap-1 font-semibold"
-              >
-                <ExternalLink className="w-3 h-3" />
-                <span>Open Full Image</span>
-              </a>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (photoPreviewModal.work) {
+                      void handleDownloadSlidePhotoWithCaptions(photoPreviewModal.work, {
+                        url: photoPreviewModal.url,
+                        label: photoPreviewModal.label,
+                      });
+                    }
+                  }}
+                  className="text-amber-300 hover:underline flex items-center gap-1 font-semibold cursor-pointer bg-transparent border-none p-0"
+                >
+                  <Download className="w-3 h-3" />
+                  <span>Download photo</span>
+                </button>
+                <a
+                  href={toStableMediaSrc(photoPreviewModal.url) || photoPreviewModal.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-indigo-400 hover:underline flex items-center gap-1 font-semibold"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span>Open Full Image</span>
+                </a>
+              </div>
             </div>
           </div>
         </div>

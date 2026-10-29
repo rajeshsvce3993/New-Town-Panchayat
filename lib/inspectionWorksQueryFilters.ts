@@ -1,4 +1,4 @@
-import { extractCalendarDateYMD } from '@/lib/inspectionDate';
+import { extractCalendarDateYMD, extractInspectionDateMs } from '@/lib/inspectionDate';
 
 export type InspectionWorksFilterQuery = {
   fromDate?: string | null;
@@ -275,6 +275,61 @@ export function workMatchesSubject(w: any, subjectId: string, ctx: InspectionWor
   );
 }
 
+export type InspectionWorkReportDimensionRollup = {
+  zoneId: string;
+  districtId: string;
+  tpId: string;
+  zoneNameEn?: string;
+  districtNameEn?: string;
+  tpNameEn?: string;
+  wardNumber: string;
+  submittedByUserName: string;
+  subjectId: string;
+  categoryId: string;
+  count: number;
+};
+
+export function filterSubjectCategoryRollupsForQuery<
+  T extends { subjectId?: string; categoryId?: string; count?: number },
+>(rows: T[], filter: InspectionWorksFilterQuery, masters: InspectionWorksFilterMasters): T[] {
+  let list = rows || [];
+  if (filter.subjectId) {
+    list = list.filter((r) => workMatchesSubject({ subjectId: r.subjectId }, String(filter.subjectId), masters));
+  }
+  if (filter.categoryId) {
+    list = list.filter((r) => workMatchesCategory({ categoryId: r.categoryId }, String(filter.categoryId), masters));
+  }
+  return list;
+}
+
+/** Same total Abstract uses: rollup rows after subject/category matching. */
+export function sumSubjectCategoryRollupsForFilter(
+  rows: Array<{ subjectId?: string; categoryId?: string; count?: number }>,
+  filter: InspectionWorksFilterQuery,
+  masters: InspectionWorksFilterMasters
+): number {
+  return filterSubjectCategoryRollupsForQuery(rows, filter, masters).reduce(
+    (sum, row) => sum + (Number(row.count) || 0),
+    0
+  );
+}
+
+export function collapseDimensionRollupsToSubjectCategory(
+  rows: InspectionWorkReportDimensionRollup[]
+): Array<{ subjectId: string; categoryId: string; count: number }> {
+  const map = new Map<string, { subjectId: string; categoryId: string; count: number }>();
+  for (const row of rows || []) {
+    const subjectId = String(row.subjectId || 'unknown');
+    const categoryId = String(row.categoryId || '_unknown');
+    const key = `${subjectId}\0${categoryId}`;
+    const prev = map.get(key);
+    const n = Number(row.count) || 0;
+    if (prev) prev.count += n;
+    else map.set(key, { subjectId, categoryId, count: n });
+  }
+  return [...map.values()];
+}
+
 export function workMatchesCategory(w: any, categoryId: string, ctx: InspectionWorksFilterMasters): boolean {
   const sCat = String(categoryId).trim().toLowerCase();
   const matchedCategory = (ctx.inspectionCategories || []).find(
@@ -374,6 +429,39 @@ export function getWorkDynamicFieldValue(
   return '';
 }
 
+/** Search tokens for a dynamic-field filter (Yes/No options, typed phone numbers, dropdown labels). */
+export function adminFieldValueNeedles(value: string | null | undefined): string[] {
+  const q = String(value || '').trim();
+  if (!q) return [];
+  const out = new Set<string>([q]);
+  const compact = q.toLowerCase().replace(/[()[\],]/g, ' ').replace(/\s+/g, ' ').trim();
+  const tokens = compact.split(' ');
+  const hasYes = tokens.includes('yes') || compact.includes('ஆம்');
+  const hasNo = tokens.includes('no') || compact.includes('இல்லை');
+  if (hasYes && !hasNo) {
+    out.add('yes');
+    out.add('ஆம்');
+  } else if (hasNo && !hasYes) {
+    out.add('no');
+    out.add('இல்லை');
+  }
+  const digits = q.replace(/\D/g, '');
+  if (digits.length >= 8) out.add(digits);
+  return [...out];
+}
+
+export function storedValueMatchesAdminFilter(stored: string, queryValue: string): boolean {
+  const vStr = String(stored || '').toLowerCase().trim();
+  if (!vStr) return false;
+  const vDigits = vStr.replace(/\D/g, '');
+  for (const n of adminFieldValueNeedles(queryValue)) {
+    const nl = n.toLowerCase();
+    if (vStr.includes(nl)) return true;
+    if (/^\d{8,}$/.test(n) && vDigits.includes(n)) return true;
+  }
+  return false;
+}
+
 function workMatchesAdminField(
   w: any,
   adminFieldId: string,
@@ -382,12 +470,7 @@ function workMatchesAdminField(
 ): boolean {
   const val = getWorkDynamicFieldValue(w, adminFieldId, ctx.inspectionFields || []);
   if (adminFieldValue) {
-    const q = adminFieldValue.toLowerCase().trim();
-    const vStr = String(val).toLowerCase().trim();
-    if (!vStr) return false;
-    if (q === 'yes' || q === 'ஆம்') return vStr === 'yes' || vStr === 'ஆம்';
-    if (q === 'no' || q === 'இல்லை') return vStr === 'no' || vStr === 'இல்லை';
-    return vStr.includes(q);
+    return storedValueMatchesAdminFilter(val, adminFieldValue);
   }
   return !!val && val.trim() !== '';
 }
@@ -645,9 +728,12 @@ export function buildInspectionWorksViewResponse(
 
 export function sortInspectionWorksNewestFirst(works: any[]): any[] {
   return [...works].sort((a, b) => {
-    const ta = workSubmittedYmd(a) || '';
-    const tb = workSubmittedYmd(b) || '';
-    if (ta !== tb) return tb.localeCompare(ta);
+    const idA = String(a._id || '');
+    const idB = String(b._id || '');
+    if (idA && idB && idA !== idB) return idB.localeCompare(idA);
+    const ta = extractInspectionDateMs(a.submittedAt || a.createdAt || a.date || a.inspectionDate);
+    const tb = extractInspectionDateMs(b.submittedAt || b.createdAt || b.date || b.inspectionDate);
+    if (ta !== tb) return tb - ta;
     return String(b.workId || b.id || '').localeCompare(String(a.workId || a.id || ''));
   });
 }

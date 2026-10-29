@@ -1,10 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getS3Client, getAppSettings } from '@/lib/storage';
+import { extractS3ObjectKey } from '@/lib/s3MediaKey';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import fs from 'fs';
 import path from 'path';
 
 export const dynamic = 'force-dynamic';
+
+const S3_CREDENTIAL_FAIL_CODES = new Set([
+  'NotSignedUp',
+  'InvalidAccessKeyId',
+  'InvalidUserType',
+  'InvalidClientTokenId',
+  'SignatureDoesNotMatch',
+  'ExpiredToken',
+  'AccountProblem',
+]);
+
+let s3CredentialBlockUntil = 0;
+let s3CredentialFailLogged = false;
+
+function s3CredentialsBlocked() {
+  return Date.now() < s3CredentialBlockUntil;
+}
+
+function blockS3Credentials(code: string, bucket: string) {
+  s3CredentialBlockUntil = Date.now() + 5 * 60 * 1000;
+  if (s3CredentialFailLogged) return;
+  s3CredentialFailLogged = true;
+  console.warn(
+    `[media] S3 ${code}: local keys cannot read bucket ${bucket}. Put the production S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY in .env and restart. Skipping further GetObject for 5 minutes.`
+  );
+}
+
+function mediaHeaders(contentType: string, cacheSeconds = 86400) {
+  return {
+    'Content-Type': contentType,
+    'Cache-Control': `public, max-age=${cacheSeconds}`,
+    'Access-Control-Allow-Origin': '*',
+  };
+}
 
 function getOfflineImageSvg(label: string = 'Inspection Photo (Offline Entry)') {
   return Buffer.from(
@@ -26,38 +61,7 @@ export async function GET(req: NextRequest) {
     const key = searchParams.get('key');
     const url = searchParams.get('url');
 
-    let rawKey = token || key || '';
-
-    // If token/rawKey is base64 encoded, decode it
-    if (token || (rawKey && !rawKey.includes('/') && !rawKey.includes('.'))) {
-      try {
-        const decoded = Buffer.from(rawKey, 'base64').toString('utf-8');
-        if (decoded && (decoded.includes('/') || decoded.includes('.'))) {
-          rawKey = decoded;
-        }
-      } catch (_) {}
-    }
-
-    let s3Key = rawKey || '';
-    if (url && !s3Key) {
-      try {
-        const parsed = new URL(url, 'http://localhost');
-        s3Key = parsed.searchParams.get('token') || parsed.searchParams.get('id') || parsed.searchParams.get('key') || decodeURIComponent(parsed.pathname.replace(/^\//, '')).replace(/\+/g, ' ');
-      } catch {
-        s3Key = decodeURIComponent(url.replace(/^https?:\/\/[^/]+\//, '')).replace(/\+/g, ' ');
-      }
-    } else if (s3Key) {
-      s3Key = decodeURIComponent(s3Key).replace(/\+/g, ' ');
-    }
-
-    // Recursively unpack nested proxy query keys if s3Key contains "key=" or "/api/media"
-    while (s3Key.includes('key=')) {
-      const idx = s3Key.indexOf('key=');
-      s3Key = s3Key.substring(idx + 4);
-      s3Key = decodeURIComponent(s3Key);
-    }
-    s3Key = s3Key.replace(/^(?:\/?api\/(?:media-proxy|media)\??)+/, '');
-    s3Key = s3Key.replace(/^\/+/, '');
+    const s3Key = extractS3ObjectKey(token || key || url || '');
 
     if (!s3Key) {
       return new NextResponse('Media request required', { status: 400 });
@@ -94,7 +98,7 @@ export async function GET(req: NextRequest) {
     const appSettings = getAppSettings();
     const bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || appSettings?.s3Bucket || 'tms-2026';
 
-    if (s3 && bucket) {
+    if (s3 && bucket && !s3CredentialsBlocked()) {
       try {
         const response = await s3.send(new GetObjectCommand({
           Bucket: bucket,
@@ -111,15 +115,16 @@ export async function GET(req: NextRequest) {
           const contentType = response.ContentType || 'image/jpeg';
 
           return new NextResponse(new Uint8Array(buffer), {
-            headers: {
-              'Content-Type': contentType,
-              'Cache-Control': 'public, max-age=86400',
-              'Access-Control-Allow-Origin': '*',
-            },
+            headers: mediaHeaders(contentType),
           });
         }
-      } catch (_s3Err: any) {
-        // Silently catch missing S3 keys to avoid exposing S3 bucket/key details in server logs
+      } catch (s3Err: any) {
+        const code = String(s3Err?.name || s3Err?.Code || s3Err?.code || 'S3Error');
+        if (S3_CREDENTIAL_FAIL_CODES.has(code)) {
+          blockS3Credentials(code, bucket);
+        } else if (code !== 'NoSuchKey' && code !== 'NotFound') {
+          console.warn(`[media] S3 GetObject ${code} key=${cleanS3Key}`);
+        }
       }
     }
 
@@ -142,15 +147,17 @@ export async function GET(req: NextRequest) {
       };
       const contentType = mimeMap[ext] || 'application/octet-stream';
       return new NextResponse(new Uint8Array(fileBuffer), {
-        headers: {
-          'Content-Type': contentType,
-          'Cache-Control': 'public, max-age=86400',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: mediaHeaders(contentType),
       });
     }
 
-    // Clean 404 error instead of fallback SVG
+    if (s3CredentialsBlocked()) {
+      return new NextResponse(new Uint8Array(getOfflineImageSvg('Photo unavailable (S3 credentials)')), {
+        status: 200,
+        headers: mediaHeaders('image/svg+xml', 60),
+      });
+    }
+
     return new NextResponse('Image not found', {
       status: 404,
       headers: {

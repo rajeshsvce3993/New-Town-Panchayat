@@ -1368,7 +1368,9 @@ export function getS3Client(): S3Client | null {
       },
       requestHandler: s3RequestHandler,
       maxAttempts: 3,
-    });
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
+    } as ConstructorParameters<typeof S3Client>[0]);
 
     lastS3AccessKeyId = accessKeyId;
     lastS3SecretAccessKey = secretAccessKey;
@@ -2116,7 +2118,7 @@ export async function fetchAllLiteInspectionWorksFromMongo(): Promise<any[] | nu
     const col = await getCollectionWithAliases(db, 'inspectionWorks');
     const items = await col
       .find({}, { projection: LITE_INSPECTION_WORKS_PROJECTION })
-      .sort({ submittedAt: -1, createdAt: -1 })
+      .sort({ _id: -1 })
       .toArray();
     if (!items.length) return null;
     return items.map((item: any) => {
@@ -2181,42 +2183,19 @@ export async function getInspectionWorksDashboardStats(): Promise<any[]> {
   }
 
   try {
-    const { fetchInspectionWorksDashboardStatsFromMongo } = await import(
-      '@/lib/inspectionWorksMongoRepository'
-    );
-    let stats = await fetchInspectionWorksDashboardStatsFromMongo();
+    const { fetchDashboardStatsFromRollups } = await import('@/lib/inspectionWorkReportRollups');
+    let stats = await fetchDashboardStatsFromRollups();
+    if (!stats?.length) {
+      const { fetchInspectionWorksDashboardStatsFromMongo } = await import(
+        '@/lib/inspectionWorksMongoRepository'
+      );
+      stats = await fetchInspectionWorksDashboardStatsFromMongo();
+    }
     if (stats?.length) {
       stats = stats.filter((row) => !isFallbackInspectionWork(row));
       cachedDashboardInspectionStats = { rows: stats, timestamp: now, v: DASHBOARD_INSPECTION_STATS_CACHE_VERSION };
       return stats;
     }
-
-    let rawList: any[] | null = await fetchAllLiteInspectionWorksFromMongo();
-    if (!rawList?.length) {
-      const { fetchRemoteInspectionWorksRaw } = await import('@/lib/remoteInspectionWorksCache');
-      rawList = await fetchRemoteInspectionWorksRaw();
-    }
-    if (!rawList?.length) return [];
-
-    const [districts, townPanchayats, zones, inspectionSubjects, inspectionCategories] =
-      await Promise.all([
-        getCollectionData('districts'),
-        getCollectionData('townPanchayats'),
-        getCollectionData('zones'),
-        getCollectionData('inspectionSubjects'),
-        getCollectionData('inspectionCategories'),
-      ]);
-    const masters = {
-      districts: districts || [],
-      townPanchayats: townPanchayats || [],
-      zones: zones || [],
-      inspectionSubjects: inspectionSubjects || [],
-      inspectionCategories: inspectionCategories || [],
-    };
-    const enriched = normalizeAndEnrichWorks(rawList, masters);
-    stats = aggregateEnrichedWorksForDashboardStats(enriched);
-    cachedDashboardInspectionStats = { rows: stats, timestamp: now, v: DASHBOARD_INSPECTION_STATS_CACHE_VERSION };
-    return stats;
   } catch (e: any) {
     console.warn('Inspection works stats skipped:', e?.message || e);
   }
@@ -2422,8 +2401,19 @@ export async function overlayLocalAdminUserCredentials(portalState: any): Promis
   return portalState;
 }
 
+async function timedBootstrap<T>(label: string, work: Promise<T>): Promise<T> {
+  const t0 = Date.now();
+  try {
+    return await work;
+  } finally {
+    const ms = Date.now() - t0;
+    if (ms >= 250) console.info(`[bootstrap] ${label} ${ms}ms`);
+  }
+}
+
 /** Fast first paint: dashboard masters, issues, and field staff — not employees. */
 export async function getPortalBootstrapState(): Promise<any> {
+  const t0 = Date.now();
   const [
     districts,
     townPanchayats,
@@ -2441,22 +2431,23 @@ export async function getPortalBootstrapState(): Promise<any> {
     pendingIssues,
     pendingIssuesSchema,
   ] = await Promise.all([
-    getCollectionData('districts'),
-    getCollectionData('townPanchayats'),
-    getCollectionData('zones'),
-    getCollectionData('inspectionSubjects'),
-    getCollectionData('inspectionCategories'),
-    getCollectionData('inspectionFields'),
-    getCollectionData('wardsAndStreets'),
-    getCollectionData('inspectionUsers'),
-    getCollectionData('inspectionRoles'),
-    getCollectionData('inspectionDesignations'),
-    getCollectionData('users'),
-    getAppSettings(),
-    getInspectionWorksDashboardStats(),
-    getCollectionData('pendingIssues'),
-    getCollectionData('pendingIssuesSchema'),
+    timedBootstrap('districts', getCollectionData('districts')),
+    timedBootstrap('townPanchayats', getCollectionData('townPanchayats')),
+    timedBootstrap('zones', getCollectionData('zones')),
+    timedBootstrap('inspectionSubjects', getCollectionData('inspectionSubjects')),
+    timedBootstrap('inspectionCategories', getCollectionData('inspectionCategories')),
+    timedBootstrap('inspectionFields', getCollectionData('inspectionFields')),
+    timedBootstrap('wardsAndStreets', getCollectionData('wardsAndStreets')),
+    timedBootstrap('inspectionUsers', getCollectionData('inspectionUsers')),
+    timedBootstrap('inspectionRoles', getCollectionData('inspectionRoles')),
+    timedBootstrap('inspectionDesignations', getCollectionData('inspectionDesignations')),
+    timedBootstrap('users', getCollectionData('users')),
+    timedBootstrap('settings', getAppSettings()),
+    timedBootstrap('inspectionWorkStats', getInspectionWorksDashboardStats()),
+    timedBootstrap('pendingIssues', getCollectionData('pendingIssues')),
+    timedBootstrap('pendingIssuesSchema', getCollectionData('pendingIssuesSchema')),
   ]);
+  console.info(`[bootstrap] parallel load ${Date.now() - t0}ms`);
 
   const localRoles = readLocalDb()?.roles || INITIAL_DATA.roles;
   const masters = {
@@ -2467,6 +2458,23 @@ export async function getPortalBootstrapState(): Promise<any> {
     inspectionDesignations: inspectionDesignations || [],
   };
   const enrichedUsers = (inspectionUsers || []).map((u: any) => enrichUserForApp(u, masters));
+  const subjectById = new Map(
+    (inspectionSubjects || []).map((s: any) => [String(s.id || s.code || ''), s])
+  );
+  const categoryById = new Map(
+    (inspectionCategories || []).map((c: any) => [String(c.id || c.code || ''), c])
+  );
+  const namedStats = (inspectionWorkStats || []).map((row: any) => {
+    const subj = subjectById.get(String(row.subjectId || ''));
+    const cat = categoryById.get(String(row.categoryId || ''));
+    return {
+      ...row,
+      subjectNameEn: row.subjectNameEn || subj?.nameEn || 'General Inspection',
+      subjectNameTa: row.subjectNameTa || subj?.nameTa || 'பொது ஆய்வு',
+      categoryNameEn: row.categoryNameEn || cat?.nameEn || '',
+      categoryNameTa: row.categoryNameTa || cat?.nameTa || '',
+    };
+  });
 
   return {
     ...portalStructuralDefaults(),
@@ -2491,7 +2499,7 @@ export async function getPortalBootstrapState(): Promise<any> {
     userActivities: [],
     roles: localRoles,
     settings: slimSettings(settings),
-    inspectionWorkStats: inspectionWorkStats || [],
+    inspectionWorkStats: namedStats,
     inspectionWorks: [],
     transferRequests: [],
   };
@@ -3694,7 +3702,7 @@ export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}
       const maxLim = limit > 0 ? limit : 100000;
       const works = await col
         .find(query)
-        .sort({ submittedAt: -1, createdAt: -1 })
+        .sort({ _id: -1 })
         .limit(maxLim)
         .toArray();
 

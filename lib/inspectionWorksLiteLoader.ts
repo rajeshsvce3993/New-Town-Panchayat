@@ -23,6 +23,7 @@ import {
 } from '@/lib/inspectionWorksReportsAggregate';
 import { fetchRemoteInspectionWorksRaw, invalidateRemoteInspectionWorksCache } from '@/lib/remoteInspectionWorksCache';
 import { shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
+import { rewriteWorkMediaFields } from '@/lib/s3MediaKey';
 
 export type LiteWorksLoadResult = {
   enriched: any[];
@@ -48,6 +49,16 @@ export type ReportCountsLoadResult = {
   categoryCounts: Record<string, number>;
   totalWithoutCategoryFilter: number;
   subjectCategoryRollups: Array<{ subjectId: string; categoryId: string; count: number }>;
+  dimensionRollups?: Array<{
+    zoneId: string;
+    districtId: string;
+    tpId: string;
+    wardNumber: string;
+    submittedByUserName: string;
+    subjectId: string;
+    categoryId: string;
+    count: number;
+  }>;
   masters: InspectionWorksFilterMasters;
   source: LiteWorksLoadResult['source'];
   truncated: boolean;
@@ -57,7 +68,7 @@ export type ReportCountsLoadResult = {
 const ENRICHED_REPORTS_CACHE_TTL_MS = 120_000;
 let enrichedReportsCache: { key: string; ts: number; data: LiteWorksLoadResult } | null = null;
 const enrichedReportsInFlight = new Map<string, Promise<LiteWorksLoadResult>>();
-let reportsDataGeneration = 0;
+let reportsDataGeneration = 4;
 
 export function getInspectionWorksReportsDataGeneration(): number {
   return reportsDataGeneration;
@@ -121,7 +132,9 @@ function enrichReportsCandidateRows(
 /** Paginated Mongo rows are already matched — do not re-filter or rows disappear from that page. */
 function enrichReportsPageRows(rows: any[], masters: InspectionWorksFilterMasters): any[] {
   const withoutFallback = (rows || []).filter((w) => !isFallbackInspectionWork(w));
-  return normalizeAndEnrichWorks(withoutFallback, masters).map(stripInspectionWorkForLite);
+  return normalizeAndEnrichWorks(withoutFallback, masters)
+    .map(stripInspectionWorkForLite)
+    .map(rewriteWorkMediaFields);
 }
 
 type RawLiteLoadResult = Omit<LiteWorksLoadResult, 'enriched'> & { rows: any[] };
@@ -286,6 +299,7 @@ export async function loadInspectionWorksReportsBundle(
   categoryCounts: Record<string, number>;
   totalWithoutCategoryFilter: number;
   subjectCategoryRollups: Array<{ subjectId: string; categoryId: string; count: number }>;
+  dimensionRollups: ReportCountsLoadResult['dimensionRollups'];
   works: any[];
   total: number;
   page: number;
@@ -299,6 +313,7 @@ export async function loadInspectionWorksReportsBundle(
     categoryCounts: bundle.categoryCounts,
     totalWithoutCategoryFilter: bundle.totalWithoutCategoryFilter,
     subjectCategoryRollups: bundle.subjectCategoryRollups,
+    dimensionRollups: bundle.dimensionRollups || [],
     works: bundle.rows.length ? enrichReportsPageRows(bundle.rows, masters) : [],
     total: bundle.total,
     page: bundle.page,
@@ -319,6 +334,7 @@ export async function loadInspectionWorksReportCounts(
       categoryCounts: agg.categoryCounts,
       totalWithoutCategoryFilter: agg.totalWithoutCategoryFilter,
       subjectCategoryRollups: agg.subjectCategoryRollups,
+      dimensionRollups: agg.dimensionRollups || [],
       masters,
       source: agg.source === 'mongo-rollup' ? 'mongo-rollup' : 'mongo-aggregate',
       truncated: false,
@@ -329,6 +345,7 @@ export async function loadInspectionWorksReportCounts(
     categoryCounts: {},
     totalWithoutCategoryFilter: 0,
     subjectCategoryRollups: [],
+    dimensionRollups: [],
     masters,
     source: 'empty',
     truncated: false,

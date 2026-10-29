@@ -39,6 +39,7 @@ import {
   getInspectionWorksReportsDataGeneration,
 } from '@/lib/inspectionWorksLiteLoader';
 import { applyDefaultReportsDateWindow } from '@/lib/inspectionWorksMongoRepository';
+import { toMediaProxyPath } from '@/lib/s3MediaKey';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -146,6 +147,7 @@ export async function GET(req: NextRequest) {
             categoryCounts: bundle.categoryCounts,
             totalWithoutCategoryFilter: bundle.totalWithoutCategoryFilter,
             subjectCategoryRollups: bundle.subjectCategoryRollups,
+            dimensionRollups: bundle.dimensionRollups || [],
             meta: {
               querySource: bundle.source,
               truncated: false,
@@ -177,6 +179,7 @@ export async function GET(req: NextRequest) {
           categoryCounts: splitCounts.categoryCounts,
           totalWithoutCategoryFilter: splitCounts.totalWithoutCategoryFilter,
           subjectCategoryRollups: splitCounts.subjectCategoryRollups ?? [],
+          dimensionRollups: splitCounts.dimensionRollups ?? [],
           meta: {
             querySource: splitPage.source,
             truncated: splitPage.truncated,
@@ -203,6 +206,7 @@ export async function GET(req: NextRequest) {
           categoryCounts: counts.categoryCounts,
           totalWithoutCategoryFilter: counts.totalWithoutCategoryFilter,
           subjectCategoryRollups: counts.subjectCategoryRollups,
+          dimensionRollups: counts.dimensionRollups ?? [],
           meta: {
             querySource: counts.source,
             truncated: counts.truncated,
@@ -408,7 +412,7 @@ export async function GET(req: NextRequest) {
 
         let mongoQuery = db.collection('inspectionWorks')
           .find(query, lite ? { projection: LITE_INSPECTION_WORKS_PROJECTION } : undefined)
-          .sort({ submittedAt: -1, createdAt: -1 });
+          .sort({ _id: -1 });
 
         if (queryLimit > 0) {
           mongoQuery = mongoQuery.limit(queryLimit);
@@ -510,27 +514,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const toObfuscatedProxyUrl = (rawUrlOrKey: string): string => {
-      if (!rawUrlOrKey || typeof rawUrlOrKey !== 'string') return '';
-      if (rawUrlOrKey.startsWith('data:image') || rawUrlOrKey.startsWith('blob:')) return rawUrlOrKey;
-      if (rawUrlOrKey.startsWith('/api/media')) return rawUrlOrKey;
-
-      let s3Key = rawUrlOrKey;
-      if (rawUrlOrKey.startsWith('http')) {
-        try {
-          const parsed = new URL(rawUrlOrKey);
-          s3Key = decodeURIComponent(parsed.pathname.replace(/^\//, '')).replace(/\+/g, ' ');
-        } catch {
-          s3Key = decodeURIComponent(rawUrlOrKey.replace(/^https?:\/\/[^/]+\//, '')).replace(/\+/g, ' ');
-        }
-      }
-
-      s3Key = s3Key.split('?')[0].replace(/^\/+/, '');
-      if (!s3Key) return '';
-
-      const token = Buffer.from(s3Key).toString('base64');
-      return `/api/media?token=${encodeURIComponent(token)}`;
-    };
+    const toObfuscatedProxyUrl = (rawUrlOrKey: string): string => toMediaProxyPath(rawUrlOrKey);
 
     const normalizedWorks = await Promise.all(filtered.map(async (w: any) => {
       let imageUrl = w.imageUrl || '';

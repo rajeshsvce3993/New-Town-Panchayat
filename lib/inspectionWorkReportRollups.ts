@@ -1,5 +1,11 @@
-import { isFallbackInspectionWork } from '@/lib/inspectionWorksQueryFilters';
-import type { InspectionWorksFilterMasters, InspectionWorksFilterQuery } from '@/lib/inspectionWorksQueryFilters';
+import {
+  collapseDimensionRollupsToSubjectCategory,
+  isFallbackInspectionWork,
+  sumSubjectCategoryRollupsForFilter,
+  type InspectionWorkReportDimensionRollup,
+  type InspectionWorksFilterMasters,
+  type InspectionWorksFilterQuery,
+} from '@/lib/inspectionWorksQueryFilters';
 import { deriveSubmittedDateYmd } from '@/lib/inspectionWorkReportIndex';
 import {
   districtIdsForZone,
@@ -25,6 +31,7 @@ export type InspectionWorkReportRollupCounts = {
   categoryCounts: Record<string, number>;
   totalWithoutCategoryFilter: number;
   subjectCategoryRollups: Array<{ subjectId: string; categoryId: string; count: number }>;
+  dimensionRollups: InspectionWorkReportDimensionRollup[];
   source: 'mongo-rollup';
 };
 
@@ -97,6 +104,9 @@ export async function ensureInspectionWorkReportIndexes(): Promise<void> {
     works.createIndex({ submittedDateYmd: -1, tpId: 1, submittedAt: -1, workId: -1 }, { background: true }),
     works.createIndex({ streetName: 1, submittedDateYmd: -1 }, { background: true }),
     works.createIndex({ workId: 1 }, { background: true }),
+    works.createIndex({ tpNameEn: 1, submittedDateYmd: -1 }, { background: true }),
+    works.createIndex({ districtNameEn: 1, submittedDateYmd: -1 }, { background: true }),
+    works.createIndex({ zoneNameEn: 1, submittedDateYmd: -1 }, { background: true }),
     ctx.rollups.createIndex(
       { submittedDateYmd: 1, tpId: 1, subjectId: 1, categoryId: 1 },
       { background: true }
@@ -123,9 +133,9 @@ function buildRollupMatch(
     and.push({ submittedDateYmd: filter.dateParam });
   }
 
-  const scopeTp = filter.scopeTpId || filter.tpId;
-  const scopeDistrict = filter.scopeDistrictId || filter.districtId;
-  const scopeZone = filter.scopeZoneId || filter.zoneId;
+  const scopeTp = filter.tpId || filter.scopeTpId;
+  const scopeDistrict = filter.tpId ? null : filter.districtId || filter.scopeDistrictId;
+  const scopeZone = filter.tpId || filter.districtId ? null : filter.zoneId || filter.scopeZoneId;
 
   if (scopeTp) {
     const variants = idVariants(scopeTp);
@@ -137,17 +147,34 @@ function buildRollupMatch(
     if (tp?.id) ids.push(norm(tp.id));
     if (tp?.code) ids.push(norm(tp.code));
     if (tp?.nameEn) ids.push(norm(tp.nameEn));
-    and.push({ tpId: { $in: [...new Set(ids.filter(Boolean))] } });
+    const names = [tp?.nameEn, tp?.nameTa].filter(Boolean).map((v) => norm(v));
+    const or: Record<string, unknown>[] = [{ tpId: { $in: [...new Set(ids.filter(Boolean))] } }];
+    if (names.length) or.push({ tpNameEn: { $in: [...new Set(names)] } });
+    and.push(or.length === 1 ? or[0] : { $or: or });
   } else if (scopeDistrict) {
     const variants = idVariants(scopeDistrict);
     const tpIds = tpIdsForDistrict(scopeDistrict, masters);
+    const dist = (masters.districts || []).find(
+      (d) =>
+        variants.includes(norm(d.id).toLowerCase()) ||
+        variants.includes(norm(d.nameEn).toLowerCase()) ||
+        variants.includes(norm(d.code).toLowerCase())
+    );
     const or: Record<string, unknown>[] = [{ districtId: { $in: variants } }];
+    if (dist?.nameEn) or.push({ districtNameEn: dist.nameEn });
     if (tpIds.length) or.push({ tpId: { $in: tpIds } });
     and.push({ $or: or });
   } else if (scopeZone) {
     const districtIds = districtIdsForZone(scopeZone, masters);
     const tpIds = tpIdsForZone(scopeZone, masters);
+    const zone = (masters.zones || []).find(
+      (z) =>
+        idVariants(scopeZone).includes(norm(z.id).toLowerCase()) ||
+        idVariants(scopeZone).includes(norm(z.nameEn).toLowerCase()) ||
+        idVariants(scopeZone).includes(norm(z.code).toLowerCase())
+    );
     const or: Record<string, unknown>[] = [{ zoneId: { $in: idVariants(scopeZone) } }];
+    if (zone?.nameEn) or.push({ zoneNameEn: zone.nameEn });
     if (districtIds.length) or.push({ districtId: { $in: districtIds } });
     if (tpIds.length) or.push({ tpId: { $in: tpIds } });
     and.push({ $or: or });
@@ -192,6 +219,13 @@ function buildRollupMatch(
     if (cat?.nameEn) ids.push(norm(cat.nameEn));
     and.push({ categoryId: { $in: [...new Set(ids.filter(Boolean))] } });
   }
+
+  and.push({
+    subjectId: { $nin: ['subj_general', 'general_inspection'] },
+  });
+  and.push({
+    categoryId: { $nin: ['cat_field_check', 'cat_general', 'field_check'] },
+  });
 
   if (!and.length) return {};
   return and.length === 1 ? and[0] : { $and: and };
@@ -490,6 +524,11 @@ export async function queryInspectionWorkReportRollupCounts(
     pipeline.push({
       $group: {
         _id: {
+          zoneId: { $ifNull: ['$zoneId', ''] },
+          districtId: { $ifNull: ['$districtId', ''] },
+          tpId: { $ifNull: ['$tpId', ''] },
+          wardNumber: { $ifNull: ['$wardNumber', ''] },
+          submittedByUserName: { $ifNull: ['$submittedByUserName', ''] },
           subjectId: { $ifNull: ['$subjectId', 'unknown'] },
           categoryId: { $ifNull: ['$categoryId', '_unknown'] },
         },
@@ -497,14 +536,28 @@ export async function queryInspectionWorkReportRollupCounts(
       },
     });
     const grouped = (await ctx.rollups.aggregate(pipeline).toArray()) as Array<{
-      _id: { subjectId: string; categoryId: string };
+      _id: {
+        zoneId: string;
+        districtId: string;
+        tpId: string;
+        wardNumber: string;
+        submittedByUserName: string;
+        subjectId: string;
+        categoryId: string;
+      };
       count: number;
     }>;
-    const subjectCategoryRollups = grouped.map((r) => ({
+    const dimensionRollups: InspectionWorkReportDimensionRollup[] = grouped.map((r) => ({
+      zoneId: String(r._id?.zoneId || ''),
+      districtId: String(r._id?.districtId || ''),
+      tpId: String(r._id?.tpId || ''),
+      wardNumber: String(r._id?.wardNumber || ''),
+      submittedByUserName: String(r._id?.submittedByUserName || ''),
       subjectId: String(r._id?.subjectId || 'unknown'),
       categoryId: String(r._id?.categoryId || '_unknown'),
       count: Number(r.count) || 0,
     }));
+    const subjectCategoryRollups = collapseDimensionRollupsToSubjectCategory(dimensionRollups);
     const totalWithoutCategoryFilter = subjectCategoryRollups.reduce((s, r) => s + r.count, 0);
     const categoryCounts = categoryCountsFromRollupRows(
       subjectCategoryRollups,
@@ -514,10 +567,55 @@ export async function queryInspectionWorkReportRollupCounts(
       categoryCounts,
       totalWithoutCategoryFilter,
       subjectCategoryRollups,
+      dimensionRollups,
       source: 'mongo-rollup',
     };
   } catch (err) {
     console.warn('[inspectionWorkReportRollups] query failed:', err);
+    return null;
+  }
+}
+
+/** Dashboard KPI rows from pre-aggregated rollups — not a scan of inspectionWorks. */
+export async function fetchDashboardStatsFromRollups(): Promise<any[] | null> {
+  try {
+    const ctx = await mongo();
+    if (!ctx) return null;
+    const n = await ctx.rollups.estimatedDocumentCount();
+    if (!n) return null;
+    const rows = await ctx.rollups
+      .aggregate(
+        [
+          {
+            $group: {
+              _id: {
+                subjectId: '$subjectId',
+                categoryId: '$categoryId',
+                zoneId: '$zoneId',
+                districtId: '$districtId',
+                tpId: '$tpId',
+              },
+              count: { $sum: '$count' },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              subjectId: '$_id.subjectId',
+              categoryId: '$_id.categoryId',
+              zoneId: '$_id.zoneId',
+              districtId: '$_id.districtId',
+              tpId: '$_id.tpId',
+              count: 1,
+            },
+          },
+        ],
+        { maxTimeMS: 4000 }
+      )
+      .toArray();
+    return rows.length ? rows : null;
+  } catch (err) {
+    console.warn('[inspectionWorkReportRollups] dashboard stats failed:', err);
     return null;
   }
 }
@@ -527,16 +625,9 @@ export async function queryInspectionWorkReportRollupTotal(
   masters: InspectionWorksFilterMasters
 ): Promise<number | null> {
   try {
-    const { ready } = await ensureInspectionWorkReportRollupsReady();
-    if (!ready) return null;
-    const ctx = await mongo();
-    if (!ctx) return null;
-    const match = buildRollupMatch(filter, masters, { omitCategory: false });
-    const pipeline: Record<string, unknown>[] = [];
-    if (Object.keys(match).length) pipeline.push({ $match: match });
-    pipeline.push({ $group: { _id: null, n: { $sum: '$count' } } });
-    const [row] = await ctx.rollups.aggregate(pipeline).toArray();
-    return Number(row?.n) || 0;
+    const counts = await queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: true });
+    if (!counts) return null;
+    return sumSubjectCategoryRollupsForFilter(counts.subjectCategoryRollups, filter, masters);
   } catch (err) {
     console.warn('[inspectionWorkReportRollups] total query failed:', err);
     return null;
