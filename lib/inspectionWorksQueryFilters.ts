@@ -375,6 +375,7 @@ export type InspectionWorkReportDimensionRollup = {
   zoneNameEn?: string;
   districtNameEn?: string;
   tpNameEn?: string;
+  streetName?: string;
   wardNumber: string;
   submittedByUserName: string;
   subjectId: string;

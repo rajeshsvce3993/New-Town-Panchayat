@@ -1062,6 +1062,12 @@ export default function InspectionReportsView({
 
   // Dynamic Grouping Style: 'subject' | 'user' | 'location'
   const [groupingStyle, setGroupingStyle] = useState<'subject' | 'user' | 'location'>('subject');
+  const abstractGroupingLabel =
+    groupingStyle === 'subject'
+      ? (lang === 'ta' ? 'பிரிவு மற்றும் வகை வாரியாக' : 'Subject / Category')
+      : groupingStyle === 'user'
+        ? (lang === 'ta' ? 'பயனர் வாரியாக' : 'User Wise')
+        : (lang === 'ta' ? 'இடம் வாரியாக' : 'Location Wise');
 
   // Category wise details always enabled
   const categoryWiseEnabled = true;
@@ -1250,6 +1256,8 @@ export default function InspectionReportsView({
   const [isExportingZip, setIsExportingZip] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const isExportingExcelRef = React.useRef(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const isExportingPdfRef = React.useRef(false);
   const [exportStatusText, setExportStatusText] = useState('');
 
   const isFetchingRef = React.useRef(false);
@@ -2621,39 +2629,45 @@ export default function InspectionReportsView({
       zoneId: string,
       districtId: string,
       tpId: string,
-      names?: { zoneNameEn?: string; districtNameEn?: string; tpNameEn?: string }
+      names?: { zoneNameEn?: string; districtNameEn?: string; tpNameEn?: string; streetName?: string; street?: string }
     ) => {
+      const norm = (v: any) => String(v || '').trim().toLowerCase();
+      const matchesGeo = (entity: any, ...needles: string[]) => {
+        const ids = [entity?.id, entity?.code, entity?.nameEn, entity?.nameTa].map(norm).filter(Boolean);
+        return needles.some((n) => n && ids.includes(n));
+      };
       const zoneName = String(names?.zoneNameEn || '').trim();
       const distName = String(names?.districtNameEn || '').trim();
       const tpName = String(names?.tpNameEn || '').trim();
-      const zone = (state.zones || []).find(
-        (z: any) =>
-          (zoneName && String(z.nameEn || '') === zoneName) ||
-          String(z.id) === zoneId ||
-          String(z.code || '') === zoneId ||
-          String(z.nameEn || '') === zoneId
+      const streetName = String(names?.streetName || names?.street || '').trim();
+
+      let tp = (state.townPanchayats || []).find((t: any) =>
+        matchesGeo(t, norm(tpId), norm(tpName))
       );
-      const dist = (state.districts || []).find(
-        (d: any) =>
-          (distName && String(d.nameEn || '') === distName) ||
-          String(d.id) === districtId ||
-          String(d.code || '') === districtId ||
-          String(d.nameEn || '') === districtId
+      let dist = (state.districts || []).find((d: any) =>
+        matchesGeo(d, norm(districtId), norm(distName))
       );
-      const tp = (state.townPanchayats || []).find(
-        (t: any) =>
-          (tpName && String(t.nameEn || '') === tpName) ||
-          String(t.id) === tpId ||
-          String(t.code || '') === tpId ||
-          String(t.nameEn || '') === tpId
+      if (!dist && tp?.districtId) {
+        dist = (state.districts || []).find((d: any) => matchesGeo(d, norm(tp.districtId)));
+      }
+      let zone = (state.zones || []).find((z: any) =>
+        matchesGeo(z, norm(zoneId), norm(zoneName))
       );
+      if (!zone && dist?.zoneId) {
+        zone = (state.zones || []).find((z: any) => matchesGeo(z, norm(dist.zoneId)));
+      }
+      if (!zone && tp?.zoneId) {
+        zone = (state.zones || []).find((z: any) => matchesGeo(z, norm(tp.zoneId)));
+      }
+
       return {
         zoneNameEn: zoneName || zone?.nameEn || zoneId || '-',
-        zoneNameTa: zoneName || zone?.nameTa || zone?.nameEn || zoneId || '-',
+        zoneNameTa: zone?.nameTa || zoneName || zone?.nameEn || zoneId || '-',
         districtNameEn: distName || dist?.nameEn || districtId || '-',
-        districtNameTa: distName || dist?.nameTa || dist?.nameEn || districtId || '-',
+        districtNameTa: dist?.nameTa || distName || dist?.nameEn || districtId || '-',
         tpNameEn: tpName || tp?.nameEn || tpId || '-',
-        tpNameTa: tpName || tp?.nameTa || tp?.nameEn || tpId || '-',
+        tpNameTa: tp?.nameTa || tpName || tp?.nameEn || tpId || '-',
+        streetName: streetName || '-',
       };
     },
     [state.zones, state.districts, state.townPanchayats]
@@ -2681,8 +2695,8 @@ export default function InspectionReportsView({
       for (const row of filteredApiSubjectRollups) {
         const sId = row.subjectId || 'unknown';
         const cId = row.categoryId || 'unknown';
-        const subj = (state.inspectionSubjects || []).find((s: any) => s.id === sId || s.code === sId);
-        const cat = (state.inspectionCategories || []).find((c: any) => c.id === cId || c.code === cId);
+        const subj = (state.inspectionSubjects || []).find((s: any) => s.id === sId || s.code === sId || s.nameEn === sId || s.nameTa === sId);
+        const cat = (state.inspectionCategories || []).find((c: any) => c.id === cId || c.code === cId || c.nameEn === cId || c.nameTa === cId);
         const sNameEn = subj?.nameEn || sId;
         const sNameTa = subj?.nameTa || sNameEn;
         const cNameEn = cat?.nameEn || cId;
@@ -2734,12 +2748,12 @@ export default function InspectionReportsView({
       if (isFallbackInspectionWork(work)) return;
 
       const sId = work.subjectId || 'unknown';
-      const subj = (state.inspectionSubjects || []).find((s: any) => s.id === sId || s.code === sId);
+      const subj = (state.inspectionSubjects || []).find((s: any) => s.id === sId || s.code === sId || s.nameEn === sId || s.nameTa === sId);
       const sNameEn = work.subjectNameEn || subj?.nameEn || sId;
       const sNameTa = work.subjectNameTa || subj?.nameTa || sNameEn;
 
       const cId = work.categoryId || 'unknown';
-      const cat = (state.inspectionCategories || []).find((c: any) => c.id === cId || c.code === cId);
+      const cat = (state.inspectionCategories || []).find((c: any) => c.id === cId || c.code === cId || c.nameEn === cId || c.nameTa === cId);
       const cNameEn = work.categoryNameEn || cat?.nameEn || cId;
       const cNameTa = work.categoryNameTa || cat?.nameTa || cNameEn;
 
@@ -2786,8 +2800,8 @@ export default function InspectionReportsView({
       return filteredApiSubjectRollups.map((row) => {
         const sId = row.subjectId || 'unknown';
         const cId = row.categoryId || 'unknown';
-        const subj = (state.inspectionSubjects || []).find((s: any) => s.id === sId || s.code === sId);
-        const cat = (state.inspectionCategories || []).find((c: any) => c.id === cId || c.code === cId);
+        const subj = (state.inspectionSubjects || []).find((s: any) => s.id === sId || s.code === sId || s.nameEn === sId || s.nameTa === sId);
+        const cat = (state.inspectionCategories || []).find((c: any) => c.id === cId || c.code === cId || c.nameEn === cId || c.nameTa === cId);
         return {
           subjectId: sId,
           subjectNameEn: subj?.nameEn || sId,
@@ -2817,8 +2831,8 @@ export default function InspectionReportsView({
       const cId = w.categoryId || 'unknown';
       const key = `${sId}_${cId}`;
 
-      const subj = (state.inspectionSubjects || []).find((s: any) => s.id === sId || s.code === sId);
-      const cat = (state.inspectionCategories || []).find((c: any) => c.id === cId || c.code === cId);
+      const subj = (state.inspectionSubjects || []).find((s: any) => s.id === sId || s.code === sId || s.nameEn === sId || s.nameTa === sId);
+      const cat = (state.inspectionCategories || []).find((c: any) => c.id === cId || c.code === cId || c.nameEn === cId || c.nameTa === cId);
 
       const sNameEn = w.subjectNameEn || subj?.nameEn || sId;
       const sNameTa = w.subjectNameTa || subj?.nameTa || sNameEn;
@@ -2885,14 +2899,14 @@ export default function InspectionReportsView({
           };
           if (includeSubject) {
             const subj = (state.inspectionSubjects || []).find(
-              (s: any) => s.id === row.subjectId || s.code === row.subjectId
+              (s: any) => s.id === row.subjectId || s.code === row.subjectId || s.nameEn === row.subjectId || s.nameTa === row.subjectId
             );
             groups[key].subjectNameEn = subj?.nameEn || row.subjectId || 'General';
             groups[key].subjectNameTa = subj?.nameTa || subj?.nameEn || row.subjectId || 'பொது';
           }
           if (includeCategory) {
             const cat = (state.inspectionCategories || []).find(
-              (c: any) => c.id === row.categoryId || c.code === row.categoryId
+              (c: any) => c.id === row.categoryId || c.code === row.categoryId || c.nameEn === row.categoryId || c.nameTa === row.categoryId
             );
             groups[key].categoryNameEn = cat?.nameEn || row.categoryId || 'General';
             groups[key].categoryNameTa = cat?.nameTa || cat?.nameEn || row.categoryId || 'பொது';
@@ -2906,12 +2920,13 @@ export default function InspectionReportsView({
     filteredWorks.forEach((w) => {
       const uName = w.submittedByUserName || (lang === 'ta' ? 'கள ஆய்வாளர்' : 'Field Inspector');
       const uDesig = getInspectorDesignation(w);
-      const zNameEn = w.zoneNameEn || 'Kanchipuram Zone';
-      const zNameTa = w.zoneNameTa || 'காஞ்சிபுரம் மண்டலம்';
-      const dNameEn = w.districtNameEn || 'Chengalpattu';
-      const dNameTa = w.districtNameTa || 'செங்கல்பட்டு';
-      const tNameEn = w.tpNameEn || 'Thiruporur';
-      const tNameTa = w.tpNameTa || 'திருப்போரூர்';
+      const geo = resolveGeoNames(w.zoneId, w.districtId, w.tpId || w.townPanchayatId, w);
+      const zNameEn = geo.zoneNameEn;
+      const zNameTa = geo.zoneNameTa;
+      const dNameEn = geo.districtNameEn;
+      const dNameTa = geo.districtNameTa;
+      const tNameEn = geo.tpNameEn;
+      const tNameTa = geo.tpNameTa;
       
       let key = `${zNameEn}_${dNameEn}_${tNameEn}_${uName}_${uDesig}`;
       
@@ -2990,9 +3005,10 @@ export default function InspectionReportsView({
       const showCat = categoryWiseEnabled && locCols.category;
       filteredApiDimensionRollups.forEach((row) => {
         const geo = resolveGeoNames(row.zoneId, row.districtId, row.tpId, row);
-        let key = `${geo.zoneNameEn}_${row.districtId || geo.districtNameEn}_${row.tpId || geo.tpNameEn}`;
+        const streetName = String(row.streetName || geo.streetName || '').trim() || '-';
+        let key = `${geo.zoneNameEn}_${geo.districtNameEn}_${geo.tpNameEn}`;
         if (showWard) key += `_ward_${row.wardNumber || 'unknown'}`;
-        if (showStreet) key += `_street_all`;
+        if (showStreet) key += `_street_${streetName}`;
         if (showSubj) key += `_subj_${row.subjectId || 'unknown'}`;
         if (showCat) key += `_cat_${row.categoryId || 'unknown'}`;
         if (!groups[key]) {
@@ -3006,17 +3022,17 @@ export default function InspectionReportsView({
             totalInspections: 0,
           };
           if (showWard) groups[key].wardNumber = row.wardNumber;
-          if (showStreet) groups[key].streetName = '—';
+          if (showStreet) groups[key].streetName = streetName;
           if (showSubj) {
             const subj = (state.inspectionSubjects || []).find(
-              (s: any) => s.id === row.subjectId || s.code === row.subjectId
+              (s: any) => s.id === row.subjectId || s.code === row.subjectId || s.nameEn === row.subjectId || s.nameTa === row.subjectId
             );
             groups[key].subjectNameEn = subj?.nameEn || row.subjectId;
             groups[key].subjectNameTa = subj?.nameTa || subj?.nameEn || row.subjectId;
           }
           if (showCat) {
             const cat = (state.inspectionCategories || []).find(
-              (c: any) => c.id === row.categoryId || c.code === row.categoryId
+              (c: any) => c.id === row.categoryId || c.code === row.categoryId || c.nameEn === row.categoryId || c.nameTa === row.categoryId
             );
             groups[key].categoryNameEn = cat?.nameEn || row.categoryId;
             groups[key].categoryNameTa = cat?.nameTa || cat?.nameEn || row.categoryId;
@@ -3028,15 +3044,16 @@ export default function InspectionReportsView({
     }
 
     filteredWorks.forEach((w) => {
-      const zNameEn = w.zoneNameEn || 'Kanchipuram Zone';
-      const zNameTa = w.zoneNameTa || 'காஞ்சிபுரம் மண்டலம்';
-      const dNameEn = w.districtNameEn || 'Chengalpattu';
-      const dNameTa = w.districtNameTa || 'செங்கல்பட்டு';
-      const tNameEn = w.tpNameEn || 'Thiruporur';
-      const tNameTa = w.tpNameTa || 'திருப்போரூர்';
+      const geo = resolveGeoNames(w.zoneId, w.districtId, w.tpId || w.townPanchayatId, w);
+      const zNameEn = geo.zoneNameEn;
+      const zNameTa = geo.zoneNameTa;
+      const dNameEn = geo.districtNameEn;
+      const dNameTa = geo.districtNameTa;
+      const tNameEn = geo.tpNameEn;
+      const tNameTa = geo.tpNameTa;
 
       // Grouping key strictly preserves municipal segregation (Zone, District, TP) at minimum
-      let key = `${zNameEn}_${w.districtId || dNameEn.toLowerCase().replace(/\s+/g, '_')}_${w.tpId || tNameEn.toLowerCase().replace(/\s+/g, '_')}`;
+      let key = `${zNameEn}_${dNameEn}_${tNameEn}`;
 
       const showWard = categoryWiseEnabled && locCols.ward;
       const showStreet = categoryWiseEnabled && locCols.street;
@@ -3044,7 +3061,7 @@ export default function InspectionReportsView({
       const showCat = categoryWiseEnabled && locCols.category;
 
       if (showWard) key += `_ward_${w.wardNumber || 'unknown'}`;
-      if (showStreet) key += `_street_${w.streetName || 'unknown'}`;
+      if (showStreet) key += `_street_${geo.streetName}`;
       if (showSubj) key += `_subj_${w.subjectId || 'unknown'}`;
       if (showCat) key += `_cat_${w.categoryId || 'unknown'}`;
 
@@ -3062,7 +3079,7 @@ export default function InspectionReportsView({
           groups[key].wardNumber = w.wardNumber;
         }
         if (showStreet) {
-          groups[key].streetName = w.streetName;
+          groups[key].streetName = geo.streetName;
         }
         if (showSubj) {
           groups[key].subjectNameEn = w.subjectNameEn;
@@ -3473,7 +3490,7 @@ export default function InspectionReportsView({
           ];
           if (locCols.district) item.push(lang === 'ta' ? (row.districtNameTa || '-') : (row.districtNameEn || '-'));
           if (locCols.tp) item.push(lang === 'ta' ? (row.tpNameTa || '-') : (row.tpNameEn || '-'));
-          if (locCols.ward) item.push(`Ward ${row.wardNumber || '0'}`);
+          if (locCols.ward) item.push(lang === 'ta' ? `வார்டு ${row.wardNumber || '0'}` : `Ward ${row.wardNumber || '0'}`);
           if (locCols.street) item.push(row.streetName || '-');
           if (locCols.subject) item.push(lang === 'ta' ? (row.subjectNameTa || '-') : (row.subjectNameEn || '-'));
           if (locCols.category) item.push(lang === 'ta' ? (row.categoryNameTa || '-') : (row.categoryNameEn || '-'));
@@ -3578,7 +3595,7 @@ export default function InspectionReportsView({
           ];
           if (locCols.district) item.push(lang === 'ta' ? (row.districtNameTa || '-') : (row.districtNameEn || '-'));
           if (locCols.tp) item.push(lang === 'ta' ? (row.tpNameTa || '-') : (row.tpNameEn || '-'));
-          if (locCols.ward) item.push(`Ward ${row.wardNumber || '0'}`);
+          if (locCols.ward) item.push(lang === 'ta' ? `வார்டு ${row.wardNumber || '0'}` : `Ward ${row.wardNumber || '0'}`);
           if (locCols.street) item.push(row.streetName || '-');
           if (locCols.subject) item.push(lang === 'ta' ? (row.subjectNameTa || '-') : (row.subjectNameEn || '-'));
           if (locCols.category) item.push(lang === 'ta' ? (row.categoryNameTa || '-') : (row.categoryNameEn || '-'));
@@ -3595,12 +3612,12 @@ export default function InspectionReportsView({
 
       await generateHtmlTablePDF({
         title: lang === 'ta' ? 'பேரூராட்சிகள் கள ஆய்வுச் சுருக்க அறிக்கை' : 'Town Panchayat - Abstract Summary Report',
-        subtitle: lang === 'ta' 
-          ? `வகைப்படுத்தல்: ${groupingStyle === 'subject' ? 'பிரிவு மற்றும் வகை வாரியாக' : groupingStyle === 'user' ? 'பயனர் வாரியாக' : 'இடம் வாரியாக'}`
-          : `Grouping Style: ${groupingStyle.toUpperCase()}`,
+        subtitle: lang === 'ta'
+          ? `வகைப்படுத்தல்: ${abstractGroupingLabel}`
+          : `Grouping Style: ${abstractGroupingLabel}`,
         metadata: [
           { label: lang === 'ta' ? 'மொத்த ஆய்வுகள்' : 'Total Inspections', value: String(totalSum) },
-          { label: lang === 'ta' ? 'வகைப்பாடு' : 'Grouping', value: groupingStyle.toUpperCase() },
+          { label: lang === 'ta' ? 'வகைப்பாடு' : 'Grouping', value: abstractGroupingLabel },
           { label: lang === 'ta' ? 'தேதி' : 'Date', value: getTodayYmd() }
         ],
         headers,
@@ -4459,6 +4476,9 @@ export default function InspectionReportsView({
 
   // Download Detailed Field Register as PDF with native Tamil font support
   const handleExportDetailedPDF = async () => {
+    if (isExportingPdfRef.current) return;
+    isExportingPdfRef.current = true;
+    setIsExportingPdf(true);
     try {
       const exportWorks = await fetchAllFilteredWorksForExport();
       if (exportWorks.length === 0) {
@@ -4481,22 +4501,31 @@ export default function InspectionReportsView({
         lang === 'ta' ? 'நிலை' : 'Status'
       ];
 
-      const rows = exportWorks.map((w, idx) => [
+      const rows = exportWorks.map((w, idx) => {
+        const geo = resolveGeoNames(w.zoneId, w.districtId, w.tpId || w.townPanchayatId, w);
+        const subj = (state.inspectionSubjects || []).find(
+          (s: any) => s.id === w.subjectId || s.code === w.subjectId || s.nameEn === w.subjectNameEn
+        );
+        const cat = (state.inspectionCategories || []).find(
+          (c: any) => c.id === w.categoryId || c.code === w.categoryId || c.nameEn === w.categoryNameEn
+        );
+        return [
         idx + 1,
         w.workId || w.id || '',
         formatIndianTime(w.submittedAt),
-        lang === 'ta' ? (w.subjectNameTa || w.subjectNameEn || '-') : (w.subjectNameEn || '-'),
-        lang === 'ta' ? (w.categoryNameTa || w.categoryNameEn || '-') : (w.categoryNameEn || '-'),
-        lang === 'ta' ? (w.tpNameTa || w.tpNameEn || '-') : (w.tpNameEn || '-'),
+        lang === 'ta' ? (subj?.nameTa || w.subjectNameTa || w.subjectNameEn || '-') : (subj?.nameEn || w.subjectNameEn || '-'),
+        lang === 'ta' ? (cat?.nameTa || w.categoryNameTa || w.categoryNameEn || '-') : (cat?.nameEn || w.categoryNameEn || '-'),
+        lang === 'ta' ? geo.tpNameTa : geo.tpNameEn,
         `${lang === 'ta' ? 'வார்டு' : 'Ward'} ${w.wardNumber || w.wardNo || '-'}`,
-        w.streetName || '-',
-        w.submittedByUserName || 'Field Cadre',
+        geo.streetName,
+        w.submittedByUserName || (lang === 'ta' ? 'கள பணியாளர்' : 'Field Cadre'),
         getInspectorDesignation(w),
         w.latitude && w.longitude ? `${Number(w.latitude).toFixed(3)}, ${Number(w.longitude).toFixed(3)}` : '-',
         lang === 'ta'
           ? ((w.status || 'Completed').toLowerCase().includes('complete') ? 'நிறைவுற்றது' : 'நிலுவையில்')
           : (w.status || 'Completed')
-      ]);
+      ];
+      });
 
       await generateHtmlTablePDF({
         title: lang === 'ta' ? 'கள ஆய்வுப் பதிவேடு (விரிவான அறிக்கை)' : 'Field Inspection Detailed Register',
@@ -4516,6 +4545,9 @@ export default function InspectionReportsView({
     } catch (err: any) {
       console.error('Error generating Detailed PDF:', err);
       alert('Error creating PDF: ' + err.message);
+    } finally {
+      isExportingPdfRef.current = false;
+      setIsExportingPdf(false);
     }
   };
 
@@ -6282,7 +6314,7 @@ export default function InspectionReportsView({
                             )}
                             {locCols.ward && (
                               <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800">
-                                Ward {row.wardNumber || '0'}
+                                {lang === 'ta' ? `வார்டு ${row.wardNumber || '0'}` : `Ward ${row.wardNumber || '0'}`}
                               </td>
                             )}
                             {locCols.street && (
@@ -6519,12 +6551,20 @@ export default function InspectionReportsView({
               {/* Download PDF */}
               <button
                 onClick={handleExportDetailedPDF}
-                disabled={filteredWorks.length === 0}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs disabled:opacity-40 border-none"
+                disabled={filteredWorks.length === 0 || isExportingPdf}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs disabled:opacity-40 disabled:cursor-wait border-none"
                 title={lang === 'ta' ? 'பிடிஎஃப் பதிவிறக்கம்' : 'Download PDF'}
               >
-                <Download className="w-3.5 h-3.5" />
-                <span>{lang === 'ta' ? 'பிடிஎஃப் பதிவிறக்கம்' : 'Download PDF'}</span>
+                {isExportingPdf ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {isExportingPdf
+                    ? (lang === 'ta' ? 'பதிவிறக்குகிறது...' : 'Downloading...')
+                    : (lang === 'ta' ? 'பிடிஎஃப் பதிவிறக்கம்' : 'Download PDF')}
+                </span>
               </button>
 
               {/* Admin Role Only: TP Wise Excel Button */}

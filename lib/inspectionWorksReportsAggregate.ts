@@ -30,7 +30,7 @@ const AGG_CACHE_TTL_MS = 120_000;
 const aggCache = new Map<string, { ts: number; data: unknown }>();
 
 function aggCacheKey(kind: string, filter: InspectionWorksFilterQuery, extra = ''): string {
-  return `newest-first-fields-1|${kind}|${JSON.stringify(filter)}|${extra}`;
+  return `named-street-live-1|${kind}|${JSON.stringify(filter)}|${extra}`;
 }
 
 function readAggCache<T>(key: string): T | null {
@@ -56,16 +56,9 @@ export function reportsFiltersNeedFullDocumentScan(filter: InspectionWorksFilter
   return !!(filter.street?.trim() || filter.search?.trim() || filter.adminFieldId);
 }
 
-/** Works often store zone/district/TP as names, while rollups keyed empty IDs — use the live match for geo filters. */
-export function reportsFiltersNeedLiveGeoCounts(filter: InspectionWorksFilterQuery): boolean {
-  return !!(
-    filter.tpId ||
-    filter.districtId ||
-    filter.zoneId ||
-    filter.scopeTpId ||
-    filter.scopeDistrictId ||
-    filter.scopeZoneId
-  );
+/** Named geo (All Zones user/location) and streets are missing from empty-ID rollups — always live-group. */
+export function reportsFiltersNeedLiveGeoCounts(_filter?: InspectionWorksFilterQuery): boolean {
+  return true;
 }
 
 function escapeRegex(value: string): string {
@@ -299,6 +292,7 @@ async function aggregateLiveReportCounts(
         zoneNameEn: { $ifNull: ['$zoneNameEn', ''] },
         districtNameEn: { $ifNull: ['$districtNameEn', ''] },
         tpNameEn: { $ifNull: ['$tpNameEn', ''] },
+        streetName: { $ifNull: [{ $ifNull: ['$streetName', '$street'] }, ''] },
         wardNumber: {
           $convert: {
             input: { $ifNull: [{ $ifNull: ['$wardNumber', '$wardNo'] }, { $ifNull: ['$ward', ''] }] },
@@ -325,6 +319,7 @@ async function aggregateLiveReportCounts(
     zoneNameEn: String(r._id?.zoneNameEn || ''),
     districtNameEn: String(r._id?.districtNameEn || ''),
     tpNameEn: String(r._id?.tpNameEn || ''),
+    streetName: String(r._id?.streetName || ''),
     wardNumber: String(r._id?.wardNumber || ''),
     submittedByUserName: String(r._id?.submittedByUserName || ''),
     subjectId: String(r._id?.subjectId || 'unknown'),

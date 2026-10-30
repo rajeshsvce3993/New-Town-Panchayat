@@ -68,7 +68,7 @@ export type ReportCountsLoadResult = {
 const ENRICHED_REPORTS_CACHE_TTL_MS = 120_000;
 let enrichedReportsCache: { key: string; ts: number; data: LiteWorksLoadResult } | null = null;
 const enrichedReportsInFlight = new Map<string, Promise<LiteWorksLoadResult>>();
-let reportsDataGeneration = 4;
+let reportsDataGeneration = 5;
 
 export function getInspectionWorksReportsDataGeneration(): number {
   return reportsDataGeneration;

@@ -36,8 +36,42 @@ export function sanitizeSheetName(name: string, fallback: string = 'Sheet'): str
   return clean || fallback;
 }
 
+function escapePdfHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function appendCanvasPages(
+  pdf: jsPDF,
+  canvas: HTMLCanvasElement,
+  pageWidth: number,
+  pageHeight: number,
+  startNewPage: boolean
+) {
+  const imgWidth = pageWidth;
+  const imgHeight = (canvas.height * imgWidth) / Math.max(canvas.width, 1);
+  const imgData = canvas.toDataURL('image/jpeg', 0.84);
+  let heightLeft = imgHeight;
+  let position = 0;
+  let first = true;
+  while (heightLeft > 0.4 || first) {
+    if (startNewPage || !first) pdf.addPage();
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+    heightLeft -= pageHeight;
+    position -= pageHeight;
+    first = false;
+    startNewPage = true;
+    if (heightLeft <= 0.4) break;
+  }
+}
+
 /**
- * Renders an HTML table with full Unicode & Tamil font support and converts it to high-res PDF
+ * Renders an HTML table with full Unicode & Tamil font support and converts it to high-res PDF.
+ * Large registers are painted in row chunks so the canvas never exceeds browser limits.
  */
 export async function generateHtmlTablePDF(options: HtmlPdfOptions): Promise<{ blob: Blob; filename: string } | boolean> {
   const {
@@ -58,7 +92,6 @@ export async function generateHtmlTablePDF(options: HtmlPdfOptions): Promise<{ b
 
   if (typeof window === 'undefined') return false;
 
-  // Create temporary container
   const container = document.createElement('div');
   container.style.position = 'fixed';
   container.style.left = '-99999px';
@@ -66,52 +99,50 @@ export async function generateHtmlTablePDF(options: HtmlPdfOptions): Promise<{ b
   container.style.width = landscape ? '1120px' : '820px';
   container.style.backgroundColor = '#ffffff';
   container.style.color = '#0f172a';
-  container.style.padding = '32px 36px';
+  container.style.padding = '24px 28px';
   container.style.fontFamily = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans Tamil', 'Latha', 'Mukta Malar', sans-serif";
   container.style.boxSizing = 'border-box';
   container.style.zIndex = '-9999';
 
-  // Build metadata items HTML
   const metadataHtml = metadata.length > 0 ? `
     <div style="display: grid; grid-template-columns: repeat(${Math.min(metadata.length, 3)}, 1fr); gap: 10px; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px;">
       ${metadata.map(m => `
         <div style="font-size: 11px; line-height: 1.4;">
-          <span style="font-weight: 700; color: #475569;">${m.label}:</span>
-          <span style="color: #0f172a; font-weight: 600; margin-left: 4px;">${m.value}</span>
+          <span style="font-weight: 700; color: #475569;">${escapePdfHtml(m.label)}:</span>
+          <span style="color: #0f172a; font-weight: 600; margin-left: 4px;">${escapePdfHtml(m.value)}</span>
         </div>
       `).join('')}
     </div>
   ` : '';
 
-  // Build Table HTML
   const theadHtml = `
     <thead>
       <tr style="background-color: #1e3a8a; color: #ffffff;">
         ${headers.map((h, i) => `
           <th style="padding: 8px 10px; font-size: 10.5px; font-weight: 700; border: 1px solid #0f172a; text-align: ${i === headers.length - 1 && typeof rows[0]?.[i] === 'number' ? 'right' : 'left'}; white-space: normal; line-height: 1.3;">
-            ${h}
+            ${escapePdfHtml(h)}
           </th>
         `).join('')}
       </tr>
     </thead>
   `;
 
-  const tbodyHtml = `
+  const renderBody = (chunk: (string | number)[][], includeTotal: boolean) => `
     <tbody>
-      ${rows.map((row, rIdx) => `
+      ${chunk.map((row, rIdx) => `
         <tr style="background-color: ${rIdx % 2 === 0 ? '#ffffff' : '#f8fafc'};">
           ${row.map((cell, cIdx) => `
             <td style="padding: 6.5px 10px; font-size: 10px; border: 1px solid #cbd5e1; color: #1e293b; text-align: ${cIdx === row.length - 1 && typeof cell === 'number' ? 'right' : 'left'}; line-height: 1.35;">
-              ${cell !== null && cell !== undefined ? cell : '-'}
+              ${escapePdfHtml(cell !== null && cell !== undefined ? cell : '-')}
             </td>
           `).join('')}
         </tr>
       `).join('')}
-      ${totalRow ? `
+      ${includeTotal && totalRow ? `
         <tr style="background-color: #e2e8f0; font-weight: 700;">
           ${totalRow.map((cell, cIdx) => `
             <td style="padding: 7px 10px; font-size: 10.5px; border: 1px solid #94a3b8; color: #0f172a; font-weight: 800; text-align: ${cIdx === totalRow.length - 1 ? 'right' : 'left'};">
-              ${cell}
+              ${escapePdfHtml(cell)}
             </td>
           `).join('')}
         </tr>
@@ -119,40 +150,27 @@ export async function generateHtmlTablePDF(options: HtmlPdfOptions): Promise<{ b
     </tbody>
   `;
 
-  container.innerHTML = `
-    <div style="width: 100%; box-sizing: border-box;">
-      <div style="border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-end;">
-        <div>
-          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #0284c7; letter-spacing: 0.5px; margin-bottom: 3px;">
-            ${departmentHeader}
-          </div>
-          <h1 style="font-size: 18px; font-weight: 800; color: #1e3a8a; margin: 0; line-height: 1.2;">
-            ${title}
-          </h1>
-          ${subtitle ? `
-            <p style="font-size: 10.5px; color: #64748b; margin: 3px 0 0 0;">
-              ${subtitle}
-            </p>
-          ` : ''}
+  const bannerHtml = `
+    <div style="border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-end;">
+      <div>
+        <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #0284c7; letter-spacing: 0.5px; margin-bottom: 3px;">
+          ${escapePdfHtml(departmentHeader)}
         </div>
-        <div style="text-align: right; font-size: 9.5px; color: #64748b; line-height: 1.3;">
-          <div>${lang === 'ta' ? 'அறிக்கை உருவாக்கப்பட்ட தேதி' : 'Generated on'}:</div>
-          <div style="font-weight: 700; color: #1e293b;">${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST)</div>
-        </div>
+        <h1 style="font-size: 18px; font-weight: 800; color: #1e3a8a; margin: 0; line-height: 1.2;">
+          ${escapePdfHtml(title)}
+        </h1>
+        ${subtitle ? `
+          <p style="font-size: 10.5px; color: #64748b; margin: 3px 0 0 0;">
+            ${escapePdfHtml(subtitle)}
+          </p>
+        ` : ''}
       </div>
-
-      ${metadataHtml}
-
-      <table style="width: 100%; border-collapse: collapse; margin-top: 6px;">
-        ${theadHtml}
-        ${tbodyHtml}
-      </table>
-
-      <div style="margin-top: 18px; padding-top: 8px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8;">
-        <span>${lang === 'ta' ? 'கள ஆய்வு மேலாண்மை அமைப்பு (EMS)' : 'Field Inspection Management System'}</span>
-        <span>${lang === 'ta' ? 'பக்கம் 1' : 'Page 1'}</span>
+      <div style="text-align: right; font-size: 9.5px; color: #64748b; line-height: 1.3;">
+        <div>${lang === 'ta' ? 'அறிக்கை உருவாக்கப்பட்ட தேதி' : 'Generated on'}:</div>
+        <div style="font-weight: 700; color: #1e293b;">${escapePdfHtml(new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }))} (IST)</div>
       </div>
     </div>
+    ${metadataHtml}
   `;
 
   document.body.appendChild(container);
@@ -161,40 +179,52 @@ export async function generateHtmlTablePDF(options: HtmlPdfOptions): Promise<{ b
     if (typeof document !== 'undefined' && (document as any).fonts && (document as any).fonts.ready) {
       await (document as any).fonts.ready;
     }
-    const canvas = await html2canvas(container, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#ffffff'
-    });
 
     const orientation = landscape ? 'l' : 'p';
     const pdf = new jsPDF(orientation, 'mm', 'a4');
     const pageWidth = landscape ? 297 : 210;
     const pageHeight = landscape ? 210 : 297;
-    const imgWidth = pageWidth;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    const chunkSize = landscape ? 22 : 30;
+    const totalChunks = Math.max(1, Math.ceil(rows.length / chunkSize));
 
-    let heightLeft = imgHeight;
-    let position = 0;
-
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-    heightLeft -= pageHeight;
-
-    while (heightLeft > 0) {
-      position -= pageHeight;
-      pdf.addPage();
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-      heightLeft -= pageHeight;
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = rows.slice(i * chunkSize, (i + 1) * chunkSize);
+      const isFirst = i === 0;
+      const isLast = i === totalChunks - 1;
+      container.innerHTML = `
+        <div style="width: 100%; box-sizing: border-box;">
+          ${isFirst ? bannerHtml : ''}
+          <table style="width: 100%; border-collapse: collapse; margin-top: 6px;">
+            ${theadHtml}
+            ${renderBody(chunk, isLast)}
+          </table>
+          <div style="margin-top: 14px; padding-top: 8px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8;">
+            <span>${lang === 'ta' ? 'கள ஆய்வு மேலாண்மை அமைப்பு (EMS)' : 'Field Inspection Management System'}</span>
+            <span>${lang === 'ta' ? `பக்கம் ${i + 1}` : `Page ${i + 1}`}</span>
+          </div>
+        </div>
+      `;
+      const canvas = await html2canvas(container, {
+        scale: 1.5,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+      if (i === 0) {
+        appendCanvasPages(pdf, canvas, pageWidth, pageHeight, false);
+      } else {
+        appendCanvasPages(pdf, canvas, pageWidth, pageHeight, true);
+      }
     }
 
+    // jsPDF starts with a blank page; the first chunk fills it. Extra blank first page
+    // is avoided because appendCanvasPages(startNewPage=false) draws on page 1.
     if (returnBlob) {
       const blob = pdf.output('blob');
       return { blob, filename };
-    } else {
-      pdf.save(filename);
-      return true;
     }
+    pdf.save(filename);
+    return true;
   } catch (err) {
     console.error('Failed to generate HTML PDF:', err);
     throw err;
