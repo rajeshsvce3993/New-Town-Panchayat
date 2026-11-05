@@ -271,6 +271,25 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { action, key, data, skipCacheRebuild } = body;
 
+    if (shouldUseRemotePortalApi(req.nextUrl.origin)) {
+      const remote = await fetchRemotePortalJson('/api/state', req.nextUrl.origin, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' },
+        timeoutMs: 180000,
+      });
+      if (remote) {
+        return NextResponse.json(remote, { headers: CORS_HEADERS });
+      }
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Live portal save unavailable. Check network connectivity to townpanchayat.com.',
+        },
+        { status: 502, headers: CORS_HEADERS }
+      );
+    }
+
     if (key === 'settings') {
       await saveAppSettings(data);
       logServerProcess({

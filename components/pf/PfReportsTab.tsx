@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Download, Printer, ChevronDown, ChevronUp } from 'lucide-react';
+import { Download, Printer, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -1526,67 +1526,61 @@ export default function PfReportsTab({
     window.print();
   };
 
+  const PF_FY_TONES = ['#1d4ed8', '#0f766e', '#c2410c', '#7c3aed', '#be185d', '#0369a1', '#b45309', '#4f46e5'];
+
   return (
-    <div className="space-y-6">
-      {/* Report Tabs Bar */}
-      <div className="flex flex-wrap border-b border-slate-200 gap-1 bg-white p-2 rounded-2xl border border-slate-100">
-        <button
-          onClick={() => setReportsSubTab('employee_wise')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${reportsSubTab === 'employee_wise' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}
-        >
-          {lang === 'ta' ? 'ஊழியர் வாரியான அறிக்கை' : '1. Employee-wise Report'}
-        </button>
-        <button
-          onClick={() => setReportsSubTab('pf_report')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${reportsSubTab === 'pf_report' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}
-        >
-          {lang === 'ta' ? '2. பி.எஃப் அறிக்கை' : '2. PF Report'}
-        </button>
-        <button
-          onClick={() => setReportsSubTab('account_slip')}
-          className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${reportsSubTab === 'account_slip' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:text-slate-800'}`}
-        >
-          {lang === 'ta' ? 'கணக்கு சீட்டு' : '3. Account Slip'}
-        </button>
+    <div className="space-y-3">
+      <div className="portal-dash-toolbar">
+        <div className="portal-dash-pills">
+          <button
+            type="button"
+            onClick={() => setReportsSubTab('employee_wise')}
+            className={`portal-dash-pill ${reportsSubTab === 'employee_wise' ? 'is-active' : ''}`}
+          >
+            {lang === 'ta' ? 'ஊழியர் வாரியான அறிக்கை' : 'Employee-wise Report'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setReportsSubTab('pf_report')}
+            className={`portal-dash-pill ${reportsSubTab === 'pf_report' ? 'is-active' : ''}`}
+          >
+            {lang === 'ta' ? 'பி.எஃப் அறிக்கை' : 'PF Report'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setReportsSubTab('account_slip')}
+            className={`portal-dash-pill ${reportsSubTab === 'account_slip' ? 'is-active' : ''}`}
+          >
+            {lang === 'ta' ? 'கணக்கு சீட்டு' : 'Account Slip'}
+          </button>
+        </div>
       </div>
 
       {/* Subtab Contents */}
       {reportsSubTab === 'employee_wise' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-4">
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
             <div>
-              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-                {lang === 'ta' ? 'ஊழியர் வாரியான பி.எஃப் இருப்பு அறிக்கை' : 'Employee-wise PF Balance Sheet'}
-              </h2>
-              <p className="text-slate-400 text-[11px] font-medium mt-0.5">Comprehensive audit list of all registered PF subscribers</p>
+              <h3>{lang === 'ta' ? 'ஊழியர் வாரியான பி.எஃப் இருப்பு அறிக்கை' : 'Employee-wise PF Balance Sheet'}</h3>
+              <p>Comprehensive audit list of all registered PF subscribers</p>
             </div>
-            <div className="flex flex-wrap gap-2 w-full md:w-auto">
-              <button
-                onClick={handleDownloadEmployeeWiseReport}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>{lang === 'ta' ? 'எக்செல் பதிவிறக்கம்' : 'Export Excel'}</span>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" onClick={handleDownloadEmployeeWiseReport} className="portal-dash-head-action">
+                <Download className="h-3 w-3" />
+                {lang === 'ta' ? 'எக்செல்' : 'Excel'}
               </button>
-              <button
-                onClick={handleDownloadEmployeeWisePDF}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs uppercase tracking-wider rounded-xl border border-indigo-200 transition cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>{lang === 'ta' ? 'PDF பதிவிறக்கம்' : 'Export PDF'}</span>
+              <button type="button" onClick={handleDownloadEmployeeWisePDF} className="portal-dash-head-action">
+                <Download className="h-3 w-3" />
+                PDF
               </button>
-              <button
-                onClick={handlePrintSlip}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer"
-              >
-                <Printer className="w-4 h-4" />
-                <span>{lang === 'ta' ? 'அச்சிடு' : 'Print List'}</span>
+              <button type="button" onClick={handlePrintSlip} className="portal-dash-head-action">
+                <Printer className="h-3 w-3" />
+                {lang === 'ta' ? 'அச்சிடு' : 'Print'}
               </button>
             </div>
           </div>
-
-          {/* Filters */}
-          <div className={`grid grid-cols-1 ${currentUser?.scopeType === 'HOD' || currentUser?.roleId === 'admin' || currentUser?.scopeType === 'Zone' || currentUser?.roleId === 'ad' ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-4`}>
+          <div className="portal-dash-body">
+          <div className="portal-dash-fields" style={{ gridTemplateColumns: currentUser?.scopeType === 'HOD' || currentUser?.roleId === 'admin' || currentUser?.scopeType === 'Zone' || currentUser?.roleId === 'ad' ? 'repeat(4, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))' }}>
             <div>
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                 {lang === 'ta' ? 'சந்தாதாரர் / பணியாளர்' : 'Subscriber / Employee'}
@@ -1679,9 +1673,8 @@ export default function PfReportsTab({
             </div>
           </div>
 
-          {/* Table */}
-          <div id="pf-employee-wise-report-table" className="overflow-x-auto rounded-3xl border border-slate-200 bg-white">
-            <table className="w-full text-left border-collapse text-xs">
+          <div id="pf-employee-wise-report-table" className="portal-dash-table overflow-x-auto" style={{ marginTop: '0.75rem' }}>
+            <table>
               <thead>
                 <tr className="bg-slate-50 font-bold text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-200">
                   <th className="p-4 pl-6">Subscriber ID</th>
@@ -1726,40 +1719,32 @@ export default function PfReportsTab({
               </tbody>
             </table>
           </div>
+          </div>
         </div>
       )}
 
       {reportsSubTab === 'pf_report' && (() => {
         const abstractData = getAbstractReportData();
         return (
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-4">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
               <div>
-                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-                  {lang === 'ta' ? 'வருங்கால வைப்பு நிதி அறிக்கை (பி.எஃப் அறிக்கை)' : 'Provident Fund Report (PF Report)'}
-                </h2>
-                <p className="text-slate-400 text-[11px] font-medium mt-0.5">Financial year-wise details of all subscribers with monthly breakups</p>
+                <h3>{lang === 'ta' ? 'வருங்கால வைப்பு நிதி அறிக்கை (பி.எஃப் அறிக்கை)' : 'Provident Fund Report (PF Report)'}</h3>
+                <p>Financial year-wise details of all subscribers with monthly breakups</p>
               </div>
-              <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                <button
-                  onClick={handleDownloadPfReportExcel}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>{lang === 'ta' ? 'எக்செல் பதிவிறக்கம்' : 'Export Excel'}</span>
+              <div className="flex flex-wrap gap-1.5">
+                <button type="button" onClick={handleDownloadPfReportExcel} className="portal-dash-head-action">
+                  <Download className="h-3 w-3" />
+                  {lang === 'ta' ? 'எக்செல்' : 'Excel'}
                 </button>
-                <button
-                  onClick={handleDownloadPfReportPDF}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>{lang === 'ta' ? 'PDF பதிவிறக்கம்' : 'Export PDF'}</span>
+                <button type="button" onClick={handleDownloadPfReportPDF} className="portal-dash-head-action">
+                  <Download className="h-3 w-3" />
+                  PDF
                 </button>
               </div>
             </div>
-
-            {/* PF Report Scope Filters */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="portal-dash-body">
+            <div className="portal-dash-fields" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
               {(currentUser?.scopeType === 'HOD' || currentUser?.roleId === 'admin' || currentUser?.scopeType === 'Zone' || currentUser?.roleId === 'ad') && (
                 <div>
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
@@ -1829,76 +1814,48 @@ export default function PfReportsTab({
               </div>
             </div>
 
-            {/* PF Report Table with Year-wise Expansions */}
-            <div id="pf-report-abstract" className="space-y-4">
+            <div id="pf-report-abstract" className="portal-wt-tree" style={{ marginTop: '0.75rem' }}>
               {abstractData.length === 0 ? (
-                <div className="p-12 text-center bg-slate-50 text-slate-400 italic rounded-3xl border border-slate-100 font-medium">
+                <p className="portal-wt-note">
                   {lang === 'ta' 
                     ? 'தேர்ந்தெடுக்கப்பட்ட வரம்பிற்குள் ஒருங்கிணைக்கப்பட்ட பரிவர்த்தனைகள் எதுவும் இல்லை.'
                     : 'No consolidated transactions found for the selected scope.'}
-                </div>
+                </p>
               ) : (
                 abstractData
                   .filter(row => pfReportFy === 'all' || row.fy === pfReportFy)
-                  .map((row) => (
-                    <div key={row.fy} className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                      {/* Year Row Header */}
-                      <div 
-                        onClick={() => setExpandedPfReportYrs(prev => ({ ...prev, [row.fy]: !prev[row.fy] }))}
-                        className="bg-slate-50 p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 cursor-pointer select-none hover:bg-slate-100/70 transition-all"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-slate-400 text-xs font-mono font-bold">
-                            {expandedPfReportYrs[row.fy] ? '▼' : '▶'}
-                          </span>
-                          <div>
-                            <p className="font-extrabold text-slate-900 text-sm">
-                              {lang === 'ta' ? `நிதியாண்டு ${row.fy}` : `Financial Year ${row.fy}`}
-                            </p>
-                            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">
-                              {row.subscribersCount} {lang === 'ta' ? 'செயலில் உள்ள சந்தாதாரர்கள்' : 'Active Subscribers'}
-                            </p>
+                  .map((row, rowIdx) => (
+                    <div
+                      key={row.fy}
+                      className={`portal-wt-node${expandedPfReportYrs[row.fy] ? ' is-open' : ''}`}
+                      style={{ ['--wt-tone' as string]: PF_FY_TONES[rowIdx % PF_FY_TONES.length] }}
+                    >
+                      <div className="portal-wt-node-head">
+                        <button
+                          type="button"
+                          className="portal-wt-toggle"
+                          onClick={() => setExpandedPfReportYrs(prev => ({ ...prev, [row.fy]: !prev[row.fy] }))}
+                          aria-expanded={Boolean(expandedPfReportYrs[row.fy])}
+                        >
+                          <ChevronRight className={`portal-wt-caret${expandedPfReportYrs[row.fy] ? ' is-open' : ''}`} />
+                          <div className="portal-wt-copy">
+                            <div className="portal-wt-title">
+                              <span>{lang === 'ta' ? `நிதியாண்டு ${row.fy}` : `Financial Year ${row.fy}`}</span>
+                              <span className="portal-wt-count">{row.subscribersCount} {lang === 'ta' ? 'சந்தாதாரர்கள்' : 'subscribers'}</span>
+                            </div>
                           </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-3 text-xs font-mono w-full md:w-auto">
-                          <div>
-                            <p className="text-[9px] text-slate-400 uppercase font-bold font-sans">{lang === 'ta' ? 'தொடக்க இருப்பு' : 'Opening'}</p>
-                            <p className="font-bold text-slate-700">₹{Math.round(row.totalOB).toLocaleString('en-IN')}</p>
-                          </div>
-                          <div>
-                            <p className="text-[9px] text-emerald-600 uppercase font-bold font-sans">{lang === 'ta' ? 'சந்தாக்கள்' : 'Subscriptions'}</p>
-                            <p className="font-bold text-emerald-600">+₹{Math.round(row.totalSub).toLocaleString('en-IN')}</p>
-                          </div>
-                          <div>
-                            <p className="text-[9px] text-rose-600 uppercase font-bold font-sans">{lang === 'ta' ? 'முன்பணம்' : 'Advance'}</p>
-                            <p className="font-bold text-rose-600">-₹{Math.round(row.totalWd).toLocaleString('en-IN')}</p>
-                          </div>
-                          <div>
-                            <p className="text-[9px] text-indigo-600 uppercase font-bold font-sans">{lang === 'ta' ? 'வட்டி ஒதுக்கீடு' : 'Govt Int Release'}</p>
-                            <p className="font-bold text-indigo-600">
-                              {row.totalIntRelease > 0 ? `+₹${Math.round(row.totalIntRelease).toLocaleString('en-IN')}` : '₹0'}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-[9px] text-amber-600 uppercase font-bold font-sans">{lang === 'ta' ? 'வருட வட்டி' : 'Accrued Int (FY)'}</p>
-                            <p className="font-bold text-amber-600">+₹{Math.round(row.totalIntAccrued).toLocaleString('en-IN')}</p>
-                          </div>
-                          <div>
-                            <p className="text-[9px] text-slate-500 uppercase font-bold font-sans">{lang === 'ta' ? 'மொத்த வட்டி' : 'Total Acc. Int'}</p>
-                            <p className="font-bold text-slate-600">₹{Math.round(row.totalAccumulatedInt || 0).toLocaleString('en-IN')}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-[9px] text-indigo-900 uppercase font-bold font-sans">{lang === 'ta' ? 'முடிவு இருப்பு' : 'Closing'}</p>
-                            <p className="font-extrabold text-indigo-800">₹{Math.round(row.totalCB).toLocaleString('en-IN')}</p>
-                          </div>
+                        </button>
+                        <div className="portal-wt-chips">
+                          <span className="portal-wt-chip">OB ₹{Math.round(row.totalOB).toLocaleString('en-IN')}</span>
+                          <span className="portal-wt-chip">Sub +₹{Math.round(row.totalSub).toLocaleString('en-IN')}</span>
+                          <span className="portal-wt-chip">Adv -₹{Math.round(row.totalWd).toLocaleString('en-IN')}</span>
+                          <span className="portal-wt-chip">CB ₹{Math.round(row.totalCB).toLocaleString('en-IN')}</span>
                         </div>
                       </div>
 
-                      {/* Month wise expansion */}
                       {expandedPfReportYrs[row.fy] && (
-                        <div className="border-t border-slate-100 bg-white p-4 overflow-x-auto">
-                          <table className="w-full text-left border-collapse text-xs">
+                        <div className="portal-dash-table overflow-x-auto">
+                          <table>
                             <thead>
                               <tr className="bg-slate-50 font-bold text-[9px] text-slate-500 uppercase tracking-wider border-b border-slate-200">
                                 <th className="p-3">{lang === 'ta' ? 'காலம்' : 'Period'}</th>
@@ -1954,22 +1911,27 @@ export default function PfReportsTab({
                   ))
               )}
             </div>
+            </div>
           </div>
         );
       })()}
 
       {reportsSubTab === 'account_slip' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto items-center">
-              <div className="w-full sm:w-64">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                  {lang === 'ta' ? 'சந்தாதாரரைத் தேர்ந்தெடுக்கவும்' : 'Choose Employee'}
-                </label>
+        <div className="space-y-3">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>{lang === 'ta' ? 'கணக்கு சீட்டு' : 'Account Slip'}</h3>
+                <p>{lang === 'ta' ? 'சந்தாதாரர் கணக்கு ஏட்டைத் தேர்ந்தெடுத்து அச்சிடவும்' : 'Select a subscriber to view, export, or print their ledger slip'}</p>
+              </div>
+            </div>
+            <div className="portal-dash-body">
+            <div className="portal-dash-fields" style={{ gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 0.8fr) auto' }}>
+              <div>
+                <label>{lang === 'ta' ? 'சந்தாதாரரைத் தேர்ந்தெடுக்கவும்' : 'Choose Employee'}</label>
                 <select
                   value={reportEmpId === 'all' ? '' : reportEmpId}
                   onChange={(e) => setReportEmpId(e.target.value)}
-                  className="w-full border border-slate-200 rounded-2xl px-4 py-2.5 text-sm outline-none bg-white focus:ring-2 focus:ring-indigo-100 font-medium"
                 >
                   <option value="">
                     {lang === 'ta' ? '-- சந்தாதாரரைத் தேர்ந்தெடுக்கவும் --' : '-- Select Subscriber --'}
@@ -1980,14 +1942,11 @@ export default function PfReportsTab({
                 </select>
               </div>
 
-              <div className="w-full sm:w-48">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                  {lang === 'ta' ? 'நிதியாண்டு' : 'Financial Year'}
-                </label>
+              <div>
+                <label>{lang === 'ta' ? 'நிதியாண்டு' : 'Financial Year'}</label>
                 <select
                   value={accountSlipFy}
                   onChange={(e) => setAccountSlipFy(e.target.value)}
-                  className="w-full border border-slate-200 rounded-2xl px-4 py-2.5 text-sm outline-none bg-white focus:ring-2 focus:ring-indigo-100 font-medium"
                 >
                   <option value="all">
                     {lang === 'ta' ? 'அனைத்து ஆண்டுகள்' : 'All Years'}
@@ -1997,56 +1956,52 @@ export default function PfReportsTab({
                   ))}
                 </select>
               </div>
+              <div className="flex flex-wrap items-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadAccountSlipExcel(reportEmpId, accountSlipFy)}
+                  disabled={!reportEmpId || reportEmpId === 'all'}
+                  className="portal-dash-head-action"
+                >
+                  <Download className="h-3 w-3" />
+                  {lang === 'ta' ? 'எக்செல்' : 'Excel'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadAccountSlipPDF(reportEmpId, accountSlipFy, false)}
+                  disabled={!reportEmpId || reportEmpId === 'all'}
+                  className="portal-dash-head-action"
+                >
+                  <Download className="h-3 w-3" />
+                  PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadAccountSlipPDF(reportEmpId, accountSlipFy, true)}
+                  disabled={!reportEmpId || reportEmpId === 'all'}
+                  className="portal-dash-head-action"
+                >
+                  <Printer className="h-3 w-3" />
+                  {lang === 'ta' ? 'அச்சிடு' : 'Print'}
+                </button>
+              </div>
             </div>
-
-            <div className="flex flex-wrap gap-2 w-full md:w-auto">
-              <button
-                onClick={() => handleDownloadAccountSlipExcel(reportEmpId, accountSlipFy)}
-                disabled={!reportEmpId || reportEmpId === 'all'}
-                className={`flex items-center gap-2 px-4 py-2 font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
-                  reportEmpId && reportEmpId !== 'all'
-                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' 
-                    : 'bg-slate-50 text-slate-300 cursor-not-allowed'
-                }`}
-              >
-                <Download className="w-4 h-4" />
-                <span>{lang === 'ta' ? 'எக்செல் பதிவிறக்கம்' : 'Export Excel'}</span>
-              </button>
-              <button
-                onClick={() => handleDownloadAccountSlipPDF(reportEmpId, accountSlipFy, false)}
-                disabled={!reportEmpId || reportEmpId === 'all'}
-                className={`flex items-center gap-2 px-4 py-2 font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer ${
-                  reportEmpId && reportEmpId !== 'all'
-                    ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200' 
-                    : 'bg-slate-50 text-slate-300 cursor-not-allowed'
-                }`}
-              >
-                <Download className="w-4 h-4" />
-                <span>{lang === 'ta' ? 'PDF பதிவிறக்கம்' : 'Export PDF'}</span>
-              </button>
-              <button
-                onClick={() => handleDownloadAccountSlipPDF(reportEmpId, accountSlipFy, true)}
-                disabled={!reportEmpId || reportEmpId === 'all'}
-                className={`flex items-center gap-2 px-4 py-2 font-bold text-xs uppercase tracking-wider rounded-xl shadow transition-all cursor-pointer ${
-                  reportEmpId && reportEmpId !== 'all'
-                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white' 
-                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                <Printer className="w-4 h-4" />
-                <span>{lang === 'ta' ? 'அச்சிடு' : 'Print Slip'}</span>
-              </button>
             </div>
           </div>
 
           {!reportEmpId || reportEmpId === 'all' ? (
-            <div className="bg-slate-50 rounded-3xl border border-slate-100 p-12 text-center text-slate-500 italic">
-              {lang === 'ta' 
-                ? 'தனிப்பட்ட கணக்கு ஏட்டைக் காண மற்றும் அச்சிட கீழ்தோன்றும் பட்டியலில் இருந்து பணியாளர் சந்தாதாரரைத் தேர்ந்தெடுக்கவும்.'
-                : 'Please select an employee subscriber from the dropdown to display and print their individual account ledger slip.'}
+            <div className="portal-dashboard-panel">
+              <div className="portal-dash-body">
+                <p className="portal-wt-note">
+                  {lang === 'ta' 
+                    ? 'தனிப்பட்ட கணக்கு ஏட்டைக் காண மற்றும் அச்சிட கீழ்தோன்றும் பட்டியலில் இருந்து பணியாளர் சந்தாதாரரைத் தேர்ந்தெடுக்கவும்.'
+                    : 'Please select an employee subscriber from the dropdown to display and print their individual account ledger slip.'}
+                </p>
+              </div>
             </div>
           ) : (
-            <div id="pf-account-slip" className="bg-white rounded-3xl border border-slate-200 p-8 space-y-8 max-w-4xl mx-auto shadow-sm relative overflow-hidden print:border-none print:shadow-none">
+            <div id="pf-account-slip" className="portal-dashboard-panel print:border-none print:shadow-none">
+              <div className="portal-dash-body">
               {(() => {
                 const empObj = employees.find((e: any) => e.employeeId === reportEmpId);
                 const jurisdiction = getTpJurisdictionDetails(empObj?.townPanchayatId);
@@ -2189,104 +2144,62 @@ export default function PfReportsTab({
                       </div>
                     </div>
 
-                    {/* Year-wise Abstract list */}
-                    <div className="space-y-6">
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
-                          {lang === 'ta' ? 'ஆண்டு வாரியான சுருக்கம் (கிளிக் செய்து விரிவுபடுத்தவும்)' : 'Year-wise Abstract (Click row to expand Monthly Activity)'}
-                        </h3>
-                        <p className="text-[11px] text-slate-500">
-                          {accountSlipFy === 'all' 
-                            ? 'Showing abstract for all years. Click any year row to inspect month-wise subscriptions and interest details.' 
-                            : `Showing abstract for selected year ${accountSlipFy}.`}
-                        </p>
+                    <div className="portal-wt-tree">
+                      <div className="portal-dash-head" style={{ padding: '0 0 0.45rem' }}>
+                        <div>
+                          <h3>{lang === 'ta' ? 'ஆண்டு வாரியான சுருக்கம்' : 'Year-wise Abstract'}</h3>
+                          <p>
+                            {accountSlipFy === 'all' 
+                              ? 'Click a year to inspect month-wise subscriptions and interest details.' 
+                              : `Showing abstract for selected year ${accountSlipFy}.`}
+                          </p>
+                        </div>
                       </div>
-
-                      <div className="space-y-4">
                         {filteredSummaries.length === 0 ? (
-                          <div className="p-8 text-center bg-slate-50 border border-slate-100 text-slate-400 italic rounded-2xl">
-                            No transaction history found for the selected criteria.
-                          </div>
+                          <p className="portal-wt-note">No transaction history found for the selected criteria.</p>
                         ) : (
-                          filteredSummaries.map((yr) => {
+                          filteredSummaries.map((yr, yrIdx) => {
                             const isExpanded = expandedAccountSlipYears.includes(yr.fy) || accountSlipFy !== 'all';
                             const effectiveClosingBalance = yr.isCompletedMarch ? yr.closingBalance : yr.closingBalanceWithAccruedInterest;
                             return (
-                              <div key={yr.fy} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm transition-all hover:border-slate-300">
-                                {/* Header Accordion Bar */}
-                                <div 
-                                  onClick={() => {
-                                    if (accountSlipFy === 'all') {
-                                      setExpandedAccountSlipYears(prev => 
-                                        prev.includes(yr.fy) ? prev.filter(f => f !== yr.fy) : [...prev, yr.fy]
-                                      );
-                                    }
-                                  }}
-                                  className={`flex flex-col sm:flex-row justify-between items-start sm:items-center p-5 gap-4 cursor-pointer select-none transition ${isExpanded ? 'bg-indigo-50/20' : 'hover:bg-slate-50/50'}`}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs shrink-0 font-mono">
-                                      {yr.fy}
+                              <div
+                                key={yr.fy}
+                                className={`portal-wt-node${isExpanded ? ' is-open' : ''}`}
+                                style={{ ['--wt-tone' as string]: PF_FY_TONES[yrIdx % PF_FY_TONES.length] }}
+                              >
+                                <div className="portal-wt-node-head">
+                                  <button
+                                    type="button"
+                                    className="portal-wt-toggle"
+                                    onClick={() => {
+                                      if (accountSlipFy === 'all') {
+                                        setExpandedAccountSlipYears(prev => 
+                                          prev.includes(yr.fy) ? prev.filter(f => f !== yr.fy) : [...prev, yr.fy]
+                                        );
+                                      }
+                                    }}
+                                    aria-expanded={isExpanded}
+                                  >
+                                    <ChevronRight className={`portal-wt-caret${isExpanded ? ' is-open' : ''}`} />
+                                    <div className="portal-wt-copy">
+                                      <div className="portal-wt-title">
+                                        <span>{lang === 'ta' ? `நிதியாண்டு ${yr.fy}` : `Financial Year ${yr.fy}`}</span>
+                                        <span className="portal-wt-count">{(yr.months[0]?.rate || 7.1)}%</span>
+                                      </div>
                                     </div>
-                                    <div>
-                                      <p className="font-extrabold text-slate-800 text-sm">{lang === 'ta' ? `நிதியாண்டு ${yr.fy}` : `Financial Year ${yr.fy}`}</p>
-                                      <p className="text-[10px] text-indigo-600 font-semibold uppercase tracking-wider">
-                                        Interest Rate: {(yr.months[0]?.rate || 7.1)}%
-                                      </p>
-                                    </div>
+                                  </button>
+                                  <div className="portal-wt-chips">
+                                    <span className="portal-wt-chip">OB ₹{Math.round(yr.openingBalance).toLocaleString('en-IN')}</span>
+                                    <span className="portal-wt-chip">Sub +₹{Math.round(yr.subscriptionsPaid).toLocaleString('en-IN')}</span>
+                                    <span className="portal-wt-chip">Adv -₹{Math.round(yr.withdrawals).toLocaleString('en-IN')}</span>
+                                    <span className="portal-wt-chip">CB ₹{Math.round(effectiveClosingBalance).toLocaleString('en-IN')}</span>
                                   </div>
-
-                                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-5 w-full sm:w-auto text-xs font-mono">
-                                    <div>
-                                      <p className="text-[9px] text-slate-400 uppercase font-bold font-sans">
-                                        {lang === 'ta' ? 'தொடக்க இருப்பு' : 'OB'}
-                                      </p>
-                                      <p className="font-bold text-slate-700 font-mono">₹{Math.round(yr.openingBalance).toLocaleString('en-IN')}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[9px] text-slate-400 uppercase font-bold font-sans text-emerald-600">
-                                        {lang === 'ta' ? 'சந்தா' : 'Subscriptions'}
-                                      </p>
-                                      <p className="font-bold text-emerald-600 font-mono">+₹{Math.round(yr.subscriptionsPaid).toLocaleString('en-IN')}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[9px] text-slate-400 uppercase font-bold font-sans text-rose-600">
-                                        {lang === 'ta' ? 'சேமநலநிதி முன்பணம்' : 'PF Advance'}
-                                      </p>
-                                      <p className="font-bold text-rose-600 font-mono">-₹{Math.round(yr.withdrawals).toLocaleString('en-IN')}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[9px] text-slate-400 uppercase font-bold font-sans text-indigo-600">Int. Credited</p>
-                                      <p className="font-bold text-indigo-600 font-mono">
-                                        {yr.interestCredited > 0 ? `+₹${Math.round(yr.interestCredited).toLocaleString('en-IN')}` : '₹0'}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[9px] text-slate-400 uppercase font-bold font-sans text-indigo-800">
-                                        {lang === 'ta' ? 'மொத்த திரண்ட வட்டி' : 'Total Acc. Int'}
-                                      </p>
-                                      <p className="font-bold text-indigo-800 font-mono">₹{Math.round(yr.totalAccumulatedInterest).toLocaleString('en-IN')}</p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-[9px] text-slate-400 uppercase font-bold font-sans">
-                                        {lang === 'ta' ? 'முடிவு இருப்பு' : 'CB'}
-                                      </p>
-                                      <p className="font-extrabold text-indigo-700 font-mono">₹{Math.round(effectiveClosingBalance).toLocaleString('en-IN')}</p>
-                                    </div>
-                                  </div>
-
-                                  {accountSlipFy === 'all' && (
-                                    <div className="text-slate-400 shrink-0 self-center">
-                                      {isExpanded ? <ChevronUp className="w-5 h-5 text-indigo-500" /> : <ChevronDown className="w-5 h-5" />}
-                                    </div>
-                                  )}
                                 </div>
 
-                                {/* Monthly History Sub-table */}
                                 {isExpanded && (
-                                  <div className="border-t border-slate-100 bg-slate-50/30 p-4 space-y-6">
-                                    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                                      <table className="w-full text-left border-collapse text-xs">
+                                  <div className="portal-wt-fields">
+                                    <div className="portal-dash-table overflow-x-auto">
+                                      <table>
                                         <thead>
                                           <tr className="bg-slate-50 font-bold text-[9px] text-slate-500 uppercase tracking-wider border-b border-slate-200 font-sans">
                                             <th className="p-4 font-sans">{lang === 'ta' ? 'மாதம்' : 'Month'}</th>
@@ -2401,7 +2314,6 @@ export default function PfReportsTab({
                             );
                           })
                         )}
-                      </div>
                     </div>
                   </>
                 );
@@ -2416,6 +2328,7 @@ export default function PfReportsTab({
                   </p>
                   <p className="font-mono text-slate-400">Ledger Code Hash Check: DTPPF_{reportEmpId}_2026</p>
                 </div>
+              </div>
               </div>
             </div>
           )}

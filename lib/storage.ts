@@ -131,7 +131,7 @@ const INITIAL_DATA = {
     {
       id: 'u1',
       username: 'dtpadmin',
-      passwordHash: 'dtp123', // Clean simplified plain text password for easy demo
+      passwordHash: 'dtp8122', // Clean simplified plain text password for easy demo
       roleId: 'admin',
       scopeType: 'HOD',
       scopeId: 'all',
@@ -2224,6 +2224,7 @@ function assemblePortalState(parts: {
   userActivities: any;
   settings: any;
   inspectionWorkStats?: any[];
+  roles?: any;
 }) {
   const localDb = readLocalDb();
   const masters = {
@@ -2235,7 +2236,11 @@ function assemblePortalState(parts: {
   };
   const enrichedUsers = (parts.inspectionUsers || []).map((u: any) => enrichUserForApp(u, masters));
   const finalUsers = (parts.users && parts.users.length > 0) ? parts.users : ((localDb.users && localDb.users.length > 0) ? localDb.users : INITIAL_DATA.users);
-  const finalRoles = (localDb.roles && localDb.roles.length > 0) ? localDb.roles : INITIAL_DATA.roles;
+  const mongoRoles = Array.isArray(parts.roles) ? parts.roles : [];
+  const localRoles = Array.isArray(localDb.roles) ? localDb.roles : [];
+  const finalRoles = mongoRoles.length > 0
+    ? mongoRoles
+    : (localRoles.length > 0 ? localRoles : INITIAL_DATA.roles);
   const finalEmployees = parts.employees !== undefined
     ? (parts.employees || [])
     : ((localDb.employees && localDb.employees.length > 0) ? localDb.employees : INITIAL_DATA.employees);
@@ -2286,7 +2291,9 @@ function slimPortalUsers(users: any[]) {
       nameTa: u.nameTa,
       role: u.role,
       roleId: u.roleId || u.role,
-      customPagePermissions: u.customPagePermissions || null,
+      customPagePermissions: Array.isArray(u.customPagePermissions)
+        ? u.customPagePermissions
+        : u.customPagePermissions ?? undefined,
       districtId: u.districtId,
       tpId: u.tpId || u.townPanchayatId,
       zoneId: u.zoneId,
@@ -2360,6 +2367,7 @@ function portalStructuralDefaults() {
     townPanchayats: _tps,
     wardsAndStreets: _was,
     users: _users,
+    roles: _roles,
     employees: _employees,
     inspectionSubjects: _subjects,
     inspectionCategories: _cats,
@@ -2430,6 +2438,7 @@ export async function getPortalBootstrapState(): Promise<any> {
     inspectionRoles,
     inspectionDesignations,
     users,
+    roles,
     settings,
     inspectionWorkStats,
     pendingIssues,
@@ -2446,14 +2455,13 @@ export async function getPortalBootstrapState(): Promise<any> {
     timedBootstrap('inspectionRoles', getCollectionData('inspectionRoles')),
     timedBootstrap('inspectionDesignations', getCollectionData('inspectionDesignations')),
     timedBootstrap('users', getCollectionData('users')),
+    timedBootstrap('roles', getCollectionData('roles')),
     timedBootstrap('settings', getAppSettings()),
     timedBootstrap('inspectionWorkStats', getInspectionWorksDashboardStats()),
     timedBootstrap('pendingIssues', getCollectionData('pendingIssues')),
     timedBootstrap('pendingIssuesSchema', getCollectionData('pendingIssuesSchema')),
   ]);
   console.info(`[bootstrap] parallel load ${Date.now() - t0}ms`);
-
-  const localRoles = readLocalDb()?.roles || INITIAL_DATA.roles;
   const masters = {
     townPanchayats: townPanchayats || [],
     districts: districts || [],
@@ -2501,7 +2509,7 @@ export async function getPortalBootstrapState(): Promise<any> {
     notifications: [],
     apkVersions: [],
     userActivities: [],
-    roles: localRoles,
+    roles: (Array.isArray(roles) && roles.length > 0) ? roles : (INITIAL_DATA.roles),
     settings: slimSettings(settings),
     inspectionWorkStats: namedStats,
     inspectionWorks: [],
@@ -2544,6 +2552,7 @@ export async function getFullDatabaseState(): Promise<typeof INITIAL_DATA> {
     inspectionRoles,
     inspectionDesignations,
     users,
+    roles,
     employees,
     notifications,
     apkVersions,
@@ -2562,6 +2571,7 @@ export async function getFullDatabaseState(): Promise<typeof INITIAL_DATA> {
     getCollectionData('inspectionRoles'),
     getCollectionData('inspectionDesignations'),
     getCollectionData('users'),
+    getCollectionData('roles'),
     getEmployees(),
     getCollectionData('notifications'),
     getCollectionData('apkVersions'),
@@ -2582,6 +2592,7 @@ export async function getFullDatabaseState(): Promise<typeof INITIAL_DATA> {
     inspectionRoles,
     inspectionDesignations,
     users,
+    roles,
     employees,
     notifications,
     apkVersions,
@@ -2701,6 +2712,33 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
             const itemId = id || (_id ? String(_id) : `zone_${idx}`);
             return { _id: itemId as any, id: itemId, ...rest };
           }));
+        }
+      } else if (key === 'roles') {
+        const existing = await col.find({}).toArray();
+        const existingById = new Map(
+          existing.map((e: any) => [String(e.id || e._id), e])
+        );
+        const mergedItems = items.map((item) => {
+          const previous = item.id ? existingById.get(String(item.id)) : undefined;
+          if (!previous) return item;
+          const merged = { ...previous, ...item };
+          if (item.pagePermissions === undefined && previous.pagePermissions !== undefined) {
+            merged.pagePermissions = previous.pagePermissions;
+          }
+          if (item.permissions === undefined && previous.permissions !== undefined) {
+            merged.permissions = previous.permissions;
+          }
+          return merged;
+        });
+        await col.deleteMany({});
+        if (mergedItems.length > 0) {
+          await col.insertMany(
+            mergedItems.map((item, idx) => {
+              const { id, _id, ...rest } = item;
+              const itemId = id || (_id ? String(_id) : `role_${idx}`);
+              return { _id: itemId as any, id: itemId, ...rest };
+            })
+          );
         }
       } else if (key === 'users' || key === 'inspectionUsers') {
         const existing = await col.find({}).toArray();

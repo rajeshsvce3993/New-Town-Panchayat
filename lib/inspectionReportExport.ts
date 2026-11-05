@@ -36,6 +36,20 @@ export function sanitizeSheetName(name: string, fallback: string = 'Sheet'): str
   return clean || fallback;
 }
 
+function triggerBrowserDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  window.setTimeout(() => {
+    if (link.parentNode) link.parentNode.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, 1500);
+}
+
 function escapePdfHtml(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -96,7 +110,9 @@ export async function generateHtmlTablePDF(options: HtmlPdfOptions): Promise<{ b
   container.style.position = 'fixed';
   container.style.left = '-99999px';
   container.style.top = '0';
-  container.style.width = landscape ? '1120px' : '820px';
+  container.style.width = landscape
+    ? (headers.length > 12 ? '1440px' : '1120px')
+    : '820px';
   container.style.backgroundColor = '#ffffff';
   container.style.color = '#0f172a';
   container.style.padding = '24px 28px';
@@ -219,11 +235,11 @@ export async function generateHtmlTablePDF(options: HtmlPdfOptions): Promise<{ b
 
     // jsPDF starts with a blank page; the first chunk fills it. Extra blank first page
     // is avoided because appendCanvasPages(startNewPage=false) draws on page 1.
+    const blob = pdf.output('blob');
     if (returnBlob) {
-      const blob = pdf.output('blob');
       return { blob, filename };
     }
-    pdf.save(filename);
+    triggerBrowserDownload(blob, filename);
     return true;
   } catch (err) {
     console.error('Failed to generate HTML PDF:', err);
@@ -274,9 +290,22 @@ export function exportMultiSheetExcel(
     }
     usedNames.add(sheetName.toLowerCase());
 
-    const ws = XLSX.utils.aoa_to_sheet(s.data);
+    const safeData = (s.data || []).map((row) =>
+      (row || []).map((cell) => {
+        if (cell === null || cell === undefined) return '';
+        if (typeof cell === 'number' && Number.isFinite(cell)) return cell;
+        return String(cell);
+      })
+    );
+    const ws = XLSX.utils.aoa_to_sheet(safeData);
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
   });
 
-  XLSX.writeFile(wb, filename);
+  const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  triggerBrowserDownload(
+    new Blob([out], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }),
+    filename
+  );
 }

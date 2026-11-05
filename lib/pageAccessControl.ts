@@ -180,13 +180,16 @@ export const DEFAULT_ROLE_PAGES: Record<string, string[]> = {
   admin: ALL_PAGE_IDS,
   ad: ['dashboard', 'inspectionModules', 'inspectionEmployees', 'inspectionReports', 'pfManagement', 'employees', 'transferCounseling', 'pendingIssues', 'userSettings'],
   eo: ['dashboard', 'inspectionModules', 'inspectionEmployees', 'inspectionReports', 'pfManagement', 'employees', 'transferCounseling', 'pendingIssues', 'userSettings'],
-  zonal: ['dashboard', 'inspectionModules', 'inspectionEmployees', 'inspectionReports', 'pfManagement', 'employees', 'transferCounseling', 'pendingIssues', 'userSettings']
+  zonal: ['dashboard', 'inspectionReports', 'userSettings']
 };
 
 export const getDefaultRolePages = (roleId: string): string[] => {
   const cleanId = (roleId || '').toLowerCase().trim();
   if (cleanId === 'admin' || cleanId.includes('admin') || cleanId.includes('director')) {
     return [...ALL_PAGE_IDS];
+  }
+  if (cleanId === 'zonal' || cleanId.includes('zonal')) {
+    return [...DEFAULT_ROLE_PAGES.zonal];
   }
   if (DEFAULT_ROLE_PAGES[cleanId]) {
     return [...DEFAULT_ROLE_PAGES[cleanId]];

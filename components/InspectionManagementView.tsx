@@ -30,7 +30,8 @@ import {
   ArrowUp,
   ArrowDown,
   Zap,
-  SlidersHorizontal
+  SlidersHorizontal,
+  ChevronRight
 } from 'lucide-react';
 import { Language, translations } from './translations';
 
@@ -43,6 +44,8 @@ interface InspectionManagementViewProps {
 export default function InspectionManagementView({ state, lang, onSaveCollection }: InspectionManagementViewProps) {
   const [activeTab, setActiveTab] = useState<'subjects' | 'categories' | 'fields'>('subjects');
   const [viewMode, setViewMode] = useState<'tree' | 'table'>('tree');
+  const [openSubjects, setOpenSubjects] = useState<Record<string, boolean>>({});
+  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({});
 
   const {
     inspectionSubjects = [],
@@ -236,6 +239,27 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
   const tObj = (obj: any) => {
     if (!obj) return '';
     return lang === 'ta' ? (obj.nameTa || obj.nameEn) : (obj.nameEn || obj.nameTa);
+  };
+
+  const fieldTypeOf = (field: any) => field?.type || field?.fieldType || 'text';
+  const nameEnOf = (obj: any) => obj?.nameEn || obj?.fieldName || '';
+  const nameTaOf = (obj: any) => obj?.nameTa || obj?.fieldNameTa || '';
+  const descOf = (obj: any) =>
+    lang === 'ta'
+      ? (obj?.descriptionTa || obj?.description || obj?.descriptionEn || '')
+      : (obj?.descriptionEn || obj?.description || obj?.descriptionTa || '');
+  const optionsOf = (field: any) =>
+    Array.isArray(field?.options) ? field.options.filter(Boolean) : [];
+
+  const SUBJECT_TONES = ['#1d4ed8', '#7c3aed', '#c2410c', '#0f766e', '#be185d', '#0369a1', '#b45309', '#4f46e5'];
+  const CATEGORY_TONES = ['#0d9488', '#2563eb', '#d97706', '#db2777', '#059669', '#7c3aed', '#ea580c', '#0284c7'];
+
+  const toggleSubject = (id: string) => {
+    setOpenSubjects((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const toggleCategory = (id: string) => {
+    setOpenCategories((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   // Add Subject Handler
@@ -571,37 +595,43 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
   };
 
   return (
-    <div id="inspection-module-management-container" className="space-y-6">
+    <div id="inspection-module-management-container" className="portal-studio portal-page">
       {/* Top Banner & Bulk Upload Controls */}
-      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <ClipboardCheck className="w-6 h-6 text-indigo-600" />
+      <div className="portal-fis-hero">
+        <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
+            <ClipboardCheck className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0 leading-tight">
+            <h3 className="text-[14px] font-semibold tracking-tight text-white">
               {t('inspectionModuleManagement')}
             </h3>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-[10px] text-white/70">
               {lang === 'ta' 
-                ? 'கள ஆய்வுப் பிரிவுகள் (SWM மேலாண்மை போன்றவை), ஆய்வு வகைகள் (வீடு வீடாக ஆய்வு) மற்றும் டைனமிக் புலங்களை நிர்வகிக்கவும்.' 
-                : 'Configure inspection subjects, category hierarchies, and custom inspection form fields (Camera, Mobile, Yes/No, etc.).'}
+                ? 'கள ஆய்வுப் பிரிவுகள், ஆய்வு வகைகள் மற்றும் டைனமிக் புலங்களை நிர்வகிக்கவும்.' 
+                : 'Configure inspection subjects, categories, and custom form fields.'}
             </p>
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
             <button
+              type="button"
               onClick={downloadInspectionCSVTemplate}
-              className="flex items-center gap-2 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl border border-indigo-200 transition shadow-2xs"
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
-              {lang === 'ta' ? 'மாதிரி மாதிரி படிவம் பதிவிறக்கு (CSV)' : 'Download Bulk Model Template (CSV)'}
+              <Download className="h-3 w-3" />
+              {lang === 'ta' ? 'மாதிரி படிவம் (CSV)' : 'Template (CSV)'}
             </button>
 
             <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition shadow-2xs"
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-md hover:brightness-110 cursor-pointer"
+              style={{ background: 'var(--theme-accent)' }}
             >
-              <Upload className="w-3.5 h-3.5" />
-              {lang === 'ta' ? 'பல்க் பதிவேற்றம் (Bulk Upload)' : 'Bulk CSV Upload'}
+              <Upload className="h-3 w-3" />
+              {lang === 'ta' ? 'பல்க் பதிவேற்றம்' : 'Bulk CSV Upload'}
             </button>
 
             <input
@@ -612,50 +642,66 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
               className="hidden"
             />
           </div>
-        </div>
+      </div>
 
         {csvFeedback && (
-          <div className={`p-4 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+          <div className={`p-3 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
             {csvFeedback.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
             <p className="text-xs font-medium">{csvFeedback.message}</p>
           </div>
         )}
+
+      <div className="portal-dash-toolbar">
+        <div className="portal-dash-pills">
+          <button
+            type="button"
+            onClick={() => setActiveTab('subjects')}
+            className={`portal-dash-pill ${activeTab === 'subjects' ? 'is-active' : ''}`}
+          >
+            <FolderTree className="h-3.5 w-3.5" />
+            <span>{t('inspectionSubjects')}</span>
+            <span className="portal-fis-count">{inspectionSubjects.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('categories')}
+            className={`portal-dash-pill ${activeTab === 'categories' ? 'is-active' : ''}`}
+          >
+            <ListFilter className="h-3.5 w-3.5" />
+            <span>{t('inspectionCategories')}</span>
+            <span className="portal-fis-count">{inspectionCategories.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('fields')}
+            className={`portal-dash-pill ${activeTab === 'fields' ? 'is-active' : ''}`}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>{t('inspectionFields')}</span>
+            <span className="portal-fis-count">{inspectionFields.length}</span>
+          </button>
+        </div>
       </div>
 
-      {/* Navigation Sub-Tabs */}
-      <div className="flex border-b border-gray-100 bg-white px-6 pt-4 rounded-t-2xl shadow-xs gap-2">
-        <button
-          onClick={() => setActiveTab('subjects')}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition flex items-center gap-2 ${activeTab === 'subjects' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          <FolderTree className="w-4 h-4" />
-          {t('inspectionSubjects')} ({inspectionSubjects.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('categories')}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition flex items-center gap-2 ${activeTab === 'categories' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          <ListFilter className="w-4 h-4" />
-          {t('inspectionCategories')} ({inspectionCategories.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('fields')}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition flex items-center gap-2 ${activeTab === 'fields' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          <Sparkles className="w-4 h-4" />
-          {t('inspectionFields')} ({inspectionFields.length})
-        </button>
-      </div>
-
-      {/* Main Content Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Side: Creation Forms */}
-        <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
+      <div className="portal-wt-grid">
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>
+                <span className="portal-dash-icon">
+                  <Plus className="h-3 w-3" />
+                </span>
+                {activeTab === 'subjects'
+                  ? t('addInspectionSubject')
+                  : activeTab === 'categories'
+                    ? t('addInspectionCategory')
+                    : t('addInspectionField')}
+              </h3>
+            </div>
+          </div>
+          <div className="portal-dash-body portal-wt-form">
           {activeTab === 'subjects' && (
             <form onSubmit={handleAddSubject} className="space-y-4">
-              <h4 className="font-semibold text-gray-900 text-sm border-b border-gray-100 pb-2">
-                {t('addInspectionSubject')}
-              </h4>
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-semibold text-gray-500">{t('subjectNameEn')}</label>
@@ -702,9 +748,6 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
 
           {activeTab === 'categories' && (
             <form onSubmit={handleAddCategory} className="space-y-4">
-              <h4 className="font-semibold text-gray-900 text-sm border-b border-gray-100 pb-2">
-                {t('addInspectionCategory')}
-              </h4>
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-semibold text-gray-500">{t('inspectionSubjects')}</label>
@@ -755,9 +798,6 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
 
           {activeTab === 'fields' && (
             <form onSubmit={handleAddField} className="space-y-4">
-              <h4 className="font-semibold text-gray-900 text-sm border-b border-gray-100 pb-2">
-                {t('addInspectionField')}
-              </h4>
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-semibold text-gray-500">{t('inspectionSubjects')}</label>
@@ -959,7 +999,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                             .filter((f: any) => f.categoryId === fieldCategoryId && (f.type === 'yes_no' || f.type === 'dropdown' || f.fieldType === 'yes_no' || f.fieldType === 'dropdown'))
                             .map((f: any) => (
                               <option key={f.id} value={f.id}>
-                                {tObj(f)} ({getFieldTypeLabel(f.type)})
+                                {tObj(f)} ({getFieldTypeLabel(fieldTypeOf(f))})
                               </option>
                             ))}
                         </select>
@@ -1003,225 +1043,253 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
               </button>
             </form>
           )}
+          </div>
         </div>
 
-        {/* Right Side: Hierarchical Overview and Lists */}
-        <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
-            <div className="space-y-1">
-              <h4 className="font-semibold text-gray-800 text-md flex items-center gap-2">
-                <ClipboardCheck className="w-5 h-5 text-indigo-500" />
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>
+                <span className="portal-dash-icon">
+                  <ClipboardCheck className="h-3 w-3" />
+                </span>
                 {lang === 'ta' ? 'ஆய்வு படிநிலை & புலங்கள்' : 'Configured Inspection Structure'}
-              </h4>
-              <p className="text-xs text-gray-400">
+              </h3>
+              <p>
                 {inspectionSubjects.length} {lang === 'ta' ? 'பிரிவுகள்' : 'Subjects'} / {inspectionCategories.length} {lang === 'ta' ? 'வகைகள்' : 'Categories'} / {inspectionFields.length} {lang === 'ta' ? 'புலங்கள்' : 'Fields'}
               </p>
             </div>
-            
-            <div className="flex items-center gap-2 shrink-0">
-              {/* View toggle switcher buttons */}
-              <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
+            <div className="flex shrink-0 items-center gap-1.5">
+              <div className="portal-dash-pills">
                 <button
                   type="button"
                   onClick={() => setViewMode('tree')}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${viewMode === 'tree' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                  className={`portal-dash-pill ${viewMode === 'tree' ? 'is-active' : ''}`}
                 >
-                  {lang === 'ta' ? 'படிநிலை வடிவம்' : 'Tree View'}
+                  {lang === 'ta' ? 'படிநிலை' : 'Tree'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('table')}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition ${viewMode === 'table' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                  className={`portal-dash-pill ${viewMode === 'table' ? 'is-active' : ''}`}
                 >
-                  {lang === 'ta' ? 'அட்டவணை வடிவம்' : 'Table View'}
+                  {lang === 'ta' ? 'அட்டவணை' : 'Table'}
                 </button>
               </div>
-
-              {/* Download Excel button */}
               <button
                 type="button"
                 onClick={handleExportExcel}
-                className="flex items-center gap-1.5 px-3 py-2 border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 font-semibold text-xs rounded-xl transition cursor-pointer"
+                className="portal-dash-head-action"
                 title={lang === 'ta' ? 'எக்செல் ஆக பதிவிறக்கு' : 'Download as Excel'}
               >
-                <FileSpreadsheet className="w-4 h-4" />
+                <FileSpreadsheet className="h-3 w-3" />
                 <span>{lang === 'ta' ? 'எக்செல்' : 'Excel'}</span>
               </button>
             </div>
           </div>
 
-          <div className="space-y-4 max-h-[580px] overflow-y-auto pr-2">
+          <div className="portal-dash-body">
             {viewMode === 'tree' ? (
-              <div className="space-y-4">
+              <div className="portal-wt-tree">
                 {inspectionSubjects.map((subject: any, sIdx: number) => {
                   const subjectCats = inspectionCategories.filter((c: any) => c.subjectId === subject.id);
+                  const subjectOpen = Boolean(openSubjects[subject.id]);
+                  const subjectTone = SUBJECT_TONES[sIdx % SUBJECT_TONES.length];
 
                   return (
-                    <div key={subject.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50/70 space-y-3">
-                      <div className="flex items-center justify-between bg-slate-200/50 p-2 rounded-lg">
-                        <div>
-                          <h5 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
-                            {tObj(subject)}
-                          </h5>
-                          {subject.description && (
-                            <p className="text-[11px] text-gray-500 pl-4 mt-0.5">{subject.description}</p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          {/* Subject move buttons */}
+                    <div
+                      key={subject.id}
+                      className={`portal-wt-node${subjectOpen ? ' is-open' : ''}`}
+                      style={{ ['--wt-tone' as string]: subjectTone }}
+                    >
+                      <div className="portal-wt-node-head">
+                        <button
+                          type="button"
+                          className="portal-wt-toggle"
+                          onClick={() => toggleSubject(subject.id)}
+                          aria-expanded={subjectOpen}
+                        >
+                          <ChevronRight className={`portal-wt-caret${subjectOpen ? ' is-open' : ''}`} />
+                          <div className="portal-wt-copy">
+                            <div className="portal-wt-title">
+                              <span>{nameEnOf(subject) || tObj(subject)}</span>
+                              <span className="portal-wt-count">
+                                {subjectCats.length} {lang === 'ta' ? 'வகைகள்' : 'categories'}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                        <div className="portal-wt-actions">
                           <button
                             type="button"
                             onClick={() => handleMoveSubject(sIdx, 'up')}
                             disabled={sIdx === 0}
-                            className="p-1 hover:bg-white text-gray-500 hover:text-indigo-600 rounded disabled:opacity-30 disabled:pointer-events-none transition"
+                            className="portal-fis-icon-btn is-muted"
                             title="Move Up"
                           >
-                            <ArrowUp className="w-3.5 h-3.5" />
+                            <ArrowUp className="h-3 w-3" />
                           </button>
                           <button
                             type="button"
                             onClick={() => handleMoveSubject(sIdx, 'down')}
                             disabled={sIdx === inspectionSubjects.length - 1}
-                            className="p-1 hover:bg-white text-gray-500 hover:text-indigo-600 rounded disabled:opacity-30 disabled:pointer-events-none transition"
+                            className="portal-fis-icon-btn is-muted"
                             title="Move Down"
                           >
-                            <ArrowDown className="w-3.5 h-3.5" />
+                            <ArrowDown className="h-3 w-3" />
                           </button>
-                          <span className="w-px h-4 bg-gray-300 mx-1"></span>
                           <button
+                            type="button"
                             onClick={() => setEditingSubject({ ...subject })}
-                            className="p-1 hover:bg-white hover:text-indigo-600 text-gray-400 rounded transition"
+                            className="portal-fis-icon-btn"
                             title={lang === 'ta' ? 'திருத்து' : 'Edit Subject'}
                           >
-                            <Pencil className="w-3.5 h-3.5" />
+                            <Pencil className="h-3 w-3" />
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleDeleteSubject(subject.id)}
-                            className="p-1 hover:bg-white hover:text-red-600 text-gray-400 rounded transition"
+                            className="portal-fis-icon-btn is-danger"
                             title="Delete Subject"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="h-3 w-3" />
                           </button>
                         </div>
                       </div>
 
-                      {/* Categories under Subject */}
-                      <div className="pl-4 space-y-2">
+                      {subjectOpen && (
+                      <div className="portal-wt-cats">
                         {subjectCats.map((cat: any, cIdx: number) => {
                           const catFields = inspectionFields.filter((f: any) => f.categoryId === cat.id);
+                          const categoryOpen = Boolean(openCategories[cat.id]);
+                          const categoryTone = CATEGORY_TONES[cIdx % CATEGORY_TONES.length];
 
                           return (
-                            <div key={cat.id} className="bg-white border border-gray-100 rounded-xl p-3 space-y-2 shadow-2xs">
-                              <div className="flex items-center justify-between bg-emerald-50/40 p-1.5 rounded-lg">
-                                <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                  {tObj(cat)}
-                                  <span className="text-[10px] font-normal text-gray-400">
-                                    ({catFields.length} {lang === 'ta' ? 'புலங்கள்' : 'fields'})
-                                  </span>
-                                </span>
-                                <div className="flex items-center gap-1">
-                                  {/* Category move buttons */}
+                            <div
+                              key={cat.id}
+                              className={`portal-wt-cat${categoryOpen ? ' is-open' : ''}`}
+                              style={{ ['--wt-tone' as string]: categoryTone }}
+                            >
+                              <div className="portal-wt-cat-head">
+                                <button
+                                  type="button"
+                                  className="portal-wt-toggle"
+                                  onClick={() => toggleCategory(cat.id)}
+                                  aria-expanded={categoryOpen}
+                                >
+                                  <ChevronRight className={`portal-wt-caret${categoryOpen ? ' is-open' : ''}`} />
+                                  <div className="portal-wt-copy">
+                                    <div className="portal-wt-title">
+                                      <span>{nameEnOf(cat) || tObj(cat)}</span>
+                                      <span className="portal-wt-count">
+                                        {catFields.length} {lang === 'ta' ? 'புலங்கள்' : 'fields'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </button>
+                                <div className="portal-wt-actions">
                                   <button
                                     type="button"
                                     onClick={() => handleMoveCategory(subject.id, cIdx, 'up')}
                                     disabled={cIdx === 0}
-                                    className="p-1 hover:bg-gray-100 text-gray-500 hover:text-emerald-600 rounded disabled:opacity-30 disabled:pointer-events-none transition"
+                                    className="portal-fis-icon-btn is-muted"
                                     title="Move Up"
                                   >
-                                    <ArrowUp className="w-3 h-3" />
+                                    <ArrowUp className="h-3 w-3" />
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => handleMoveCategory(subject.id, cIdx, 'down')}
                                     disabled={cIdx === subjectCats.length - 1}
-                                    className="p-1 hover:bg-gray-100 text-gray-500 hover:text-emerald-600 rounded disabled:opacity-30 disabled:pointer-events-none transition"
+                                    className="portal-fis-icon-btn is-muted"
                                     title="Move Down"
                                   >
-                                    <ArrowDown className="w-3 h-3" />
+                                    <ArrowDown className="h-3 w-3" />
                                   </button>
-                                  <span className="w-px h-3 bg-gray-200 mx-1"></span>
                                   <button
+                                    type="button"
                                     onClick={() => setEditingCategory({ ...cat })}
-                                    className="p-1 hover:bg-gray-100 hover:text-indigo-600 text-gray-400 rounded transition"
+                                    className="portal-fis-icon-btn"
                                     title={lang === 'ta' ? 'திருத்து' : 'Edit Category'}
                                   >
-                                    <Pencil className="w-3 h-3" />
+                                    <Pencil className="h-3 w-3" />
                                   </button>
                                   <button
+                                    type="button"
                                     onClick={() => handleDeleteCategory(cat.id)}
-                                    className="p-1 hover:bg-gray-100 hover:text-red-500 text-gray-400 rounded transition"
+                                    className="portal-fis-icon-btn is-danger"
                                     title="Delete Category"
                                   >
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <Trash2 className="h-3 w-3" />
                                   </button>
                                 </div>
                               </div>
 
-                              {/* Fields inside Category */}
-                              {catFields.length > 0 ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-gray-50">
+                              {categoryOpen && (catFields.length > 0 ? (
+                                <div className="portal-wt-fields">
                                   {catFields.map((field: any, fIdx: number) => (
-                                    <div key={field.id} className="flex items-start justify-between p-2 bg-slate-50 border border-slate-100 rounded-lg">
-                                      <div className="space-y-1">
-                                        <div className="flex items-center gap-1.5">
-                                          {getFieldTypeIcon(field.type)}
-                                          <span className="text-xs font-semibold text-gray-800">{tObj(field)}</span>
+                                    <div key={field.id} className="portal-wt-field">
+                                      <div className="portal-wt-field-main">
+                                        <div className="portal-wt-field-name">
+                                          {getFieldTypeIcon(fieldTypeOf(field))}
+                                          <span>{nameEnOf(field) || tObj(field)}</span>
                                         </div>
-                                        <div className="flex items-center gap-1.5 text-[10px]">
-                                          <span className="bg-white px-1.5 py-0.5 rounded border border-gray-200 text-gray-600 font-medium">
-                                            {getFieldTypeLabel(field.type)}
+                                        {nameTaOf(field) && nameTaOf(field) !== nameEnOf(field) && (
+                                          <p className="portal-wt-sub">{nameTaOf(field)}</p>
+                                        )}
+                                        <div className="portal-wt-flags">
+                                          <span className="portal-dash-status is-progress">
+                                            {getFieldTypeLabel(fieldTypeOf(field))}
                                           </span>
                                           {field.isMandatory && (
-                                            <span className="bg-rose-50 border border-rose-100 text-rose-600 px-1 py-0.5 rounded font-bold">
-                                              *Req
+                                            <span className="portal-dash-status is-pending">
+                                              {lang === 'ta' ? 'கட்டாயம்' : 'Required'}
                                             </span>
                                           )}
                                           {field.isUnique && (
-                                            <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-1 py-0.5 rounded font-bold">
-                                              Unique
+                                            <span className="portal-dash-status is-progress">
+                                              {lang === 'ta' ? 'தனித்துவம்' : 'Unique'}
                                             </span>
                                           )}
                                           {field.conditionalAction === 'skip_to_camera' && (
-                                            <span className="bg-amber-100 border border-amber-300 text-amber-900 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
-                                              ⚡ {lang === 'ta' ? `கேமரா (${field.conditionalTriggerValue || 'Yes'})` : `Camera only (${field.conditionalTriggerValue || 'Yes'})`}
+                                            <span className="portal-dash-status is-pending">
+                                              {lang === 'ta' ? `கேமரா (${field.conditionalTriggerValue || 'Yes'})` : `Camera (${field.conditionalTriggerValue || 'Yes'})`}
                                             </span>
                                           )}
                                           {field.dependsOnFieldId && (
-                                            <span className="bg-blue-100 border border-blue-300 text-blue-900 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
-                                              🔗 {lang === 'ta' ? `நிபந்தனை: = ${field.dependsOnValue || ''}` : `Condition: = ${field.dependsOnValue || ''}`}
+                                            <span className="portal-dash-status is-progress">
+                                              {lang === 'ta' ? `நிபந்தனை = ${field.dependsOnValue || ''}` : `Condition = ${field.dependsOnValue || ''}`}
                                             </span>
                                           )}
                                         </div>
-                                        {field.options && field.options.length > 0 && (
-                                          <p className="text-[9px] text-gray-400 truncate max-w-[180px]">
-                                            {field.options.join(', ')}
+                                        {optionsOf(field).length > 0 && (
+                                          <p className="portal-wt-options">
+                                            {lang === 'ta' ? 'விருப்பங்கள்: ' : 'Options: '}
+                                            {optionsOf(field).join(', ')}
                                           </p>
                                         )}
                                       </div>
-
-                                      <div className="flex items-center gap-1 shrink-0">
-                                        {/* Field move buttons */}
+                                      <div className="portal-wt-actions">
                                         <button
                                           type="button"
                                           onClick={() => handleMoveField(cat.id, fIdx, 'up')}
                                           disabled={fIdx === 0}
-                                          className="p-1 hover:bg-white text-gray-500 hover:text-indigo-600 rounded disabled:opacity-30 disabled:pointer-events-none transition"
+                                          className="portal-fis-icon-btn is-muted"
                                           title="Move Up"
                                         >
-                                          <ArrowUp className="w-3 h-3" />
+                                          <ArrowUp className="h-3 w-3" />
                                         </button>
                                         <button
                                           type="button"
                                           onClick={() => handleMoveField(cat.id, fIdx, 'down')}
                                           disabled={fIdx === catFields.length - 1}
-                                          className="p-1 hover:bg-white text-gray-500 hover:text-indigo-600 rounded disabled:opacity-30 disabled:pointer-events-none transition"
+                                          className="portal-fis-icon-btn is-muted"
                                           title="Move Down"
                                         >
-                                          <ArrowDown className="w-3 h-3" />
+                                          <ArrowDown className="h-3 w-3" />
                                         </button>
                                         <button
+                                          type="button"
                                           onClick={() => setEditingField({ 
                                             ...field, 
                                             options: Array.isArray(field.options) ? field.options.join(', ') : (field.options || ''),
@@ -1231,57 +1299,58 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                                             dependsOnValue: field.dependsOnValue || '',
                                             conditionType: field.conditionType || 'show_if'
                                           })}
-                                          className="p-1 hover:bg-white hover:text-indigo-600 text-gray-400 rounded transition"
+                                          className="portal-fis-icon-btn"
                                           title={lang === 'ta' ? 'திருத்து' : 'Edit Field'}
                                         >
-                                          <Pencil className="w-3 h-3" />
+                                          <Pencil className="h-3 w-3" />
                                         </button>
                                         <button
+                                          type="button"
                                           onClick={() => handleDeleteField(field.id)}
-                                          className="p-1 hover:bg-white hover:text-red-600 text-gray-400 rounded transition"
+                                          className="portal-fis-icon-btn is-danger"
                                           title="Delete Field"
                                         >
-                                          <Trash2 className="w-3 h-3" />
+                                          <Trash2 className="h-3 w-3" />
                                         </button>
                                       </div>
                                     </div>
                                   ))}
                                 </div>
                               ) : (
-                                <p className="text-[10px] text-gray-400 italic">
+                                <p className="portal-wt-empty">
                                   {lang === 'ta' ? 'புலங்கள் இன்னும் சேர்க்கப்படவில்லை' : 'No dynamic fields added yet'}
                                 </p>
-                              )}
+                              ))}
                             </div>
                           );
                         })}
 
                         {subjectCats.length === 0 && (
-                          <p className="text-[11px] text-gray-400 italic pl-2">
+                          <p className="portal-wt-empty">
                             {lang === 'ta' ? 'ஆய்வு துணைப்பிரிவுகள் எதுவும் இல்லை' : 'No categories configured under this subject'}
                           </p>
                         )}
                       </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             ) : (
-              /* Flat/Nested Table View of all configured fields */
-              <div className="overflow-x-auto border border-gray-100 rounded-xl">
-                <table className="w-full text-left border-collapse text-xs">
+              <div className="portal-dash-table">
+                <table>
                   <thead>
-                    <tr className="bg-slate-100 text-gray-700 font-bold border-b border-gray-200">
-                      <th className="p-3">{lang === 'ta' ? 'வ.எண்' : 'S.No'}</th>
-                      <th className="p-3">{lang === 'ta' ? 'ஆய்வுப் பிரிவு' : 'Subject'}</th>
-                      <th className="p-3">{lang === 'ta' ? 'ஆய்வு வகை' : 'Category'}</th>
-                      <th className="p-3">{lang === 'ta' ? 'புலத்தின் பெயர் (EN/TA)' : 'Field Name (EN/TA)'}</th>
-                      <th className="p-3">{lang === 'ta' ? 'வகை' : 'Type'}</th>
-                      <th className="p-3">{lang === 'ta' ? 'கட்டாயம்' : 'Required'}</th>
-                      <th className="p-3">{lang === 'ta' ? 'செயல்பாடுகள்' : 'Actions'}</th>
+                    <tr>
+                      <th>{lang === 'ta' ? 'வ.எண்' : 'S.No'}</th>
+                      <th>{lang === 'ta' ? 'ஆய்வுப் பிரிவு' : 'Subject'}</th>
+                      <th>{lang === 'ta' ? 'ஆய்வு வகை' : 'Category'}</th>
+                      <th>{lang === 'ta' ? 'புலத்தின் பெயர்' : 'Field Name'}</th>
+                      <th>{lang === 'ta' ? 'வகை' : 'Type'}</th>
+                      <th>{lang === 'ta' ? 'கட்டாயம்' : 'Required'}</th>
+                      <th>{lang === 'ta' ? 'செயல்பாடுகள்' : 'Actions'}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody>
                     {(() => {
                       let sNo = 1;
                       const rows: React.ReactNode[] = [];
@@ -1291,78 +1360,88 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                           const catFields = inspectionFields.filter((f: any) => f.categoryId === cat.id);
                           catFields.forEach((field: any, fIdx: number) => {
                             rows.push(
-                              <tr key={field.id} className="hover:bg-slate-50 transition">
-                                <td className="p-3 font-mono tabular-nums text-gray-500">{sNo++}</td>
-                                <td className="p-3 font-medium text-indigo-700">{tObj(subject)}</td>
-                                <td className="p-3 font-medium text-emerald-700">{tObj(cat)}</td>
-                                <td className="p-3">
-                                  <div className="font-semibold text-gray-950">{field.nameEn || field.fieldName}</div>
-                                  <div className="text-[10px] text-gray-500">{field.nameTa || field.fieldNameTa}</div>
+                              <tr key={field.id}>
+                                <td className="portal-dash-id">{sNo++}</td>
+                                <td>{tObj(subject)}</td>
+                                <td>{tObj(cat)}</td>
+                                <td>
+                                  <div className="font-semibold text-slate-900">{nameEnOf(field)}</div>
+                                  {nameTaOf(field) && (
+                                    <div className="text-[11px] text-slate-500">{nameTaOf(field)}</div>
+                                  )}
+                                  {optionsOf(field).length > 0 && (
+                                    <div className="text-[10px] text-slate-500 mt-0.5">
+                                      {optionsOf(field).join(', ')}
+                                    </div>
+                                  )}
                                   {field.conditionalAction === 'skip_to_camera' && (
-                                    <div className="text-[10px] text-amber-800 font-bold flex items-center gap-1 mt-0.5">
-                                      ⚡ {lang === 'ta' ? `கேமரா மட்டும் (${field.conditionalTriggerValue || 'Yes'})` : `Skip to Camera on ${field.conditionalTriggerValue || 'Yes'}`}
+                                    <div className="text-[10px] text-amber-800 font-semibold mt-0.5">
+                                      {lang === 'ta' ? `கேமரா மட்டும் (${field.conditionalTriggerValue || 'Yes'})` : `Skip to Camera on ${field.conditionalTriggerValue || 'Yes'}`}
                                     </div>
                                   )}
                                   {field.dependsOnFieldId && (
-                                    <div className="text-[10px] text-blue-800 font-bold flex items-center gap-1 mt-0.5">
-                                      🔗 {lang === 'ta' ? `நிபந்தனை: = ${field.dependsOnValue || ''}` : `Condition: = ${field.dependsOnValue || ''}`}
+                                    <div className="text-[10px] text-slate-600 font-semibold mt-0.5">
+                                      {lang === 'ta' ? `நிபந்தனை: = ${field.dependsOnValue || ''}` : `Condition: = ${field.dependsOnValue || ''}`}
                                     </div>
                                   )}
                                 </td>
-                                <td className="p-3">
-                                  <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200 font-medium">
-                                    {getFieldTypeLabel(field.type)}
+                                <td>
+                                  <span className="portal-dash-status is-progress">
+                                    {getFieldTypeLabel(fieldTypeOf(field))}
                                   </span>
                                 </td>
-                                <td className="p-3">
+                                <td>
                                   {field.isMandatory ? (
-                                    <span className="text-red-600 font-bold">{lang === 'ta' ? 'ஆம்' : 'Yes'}</span>
+                                    <span className="portal-dash-num is-pending">{lang === 'ta' ? 'ஆம்' : 'Yes'}</span>
                                   ) : (
-                                    <span className="text-gray-400">{lang === 'ta' ? 'இல்லை' : 'No'}</span>
+                                    <span className="text-slate-400">{lang === 'ta' ? 'இல்லை' : 'No'}</span>
                                   )}
                                 </td>
-                                <td className="p-3 flex items-center gap-1.5">
-                                  {/* Move field triggers */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleMoveField(cat.id, fIdx, 'up')}
-                                    disabled={fIdx === 0}
-                                    className="p-1 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 rounded disabled:opacity-30 disabled:pointer-events-none transition"
-                                    title="Move Up"
-                                  >
-                                    <ArrowUp className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleMoveField(cat.id, fIdx, 'down')}
-                                    disabled={fIdx === catFields.length - 1}
-                                    className="p-1 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 rounded disabled:opacity-30 disabled:pointer-events-none transition"
-                                    title="Move Down"
-                                  >
-                                    <ArrowDown className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    onClick={() => setEditingField({ 
-                                      ...field, 
-                                      options: Array.isArray(field.options) ? field.options.join(', ') : (field.options || ''),
-                                      conditionalAction: field.conditionalAction || 'none',
-                                      conditionalTriggerValue: field.conditionalTriggerValue || 'Yes',
-                                      dependsOnFieldId: field.dependsOnFieldId || undefined,
-                                      dependsOnValue: field.dependsOnValue || '',
-                                      conditionType: field.conditionType || 'show_if'
-                                    })}
-                                    className="p-1 hover:bg-gray-100 hover:text-indigo-600 text-gray-400 rounded transition"
-                                    title={lang === 'ta' ? 'திருத்து' : 'Edit Field'}
-                                  >
-                                    <Pencil className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteField(field.id)}
-                                    className="p-1 hover:bg-gray-100 hover:text-red-600 text-gray-400 rounded transition"
-                                    title="Delete Field"
-                                  >
-                                    <Trash2 className="w-3 h-3" />
-                                  </button>
+                                <td>
+                                  <div className="portal-wt-actions">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveField(cat.id, fIdx, 'up')}
+                                      disabled={fIdx === 0}
+                                      className="portal-fis-icon-btn is-muted"
+                                      title="Move Up"
+                                    >
+                                      <ArrowUp className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveField(cat.id, fIdx, 'down')}
+                                      disabled={fIdx === catFields.length - 1}
+                                      className="portal-fis-icon-btn is-muted"
+                                      title="Move Down"
+                                    >
+                                      <ArrowDown className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingField({ 
+                                        ...field, 
+                                        options: Array.isArray(field.options) ? field.options.join(', ') : (field.options || ''),
+                                        conditionalAction: field.conditionalAction || 'none',
+                                        conditionalTriggerValue: field.conditionalTriggerValue || 'Yes',
+                                        dependsOnFieldId: field.dependsOnFieldId || undefined,
+                                        dependsOnValue: field.dependsOnValue || '',
+                                        conditionType: field.conditionType || 'show_if'
+                                      })}
+                                      className="portal-fis-icon-btn"
+                                      title={lang === 'ta' ? 'திருத்து' : 'Edit Field'}
+                                    >
+                                      <Pencil className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteField(field.id)}
+                                      className="portal-fis-icon-btn is-danger"
+                                      title="Delete Field"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -1372,7 +1451,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                       if (rows.length === 0) {
                         return (
                           <tr>
-                            <td colSpan={7} className="p-6 text-center text-gray-400 italic">
+                            <td colSpan={7} className="portal-wt-empty is-center">
                               {lang === 'ta' ? 'புலங்கள் இன்னும் சேர்க்கப்படவில்லை' : 'No dynamic fields configured yet'}
                             </td>
                           </tr>
@@ -1386,9 +1465,9 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
             )}
 
             {inspectionSubjects.length === 0 && (
-              <div className="text-center py-12">
-                <ClipboardCheck className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                <p className="text-xs text-gray-400 italic">
+              <div className="portal-wt-empty is-center">
+                <ClipboardCheck className="mx-auto mb-1.5 h-8 w-8 text-slate-300" />
+                <p>
                   {lang === 'ta' 
                     ? 'ஆய்வுப் பிரிவுகள் எதுவும் இல்லை. புதிய ஆய்வுப் பிரிவை உருவாக்கவும் அல்லது மாதிரி CSV கோப்பைப் பதிவேற்றவும்.' 
                     : 'No inspection subjects created yet. Add one above or use Bulk CSV Upload.'}
@@ -1401,15 +1480,15 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
 
       {/* EDIT SUBJECT MODAL */}
       {editingSubject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-150">
+        <div className="portal-modal-overlay">
+          <div className="portal-modal p-6 w-full max-w-md">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
                 <Pencil className="w-4 h-4 text-indigo-600" />
                 {lang === 'ta' ? 'ஆய்வுப் பிரிவை திருத்து (Edit Subject)' : 'Edit Inspection Subject'}
               </h3>
-              <button onClick={() => setEditingSubject(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
+              <button type="button" onClick={() => setEditingSubject(null)} className="portal-modal-close" aria-label="Close">
+                <X className="w-4 h-4" />
               </button>
             </div>
             <form onSubmit={handleSaveEditSubject} className="mt-4 space-y-4">
@@ -1465,15 +1544,15 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
 
       {/* EDIT CATEGORY MODAL */}
       {editingCategory && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-150">
+        <div className="portal-modal-overlay">
+          <div className="portal-modal p-6 w-full max-w-md">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
                 <Pencil className="w-4 h-4 text-emerald-600" />
                 {lang === 'ta' ? 'ஆய்வு வகையை திருத்து (Edit Category)' : 'Edit Inspection Category'}
               </h3>
-              <button onClick={() => setEditingCategory(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
+              <button type="button" onClick={() => setEditingCategory(null)} className="portal-modal-close" aria-label="Close">
+                <X className="w-4 h-4" />
               </button>
             </div>
             <form onSubmit={handleSaveEditCategory} className="mt-4 space-y-4">
@@ -1533,15 +1612,15 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
 
       {/* EDIT FIELD MODAL */}
       {editingField && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+        <div className="portal-modal-overlay">
+          <div className="portal-modal p-6 w-full max-w-lg overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100">
               <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
                 <Pencil className="w-4 h-4 text-indigo-600" />
                 {lang === 'ta' ? 'ஆய்வு புலத்தை திருத்து (Edit Field)' : 'Edit Inspection Field'}
               </h3>
-              <button onClick={() => setEditingField(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
+              <button type="button" onClick={() => setEditingField(null)} className="portal-modal-close" aria-label="Close">
+                <X className="w-4 h-4" />
               </button>
             </div>
             <form onSubmit={handleSaveEditField} className="mt-4 space-y-4">
@@ -1711,7 +1790,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                           .filter((f: any) => f.categoryId === editingField.categoryId && f.id !== editingField.id && (f.type === 'yes_no' || f.type === 'dropdown' || f.fieldType === 'yes_no' || f.fieldType === 'dropdown'))
                           .map((f: any) => (
                             <option key={f.id} value={f.id}>
-                              {tObj(f)} ({getFieldTypeLabel(f.type)})
+                              {tObj(f)} ({getFieldTypeLabel(fieldTypeOf(f))})
                             </option>
                           ))}
                       </select>

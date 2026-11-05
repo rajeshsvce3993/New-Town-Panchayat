@@ -8,11 +8,7 @@ import {
   Lock, 
   Upload, 
   CheckCircle, 
-  Moon, 
-  Sun, 
-  LayoutGrid, 
   Zap, 
-  Droplet,
   Calculator,
   Building2,
   MapPin,
@@ -249,71 +245,67 @@ export default function UserSettingsView({
     }
   };
 
-  return (
-    <div id="user-settings-view-container" className="space-y-6">
-      {/* Top Header & Subtabs */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center gap-2">
-            <User className="w-5 h-5 text-indigo-600" />
-            {lang === 'ta' ? 'பயனர் அமைப்புகள் & கட்டமைப்பு' : 'User Settings & Configuration'}
-          </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {lang === 'ta' 
-              ? (canConfigurePfMethod 
-                  ? 'சுயவிவரம், கடவுச்சொல், நிறத் தோற்றம் மற்றும் பேரூராட்சிகளின் PF கணக்கீட்டு முறைகளை நிர்வகிக்கவும்' 
-                  : 'சுயவிவரம், கடவுச்சொல் மற்றும் நிறத் தோற்றத்தை நிர்வகிக்கவும்')
-              : (canConfigurePfMethod
-                  ? 'Manage your profile credentials, aesthetic themes, and Town Panchayat PF calculation methods'
-                  : 'Manage your profile credentials and aesthetic themes')}
-          </p>
-        </div>
+  const methodCardStyle = (active: boolean): React.CSSProperties | undefined =>
+    active
+      ? {
+          borderColor: 'var(--theme-accent)',
+          background: 'color-mix(in srgb, var(--theme-accent) 8%, #ffffff)',
+          boxShadow: '0 0 0 1px var(--theme-accent)',
+        }
+      : undefined;
 
-        {/* Tab Switcher */}
-        <div className="flex items-center gap-1.5 p-1 bg-gray-100 rounded-xl border border-gray-200/80 text-xs font-semibold overflow-x-auto max-w-full">
+  return (
+    <div id="user-settings-view-container" className="portal-studio portal-page">
+      <div className="portal-fis-hero">
+        <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
+            <User className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0 leading-tight">
+            <h3 className="text-[14px] font-semibold tracking-tight text-white">
+              {lang === 'ta' ? 'பயனர் அமைப்புகள் & கட்டமைப்பு' : 'User Settings & Configuration'}
+            </h3>
+            <p className="text-[10px] text-white/70">
+              {lang === 'ta'
+                ? (canConfigurePfMethod
+                    ? 'சுயவிவரம், கடவுச்சொல், நிறத் தோற்றம் மற்றும் பேரூராட்சிகளின் PF கணக்கீட்டு முறைகளை நிர்வகிக்கவும்'
+                    : 'சுயவிவரம், கடவுச்சொல் மற்றும் நிறத் தோற்றத்தை நிர்வகிக்கவும்')
+                : (canConfigurePfMethod
+                    ? 'Manage your profile credentials, aesthetic themes, and Town Panchayat PF calculation methods'
+                    : 'Manage your profile credentials and aesthetic themes')}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="portal-dash-toolbar">
+        <div className="portal-dash-pills">
+          <button
+            type="button"
+            onClick={() => setActiveSettingsTab('profile')}
+            className={`portal-dash-pill ${activeSettingsTab === 'profile' ? 'is-active' : ''}`}
+          >
+            <User className="h-3.5 w-3.5" />
+            <span>{t('userSettings')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSettingsTab('theme')}
+            className={`portal-dash-pill ${activeSettingsTab === 'theme' ? 'is-active' : ''}`}
+          >
+            <Palette className="h-3.5 w-3.5" />
+            <span>{t('themeSettings')}</span>
+          </button>
           {canConfigurePfMethod && (
             <button
               type="button"
               onClick={() => setActiveSettingsTab('pf_calc')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg transition shrink-0 ${
-                activeSettingsTab === 'pf_calc'
-                  ? 'bg-white text-indigo-700 shadow-xs font-bold'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
+              className={`portal-dash-pill ${activeSettingsTab === 'pf_calc' ? 'is-active' : ''}`}
             >
-              <Calculator className="w-4 h-4 text-indigo-500" />
+              <Calculator className="h-3.5 w-3.5" />
               <span>{lang === 'ta' ? 'PF கணக்கீட்டு முறை தேர்வு' : 'PF Calculation Methods'}</span>
-              <span className="bg-indigo-100 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded-full uppercase tracking-wider font-bold">
-                DTP / ADMIN ONLY
-              </span>
             </button>
           )}
-
-          <button
-            type="button"
-            onClick={() => setActiveSettingsTab('profile')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition shrink-0 ${
-              activeSettingsTab === 'profile'
-                ? 'bg-white text-indigo-700 shadow-xs font-bold'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <User className="w-4 h-4 text-indigo-500" />
-            <span>{t('userSettings')}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveSettingsTab('theme')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition shrink-0 ${
-              activeSettingsTab === 'theme'
-                ? 'bg-white text-indigo-700 shadow-xs font-bold'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Palette className="w-4 h-4 text-indigo-500" />
-            <span>{t('themeSettings')}</span>
-          </button>
         </div>
       </div>
 
@@ -321,55 +313,50 @@ export default function UserSettingsView({
       {/* TAB 1: PF CALCULATION METHOD CONFIGURATION (FOR DTP & ADMIN ONLY) */}
       {/* ------------------------------------------------------------- */}
       {activeSettingsTab === 'pf_calc' && canConfigurePfMethod && (
-        <div className="space-y-6">
-          {/* Authority Banner */}
-          <div className="p-4 bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 border border-indigo-100 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-xs">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">
-                  {lang === 'ta' 
-                    ? 'மாநில இயக்குநர் (DTP) / முதன்மை நிர்வாகி (Admin) - PF கணக்கீட்டு முறை கட்டமைப்பு அதிகாரம்' 
-                    : 'Directorate of Town Panchayats (DTP) & State Admin - PF Calculation Method Authority'}
-                </h3>
-                <p className="text-xs text-gray-600 mt-0.5">
-                  {lang === 'ta' 
-                    ? 'ஒவ்வொரு பேரூராட்சிக்கும் பொருந்தக்கூடிய PF வட்டி கணக்கீட்டு முறையை (3 முறைகளில்) தேர்வு செய்து ஒதுக்கலாம்.' 
-                    : 'Exclusively authorized to assign one of the 3 dedicated PF Calculation Methods for individual Town Panchayats across Tamil Nadu.'}
-                </p>
-              </div>
+        <div className="space-y-3">
+          <div className="portal-dash-toolbar">
+            <div className="flex min-w-0 items-center gap-2 text-[11px] text-slate-600">
+              <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: 'var(--theme-accent)' }} />
+              <span>
+                {lang === 'ta'
+                  ? 'மாநில இயக்குநர் (DTP) / முதன்மை நிர்வாகி (Admin) - ஒவ்வொரு பேரூராட்சிக்கும் PF கணக்கீட்டு முறையை ஒதுக்கலாம்.'
+                  : 'DTP & State Admin — assign one of 3 PF calculation methods for each Town Panchayat.'}
+              </span>
             </div>
-            <div className="px-3 py-1.5 bg-white/80 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-semibold shadow-xs">
-              {filteredTownPanchayats.length} {lang === 'ta' ? 'பேரூராட்சிகள் உள்ளன' : 'Town Panchayats in state'}
-            </div>
+            <span className="portal-dash-pill is-active">
+              {filteredTownPanchayats.length} {lang === 'ta' ? 'பேரூராட்சிகள்' : 'Town Panchayats'}
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Panel: Selection Controls and Methods */}
-            <div className="lg:col-span-8 space-y-6">
-              <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-6">
-                {/* Town Panchayat Selector Section */}
-                <div className="space-y-4 border-b border-gray-100 pb-5">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-5 h-5 text-indigo-600" />
-                    <h4 className="text-sm font-bold text-gray-900">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            <div className="lg:col-span-8 space-y-3">
+              <div className="portal-dashboard-panel">
+                <div className="portal-dash-head">
+                  <div>
+                    <h3>
+                      <span className="portal-dash-icon">
+                        <Building2 className="h-3 w-3" />
+                      </span>
                       {lang === 'ta' ? '1. பேரூராட்சியைத் தேர்ந்தெடுக்கவும்' : '1. Select Individual Town Panchayat'}
-                    </h4>
+                    </h3>
+                    <p>
+                      {lang === 'ta'
+                        ? 'மாவட்டம் மற்றும் பேரூராட்சியைத் தேர்ந்தெடுத்து முறையை ஒதுக்கவும்'
+                        : 'Filter by district, pick a Town Panchayat, then assign a method'}
+                    </p>
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* District Filter (especially useful for DTP and multi-district zones) */}
+                </div>
+                <div className="portal-dash-body portal-wt-form">
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-bold text-gray-500 block mb-1.5">
-                        <MapPin className="w-3.5 h-3.5 inline mr-1 text-gray-400" />
+                      <label>
+                        <MapPin className="mr-1 inline h-3 w-3" />
                         {lang === 'ta' ? 'மாவட்டம் வாரியாக வடிகட்டுக' : 'Filter by District'}
                       </label>
                       <select
                         value={filterDistrictId}
                         onChange={(e) => setFilterDistrictId(e.target.value)}
-                        className="w-full border border-gray-200 rounded-xl p-2.5 text-xs font-medium outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
                       >
                         <option value="all">{lang === 'ta' ? 'அனைத்து மாவட்டங்கள்' : 'All Districts'}</option>
                         {zoneDistricts.map((d: any) => (
@@ -380,16 +367,14 @@ export default function UserSettingsView({
                       </select>
                     </div>
 
-                    {/* Town Panchayat Selection Dropdown */}
                     <div>
-                      <label className="text-xs font-bold text-gray-500 block mb-1.5">
-                        <Building2 className="w-3.5 h-3.5 inline mr-1 text-gray-400" />
+                      <label>
+                        <Building2 className="mr-1 inline h-3 w-3" />
                         {lang === 'ta' ? 'பேரூராட்சி தேர்வு' : 'Target Town Panchayat'}
                       </label>
                       <select
                         value={selectedTpId}
                         onChange={(e) => setSelectedTpId(e.target.value)}
-                        className="w-full border border-indigo-200 bg-indigo-50/40 rounded-xl p-2.5 text-xs font-bold text-indigo-950 outline-none focus:ring-1 focus:ring-indigo-500"
                       >
                         {filteredTownPanchayats.map((tp: any) => {
                           const method = tp.pfCalculationMethod || state?.settings?.pfCalculationMethods?.[tp.id] || 'method1';
@@ -404,54 +389,35 @@ export default function UserSettingsView({
                     </div>
                   </div>
 
-                  {/* Current Active Status Pill */}
                   {currentTpObj && (
-                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-gray-500">{lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்டது:' : 'Currently Configuring:'}</span>
-                        <span className="font-bold text-gray-900">{lang === 'ta' ? (currentTpObj.nameTa || currentTpObj.nameEn) : (currentTpObj.nameEn || currentTpObj.nameTa)}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-gray-400 text-[11px]">{lang === 'ta' ? 'தற்போதைய முறை:' : 'Active Method:'}</span>
-                        <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                          (currentTpObj.pfCalculationMethod || 'method1') === 'method1'
-                            ? 'bg-slate-100 text-slate-700 border border-slate-200'
-                            : (currentTpObj.pfCalculationMethod || 'method1') === 'method2'
-                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                            : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                        }`}>
-                          {(currentTpObj.pfCalculationMethod || 'method1') === 'method1'
-                            ? 'Method 1 (Standard)'
-                            : (currentTpObj.pfCalculationMethod || 'method1') === 'method2'
-                            ? 'Method 2 (Cumulative)'
-                            : 'Method 3 (Full + Cumulative + Post-Retire)'}
-                        </span>
-                      </div>
+                    <div className="portal-wt-note">
+                      <span>
+                        {lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்டது:' : 'Currently Configuring:'}{' '}
+                        <strong>{lang === 'ta' ? (currentTpObj.nameTa || currentTpObj.nameEn) : (currentTpObj.nameEn || currentTpObj.nameTa)}</strong>
+                        {' · '}
+                        {lang === 'ta' ? 'தற்போதைய முறை:' : 'Active Method:'}{' '}
+                        {(currentTpObj.pfCalculationMethod || 'method1') === 'method1'
+                          ? 'Method 1 (Standard)'
+                          : (currentTpObj.pfCalculationMethod || 'method1') === 'method2'
+                          ? 'Method 2 (Cumulative)'
+                          : 'Method 3 (Full + Cumulative + Post-Retire)'}
+                      </span>
                     </div>
                   )}
                 </div>
 
-                {/* The 3 PF Calculation Methods Selection Cards */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                      <SlidersHorizontal className="w-4 h-4 text-indigo-600" />
-                      {lang === 'ta' ? '2. கணக்கீட்டு முறையைத் தேர்வு செய்க (3 முறைகள்)' : '2. Choose Calculation Method (3 Methods)'}
-                    </h4>
-                    <span className="text-[11px] text-gray-400">
-                      {lang === 'ta' ? 'முறை வாரியாக விளக்கம் கீழே தோன்றும்' : 'Select a card to view its simple calculation summary'}
-                    </span>
-                  </div>
+                <p className="portal-wt-section-title">
+                  <span className="inline-flex items-center gap-1.5">
+                    <SlidersHorizontal className="h-3 w-3" />
+                    {lang === 'ta' ? '2. கணக்கீட்டு முறையைத் தேர்வு செய்க (3 முறைகள்)' : '2. Choose Calculation Method (3 Methods)'}
+                  </span>
+                </p>
 
-                  {/* Method 1 Card */}
-                  <div
-                    onClick={() => setSelectedMethod('method1')}
-                    className={`cursor-pointer p-4 rounded-2xl border transition-all relative ${
-                      selectedMethod === 'method1'
-                        ? 'border-indigo-500 bg-indigo-50/50 shadow-sm ring-1 ring-indigo-500'
-                        : 'border-gray-200 bg-white hover:border-indigo-200 hover:bg-gray-50/70'
-                    }`}
-                  >
+                <div
+                  onClick={() => setSelectedMethod('method1')}
+                  className={`portal-dashboard-panel cursor-pointer p-3 transition-all ${selectedMethod === 'method1' ? '' : 'hover:brightness-[0.99]'}`}
+                  style={methodCardStyle(selectedMethod === 'method1')}
+                >
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -460,38 +426,38 @@ export default function UserSettingsView({
                             name="pfMethod"
                             checked={selectedMethod === 'method1'}
                             onChange={() => setSelectedMethod('method1')}
-                            className="w-4 h-4 text-indigo-600 cursor-pointer"
+                            className="h-4 w-4 cursor-pointer"
+                            style={{ accentColor: 'var(--theme-accent)' }}
                           />
-                          <span className="font-bold text-sm text-gray-900">
-                            {lang === 'ta' 
-                              ? 'முறை 1: அரசு வழக்கமான முறை (நடப்பு கணக்கீட்டு முறை)' 
+                          <span className="text-sm font-bold text-slate-900">
+                            {lang === 'ta'
+                              ? 'முறை 1: அரசு வழக்கமான முறை (நடப்பு கணக்கீட்டு முறை)'
                               : 'Method 1: Standard Govt Rule (Current Calculation Method)'}
                           </span>
-                          <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-md">
+                          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
                             Standard Rule
                           </span>
                         </div>
-                        <p className="text-xs text-gray-600 pl-6">
+                        <p className="pl-6 text-xs text-slate-600">
                           {lang === 'ta'
                             ? 'ஆரம்ப இருப்பில் தகுதியற்ற தொகைகள் கழிக்கப்படும். திரட்டப்பட்ட வட்டி அடுத்த ஆண்டின் ஆரம்ப இருப்பில் கூட்டப்படாது. ஊழியர் ஓய்வு பெற்ற மாதத்திற்குப் பின் வட்டி நிறுத்தப்படும்.'
                             : 'Opening balance deducts ineligible amounts. Annual accrued interest is kept for audit but NOT compounded into next year opening balance. Interest stops after retirement.'}
                         </p>
                       </div>
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${selectedMethod === 'method1' ? 'bg-indigo-600 text-white' : 'border border-gray-300'}`}>
-                        {selectedMethod === 'method1' && <Check className="w-3 h-3" />}
+                      <div
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${selectedMethod === 'method1' ? 'text-white' : 'border border-slate-300'}`}
+                        style={selectedMethod === 'method1' ? { background: 'var(--theme-accent)' } : undefined}
+                      >
+                        {selectedMethod === 'method1' && <Check className="h-3 w-3" />}
                       </div>
                     </div>
-                  </div>
+                </div>
 
-                  {/* Method 2 Card */}
-                  <div
-                    onClick={() => setSelectedMethod('method2')}
-                    className={`cursor-pointer p-4 rounded-2xl border transition-all relative ${
-                      selectedMethod === 'method2'
-                        ? 'border-indigo-500 bg-indigo-50/50 shadow-sm ring-1 ring-indigo-500'
-                        : 'border-gray-200 bg-white hover:border-indigo-200 hover:bg-gray-50/70'
-                    }`}
-                  >
+                <div
+                  onClick={() => setSelectedMethod('method2')}
+                  className={`portal-dashboard-panel cursor-pointer p-3 transition-all ${selectedMethod === 'method2' ? '' : 'hover:brightness-[0.99]'}`}
+                  style={methodCardStyle(selectedMethod === 'method2')}
+                >
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -500,38 +466,38 @@ export default function UserSettingsView({
                             name="pfMethod"
                             checked={selectedMethod === 'method2'}
                             onChange={() => setSelectedMethod('method2')}
-                            className="w-4 h-4 text-indigo-600 cursor-pointer"
+                            className="h-4 w-4 cursor-pointer"
+                            style={{ accentColor: 'var(--theme-accent)' }}
                           />
-                          <span className="font-bold text-sm text-gray-900">
-                            {lang === 'ta' 
-                              ? 'முறை 2: ஆண்டு கூட்டு வட்டி முறை (அடுத்த ஆண்டின் ஆரம்ப இருப்பில் சேரும் முறை)' 
+                          <span className="text-sm font-bold text-slate-900">
+                            {lang === 'ta'
+                              ? 'முறை 2: ஆண்டு கூட்டு வட்டி முறை (அடுத்த ஆண்டின் ஆரம்ப இருப்பில் சேரும் முறை)'
                               : 'Method 2: Annual Cumulative Compounding with Next Year Opening Balance'}
                           </span>
-                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-md">
+                          <span className="rounded-md px-2 py-0.5 text-[10px] font-bold text-white" style={{ background: 'var(--theme-accent)' }}>
                             Annual Compounded
                           </span>
                         </div>
-                        <p className="text-xs text-gray-600 pl-6">
+                        <p className="pl-6 text-xs text-slate-600">
                           {lang === 'ta'
                             ? 'தகுதியற்ற தொகைகள் கழிக்கப்பட்ட ஆரம்ப இருப்பு. ஒவ்வொரு நிதியாண்டின் இறுதியிலும் (மார்ச் 31) சேர்ந்த மொத்த வட்டி அடுத்த ஆண்டின் ஆரம்ப இருப்பில் சேர்க்கப்பட்டு கூட்டு வட்டியாகக் கணக்கிடப்படும்.'
                             : 'Opening balance deducts ineligible amounts. Accumulated interest at FY-end is added to next year opening balance (compounded annually). Future interest calculates on the cumulative balance.'}
                         </p>
                       </div>
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${selectedMethod === 'method2' ? 'bg-indigo-600 text-white' : 'border border-gray-300'}`}>
-                        {selectedMethod === 'method2' && <Check className="w-3 h-3" />}
+                      <div
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${selectedMethod === 'method2' ? 'text-white' : 'border border-slate-300'}`}
+                        style={selectedMethod === 'method2' ? { background: 'var(--theme-accent)' } : undefined}
+                      >
+                        {selectedMethod === 'method2' && <Check className="h-3 w-3" />}
                       </div>
                     </div>
-                  </div>
+                </div>
 
-                  {/* Method 3 Card */}
-                  <div
-                    onClick={() => setSelectedMethod('method3')}
-                    className={`cursor-pointer p-4 rounded-2xl border transition-all relative ${
-                      selectedMethod === 'method3'
-                        ? 'border-emerald-500 bg-emerald-50/40 shadow-sm ring-1 ring-emerald-500'
-                        : 'border-gray-200 bg-white hover:border-emerald-200 hover:bg-gray-50/70'
-                    }`}
-                  >
+                <div
+                  onClick={() => setSelectedMethod('method3')}
+                  className={`portal-dashboard-panel cursor-pointer p-3 transition-all ${selectedMethod === 'method3' ? '' : 'hover:brightness-[0.99]'}`}
+                  style={methodCardStyle(selectedMethod === 'method3')}
+                >
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -540,43 +506,46 @@ export default function UserSettingsView({
                             name="pfMethod"
                             checked={selectedMethod === 'method3'}
                             onChange={() => setSelectedMethod('method3')}
-                            className="w-4 h-4 text-emerald-600 cursor-pointer"
+                            className="h-4 w-4 cursor-pointer"
+                            style={{ accentColor: 'var(--theme-accent)' }}
                           />
-                          <span className="font-bold text-sm text-gray-900">
-                            {lang === 'ta' 
-                              ? 'முறை 3: முழு ஆரம்ப இருப்பு + கூட்டு வட்டி + ஓய்வுக்குப் பின்னும் வட்டி தொடரும் முறை' 
+                          <span className="text-sm font-bold text-slate-900">
+                            {lang === 'ta'
+                              ? 'முறை 3: முழு ஆரம்ப இருப்பு + கூட்டு வட்டி + ஓய்வுக்குப் பின்னும் வட்டி தொடரும் முறை'
                               : 'Method 3: Full Ineligible Balance + Annual Cumulative + Post-Retirement Interest'}
                           </span>
-                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-md">
+                          <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
                             Full Balance + Cumulative + Post-Retire
                           </span>
                         </div>
-                        <p className="text-xs text-gray-600 pl-6">
+                        <p className="pl-6 text-xs text-slate-600">
                           {lang === 'ta'
                             ? 'ஆரம்ப இருப்பில் தகுதியற்ற தொகைகள் கழிக்கப்படாது (முழுத் தொகைக்கும் வட்டி கணக்கீடு). ஆண்டு வட்டி அடுத்த ஆண்டின் ஆரம்ப இருப்பில் சேர்க்கப்படும். மேலும் ஓய்வு பெற்ற ஊழியர்களுக்கு இறுதி தீர்வு வரை தொடர்ந்து வட்டி ஏறும்!'
                             : 'No deduction of ineligible amounts (calculates on full gross balance). Annual interest is cumulative with next year opening balance, and interest continues to calculate for retired employees until final settlement!'}
                         </p>
                       </div>
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${selectedMethod === 'method3' ? 'bg-emerald-600 text-white' : 'border border-gray-300'}`}>
-                        {selectedMethod === 'method3' && <Check className="w-3 h-3" />}
+                      <div
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${selectedMethod === 'method3' ? 'text-white' : 'border border-slate-300'}`}
+                        style={selectedMethod === 'method3' ? { background: 'var(--theme-accent)' } : undefined}
+                      >
+                        {selectedMethod === 'method3' && <Check className="h-3 w-3" />}
                       </div>
                     </div>
-                  </div>
                 </div>
 
-                {/* Save Button & Feedback Alert */}
-                <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                   <button
                     type="button"
                     onClick={handleSavePfCalculationMethod}
                     disabled={pfMethodSaving || !selectedTpId}
-                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-2 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-full px-5 py-2 text-xs font-bold text-white disabled:opacity-50"
+                    style={{ background: 'var(--theme-accent)' }}
                   >
-                    <CheckCircle className="w-4 h-4" />
-                    {pfMethodSaving 
-                      ? (lang === 'ta' ? 'சேமிக்கப்படுகிறது...' : 'Saving Method...') 
-                      : (lang === 'ta' 
-                          ? `தேர்ந்தெடுத்த பேரூராட்சிக்கு முறையைச் சேமி (${selectedMethod === 'method1' ? 'முறை 1' : selectedMethod === 'method2' ? 'முறை 2' : 'முறை 3'})` 
+                    <CheckCircle className="h-4 w-4" />
+                    {pfMethodSaving
+                      ? (lang === 'ta' ? 'சேமிக்கப்படுகிறது...' : 'Saving Method...')
+                      : (lang === 'ta'
+                          ? `தேர்ந்தெடுத்த பேரூராட்சிக்கு முறையைச் சேமி (${selectedMethod === 'method1' ? 'முறை 1' : selectedMethod === 'method2' ? 'முறை 2' : 'முறை 3'})`
                           : `Assign ${selectedMethod === 'method1' ? 'Method 1' : selectedMethod === 'method2' ? 'Method 2' : 'Method 3'} to Selected TP`)}
                   </button>
 
@@ -584,25 +553,31 @@ export default function UserSettingsView({
                     <motion.div
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2"
+                      className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-800"
                     >
-                      <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <CheckCircle className="h-4 w-4 shrink-0 text-emerald-600" />
                       <span>{pfMethodSaveSuccess}</span>
                     </motion.div>
                   )}
                 </div>
+                </div>
               </div>
             </div>
 
-            {/* Right Panel: Dynamic Simple Calculation Message Box */}
-            <div className="lg:col-span-4 space-y-6">
-              <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-                <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
-                  <Info className="w-5 h-5 text-amber-500" />
-                  <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider">
-                    {lang === 'ta' ? 'கணக்கீட்டு முறை எளிய விளக்கம்' : 'Selected Method Calculation Details'}
-                  </h4>
+            <div className="lg:col-span-4">
+              <div className="portal-dashboard-panel">
+                <div className="portal-dash-head">
+                  <div>
+                    <h3>
+                      <span className="portal-dash-icon">
+                        <Info className="h-3 w-3" />
+                      </span>
+                      {lang === 'ta' ? 'கணக்கீட்டு முறை எளிய விளக்கம்' : 'Selected Method Calculation Details'}
+                    </h3>
+                    <p>{lang === 'ta' ? 'தேர்ந்தெடுத்த முறையின் சுருக்கம்' : 'Simple summary of the selected method'}</p>
+                  </div>
                 </div>
+                <div className="portal-dash-body space-y-3">
 
                 {/* DYNAMIC SIMPLE CALCULATION MESSAGE (Requirement 4) */}
                 {selectedMethod === 'method1' && (
@@ -813,71 +788,77 @@ export default function UserSettingsView({
               </div>
             </div>
           </div>
+          </div>
 
-          {/* Quick Town Panchayats Methods Overview Table */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-indigo-500" />
-                {lang === 'ta' ? 'பேரூராட்சிகள் வாரியான கணக்கீட்டு முறை நிலை பட்டியல்' : 'Town Panchayats Assigned Calculation Methods Overview'}
-              </h4>
-              <span className="text-xs text-gray-400">
-                {filteredTownPanchayats.length} {lang === 'ta' ? 'பேரூராட்சிகள்' : 'Town Panchayats'}
-              </span>
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Building2 className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'பேரூராட்சிகள் வாரியான கணக்கீட்டு முறை நிலை பட்டியல்' : 'Town Panchayats Assigned Calculation Methods Overview'}
+                </h3>
+                <p>
+                  {filteredTownPanchayats.length} {lang === 'ta' ? 'பேரூராட்சிகள்' : 'Town Panchayats'}
+                </p>
+              </div>
             </div>
-
-            <div className="overflow-x-auto border border-gray-100 rounded-xl">
-              <table className="w-full text-left text-xs border-collapse">
+            <div className="portal-dash-body">
+            <div className="portal-dash-table overflow-x-auto">
+              <table>
                 <thead>
-                  <tr className="bg-gray-50 text-gray-600 font-bold border-b border-gray-200/80">
-                    <th className="p-3">#</th>
-                    <th className="p-3">{lang === 'ta' ? 'பேரூராட்சி பெயர்' : 'Town Panchayat Name'}</th>
-                    <th className="p-3">{lang === 'ta' ? 'மாவட்டம்' : 'District'}</th>
-                    <th className="p-3">{lang === 'ta' ? 'ஒதுக்கப்பட்ட முறை' : 'Assigned Method'}</th>
-                    <th className="p-3 text-right">{lang === 'ta' ? 'செயல்' : 'Action'}</th>
+                  <tr>
+                    <th>#</th>
+                    <th>{lang === 'ta' ? 'பேரூராட்சி பெயர்' : 'Town Panchayat Name'}</th>
+                    <th>{lang === 'ta' ? 'மாவட்டம்' : 'District'}</th>
+                    <th>{lang === 'ta' ? 'ஒதுக்கப்பட்ட முறை' : 'Assigned Method'}</th>
+                    <th className="text-right">{lang === 'ta' ? 'செயல்' : 'Action'}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-gray-700">
+                <tbody>
                   {filteredTownPanchayats.map((tp: any, index: number) => {
                     const method = tp.pfCalculationMethod || state?.settings?.pfCalculationMethods?.[tp.id] || 'method1';
                     const distObj = (state?.districts || []).find((d: any) => d.id === tp.districtId);
                     const isSelected = tp.id === selectedTpId;
                     return (
-                      <tr 
-                        key={tp.id} 
-                        className={`hover:bg-indigo-50/40 transition cursor-pointer ${isSelected ? 'bg-indigo-50/60 font-semibold' : ''}`}
+                      <tr
+                        key={tp.id}
+                        className={isSelected ? 'is-selected' : ''}
                         onClick={() => setSelectedTpId(tp.id)}
                       >
-                        <td className="p-3 text-gray-400">{index + 1}</td>
-                        <td className="p-3 font-bold text-gray-900">
+                        <td>{index + 1}</td>
+                        <td className="font-semibold">
                           {lang === 'ta' ? (tp.nameTa || tp.nameEn) : (tp.nameEn || tp.nameTa)}
                         </td>
-                        <td className="p-3 text-gray-600">
+                        <td>
                           {distObj ? (lang === 'ta' ? (distObj.nameTa || distObj.nameEn) : (distObj.nameEn || distObj.nameTa)) : '--'}
                         </td>
-                        <td className="p-3">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                        <td>
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${
                             method === 'method1'
-                              ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                              ? 'border border-slate-200 bg-slate-100 text-slate-700'
                               : method === 'method2'
-                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                              : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                          }`}>
-                            {method === 'method1' 
-                              ? 'Method 1 (Standard)' 
-                              : method === 'method2' 
-                              ? 'Method 2 (Cumulative)' 
+                              ? 'text-white'
+                              : 'border border-emerald-200 bg-emerald-100 text-emerald-800'
+                          }`}
+                          style={method === 'method2' ? { background: 'var(--theme-accent)' } : undefined}
+                          >
+                            {method === 'method1'
+                              ? 'Method 1 (Standard)'
+                              : method === 'method2'
+                              ? 'Method 2 (Cumulative)'
                               : 'Method 3 (Full + Cumulative + Post-Retire)'}
                           </span>
                         </td>
-                        <td className="p-3 text-right">
+                        <td className="text-right">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedTpId(tp.id);
                             }}
-                            className="px-2.5 py-1 bg-white border border-gray-200 hover:border-indigo-300 hover:text-indigo-600 rounded-lg text-[10px] font-bold transition shadow-2xs"
+                            className="portal-dash-pill"
                           >
                             {lang === 'ta' ? 'மாற்று' : 'Configure'}
                           </button>
@@ -888,6 +869,7 @@ export default function UserSettingsView({
                 </tbody>
               </table>
             </div>
+            </div>
           </div>
         </div>
       )}
@@ -896,170 +878,185 @@ export default function UserSettingsView({
       {/* TAB 2: USER PROFILE & PASSWORD */}
       {/* ------------------------------------------------------------- */}
       {activeSettingsTab === 'profile' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
           <div className="lg:col-span-8">
-            <form onSubmit={handleSaveProfile} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-6">
-              <h3 className="font-semibold text-gray-800 text-sm border-b border-gray-50 pb-3 flex items-center gap-2">
-                <User className="w-5 h-5 text-indigo-500 animate-pulse" />
-                {t('userSettings')}
-              </h3>
-
-              {/* Profile Picture Uploader */}
-              <div className="flex flex-col sm:flex-row items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                <div className="relative w-16 h-16 rounded-full overflow-hidden bg-indigo-100 border border-indigo-200 shrink-0 flex items-center justify-center">
-                  {profileImage ? (
-                    <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
-                  ) : (
-                    <span className="text-xl font-bold text-indigo-600">{(nameEn || currentUser?.name || currentUser?.username || 'U').slice(0, 2).toUpperCase()}</span>
-                  )}
+            <div className="portal-dashboard-panel">
+              <div className="portal-dash-head">
+                <div>
+                  <h3>
+                    <span className="portal-dash-icon">
+                      <User className="h-3 w-3" />
+                    </span>
+                    {t('userSettings')}
+                  </h3>
+                  <p>
+                    {lang === 'ta' ? 'சுயவிவரம், புகைப்படம் மற்றும் கடவுச்சொல்' : 'Profile, photo, and password'}
+                  </p>
                 </div>
-                <div className="space-y-1 text-center sm:text-left">
-                  <span className="text-xs font-bold text-gray-800 block truncate">{t('profilePhoto')}</span>
-                  <p className="text-[10px] text-gray-400">PNG or JPG formats supported.</p>
-                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 hover:bg-gray-100 rounded-lg text-[10px] font-bold text-gray-600 cursor-pointer transition mt-2">
-                    <Upload className="w-3.5 h-3.5" />
-                    Upload Photo
-                    <input type="file" accept="image/*" onChange={handleProfilePicUpload} className="hidden" />
-                  </label>
+              </div>
+              <div className="portal-dash-body portal-wt-form">
+            <form onSubmit={handleSaveProfile} className="space-y-3">
+              <div className="portal-wt-section">
+                <div className="flex flex-col items-center gap-3 sm:flex-row">
+                  <div
+                    className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full text-white"
+                    style={{ background: 'color-mix(in srgb, var(--theme-accent) 18%, #ffffff)', color: 'var(--theme-accent)' }}
+                  >
+                    {profileImage ? (
+                      <img src={profileImage} alt="Profile" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-xl font-bold">{(nameEn || currentUser?.name || currentUser?.username || 'U').slice(0, 2).toUpperCase()}</span>
+                    )}
+                  </div>
+                  <div className="space-y-1 text-center sm:text-left">
+                    <label>{t('profilePhoto')}</label>
+                    <p className="text-[10px] text-slate-400">PNG or JPG formats supported.</p>
+                    <label className="portal-wt-link inline-flex cursor-pointer items-center gap-1.5">
+                      <Upload className="h-3.5 w-3.5" />
+                      Upload Photo
+                      <input type="file" accept="image/*" onChange={handleProfilePicUpload} className="hidden" />
+                    </label>
+                  </div>
                 </div>
               </div>
 
-              {/* Profile form values - For Employee: Read-only name display; For Admin/Roles: Editable name */}
               {currentUser?.isEmployee ? (
-                <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                      {lang === 'ta' ? 'ஊழியர் சுயவிவரம் (மாற்ற இயலாது)' : 'Employee Profile Information (Read-Only)'}
-                    </span>
-                    <span className="px-2.5 py-0.5 bg-slate-200/70 text-slate-700 text-[10px] font-bold rounded-full flex items-center gap-1">
-                      <Lock className="w-3 h-3 text-slate-500" />
+                <div className="portal-wt-section space-y-2">
+                  <div className="portal-wt-section-title">
+                    <span>{lang === 'ta' ? 'ஊழியர் சுயவிவரம் (மாற்ற இயலாது)' : 'Employee Profile Information (Read-Only)'}</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Lock className="h-3 w-3" />
                       {lang === 'ta' ? 'நிர்வாகப் பதிவு' : 'Admin Managed'}
                     </span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                      <span className="text-gray-400 block text-[11px] mb-0.5">{t('userFullNameEn')}:</span>
-                      <span className="font-bold text-gray-900 text-sm">{currentUser?.nameEn || currentUser?.username}</span>
+                      <label>{t('userFullNameEn')}</label>
+                      <p className="text-sm font-semibold text-slate-900">{currentUser?.nameEn || currentUser?.username}</p>
                     </div>
                     <div>
-                      <span className="text-gray-400 block text-[11px] mb-0.5">{t('userFullNameTa')}:</span>
-                      <span className="font-bold text-gray-900 text-sm">{currentUser?.nameTa || '--'}</span>
+                      <label>{t('userFullNameTa')}</label>
+                      <p className="text-sm font-semibold text-slate-900">{currentUser?.nameTa || '--'}</p>
                     </div>
                   </div>
-                  <p className="text-[11px] text-gray-500 italic bg-white p-2.5 rounded-xl border border-gray-100">
+                  <p className="portal-wt-note">
                     {lang === 'ta'
-                      ? '💡 குறிப்பு: ஊழியர் பெயர் திருத்தங்கள் பேரூராட்சி செயல் அலுவலர் (EO) அல்லது மண்டல நிர்வாகத்தால் மட்டுமே அங்கீகரிக்கப்பட்டு மாற்றப்படும்.'
-                      : '💡 Note: Employee name changes are managed exclusively by your Town Panchayat Executive Officer (EO) or Zonal Administration.'}
+                      ? 'ஊழியர் பெயர் திருத்தங்கள் பேரூராட்சி செயல் அலுவலர் (EO) அல்லது மண்டல நிர்வாகத்தால் மட்டுமே அங்கீகரிக்கப்பட்டு மாற்றப்படும்.'
+                      : 'Employee name changes are managed exclusively by your Town Panchayat Executive Officer (EO) or Zonal Administration.'}
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-gray-600">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="font-semibold text-gray-400 mb-1 block">{t('userFullNameEn')}</label>
+                    <label>{t('userFullNameEn')}</label>
                     <input
                       type="text"
                       value={nameEn}
                       onChange={(e) => setNameEn(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl p-3 outline-none focus:ring-1 focus:ring-indigo-500"
                       required
                     />
                   </div>
                   <div>
-                    <label className="font-semibold text-gray-400 mb-1 block">{t('userFullNameTa')}</label>
+                    <label>{t('userFullNameTa')}</label>
                     <input
                       type="text"
                       value={nameTa}
                       onChange={(e) => setNameTa(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl p-3 outline-none focus:ring-1 focus:ring-indigo-500"
                       required
                     />
                   </div>
                 </div>
               )}
 
-              {/* Password Reset option */}
-              <div className="space-y-4 pt-4 border-t border-gray-50">
-                <h4 className="font-bold text-gray-800 text-xs uppercase tracking-wide flex items-center gap-1">
-                  <Lock className="w-4 h-4 text-indigo-500" />
-                  {t('changePass')}
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-gray-600">
+              <div className="portal-wt-section">
+                <p className="portal-wt-section-title">
+                  <span className="inline-flex items-center gap-1">
+                    <Lock className="h-3 w-3" />
+                    {t('changePass')}
+                  </span>
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
-                    <label className="font-semibold text-gray-400 block mb-1">
-                      {t('currentPass')} <span className="text-rose-500 font-bold">*</span>
+                    <label>
+                      {t('currentPass')} <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="password"
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
                       placeholder={lang === 'ta' ? 'அங்கீகரிக்க தட்டச்சு செய்யவும்' : 'Type current password'}
-                      className="w-full border border-gray-200 rounded-xl p-3 outline-none focus:ring-1 focus:ring-indigo-500"
                       required
                     />
                   </div>
                   <div>
-                    <label className="font-semibold text-gray-400 block mb-1">{t('newPass')}</label>
+                    <label>{t('newPass')}</label>
                     <input
                       type="password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl p-3 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="font-semibold text-gray-400 block mb-1">Confirm New Password</label>
+                    <label>{lang === 'ta' ? 'புதிய கடவுச்சொல்லை உறுதிசெய்க' : 'Confirm New Password'}</label>
                     <input
                       type="password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl p-3 outline-none"
                     />
                   </div>
                 </div>
-                {passError && <p className="text-rose-600 text-[11px] font-bold">{passError}</p>}
+                {passError && <p className="text-[11px] font-bold text-rose-600">{passError}</p>}
               </div>
 
               <div className="flex items-center gap-4">
-                <button
-                  type="submit"
-                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs"
-                >
+                <button type="submit">
                   {currentUser?.isEmployee
                     ? (lang === 'ta' ? 'புகைப்படம் மற்றும் கடவுச்சொல்லைப் புதுப்பிக்கவும்' : 'Update Photo & Password')
                     : t('saveProfile')}
                 </button>
                 {saveSuccess && (
-                  <motion.div 
-                    initial={{ opacity: 0, x: -10 }} 
-                    animate={{ opacity: 1, x: 0 }} 
-                    className="flex items-center gap-1.5 text-emerald-600 text-xs font-bold"
+                  <motion.div
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="flex items-center gap-1.5 text-xs font-bold text-emerald-600"
                   >
-                    <CheckCircle className="w-5 h-5 animate-bounce" />
+                    <CheckCircle className="h-5 w-5 animate-bounce" />
                     <span>Profile preference details updated!</span>
                   </motion.div>
                 )}
               </div>
             </form>
+              </div>
+            </div>
           </div>
 
-          <div className="lg:col-span-4 space-y-6">
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-3">
-              <h4 className="font-semibold text-gray-900 text-sm flex items-center gap-2 border-b border-gray-50 pb-2">
-                <ShieldCheck className="w-5 h-5 text-indigo-500" />
-                {lang === 'ta' ? 'கணக்கு விபரங்கள்' : 'Account Details'}
-              </h4>
-              <div className="space-y-2 text-xs text-gray-600">
-                <div className="flex justify-between py-1 border-b border-gray-50">
-                  <span className="text-gray-400">{lang === 'ta' ? 'பயனர் பெயர்' : 'Username'}</span>
-                  <span className="font-mono font-bold text-gray-800">{currentUser?.username}</span>
+          <div className="lg:col-span-4">
+            <div className="portal-dashboard-panel">
+              <div className="portal-dash-head">
+                <div>
+                  <h3>
+                    <span className="portal-dash-icon">
+                      <ShieldCheck className="h-3 w-3" />
+                    </span>
+                    {lang === 'ta' ? 'கணக்கு விபரங்கள்' : 'Account Details'}
+                  </h3>
+                  <p>{lang === 'ta' ? 'உள்நுழைவு மற்றும் அதிகார வரம்பு' : 'Login identity and scope'}</p>
                 </div>
-                <div className="flex justify-between py-1 border-b border-gray-50">
-                  <span className="text-gray-400">{lang === 'ta' ? 'பொறுப்பு' : 'Role'}</span>
-                  <span className="font-bold text-indigo-600 uppercase">{currentUser?.roleId || 'EMPLOYEE'}</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-gray-400">{lang === 'ta' ? 'அதிகார வரம்பு' : 'Scope'}</span>
-                  <span className="font-bold text-gray-800">{currentUser?.scopeType || 'State'}</span>
+              </div>
+              <div className="portal-dash-body">
+                <div className="space-y-2 text-xs text-slate-600">
+                  <div className="flex justify-between border-b border-slate-100 py-1">
+                    <span>{lang === 'ta' ? 'பயனர் பெயர்' : 'Username'}</span>
+                    <span className="font-mono font-bold text-slate-800">{currentUser?.username}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-100 py-1">
+                    <span>{lang === 'ta' ? 'பொறுப்பு' : 'Role'}</span>
+                    <span className="font-bold uppercase" style={{ color: 'var(--theme-accent)' }}>{currentUser?.roleId || 'EMPLOYEE'}</span>
+                  </div>
+                  <div className="flex justify-between py-1">
+                    <span>{lang === 'ta' ? 'அதிகார வரம்பு' : 'Scope'}</span>
+                    <span className="font-bold text-slate-800">{currentUser?.scopeType || 'State'}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1071,189 +1068,176 @@ export default function UserSettingsView({
       {/* TAB 3: THEMES & APPEARANCE */}
       {/* ------------------------------------------------------------- */}
       {activeSettingsTab === 'theme' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-7 space-y-6">
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-              <h4 className="font-semibold text-gray-950 text-sm flex items-center gap-2 border-b border-gray-50 pb-2">
-                <Palette className="w-5 h-5 text-indigo-500" />
-                {t('themeSettings')}
-              </h4>
-
-              <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1 scrollbar-custom">
-                {[
-                  { id: 'light' as const, name: lang === 'ta' ? 'வெளிச்சம்' : 'Light', icon: Sun, colorLeft: 'bg-[#0f172a]', colorRight: 'bg-[#94a3b8]', desc: lang === 'ta' ? 'இருள் முதல் வெளிர் ஸ்லேட்' : 'Dark-to-light slate' },
-                  { id: 'dark' as const, name: lang === 'ta' ? 'இருள்' : 'Dark', icon: Moon, colorLeft: 'bg-[#e2e8f0]', colorRight: 'bg-[#334155]', desc: lang === 'ta' ? 'வெளிர் முதல் இருள் ஸ்லேட்' : 'Light-to-dark slate' },
-                  { id: 'ocean-wave' as const, name: lang === 'ta' ? 'கடல் அலை' : 'Ocean Wave', icon: Droplet, colorLeft: 'bg-[#0f172a]', colorRight: 'bg-[#0d9488]', desc: lang === 'ta' ? 'இருள் கடல் முதல் வெளிர் டீல்' : 'Dark-to-light ocean' },
-                  { id: 'sunset-aurora' as const, name: lang === 'ta' ? 'அந்திச் செவ்வானம்' : 'Sunset Aurora', icon: Sun, colorLeft: 'bg-[#4c1d95]', colorRight: 'bg-[#f59e0b]', desc: lang === 'ta' ? 'இருள் ஊதா முதல் வெளிர் அம்பர்' : 'Dark-to-light sunset' },
-                  { id: 'magic-lavender' as const, name: lang === 'ta' ? 'மந்திர லாவெண்டர்' : 'Magic Lavender', icon: Zap, colorLeft: 'bg-[#1e1b4b]', colorRight: 'bg-[#db2777]', desc: lang === 'ta' ? 'இருள் இண்டிகோ முதல் வெளிர் இளஞ்சிவப்பு' : 'Dark-to-light lavender' },
-                  { id: 'rainbow-prism' as const, name: lang === 'ta' ? 'வானவில் பிரிசம்' : 'Rainbow Prism', icon: LayoutGrid, colorLeft: 'bg-[#0369a1]', colorRight: 'bg-[#be123c]', desc: lang === 'ta' ? 'இருள் நீலம் முதல் வெளிர் சிவப்பு' : 'Dark-to-light prism' },
-                  { id: 'nilgiri-emerald' as const, name: lang === 'ta' ? 'நீலகிரி மரகதம்' : 'Nilgiri Emerald', icon: Palette, colorLeft: 'bg-[#064e3b]', colorRight: 'bg-[#10b981]', desc: lang === 'ta' ? 'இருள் பச்சை முதல் வெளிர் மரகதம்' : 'Dark-to-light emerald' },
-                  { id: 'kovai-maroon' as const, name: lang === 'ta' ? 'கோவை மரூன்' : 'Kovai Maroon', icon: Palette, colorLeft: 'bg-[#7f1d1d]', colorRight: 'bg-[#ea580c]', desc: lang === 'ta' ? 'இருள் மெரூன் முதல் வெளிர் செம்மண்' : 'Dark-to-light maroon' },
-                  { id: 'madurai-blue' as const, name: lang === 'ta' ? 'மதுரை நீலம்' : 'Madurai Blue', icon: Palette, colorLeft: 'bg-[#1e3a8a]', colorRight: 'bg-[#8b5cf6]', desc: lang === 'ta' ? 'இருள் நீலம் முதல் வெளிர் ஊதா' : 'Dark-to-light royal blue' },
-                  { id: 'nellai-orange' as const, name: lang === 'ta' ? 'நெல்லை ஆரஞ்சு' : 'Nellai Orange', icon: Sun, colorLeft: 'bg-[#c2410c]', colorRight: 'bg-[#f97316]', desc: lang === 'ta' ? 'இருள் ஆரஞ்சு முதல் வெளிர் ஆரஞ்சு' : 'Dark-to-light orange' },
-                  { id: 'chennai-slate' as const, name: lang === 'ta' ? 'சென்னை ஸ்லேட்' : 'Chennai Slate', icon: Moon, colorLeft: 'bg-[#1e293b]', colorRight: 'bg-[#64748b]', desc: lang === 'ta' ? 'இருள் கிராஃபைட் முதல் வெளிர் ஸ்லேட்' : 'Dark-to-light graphite' },
-                  { id: 'royal-gold' as const, name: lang === 'ta' ? 'அரச பொன்' : 'Royal Gold', icon: Sun, colorLeft: 'bg-[#78350f]', colorRight: 'bg-[#f59e0b]', desc: lang === 'ta' ? 'இருள் பழுப்பு முதல் வெளிர் பொன்' : 'Dark-to-light gold' },
-                  { id: 'crimson-ruby' as const, name: lang === 'ta' ? 'மாணிக்க சிவப்பு' : 'Crimson Ruby', icon: Palette, colorLeft: 'bg-[#881337]', colorRight: 'bg-[#fb7185]', desc: lang === 'ta' ? 'இருள் சிவப்பு முதல் வெளிர் ரோஜா' : 'Dark-to-light ruby' },
-                  { id: 'cyber-teal' as const, name: lang === 'ta' ? 'நவீன நீலப்பச்சை' : 'Cyber Teal', icon: Droplet, colorLeft: 'bg-[#134e4a]', colorRight: 'bg-[#2dd4bf]', desc: lang === 'ta' ? 'இருள் டீல் முதல் வெளிர் டீல்' : 'Dark-to-light teal' },
-                  { id: 'custom' as const, name: lang === 'ta' ? 'தனிப்பயன் தீம்' : 'Custom Theme', icon: Palette, colorLeft: 'bg-[#4f46e5]', colorRight: 'bg-[#e0e7ff]', desc: lang === 'ta' ? 'இருள் முதல் வெளிர் தனிப்பயன் நிறம்' : 'Dark-to-light custom colors' },
-                ].map((th) => {
-                  const Icon = th.icon;
-                  const isSelected = theme === th.id;
-                  return (
-                    <button
-                      key={th.id}
-                      type="button"
-                      onClick={() => setTheme(th.id)}
-                      className={`w-full flex flex-col gap-1 p-3 rounded-xl border text-left text-xs font-semibold transition ${
-                        isSelected 
-                          ? 'bg-[var(--theme-badge-bg)] border-[var(--theme-active-menu)] text-[var(--theme-text-primary)] shadow-xs' 
-                          : 'bg-white border-gray-100 text-gray-600 hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="w-full flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <Icon className={`w-4 h-4 ${isSelected ? 'text-[var(--theme-active-menu)]' : 'text-gray-400'}`} />
-                          <span className="font-bold">{th.name}</span>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center h-4 rounded-md overflow-hidden border border-gray-200">
-                            <div className={`w-3 h-4 ${th.colorLeft}`} />
-                            <div className={`w-3 h-4 ${th.colorRight}`} />
-                          </div>
-
-                          <div className={`w-4 h-4 rounded-full border border-gray-300 flex items-center justify-center shrink-0 ${isSelected ? 'bg-[var(--theme-active-menu)] border-[var(--theme-active-menu)]' : 'bg-white'}`}>
-                            {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                          </div>
-                        </div>
-                      </div>
-                      <span className="text-[10px] text-gray-400 font-normal pl-6">{th.desc}</span>
-                    </button>
-                  );
-                })}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+          <div className="lg:col-span-7">
+            <div className="portal-dashboard-panel">
+              <div className="portal-dash-head">
+                <div>
+                  <h3>
+                    <span className="portal-dash-icon">
+                      <Palette className="h-3 w-3" />
+                    </span>
+                    {t('themeSettings')}
+                  </h3>
+                  <p>{lang === 'ta' ? 'போர்டல் தோற்றத்தைத் தேர்ந்தெடுக்கவும்' : 'Choose a look for the portal'}</p>
+                </div>
+              </div>
+              <div className="portal-dash-body">
+                <div className="portal-theme-grid">
+                  {[
+                    { id: 'light' as const, name: lang === 'ta' ? 'வெளிச்சம்' : 'Light', from: '#0f172a', to: '#94a3b8', desc: lang === 'ta' ? 'இருள் முதல் வெளிர் ஸ்லேட்' : 'Dark-to-light slate' },
+                    { id: 'dark' as const, name: lang === 'ta' ? 'இருள்' : 'Dark', from: '#e2e8f0', to: '#334155', desc: lang === 'ta' ? 'வெளிர் முதல் இருள் ஸ்லேட்' : 'Light-to-dark slate' },
+                    { id: 'ocean-wave' as const, name: lang === 'ta' ? 'கடல் அலை' : 'Ocean Wave', from: '#0f172a', to: '#0d9488', desc: lang === 'ta' ? 'இருள் கடல் முதல் வெளிர் டீல்' : 'Dark-to-light ocean' },
+                    { id: 'sunset-aurora' as const, name: lang === 'ta' ? 'அந்திச் செவ்வானம்' : 'Sunset Aurora', from: '#4c1d95', to: '#f59e0b', desc: lang === 'ta' ? 'இருள் ஊதா முதல் வெளிர் அம்பர்' : 'Dark-to-light sunset' },
+                    { id: 'magic-lavender' as const, name: lang === 'ta' ? 'மந்திர லாவெண்டர்' : 'Magic Lavender', from: '#1e1b4b', to: '#db2777', desc: lang === 'ta' ? 'இருள் இண்டிகோ முதல் வெளிர் இளஞ்சிவப்பு' : 'Dark-to-light lavender' },
+                    { id: 'rainbow-prism' as const, name: lang === 'ta' ? 'வானவில் பிரிசம்' : 'Rainbow Prism', from: '#0369a1', to: '#be123c', desc: lang === 'ta' ? 'இருள் நீலம் முதல் வெளிர் சிவப்பு' : 'Dark-to-light prism' },
+                    { id: 'nilgiri-emerald' as const, name: lang === 'ta' ? 'நீலகிரி மரகதம்' : 'Nilgiri Emerald', from: '#064e3b', to: '#10b981', desc: lang === 'ta' ? 'இருள் பச்சை முதல் வெளிர் மரகதம்' : 'Dark-to-light emerald' },
+                    { id: 'kovai-maroon' as const, name: lang === 'ta' ? 'கோவை மரூன்' : 'Kovai Maroon', from: '#7f1d1d', to: '#ea580c', desc: lang === 'ta' ? 'இருள் மெரூன் முதல் வெளிர் செம்மண்' : 'Dark-to-light maroon' },
+                    { id: 'madurai-blue' as const, name: lang === 'ta' ? 'மதுரை நீலம்' : 'Madurai Blue', from: '#1e3a8a', to: '#8b5cf6', desc: lang === 'ta' ? 'இருள் நீலம் முதல் வெளிர் ஊதா' : 'Dark-to-light royal blue' },
+                    { id: 'nellai-orange' as const, name: lang === 'ta' ? 'நெல்லை ஆரஞ்சு' : 'Nellai Orange', from: '#c2410c', to: '#f97316', desc: lang === 'ta' ? 'இருள் ஆரஞ்சு முதல் வெளிர் ஆரஞ்சு' : 'Dark-to-light orange' },
+                    { id: 'chennai-slate' as const, name: lang === 'ta' ? 'சென்னை ஸ்லேட்' : 'Chennai Slate', from: '#1e293b', to: '#64748b', desc: lang === 'ta' ? 'இருள் கிராஃபைட் முதல் வெளிர் ஸ்லேட்' : 'Dark-to-light graphite' },
+                    { id: 'royal-gold' as const, name: lang === 'ta' ? 'அரச பொன்' : 'Royal Gold', from: '#78350f', to: '#f59e0b', desc: lang === 'ta' ? 'இருள் பழுப்பு முதல் வெளிர் பொன்' : 'Dark-to-light gold' },
+                    { id: 'crimson-ruby' as const, name: lang === 'ta' ? 'மாணிக்க சிவப்பு' : 'Crimson Ruby', from: '#881337', to: '#fb7185', desc: lang === 'ta' ? 'இருள் சிவப்பு முதல் வெளிர் ரோஜா' : 'Dark-to-light ruby' },
+                    { id: 'cyber-teal' as const, name: lang === 'ta' ? 'நவீன நீலப்பச்சை' : 'Cyber Teal', from: '#134e4a', to: '#2dd4bf', desc: lang === 'ta' ? 'இருள் டீல் முதல் வெளிர் டீல்' : 'Dark-to-light teal' },
+                    { id: 'custom' as const, name: lang === 'ta' ? 'தனிப்பயன் தீம்' : 'Custom Theme', from: customColors.sidebarFrom, to: customColors.sidebarTo, desc: lang === 'ta' ? 'இருள் முதல் வெளிர் தனிப்பயன் நிறம்' : 'Dark-to-light custom colors' },
+                  ].map((th) => {
+                    const isSelected = theme === th.id;
+                    return (
+                      <button
+                        key={th.id}
+                        type="button"
+                        onClick={() => setTheme(th.id)}
+                        className={`portal-theme-card ${isSelected ? 'is-active' : ''}`}
+                      >
+                        <span className="portal-theme-card-bar" style={{ backgroundImage: `linear-gradient(90deg, ${th.from}, ${th.to})` }} />
+                        <span className="portal-theme-card-meta">
+                          <span>
+                            <strong>{th.name}</strong>
+                            <em>{th.desc}</em>
+                          </span>
+                          {isSelected && (
+                            <span className="portal-theme-card-check">
+                              <Check className="h-2.5 w-2.5" />
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="lg:col-span-5 space-y-6">
+          <div className="lg:col-span-5">
             {theme === 'custom' && (
-              <motion.div 
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4"
-              >
-                <h5 className="font-bold text-gray-800 text-xs uppercase tracking-wider border-b border-gray-100 pb-2 flex items-center gap-1.5">
-                  <Zap className="w-4 h-4 text-amber-500" />
-                  {lang === 'ta' ? 'தனிப்பயன் வண்ண தேர்வி' : 'Dynamic Theme Designer'}
-                </h5>
-                
-                <div className="space-y-3 text-xs text-gray-600">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <span className="font-semibold block text-gray-700">Sidebar Gradient From</span>
-                      <span className="text-[9px] text-gray-400">Left/top side of sidebar</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="color" 
-                        value={customColors.sidebarFrom} 
-                        onChange={(e) => setCustomColors({ ...customColors, sidebarFrom: e.target.value })}
-                        className="w-8 h-8 rounded-lg cursor-pointer border-0 bg-transparent shrink-0"
-                      />
-                      <input 
-                        type="text" 
-                        value={customColors.sidebarFrom} 
-                        onChange={(e) => setCustomColors({ ...customColors, sidebarFrom: e.target.value })}
-                        className="w-20 border border-gray-200 rounded-lg p-1 text-center font-mono text-[10px]"
-                      />
-                    </div>
+              <div className="portal-dashboard-panel">
+                <div className="portal-dash-head">
+                  <div>
+                    <h3>
+                      <span className="portal-dash-icon">
+                        <Zap className="h-3 w-3" />
+                      </span>
+                      {lang === 'ta' ? 'தனிப்பயன் வண்ண தேர்வி' : 'Dynamic Theme Designer'}
+                    </h3>
+                    <p>{lang === 'ta' ? 'பக்க பட்டி, முதன்மை நிறம் மற்றும் பின்னணி' : 'Sidebar, brand color, and canvas'}</p>
                   </div>
-
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <span className="font-semibold block text-gray-700">Sidebar Gradient To</span>
-                      <span className="text-[9px] text-gray-400">Right/bottom side of sidebar</span>
+                </div>
+                <div className="portal-dash-body">
+                  <div className="portal-theme-designer">
+                    <div className="portal-theme-designer-row">
+                      <div>
+                        <span>Sidebar Gradient From</span>
+                        <em>Left/top side of sidebar</em>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={customColors.sidebarFrom}
+                          onChange={(e) => setCustomColors({ ...customColors, sidebarFrom: e.target.value })}
+                        />
+                        <input
+                          type="text"
+                          value={customColors.sidebarFrom}
+                          onChange={(e) => setCustomColors({ ...customColors, sidebarFrom: e.target.value })}
+                        />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="color" 
-                        value={customColors.sidebarTo} 
-                        onChange={(e) => setCustomColors({ ...customColors, sidebarTo: e.target.value })}
-                        className="w-8 h-8 rounded-lg cursor-pointer border-0 bg-transparent shrink-0"
-                      />
-                      <input 
-                        type="text" 
-                        value={customColors.sidebarTo} 
-                        onChange={(e) => setCustomColors({ ...customColors, sidebarTo: e.target.value })}
-                        className="w-20 border border-gray-200 rounded-lg p-1 text-center font-mono text-[10px]"
-                      />
+                    <div className="portal-theme-designer-row">
+                      <div>
+                        <span>Sidebar Gradient To</span>
+                        <em>Right/bottom side of sidebar</em>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={customColors.sidebarTo}
+                          onChange={(e) => setCustomColors({ ...customColors, sidebarTo: e.target.value })}
+                        />
+                        <input
+                          type="text"
+                          value={customColors.sidebarTo}
+                          onChange={(e) => setCustomColors({ ...customColors, sidebarTo: e.target.value })}
+                        />
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <span className="font-semibold block text-gray-700">Primary Brand Color</span>
-                      <span className="text-[9px] text-gray-400">Buttons, active tabs & borders</span>
+                    <div className="portal-theme-designer-row">
+                      <div>
+                        <span>Primary Brand Color</span>
+                        <em>Buttons, active tabs & borders</em>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={customColors.primaryColor}
+                          onChange={(e) => setCustomColors({ ...customColors, primaryColor: e.target.value })}
+                        />
+                        <input
+                          type="text"
+                          value={customColors.primaryColor}
+                          onChange={(e) => setCustomColors({ ...customColors, primaryColor: e.target.value })}
+                        />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="color" 
-                        value={customColors.primaryColor} 
-                        onChange={(e) => setCustomColors({ ...customColors, primaryColor: e.target.value })}
-                        className="w-8 h-8 rounded-lg cursor-pointer border-0 bg-transparent shrink-0"
-                      />
-                      <input 
-                        type="text" 
-                        value={customColors.primaryColor} 
-                        onChange={(e) => setCustomColors({ ...customColors, primaryColor: e.target.value })}
-                        className="w-20 border border-gray-200 rounded-lg p-1 text-center font-mono text-[10px]"
-                      />
+                    <div className="portal-theme-designer-row">
+                      <div>
+                        <span>Accent/Badge Background</span>
+                        <em>Card headers & callout bgs</em>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={customColors.accentBgColor}
+                          onChange={(e) => setCustomColors({ ...customColors, accentBgColor: e.target.value })}
+                        />
+                        <input
+                          type="text"
+                          value={customColors.accentBgColor}
+                          onChange={(e) => setCustomColors({ ...customColors, accentBgColor: e.target.value })}
+                        />
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <span className="font-semibold block text-gray-700">Accent/Badge Background</span>
-                      <span className="text-[9px] text-gray-400">Card headers & callout bgs</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="color" 
-                        value={customColors.accentBgColor} 
-                        onChange={(e) => setCustomColors({ ...customColors, accentBgColor: e.target.value })}
-                        className="w-8 h-8 rounded-lg cursor-pointer border-0 bg-transparent shrink-0"
-                      />
-                      <input 
-                        type="text" 
-                        value={customColors.accentBgColor} 
-                        onChange={(e) => setCustomColors({ ...customColors, accentBgColor: e.target.value })}
-                        className="w-20 border border-gray-200 rounded-lg p-1 text-center font-mono text-[10px]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <span className="font-semibold block text-gray-700">App Canvas Background</span>
-                      <span className="text-[9px] text-gray-400">General layout background</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input 
-                        type="color" 
-                        value={customColors.appBgColor} 
-                        onChange={(e) => setCustomColors({ ...customColors, appBgColor: e.target.value })}
-                        className="w-8 h-8 rounded-lg cursor-pointer border-0 bg-transparent shrink-0"
-                      />
-                      <input 
-                        type="text" 
-                        value={customColors.appBgColor} 
-                        onChange={(e) => setCustomColors({ ...customColors, appBgColor: e.target.value })}
-                        className="w-20 border border-gray-200 rounded-lg p-1 text-center font-mono text-[10px]"
-                      />
+                    <div className="portal-theme-designer-row">
+                      <div>
+                        <span>App Canvas Background</span>
+                        <em>General layout background</em>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={customColors.appBgColor}
+                          onChange={(e) => setCustomColors({ ...customColors, appBgColor: e.target.value })}
+                        />
+                        <input
+                          type="text"
+                          value={customColors.appBgColor}
+                          onChange={(e) => setCustomColors({ ...customColors, appBgColor: e.target.value })}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             )}
           </div>
         </div>

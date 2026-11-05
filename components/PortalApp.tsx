@@ -5,7 +5,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Building, 
-  Menu, 
   X, 
   Globe, 
   LayoutDashboard, 
@@ -17,11 +16,7 @@ import {
   Settings, 
   UserCircle, 
   LogOut,
-  Palette,
-  Activity,
   ArrowLeftRight,
-  Sun,
-  LayoutGrid,
   AlertTriangle,
   Calculator,
   ArrowLeft,
@@ -32,13 +27,12 @@ import {
   FileSpreadsheet,
   Bell,
   RefreshCw,
-  CheckCircle2,
-  Moon
+  CheckCircle2
 } from 'lucide-react';
 
 import dynamic from 'next/dynamic';
 import { Language, translations } from '@/components/translations';
-import { ThemeType, themesConfig, CustomThemeColors, defaultCustomThemeColors, getThemeSidebarGradient } from '@/lib/themeConfig';
+import { ThemeType, themesConfig, CustomThemeColors, defaultCustomThemeColors, getThemeSidebarGradient, getThemeCanvasColor, getThemeHeaderColor } from '@/lib/themeConfig';
 import { getUserEffectiveAllowedPages } from '@/lib/pageAccessControl';
 import { LoginPortal } from '@/components/LoginPortal';
 import { normalizePortalSessionUser } from '@/lib/userScope';
@@ -147,6 +141,8 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const [customColors, setCustomColors] = useState<CustomThemeColors>(defaultCustomThemeColors);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [uiScale, setUiScale] = useState(100);
 
   const handleSetCustomColors = (newColors: CustomThemeColors) => {
     setCustomColors(newColors);
@@ -164,50 +160,67 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
   };
 
   useEffect(() => {
+    const saved = Number(localStorage.getItem('tp-ui-scale') || '100');
+    if (saved === 90 || saved === 100 || saved === 110) setUiScale(saved);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.style.fontSize = `${(16 * uiScale) / 100}px`;
+    localStorage.setItem('tp-ui-scale', String(uiScale));
+  }, [uiScale]);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onPointer = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && !target.closest('[data-user-menu]')) setUserMenuOpen(false);
+    };
+    document.addEventListener('click', onPointer);
+    return () => document.removeEventListener('click', onPointer);
+  }, [userMenuOpen]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const conf = themesConfig[theme] || themesConfig['ocean-wave'];
+    const accent = theme === 'custom' ? customColors.primaryColor : conf.accentColor;
+    const canvas = getThemeCanvasColor(theme, customColors);
+    const headerBg = getThemeHeaderColor(theme, customColors);
+    const sidebar = getThemeSidebarGradient(theme, customColors);
+    const from = theme === 'custom' ? customColors.sidebarFrom : (conf.chartGradient?.[0] || accent);
+    const to = theme === 'custom' ? customColors.sidebarTo : (conf.chartGradient?.[1] || accent);
+    const dark = theme === 'dark';
+
+    root.style.setProperty('--theme-canvas', canvas);
+    root.style.setProperty('--tp-canvas', canvas);
+    root.style.setProperty('--theme-bg', canvas);
+    root.style.setProperty('--theme-accent', accent);
+    root.style.setProperty('--theme-sidebar', sidebar);
+    root.style.setProperty('--theme-header-bg', headerBg);
+    root.style.setProperty('--theme-header-fg', dark ? '#f8fafc' : '#0f172a');
+    root.style.setProperty('--theme-header-sub', accent);
+    root.style.setProperty('--theme-header-bar', `linear-gradient(90deg, ${from}, ${accent}, ${to})`);
+    root.style.setProperty('--theme-header-border', `${accent}22`);
+    root.style.setProperty('--theme-border', `${accent}22`);
+    root.style.setProperty('--theme-active-menu', from);
+    root.style.setProperty('--theme-active-menu-text', dark ? '#e2e8f0' : from);
+    root.style.setProperty('--theme-primary-btn', accent);
+    root.style.setProperty('--theme-primary-btn-hover', accent);
+    root.style.setProperty('--theme-primary-btn-text', '#ffffff');
+    root.style.setProperty('--theme-scrollbar-thumb', `${accent}90`);
+    root.style.setProperty('--theme-scrollbar-thumb-hover', accent);
+    document.body.style.backgroundColor = canvas;
+
     if (theme === 'custom') {
-      const root = document.documentElement;
-      root.style.setProperty('--theme-bg', customColors.appBgColor);
-      root.style.setProperty('--theme-sidebar', `linear-gradient(180deg, ${customColors.sidebarFrom} 0%, ${customColors.sidebarTo} 100%)`);
       root.style.setProperty('--theme-card-bg', '#ffffff');
       root.style.setProperty('--theme-card-border', `${customColors.primaryColor}20`);
       root.style.setProperty('--theme-text-primary', '#1c0e0e');
       root.style.setProperty('--theme-text-secondary', customColors.primaryColor);
       root.style.setProperty('--theme-text-muted', '#64748b');
-      root.style.setProperty('--theme-border', `${customColors.primaryColor}20`);
-      root.style.setProperty('--theme-header-bg', '#ffffff');
-      root.style.setProperty('--theme-header-border', `${customColors.primaryColor}15`);
-      root.style.setProperty('--theme-primary-btn', customColors.primaryColor);
-      root.style.setProperty('--theme-primary-btn-hover', customColors.primaryColor);
-      root.style.setProperty('--theme-primary-btn-text', '#ffffff');
       root.style.setProperty('--theme-table-header', `${customColors.primaryColor}10`);
-      root.style.setProperty('--theme-table-row-even', `${customColors.appBgColor}`);
+      root.style.setProperty('--theme-table-row-even', customColors.appBgColor);
       root.style.setProperty('--theme-table-row-hover', `${customColors.primaryColor}08`);
       root.style.setProperty('--theme-badge-bg', customColors.accentBgColor);
       root.style.setProperty('--theme-badge-text', customColors.primaryColor);
-      root.style.setProperty('--theme-scrollbar-thumb', `${customColors.primaryColor}90`);
-      root.style.setProperty('--theme-scrollbar-thumb-hover', customColors.primaryColor);
-      
-      // Update custom theme active menu styling as well
-      root.style.setProperty('--theme-active-menu', customColors.primaryColor);
-      root.style.setProperty('--theme-active-menu-text', '#ffffff');
-    } else {
-      const root = document.documentElement;
-      const themeConf = themesConfig[theme];
-      if (themeConf?.accentColor) {
-        root.style.setProperty('--theme-scrollbar-thumb', `${themeConf.accentColor}90`);
-        root.style.setProperty('--theme-scrollbar-thumb-hover', themeConf.accentColor);
-        root.style.setProperty('--theme-primary-btn', themeConf.accentColor);
-      }
-      const props = [
-        '--theme-bg', '--theme-sidebar', '--theme-card-bg', '--theme-card-border',
-        '--theme-text-primary', '--theme-text-secondary', '--theme-text-muted',
-        '--theme-border', '--theme-header-bg', '--theme-header-border',
-        '--theme-primary-btn-hover', '--theme-primary-btn-text',
-        '--theme-table-header', '--theme-table-row-even', '--theme-table-row-hover',
-        '--theme-badge-bg', '--theme-badge-text',
-        '--theme-active-menu', '--theme-active-menu-text'
-      ];
-      props.forEach(p => root.style.removeProperty(p));
     }
   }, [theme, customColors]);
 
@@ -489,28 +502,6 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     }
     const updatedSettings = { ...state.settings, theme: nextTheme };
     await handleSaveSettings(updatedSettings);
-  };
-
-  const handleCycleTheme = async () => {
-    const loopThemes: ThemeType[] = [
-      'light',
-      'dark',
-      'ocean-wave',
-      'sunset-aurora',
-      'magic-lavender',
-      'rainbow-prism',
-      'nilgiri-emerald',
-      'kovai-maroon',
-      'madurai-blue',
-      'nellai-orange',
-      'chennai-slate',
-      'royal-gold',
-      'crimson-ruby',
-      'cyber-teal',
-    ];
-    const currentIndex = loopThemes.indexOf(theme);
-    const nextIndex = (currentIndex + 1) % loopThemes.length;
-    await handleSetTheme(loopThemes[nextIndex]);
   };
 
   // Master Collection Save
@@ -805,7 +796,6 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     { id: 'admin', labelEn: 'Administration', labelTa: 'நிர்வாகம்', ids: ['masters', 'users', 'modules', 'employees', 'employeeManagement', 'transferCounseling', 'pfManagement'] },
     { id: 'system', labelEn: 'System', labelTa: 'அமைப்பு', ids: ['appManagement', 'userSettings', 'webappSettings'] },
   ];
-  const activePageLabel = activeMenuItems.find((i) => i.id === activeTab)?.label || t('dashboard');
   const userDisplayName = tObj(currentUser) || currentUser.username || 'User';
   const userRoleLabel = currentUser.designationNameEn || currentUser.designation || currentUser.role || currentUser.roleId || 'Admin';
   const currentTheme = themesConfig[theme] || themesConfig['ocean-wave'];
@@ -815,32 +805,39 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
   const isRail = sidebarCollapsed;
   const brandTitle = lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat';
   const brandSub = lang === 'ta' ? 'நிர்வாக முகப்பு' : 'Management Portal';
-  const headerIconBtn = `inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
-    isDark
-      ? 'text-slate-400 hover:bg-white/10 hover:text-slate-100'
-      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-  }`;
-  const headerTextBtn = `inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-semibold transition-colors ${
-    isDark
-      ? 'text-slate-300 hover:bg-white/10 hover:text-white'
-      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-  }`;
-  const headerSubtitle =
-    activeTab === 'dashboard'
-      ? lang === 'ta'
-        ? 'டாஷ்போர்டு — நிர்வாக சுருக்கம்'
-        : 'Dashboard overview'
-      : userRoleLabel;
-  const headerTitle =
-    activeTab === 'dashboard'
-      ? `${lang === 'ta' ? 'வணக்கம்' : 'Welcome'}, ${userDisplayName}`
-      : activePageLabel;
+  const headerOfficeName = userDisplayName || (lang === 'ta' ? 'இயக்குநர் அலுவலகம்' : 'Director Office');
+  const headerOfficeSub = lang === 'ta' ? 'நிர்வாக முகப்பு' : 'Administration Dashboard';
+  const headerPageCopy: Record<string, { en: string; ta: string; subEn: string; subTa: string }> = {
+    dashboard: { en: 'Dashboard', ta: 'டாஷ்போர்டு', subEn: 'Field inspection overview', subTa: 'கள ஆய்வு கண்ணோட்டம்' },
+    inspectionModules: { en: 'Work types', ta: 'ஆய்வு வகைகள்', subEn: 'Inspection work modules', subTa: 'ஆய்வுப் பணி தொகுதிகள்' },
+    inspectionEmployees: { en: 'Field staff', ta: 'கள ஊழியர்', subEn: 'Inspection employee records', subTa: 'கள ஊழியர் பதிவுகள்' },
+    inspectionReports: { en: 'Reports', ta: 'அறிக்கைகள்', subEn: 'Inspection reports and abstracts', subTa: 'ஆய்வு அறிக்கைகள் மற்றும் சுருக்கங்கள்' },
+    pendingIssues: { en: 'Issues', ta: 'பிரச்சினைகள்', subEn: 'Pending field issues', subTa: 'நிலுவைக் களப் பிரச்சினைகள்' },
+    masters: { en: 'Masters', ta: 'முதன்மை', subEn: 'Location and reference data', subTa: 'இடம் மற்றும் அடிப்படை தரவு' },
+    users: { en: 'Users', ta: 'பயனர்கள்', subEn: 'Portal user access', subTa: 'முகப்பு பயனர் அணுகல்' },
+    modules: { en: 'Modules', ta: 'தொகுதிகள்', subEn: 'Application module setup', subTa: 'பயன்பாட்டு தொகுதி அமைப்பு' },
+    employees: { en: 'Employees', ta: 'ஊழியர்கள்', subEn: 'Employee records', subTa: 'ஊழியர் பதிவுகள்' },
+    employeeManagement: { en: 'Employees', ta: 'ஊழியர்கள்', subEn: 'Employee records', subTa: 'ஊழியர் பதிவுகள்' },
+    transferCounseling: { en: 'Counseling', ta: 'ஆலோசனை', subEn: 'Transfer counseling', subTa: 'இடமாற்று ஆலோசனை' },
+    pfManagement: { en: 'Provident fund', ta: 'வருங்கால வைப்பு', subEn: 'PF accounts and reports', subTa: 'வருங்கால வைப்பு கணக்குகள்' },
+    appManagement: { en: 'Notifications', ta: 'அறிவிப்புகள்', subEn: 'Alerts and mobile app', subTa: 'அறிவிப்புகள் மற்றும் செயலி' },
+    userSettings: { en: 'Profile', ta: 'சுயவிவரம்', subEn: 'Your account settings', subTa: 'உங்கள் கணக்கு அமைப்புகள்' },
+    webappSettings: { en: 'Settings', ta: 'அமைப்புகள்', subEn: 'Portal configuration', subTa: 'முகப்பு அமைப்புகள்' },
+  };
+  const currentPageCopy = headerPageCopy[activeTab] || headerPageCopy.dashboard;
+  const headerPageTitle = lang === 'ta' ? currentPageCopy.ta : currentPageCopy.en;
+  const headerPageSub = lang === 'ta' ? currentPageCopy.subTa : currentPageCopy.subEn;
+  const profileNavItem = activeMenuItems.find((item) => item.id === 'userSettings');
+  const settingsNavItem = activeMenuItems.find((item) => item.id === 'webappSettings');
+  const notifCount = Array.isArray(state.notifications) ? state.notifications.length : 0;
   const userInitials = userDisplayName.slice(0, 2).toUpperCase();
+  const cycleUiScale = () => setUiScale((value) => (value === 100 ? 110 : value === 110 ? 90 : 100));
   const shellBgClass = theme === 'custom' ? '' : currentTheme.mainBg || 'bg-[#f5f7fa]';
   const shellBgStyle = theme === 'custom' ? { backgroundColor: customColors.appBgColor } : undefined;
 
   return (
     <div
+      data-theme={theme}
       className={`flex min-h-screen font-sans ${isDark ? 'text-slate-100' : 'text-slate-800'} ${shellBgClass}`}
       style={{ ...(shellBgStyle || {}), ['--theme-accent']: accentColor } as React.CSSProperties}
     >
@@ -854,12 +851,12 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
       )}
 
       <aside
-        className={`portal-sidenav fixed inset-y-0 left-0 z-50 flex w-[248px] flex-col text-white transition-[width,transform] duration-300 ease-out print:hidden md:sticky md:inset-auto md:top-0 md:z-20 md:h-screen md:shrink-0 ${
+        className={`portal-sidenav fixed inset-y-0 left-0 z-50 flex w-[248px] flex-col overflow-hidden text-white transition-[width,transform] duration-300 ease-out print:hidden md:sticky md:inset-auto md:top-0 md:z-20 md:h-screen md:shrink-0 ${
           isRail ? 'md:w-[4.25rem]' : 'md:w-[248px]'
         } ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
         style={{ backgroundImage: sidebarGradient }}
       >
-        <div className="relative flex min-h-[4.5rem] w-full shrink-0 items-center border-b border-white/12 px-3 py-2.5">
+        <div className={`relative z-10 flex h-[4.75rem] w-full shrink-0 items-center border-b border-white/10 ${isRail ? 'justify-center px-2' : 'gap-3 px-3'}`}>
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}
@@ -871,11 +868,11 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
 
           {isRail ? (
             <div className="flex w-full items-center justify-center">
-              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-white/35">
+              <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
                 <img
                   src="/app_icon.png"
                   alt=""
-                  className="h-8 w-8 object-contain"
+                  className="h-9 w-9 object-contain"
                   onError={(e) => {
                     e.currentTarget.onerror = null;
                     e.currentTarget.src = '/login-logo.png';
@@ -885,7 +882,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
             </div>
           ) : (
             <div className="flex w-full min-w-0 items-center gap-2.5 pr-7 md:pr-0">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-white/35">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
                 <img
                   src="/app_icon.png"
                   alt=""
@@ -897,25 +894,25 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                 />
               </div>
               <div className="min-w-0 flex-1 leading-tight">
-                <p className="text-[17px] font-extrabold leading-snug text-white">{brandTitle}</p>
-                <p className="mt-0.5 text-[12px] font-semibold leading-snug text-white/75">{brandSub}</p>
+                <p className="truncate text-[17px] font-black leading-tight tracking-tight text-white">{brandTitle}</p>
+                <p className="mt-0.5 truncate text-[12px] font-black leading-tight text-white/80">{brandSub}</p>
               </div>
             </div>
           )}
         </div>
 
-        <nav className={`portal-nav-scroll min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden py-2 ${isRail ? 'px-1.5' : 'pl-4 pr-2'}`}>
+        <nav className={`portal-nav-scroll relative z-10 min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden py-3 ${isRail ? 'px-1.5' : 'pl-5 pr-2.5'}`}>
           {menuGroups.map((group, groupIndex) => {
             const items = activeMenuItems.filter((item) => group.ids.includes(item.id));
             if (items.length === 0) return null;
             return (
-              <div key={group.id} className={groupIndex === 0 ? 'mb-0.5' : 'mt-2 mb-0.5'}>
+              <div key={group.id} className={groupIndex === 0 ? 'mb-1' : 'mt-3 mb-1'}>
                 <p
-                  className={`portal-nav-group-label pl-2.5 pr-1 pb-1 ${isRail ? 'md:hidden' : ''}`}
+                  className={`portal-nav-group-label px-2.5 pb-1.5 ${isRail ? 'md:hidden' : ''}`}
                 >
                   {lang === 'ta' ? group.labelTa : group.labelEn}
                 </p>
-                <div className="flex w-full flex-col gap-0">
+                <div className="flex w-full flex-col gap-[3px]">
                   {items.map((item) => {
                     const Icon = item.icon;
                     const active = activeTab === item.id;
@@ -928,18 +925,18 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                           setActiveTab(item.id);
                           setSidebarOpen(false);
                         }}
-                        className={`portal-nav-item w-full rounded-lg transition-colors ${
+                        className={`portal-nav-item w-full rounded-[10px] transition-colors ${
                           isRail
-                            ? 'flex h-11 items-center justify-center px-0'
-                            : 'grid min-h-[2.375rem] grid-cols-[1.375rem_minmax(0,1fr)] items-center gap-x-2.5 pl-3 pr-2 py-1.5 text-left'
+                            ? 'flex h-10 items-center justify-center px-0'
+                            : 'grid h-10 grid-cols-[20px_minmax(0,1fr)] items-center gap-x-2.5 px-2.5 text-left'
                         } ${
                           active
-                            ? 'portal-nav-item-active bg-white/[0.14] text-white'
-                            : 'text-white/80 hover:bg-white/[0.08] hover:text-white'
+                            ? 'portal-nav-item-active'
+                            : 'text-white/80 hover:bg-white/10 hover:text-white'
                         }`}
                       >
                         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-                          <Icon className="h-5 w-5" strokeWidth={active ? 2.25 : 2} />
+                          <Icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.25 : 1.9} />
                         </span>
                         <span
                           className={`portal-nav-item-label min-w-0 ${isRail ? 'md:hidden' : ''}`}
@@ -956,123 +953,143 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
         </nav>
       </aside>
 
-      <button
-        type="button"
-        onClick={() => setSidebarCollapsed((v) => !v)}
-        className={`portal-sidenav-toggle fixed z-[60] hidden h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border shadow-[0_2px_10px_rgba(15,47,107,0.12)] transition-[left] duration-300 ease-out md:inline-flex ${
-          isDark
-            ? 'border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700'
-            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-        }`}
-        style={{ left: isRail ? '4.25rem' : '248px', top: '2.25rem' }}
-        title={isRail ? (lang === 'ta' ? 'பட்டி காட்டுக' : 'Expand menu') : (lang === 'ta' ? 'பட்டி சுருக்குக' : 'Collapse menu')}
-        aria-label={isRail ? 'Expand sidebar' : 'Collapse sidebar'}
-      >
-        <Menu className="h-[1.125rem] w-[1.125rem]" strokeWidth={2.25} />
-      </button>
-
-      <div className={`flex min-h-screen min-w-0 flex-1 flex-col ${!isDark ? 'bg-[#eef2f7]' : ''}`}>
+      <div className={`flex min-h-screen min-w-0 flex-1 flex-col pt-16 ${isDark ? 'bg-slate-950' : 'portal-shell-canvas'}`}>
         <header
-          className={`portal-topbar sticky top-0 z-30 print:hidden backdrop-blur-md ${
-            isDark ? 'border-b border-white/10 bg-slate-950/95' : 'border-b border-slate-200/80 bg-white/95'
-          }`}
+          className={`portal-brand-header print:hidden ${
+            isRail ? 'md:left-[4.25rem]' : 'md:left-[248px]'
+          } left-0`}
         >
-          <div className="flex min-h-[4.25rem] w-full items-center gap-3 px-4 py-2.5 sm:gap-4 sm:px-6 lg:px-8">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(true)}
-              className={`${headerIconBtn} md:hidden`}
-              aria-label="Open menu"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-
-            <div className="min-w-0 flex-1">
-              <h1
-                className={`truncate text-lg font-bold leading-tight tracking-tight sm:text-xl ${
-                  isDark ? 'text-slate-50' : 'text-slate-900'
-                }`}
+            <div className="relative z-10 flex h-full items-center justify-between gap-3 pl-10 pr-4 sm:pl-12 sm:pr-6 lg:pr-8">
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+                    setSidebarCollapsed((v) => !v);
+                  } else {
+                    setSidebarOpen(true);
+                  }
+                }}
+                className="portal-edge-menu"
+                title={isRail ? (lang === 'ta' ? 'பட்டி காட்டுக' : 'Expand menu') : (lang === 'ta' ? 'பட்டி சுருக்குக' : 'Collapse menu')}
+                aria-label={isRail ? 'Expand sidebar' : 'Open menu'}
               >
-                {headerTitle}
-              </h1>
-              <p className={`mt-0.5 truncate text-[13px] sm:text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {headerSubtitle}
-              </p>
-            </div>
+                <span className={`portal-burger ${sidebarOpen ? 'is-open' : ''} ${isRail ? 'is-collapsed' : ''}`} aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              </button>
 
-            <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
-              <div
-                className={`flex items-center gap-0.5 rounded-xl p-0.5 ${
-                  isDark ? 'bg-white/[0.06] ring-1 ring-white/10' : 'bg-slate-100/90 ring-1 ring-slate-200/80'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={handleInstantRefresh}
-                  disabled={isRefreshing}
-                  className={`${headerIconBtn} disabled:opacity-50`}
-                  title={isRefreshing ? (lang === 'ta' ? 'புதுப்பிக்கிறது...' : 'Refreshing…') : (lang === 'ta' ? 'புதுப்பி' : 'Refresh')}
-                  aria-label="Refresh"
-                >
-                  <RefreshCw className={`h-[1.125rem] w-[1.125rem] ${isRefreshing ? 'animate-spin' : ''}`} />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCycleTheme}
-                  className={headerIconBtn}
-                  title={lang === 'ta' ? 'தீம் மாற்றவும்' : `Theme: ${currentTheme.nameEn || theme}`}
-                  aria-label="Change theme"
-                >
-                  <Palette className="h-[1.125rem] w-[1.125rem]" />
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleLanguage}
-                  className={headerTextBtn}
-                  title={lang === 'en' ? 'Switch to Tamil' : 'Switch to English'}
-                >
-                  <Globe className="h-[1.125rem] w-[1.125rem]" />
-                  <span className="hidden pr-0.5 sm:inline">{lang === 'en' ? 'TA' : 'EN'}</span>
-                </button>
+              <div className="min-w-0 flex-1">
+                <h1 className="portal-header-title truncate text-[16px] font-semibold leading-tight tracking-tight sm:text-[17px]">
+                  {headerPageTitle}
+                </h1>
+                <p className="portal-header-sub mt-0.5 truncate text-[12px] font-medium opacity-85">
+                  {headerPageSub}
+                </p>
               </div>
 
-              <div
-                className={`flex items-center gap-2 rounded-xl py-1 pl-1 pr-2 ${
-                  isDark ? 'bg-white/[0.06] ring-1 ring-white/10' : 'bg-slate-50 ring-1 ring-slate-200/90'
-                }`}
-              >
-                <div
-                  className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg text-[11px] font-bold text-white shadow-sm"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  {currentUser.profileImage || currentUser.profilePhotoUrl ? (
-                    <img src={currentUser.profileImage || currentUser.profilePhotoUrl} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    userInitials
-                  )}
-                </div>
-                <div className="hidden min-w-0 max-w-[11rem] md:block">
-                  <p className={`truncate text-[13px] font-semibold leading-tight ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>
-                    {userDisplayName}
-                  </p>
-                  <p className={`truncate text-[11px] leading-tight ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
-                    {userRoleLabel}
+              <div className="relative z-50 flex min-w-0 items-center gap-3" data-user-menu>
+                <div className="min-w-0 max-w-[min(52vw,22rem)] text-right">
+                  <h1 className="portal-header-title truncate text-[15px] font-semibold leading-tight tracking-tight sm:text-[16px]">
+                    {headerOfficeName}
+                  </h1>
+                  <p className="portal-header-sub mt-0.5 truncate text-[11px] font-medium opacity-85 sm:text-[12px]">
+                    {headerOfficeSub}
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={handleLogout}
-                  className={`${headerIconBtn} ${
-                    isDark ? 'text-rose-300 hover:bg-rose-500/15 hover:text-rose-200' : 'text-rose-600 hover:bg-rose-50'
-                  }`}
-                  title={t('logout')}
-                  aria-label={t('logout')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setUserMenuOpen((open) => !open);
+                  }}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white shadow-md ring-2 ring-white/80"
+                  style={{ backgroundImage: `linear-gradient(135deg, ${currentTheme.chartGradient?.[0] || accentColor}, ${currentTheme.chartGradient?.[1] || accentColor})` }}
+                  title={userDisplayName}
+                  aria-label={userDisplayName}
                 >
-                  <LogOut className="h-[1.125rem] w-[1.125rem]" />
+                  {userInitials}
                 </button>
+                {userMenuOpen && (
+                  <div className="portal-user-menu">
+                    <div className="portal-user-menu-head">
+                      <span
+                        className="portal-user-menu-avatar"
+                        style={{ backgroundImage: `linear-gradient(135deg, ${currentTheme.chartGradient?.[0] || accentColor}, ${currentTheme.chartGradient?.[1] || accentColor})` }}
+                      >
+                        {userInitials}
+                      </span>
+                      <div className="min-w-0">
+                        <strong className="truncate">{userDisplayName}</strong>
+                        <span>{currentUser?.roleId || currentUser?.scopeType || 'User'}</span>
+                      </div>
+                    </div>
+                    <div className="portal-user-menu-body">
+                      <button type="button" onClick={() => { setUserMenuOpen(false); toggleLanguage(); }} className="portal-user-menu-item">
+                        <Globe />
+                        {lang === 'en' ? 'தமிழ் / Tamil' : 'English'}
+                      </button>
+                      <button type="button" onClick={() => { cycleUiScale(); }} className="portal-user-menu-item">
+                        <span className="portal-user-menu-glyph">A</span>
+                        {lang === 'ta' ? `எழுத்து அளவு ${uiScale}%` : `Text size ${uiScale}%`}
+                      </button>
+                      <button type="button" onClick={() => { setUserMenuOpen(false); handleInstantRefresh(); }} className="portal-user-menu-item">
+                        <RefreshCw />
+                        {lang === 'ta' ? 'புதுப்பி' : 'Refresh'}
+                      </button>
+                      {allowedPageIds.includes('appManagement') && (
+                        <button type="button" onClick={() => { setActiveTab('appManagement'); setUserMenuOpen(false); }} className="portal-user-menu-item">
+                          <Bell />
+                          {lang === 'ta' ? 'அறிவிப்புகள்' : 'Notifications'}
+                          {notifCount > 0 && (
+                            <span className="portal-user-menu-badge">
+                              {notifCount > 9 ? '9+' : notifCount}
+                            </span>
+                          )}
+                        </button>
+                      )}
+                      {profileNavItem && (
+                        <button type="button" onClick={() => { setActiveTab('userSettings'); setUserMenuOpen(false); }} className="portal-user-menu-item">
+                          <UserCircle />
+                          {lang === 'ta' ? 'சுயவிவரம்' : 'Profile'}
+                        </button>
+                      )}
+                      {settingsNavItem && (
+                        <button type="button" onClick={() => { setActiveTab('webappSettings'); setUserMenuOpen(false); }} className="portal-user-menu-item">
+                          <Settings />
+                          {lang === 'ta' ? 'அமைப்புகள்' : 'Settings'}
+                        </button>
+                      )}
+                      <div className="portal-user-menu-themes">
+                        <p>{lang === 'ta' ? 'தீம்' : 'Theme'} · {lang === 'ta' ? currentTheme.nameTa : currentTheme.nameEn}</p>
+                        <div className="portal-theme-swatches">
+                          {(Object.values(themesConfig) as { id: ThemeType; nameEn: string; nameTa: string; chartGradient: string[] }[]).map((th) => {
+                            const from = th.id === 'custom' ? customColors.sidebarFrom : (th.chartGradient?.[0] || accentColor);
+                            const to = th.id === 'custom' ? customColors.sidebarTo : (th.chartGradient?.[1] || accentColor);
+                            return (
+                              <button
+                                key={th.id}
+                                type="button"
+                                title={lang === 'ta' ? th.nameTa : th.nameEn}
+                                onClick={() => { void handleSetTheme(th.id); }}
+                                className={`portal-theme-swatch ${theme === th.id ? 'is-active' : ''}`}
+                                style={{ backgroundImage: `linear-gradient(135deg, ${from}, ${to})` }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="portal-user-menu-rule" />
+                    <button type="button" onClick={() => { setUserMenuOpen(false); handleLogout(); }} className="portal-user-menu-item is-danger">
+                      <LogOut />
+                      {t('logout')}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-          </div>
         </header>
 
         {/* Instant Refresh Feedback Toast */}
@@ -1091,7 +1108,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
         </AnimatePresence>
 
         <main
-          className={`relative mx-auto w-full min-w-0 max-w-[1680px] flex-1 overflow-x-hidden px-4 py-5 sm:px-6 lg:px-8 ${
+          className={`relative mx-auto w-full min-w-0 max-w-[1680px] flex-1 overflow-x-hidden px-2 py-3 sm:px-3 lg:px-3 ${
             activeTab === 'dashboard' && !isDark ? 'bg-transparent' : ''
           }`}
         >
@@ -1118,7 +1135,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                         : (allowedPageIds.includes('userSettings') ? 'userSettings' : allowedPageIds[0]);
                       if (fallback) setActiveTab(fallback);
                     }}
-                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer"
+                    className="portal-dash-action px-5 py-2.5 rounded-xl text-xs font-semibold cursor-pointer"
                   >
                     {t('goToAllowedPage')}
                   </button>
@@ -1264,9 +1281,12 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
             </motion.div>
           </AnimatePresence>
         </main>
-        <footer className={`mt-auto flex h-12 items-center justify-between px-6 text-[11px] ${
-          isDark ? 'border-t border-white/10 bg-slate-950 text-slate-500' : 'border-t border-slate-200 bg-white text-slate-400'
-        }`}>
+        <footer
+          className={`mt-auto flex h-12 items-center justify-between px-2 text-[11px] sm:px-3 lg:px-3 ${
+            isDark ? 'border-t border-white/10 bg-slate-950 text-slate-500' : 'border-t bg-transparent'
+          }`}
+          style={isDark ? undefined : { borderColor: `${accentColor}28`, color: accentColor }}
+        >
           <span>{lang === 'ta' ? 'பேரூராட்சிகளின் மேலாண்மை திட்டம்' : 'Town Panchayat Management System'} · {lang === 'ta' ? 'நிர்வாக முகப்பு' : 'Admin Portal'}</span>
           <span suppressHydrationWarning>© {new Date().getFullYear()}</span>
         </footer>

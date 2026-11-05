@@ -6,7 +6,7 @@ import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { 
   Building, 
-  Map, 
+  Map as MapIcon, 
   MapPin, 
   Users, 
   UserCheck, 
@@ -33,9 +33,13 @@ import {
   MonitorPlay,
   RefreshCw,
   Layers,
-  Download
+  Download,
+  ClipboardCheck,
+  RotateCcw,
+  BarChart3
 } from 'lucide-react';
 import { Smartphone } from 'lucide-react';
+import ThemeSelect from './ThemeSelect';
 import dynamic from 'next/dynamic';
 import { Language, translations } from './translations';
 import { ThemeType, themesConfig } from '@/lib/themeConfig';
@@ -53,7 +57,7 @@ const InspectionReportsView = dynamic(
     ssr: false,
     loading: () => (
       <div className="p-8 text-center text-slate-500 flex items-center justify-center gap-2">
-        <RefreshCw className="w-5 h-5 animate-spin text-indigo-500" />
+        <RefreshCw className="w-5 h-5 animate-spin" style={{ color: 'var(--theme-accent)' }} />
         <span className="text-xs font-semibold">Loading Inspection Reports...</span>
       </div>
     )
@@ -440,6 +444,12 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   const [selectedAbstractSubcategory, setSelectedAbstractSubcategory] = useState<string>('');
   const [selectedAbstractStatus, setSelectedAbstractStatus] = useState<string>('');
   const [isRefreshingAbstract, setIsRefreshingAbstract] = useState<boolean>(false);
+  const [embedFilterActions, setEmbedFilterActions] = useState<{
+    apply: () => void;
+    reset: () => void;
+    isRefreshing: boolean;
+    fetchError: string | null;
+  } | null>(null);
   const [abstractRefreshTime, setAbstractRefreshTime] = useState<string>('');
 
   const handleRefreshAbstract = async () => {
@@ -778,6 +788,77 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     }
     return true;
   });
+
+  const categoryIssueRows = useMemo(() => {
+    const total = baseFilteredIssues.length;
+    const rows = CATEGORIES_LIST.map((cat: any) => {
+      const count = baseFilteredIssues.filter((i: any) => i.category === cat.id).length;
+      return {
+        id: cat.id,
+        nameEn: cat.nameEn,
+        nameTa: cat.nameTa,
+        count,
+        share: total > 0 ? Math.round((count / total) * 100) : 0,
+        color: getCategoryThemeColor(cat.id),
+        subCount: (cat.subcategories || []).length,
+      };
+    });
+    const maxCount = Math.max(...rows.map((row: any) => row.count), 1);
+    const ringR = 42;
+    const ringC = 2 * Math.PI * ringR;
+    const counted = rows.filter((row: any) => row.count > 0);
+    const gap = counted.length > 1 ? 3.2 : 0;
+    let offset = 0;
+    const segments = counted.map((row: any) => {
+      const raw = (row.count / Math.max(total, 1)) * ringC;
+      const length = Math.max(raw - gap, 0);
+      const segment = { ...row, dash: `${length} ${ringC}`, offset: -offset };
+      offset += raw;
+      return segment;
+    });
+    return { rows, maxCount, total, ringR, ringC, segments };
+  }, [CATEGORIES_LIST, baseFilteredIssues, currentTheme]);
+
+  const subcategoryIssueRows = useMemo(() => {
+    let displayed: any[] = [];
+    if (selectedChartCategory) {
+      const parentCat = CATEGORIES_LIST.find((c: any) => c.id === selectedChartCategory);
+      if (parentCat) {
+        displayed = (parentCat.subcategories || []).map((sub: any) => ({
+          ...sub,
+          categoryEn: parentCat.nameEn,
+          categoryTa: parentCat.nameTa,
+          categoryId: parentCat.id,
+        }));
+      }
+    } else {
+      CATEGORIES_LIST.forEach((cat: any) => {
+        (cat.subcategories || []).forEach((sub: any) => {
+          displayed.push({
+            ...sub,
+            categoryEn: cat.nameEn,
+            categoryTa: cat.nameTa,
+            categoryId: cat.id,
+          });
+        });
+      });
+    }
+
+    const rows = displayed
+      .map((sub: any) => {
+        const count = baseFilteredIssues.filter((i: any) => i.subcategory === sub.id).length;
+        return {
+          ...sub,
+          count,
+          parentColor: getCategoryThemeColor(sub.categoryId),
+        };
+      })
+      .sort((a: any, b: any) => b.count - a.count || String(a.nameEn || '').localeCompare(String(b.nameEn || '')));
+
+    const maxCount = Math.max(...rows.map((row: any) => row.count), 1);
+    const total = rows.reduce((sum: number, row: any) => sum + row.count, 0);
+    return { rows, maxCount, total };
+  }, [CATEGORIES_LIST, baseFilteredIssues, selectedChartCategory, currentTheme]);
 
   // Step 2: Final filtered issues matching dropdown stage and abstract table clicked cells
   const filteredIssues = baseFilteredIssues.filter((issue: any) => {
@@ -1247,7 +1328,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
         id: 'zones',
         title: t('totalZones'),
         count: zones.length,
-        icon: Map,
+        icon: MapIcon,
         tone: 'bg-blue-50 text-blue-700',
         action: () => setActiveTab('masters')
       },
@@ -1279,8 +1360,8 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   const renderSortIcon = (field: string) => {
     if (sortField !== field) return <ArrowUpDown className="w-3 h-3 ml-1 text-gray-400 shrink-0" />;
     return sortDir === 'asc' 
-      ? <ArrowUp className="w-3 h-3 ml-1 text-indigo-600 shrink-0" />
-      : <ArrowDown className="w-3 h-3 ml-1 text-indigo-600 shrink-0" />;
+      ? <ArrowUp className="w-3 h-3 ml-1 portal-dash-sort shrink-0" />
+      : <ArrowDown className="w-3 h-3 ml-1 portal-dash-sort shrink-0" />;
   };
 
   // Allowed scopes based on user role
@@ -1315,18 +1396,34 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     return true;
   });
 
-  const getKpiSurface = (cardId: string) => {
-    const surfaces: Record<string, string> = {
-      zones: 'bg-gradient-to-br from-[#1e3a8a] via-[#2563eb] to-[#3b82f6]',
-      districts: 'bg-gradient-to-br from-[#312e81] via-[#4f46e5] to-[#6366f1]',
-      tps: 'bg-gradient-to-br from-[#0f766e] via-[#0d9488] to-[#14b8a6]',
-      all_issues: 'bg-gradient-to-br from-[#334155] via-[#475569] to-[#64748b]',
-      pending_issues: 'bg-gradient-to-br from-[#b45309] via-[#d97706] to-[#f59e0b]',
-      in_progress_issues: 'bg-gradient-to-br from-[#1d4ed8] via-[#2563eb] to-[#38bdf8]',
-      resolved_issues: 'bg-gradient-to-br from-[#047857] via-[#059669] to-[#10b981]',
-      add_new_issue: 'bg-gradient-to-br from-[#123A73] via-[#1E4B8E] to-[#2E6BB8]',
+  const kpiAccents: Record<string, string> = {
+    zones: '#1d4ed8',
+    districts: '#7c3aed',
+    tps: '#0f766e',
+    all_issues: currentTheme.accentColor || '#334155',
+    pending_issues: '#d97706',
+    in_progress_issues: '#0284c7',
+    resolved_issues: '#059669',
+    add_new_issue: '#c026d3',
+  };
+  const kpiFallback = ['#1d4ed8', '#7c3aed', '#0f766e', '#c2410c', '#d97706', '#0284c7', '#059669', '#c026d3'];
+
+  const shadeHex = (hex: string, amount: number) => {
+    const raw = hex.replace('#', '');
+    if (raw.length !== 6) return hex;
+    const n = Number.parseInt(raw, 16);
+    const to = (shift: number) => Math.max(0, Math.min(255, ((n >> shift) & 255) + amount));
+    return `#${[to(16), to(8), to(0)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+  };
+
+  const getKpiStyle = (cardId: string, index: number): React.CSSProperties => {
+    const accent = kpiAccents[cardId] || kpiFallback[index % kpiFallback.length] || currentTheme.accentColor;
+    const deep = shadeHex(accent, -38);
+    return {
+      ['--kpi-accent' as string]: accent,
+      backgroundImage: `linear-gradient(145deg, ${accent} 0%, ${deep} 100%)`,
+      boxShadow: `0 14px 28px -12px ${accent}cc`,
     };
-    return surfaces[cardId] || 'bg-gradient-to-br from-[#123A73] to-[#1E4B8E]';
   };
 
   const kpiGridCols =
@@ -1341,26 +1438,27 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   return (
     <div id="dashboard-view-container" className="min-w-0 space-y-5 overflow-x-hidden">
       <section className={`grid min-w-0 gap-2 md:gap-2.5 ${kpiGridCols}`}>
-        {cards.map((card) => (
+        {cards.map((card, cardIndex) => (
           <button
             key={card.id}
             id={`kpi-card-${card.id}`}
             type="button"
             onClick={card.action}
-            className={`portal-dashboard-kpi-card relative flex min-w-0 flex-col justify-between overflow-hidden rounded-xl p-2.5 text-left shadow-[0_4px_14px_-6px_rgba(15,47,107,0.45)] transition duration-200 hover:shadow-[0_8px_20px_-6px_rgba(15,47,107,0.5)] sm:p-3 ${getKpiSurface(card.id)}`}
+            style={getKpiStyle(card.id, cardIndex)}
+            className="portal-dashboard-kpi-card relative flex min-w-0 flex-col overflow-hidden rounded-2xl p-2.5 text-left text-white transition duration-200 hover:-translate-y-0.5 sm:p-3"
           >
             <card.icon
-              className="pointer-events-none absolute -right-0.5 -top-0.5 h-11 w-11 text-white/[0.12]"
+              className="pointer-events-none absolute -right-1 -top-1 h-11 w-11 text-white/20"
               strokeWidth={1.25}
             />
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
-              <card.icon className="h-3.5 w-3.5" strokeWidth={2} />
+            <span className="relative z-[1] inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/25 text-white ring-1 ring-white/30">
+              <card.icon className="h-3.5 w-3.5" strokeWidth={2.25} />
             </span>
-            <div className="relative z-[1] mt-2.5 min-w-0">
-              <p className="truncate text-[9px] font-semibold uppercase tracking-[0.06em] text-white/75 sm:text-[10px]">
+            <div className="relative z-[1] mt-1.5 min-w-0">
+              <p className="kpi-label truncate">
                 {card.title}
               </p>
-              <p className="mt-1 text-lg font-bold tabular-nums leading-none tracking-tight text-white sm:text-xl">
+              <p className="kpi-value">
                 {card.count}
               </p>
             </div>
@@ -1368,16 +1466,51 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
         ))}
       </section>
 
-      <section className="portal-dashboard-panel overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_1px_2px_rgba(15,47,107,0.05)]">
-        <div className="border-b border-slate-100 px-5 py-3.5 sm:px-6">
-          <h3 className="text-[15px] font-semibold text-slate-800">
-            {lang === 'ta' ? 'கள ஆய்வு சுருக்கம்' : 'Field inspection summary'}
-          </h3>
-          <p className="mt-0.5 text-[12px] text-slate-500">
-            {lang === 'ta' ? 'பொருள் வாரியான ஆய்வு எண்ணிக்கை' : 'Inspection counts by work type'}
-          </p>
+      <section className="portal-studio">
+        <div className="portal-fis-hero">
+          <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
+              <ClipboardCheck className="h-3.5 w-3.5" />
+            </span>
+            <div className="min-w-0 leading-tight">
+              <h3 className="text-[14px] font-semibold tracking-tight text-white">
+                {lang === 'ta' ? 'கள ஆய்வு சுருக்கம்' : 'Field Inspection Summary'}
+              </h3>
+              <p className="text-[10px] text-white/70">
+                {lang === 'ta'
+                  ? 'வடிகட்டி பயன்படுத்தி, குழுவைத் தேர்ந்தெடுத்து முடிவைப் பார்க்கவும்'
+                  : 'Apply filters, choose a grouping, then review the result'}
+              </p>
+            </div>
+          </div>
+          <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            {embedFilterActions?.fetchError && (
+              <span className="max-w-[14rem] truncate text-right text-[11px] font-semibold text-rose-100">
+                {embedFilterActions.fetchError}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => embedFilterActions?.apply()}
+              disabled={!embedFilterActions || embedFilterActions.isRefreshing}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-md hover:brightness-110 disabled:opacity-60 cursor-pointer"
+              style={{ backgroundImage: `linear-gradient(90deg, ${currentTheme.chartGradient?.[0] || currentTheme.accentColor}, ${currentTheme.accentColor})` }}
+            >
+              <RefreshCw className={`h-3 w-3 ${embedFilterActions?.isRefreshing ? 'animate-spin' : ''}`} />
+              {lang === 'ta' ? 'வடிகட்டி பயன்படுத்து' : 'Apply Filters'}
+            </button>
+            <button
+              type="button"
+              onClick={() => embedFilterActions?.reset()}
+              disabled={!embedFilterActions}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 disabled:opacity-60 cursor-pointer"
+            >
+              <RotateCcw className="h-3 w-3" />
+              {lang === 'ta' ? 'அனைத்தையும் மீட்டமை' : 'Reset Filters'}
+            </button>
+          </div>
         </div>
-        <div className="p-4 sm:p-5">
+        <div className="portal-fis-body">
           <InspectionReportsView
             state={state}
             lang={lang}
@@ -1387,198 +1520,200 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
             hideTabsHeader={true}
             hideTopTitle={true}
             embedMode={true}
+            hideFilterActions={true}
+            onFilterActionsReady={setEmbedFilterActions}
           />
         </div>
       </section>
 
       {/* Visual Charts / Diagrams */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        {/* Left: Category Wise Diagrams */}
-        <div className="portal-dashboard-panel space-y-4 p-5 sm:p-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+      <div className="portal-issue-split">
+        <div className="portal-dashboard-panel is-issue-cat">
+          <div className="portal-dash-head">
             <div>
-              <h3 className="text-[15px] font-semibold text-slate-800">
+              <h3>
+                <span className="portal-dash-icon">
+                  <Layers className="h-3 w-3" />
+                </span>
                 {lang === 'ta' ? 'வகை வாரியான வரைபடம்' : 'Issues by category'}
               </h3>
-              <p className="mt-0.5 text-[12px] text-slate-500">
+              <p>
                 {lang === 'ta' ? 'வகையைத் தேர்ந்தெடுத்து உட்பிரிவுகளை வடிகட்டவும்' : 'Select a category to filter subcategories'}
               </p>
             </div>
-            {selectedChartCategory && (
-              <button 
-                onClick={() => setSelectedChartCategory('')}
-                className="text-[11px] font-bold text-fuchsia-600 hover:text-fuchsia-700 bg-fuchsia-50 px-2 py-1 rounded-md transition"
-              >
-                {lang === 'ta' ? 'அனைத்தும் காட்டு' : 'Clear Filter'}
-              </button>
-            )}
+            <div className="portal-issue-head-actions">
+              <span className="portal-issue-badge">{categoryIssueRows.total}</span>
+              {selectedChartCategory && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedChartCategory('')}
+                  className="portal-dash-head-action"
+                >
+                  {lang === 'ta' ? 'அனைத்தும் காட்டு' : 'Clear Filter'}
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="space-y-3 pt-1">
-            {CATEGORIES_LIST.map((cat: any) => {
-              const val = baseFilteredIssues.filter((i: any) => i.category === cat.id).length;
-              const maxCount = Math.max(...CATEGORIES_LIST.map((c: any) => baseFilteredIssues.filter((i: any) => i.category === c.id).length), 1);
-              const widthPct = (val / maxCount) * 100;
-              const isSelected = selectedChartCategory === cat.id;
-              const categoryThemeColor = getCategoryThemeColor(cat.id);
-
-              return (
-                <div 
-                  key={cat.id} 
-                  onClick={() => setSelectedChartCategory(isSelected ? '' : cat.id)}
-                  style={isSelected ? {
-                    borderColor: `${categoryThemeColor}40`,
-                    backgroundColor: `${categoryThemeColor}08`,
-                    boxShadow: `0 0 0 1px ${categoryThemeColor}20`
-                  } : {}}
-                  className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
-                    isSelected 
-                      ? 'shadow-sm' 
-                      : 'border-gray-50 hover:border-gray-200 bg-gray-50/20 hover:bg-gray-50/50'
-                  }`}
-                >
-                  <div className="flex justify-between text-xs font-bold text-slate-700 mb-2">
-                    <span className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: categoryThemeColor }} />
-                      {lang === 'ta' ? cat.nameTa : cat.nameEn}
-                    </span>
-                    <span>{val} {lang === 'ta' ? 'பிரச்சினைகள்' : 'Issues'}</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${widthPct}%` }}
-                      transition={{ duration: 0.5, ease: 'easeOut' }}
-                      className="h-full rounded-full"
-                      style={{ backgroundColor: categoryThemeColor }}
-                    />
-                  </div>
+          <div className="portal-dash-body">
+            <div className="portal-cat-compose">
+              <div className="portal-cat-ring">
+                <svg viewBox="0 0 120 120" aria-hidden="true">
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r={categoryIssueRows.ringR}
+                    fill="none"
+                    stroke="#e8eef6"
+                    strokeWidth="14"
+                  />
+                  {categoryIssueRows.segments.map((seg: any) => {
+                    const isSelected = selectedChartCategory === seg.id;
+                    const dimmed = Boolean(selectedChartCategory) && !isSelected;
+                    return (
+                      <circle
+                        key={seg.id}
+                        cx="60"
+                        cy="60"
+                        r={categoryIssueRows.ringR}
+                        fill="none"
+                        stroke={seg.color}
+                        strokeWidth={isSelected ? 16 : 14}
+                        strokeDasharray={seg.dash}
+                        strokeDashoffset={seg.offset}
+                        transform="rotate(-90 60 60)"
+                        className={`portal-cat-slice ${dimmed ? 'is-dim' : ''}`}
+                        onClick={() => setSelectedChartCategory(isSelected ? '' : seg.id)}
+                      />
+                    );
+                  })}
+                </svg>
+                <div className="portal-cat-ring-label">
+                  <strong>
+                    {selectedChartCategory
+                      ? (categoryIssueRows.rows.find((row: any) => row.id === selectedChartCategory)?.count ?? 0)
+                      : categoryIssueRows.total}
+                  </strong>
+                  <span>{lang === 'ta' ? 'பிரச்சினைகள்' : 'Issues'}</span>
                 </div>
-              );
-            })}
+              </div>
+              <div className="portal-cat-legend">
+                {categoryIssueRows.rows.map((cat: any) => {
+                  const isSelected = selectedChartCategory === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setSelectedChartCategory(isSelected ? '' : cat.id)}
+                      className={`portal-cat-legend-row ${isSelected ? 'is-active' : ''}`}
+                      style={{ ['--cat-tone' as string]: cat.color }}
+                    >
+                      <span className="portal-cat-swatch" />
+                      <span className="portal-cat-legend-name">
+                        {lang === 'ta' ? cat.nameTa : cat.nameEn}
+                      </span>
+                      <span className="portal-cat-legend-bar">
+                        <span style={{ width: `${(cat.count / categoryIssueRows.maxCount) * 100}%` }} />
+                      </span>
+                      <span className="portal-cat-legend-count">{cat.count}</span>
+                      <span className="portal-cat-legend-share">{cat.share}%</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Right: Subcategory Wise Diagrams */}
-        <div className="portal-dashboard-panel space-y-4 p-5 sm:p-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="portal-dashboard-panel is-issue-sub">
+          <div className="portal-dash-head">
             <div>
-              <h3 className="text-[15px] font-semibold text-slate-800">
+              <h3>
+                <span className="portal-dash-icon">
+                  <BarChart3 className="h-3 w-3" />
+                </span>
                 {lang === 'ta' ? 'துணை வகை வாரியான வரைபடம்' : 'Issues by subcategory'}
               </h3>
-              <p className="mt-0.5 text-[12px] text-slate-500">
+              <p>
                 {(() => {
                   if (selectedChartCategory) {
                     const matched = CATEGORIES_LIST.find((c: any) => c.id === selectedChartCategory);
                     const name = matched ? (lang === 'ta' ? matched.nameTa : matched.nameEn) : '';
                     return lang === 'ta' ? `வகைக்கான துணை வகைகள்: ${name}` : `Subcategories for ${name}`;
                   }
-                  return lang === 'ta' ? 'அனைத்து துணை வகைகளின் பட்டியல்' : 'All subcategories across all categories';
+                  return lang === 'ta' ? 'துணை வகை வாரியான எண்ணிக்கை' : 'Issue count by subcategory';
                 })()}
               </p>
             </div>
+            <span className="portal-issue-badge">{subcategoryIssueRows.total}</span>
           </div>
 
-          <div className="space-y-3 pt-1 max-h-[340px] overflow-y-auto pr-1">
-            {(() => {
-              // Collect active subcategories to display
-              let displayedSubcats: any[] = [];
-              if (selectedChartCategory) {
-                const parentCat = CATEGORIES_LIST.find((c: any) => c.id === selectedChartCategory);
-                if (parentCat) {
-                  displayedSubcats = (parentCat.subcategories || []).map((sub: any) => ({
-                    ...sub,
-                    color: parentCat.color,
-                    categoryEn: parentCat.nameEn,
-                    categoryTa: parentCat.nameTa,
-                    categoryId: parentCat.id
-                  }));
-                }
-              } else {
-                CATEGORIES_LIST.forEach((cat: any) => {
-                  (cat.subcategories || []).forEach((sub: any) => {
-                    displayedSubcats.push({
-                      ...sub,
-                      color: cat.color,
-                      categoryEn: cat.nameEn,
-                      categoryTa: cat.nameTa,
-                      categoryId: cat.id
-                    });
-                  });
-                });
-              }
-
-              // Compute counts
-              const subcatData = displayedSubcats.map((sub: any) => {
-                const val = baseFilteredIssues.filter((i: any) => i.subcategory === sub.id).length;
-                return { ...sub, count: val };
-              });
-
-              const maxSubcatCount = Math.max(...subcatData.map((s: any) => s.count), 1);
-
-              return subcatData.map((sub: any) => {
-                const widthPct = (sub.count / maxSubcatCount) * 100;
-                return (
-                  <div key={`${sub.categoryId}_${sub.id}`} className="p-3 bg-slate-50/30 rounded-xl border border-slate-50">
-                    <div className="flex justify-between text-[11px] font-semibold text-slate-600 mb-1.5">
-                      <span className="truncate max-w-[200px]" title={lang === 'ta' ? sub.nameTa : sub.nameEn}>
+          <div className="portal-dash-body">
+            {subcategoryIssueRows.rows.length === 0 ? (
+              <div className="portal-sub-empty">
+                {lang === 'ta' ? 'துணை வகைகள் இல்லை' : 'No subcategories to display'}
+              </div>
+            ) : (
+              <div className="portal-cat-legend">
+                {subcategoryIssueRows.rows.map((sub: any) => {
+                  const share = subcategoryIssueRows.total > 0 ? Math.round((sub.count / subcategoryIssueRows.total) * 100) : 0;
+                  return (
+                    <div
+                      key={`${sub.categoryId}_${sub.id}`}
+                      className="portal-cat-legend-row"
+                      style={{ ['--cat-tone' as string]: sub.parentColor }}
+                    >
+                      <span className="portal-cat-swatch" />
+                      <span className="portal-cat-legend-name">
                         {lang === 'ta' ? sub.nameTa : sub.nameEn}
-                        {!selectedChartCategory && (
-                          <span className="text-[9px] text-gray-400 font-bold ml-1.5 px-1 py-0.5 bg-gray-100 rounded-sm">
-                            {lang === 'ta' ? sub.categoryTa : sub.categoryEn}
-                          </span>
-                        )}
                       </span>
-                      <span className="font-bold text-slate-800 shrink-0">{sub.count} {lang === 'ta' ? 'பதிவுகள்' : 'cases'}</span>
+                      <span className="portal-cat-legend-bar">
+                        <span style={{ width: `${(sub.count / subcategoryIssueRows.maxCount) * 100}%` }} />
+                      </span>
+                      <span className="portal-cat-legend-count">{sub.count}</span>
+                      <span className="portal-cat-legend-share">{share}%</span>
                     </div>
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${widthPct}%` }}
-                        transition={{ duration: 0.5, ease: 'easeOut' }}
-                        className="h-full rounded-full"
-                        style={{ backgroundColor: getCategoryThemeColor(sub.categoryId) }}
-                      />
-                    </div>
-                  </div>
-                );
-              });
-            })()}
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Abstract Table with Filters Section */}
-      <div id="abstract-register-section" className="portal-dashboard-panel space-y-5 p-5 sm:p-6">
-        <div className="border-b border-slate-100 pb-4">
-          <h3 className="flex items-center gap-2 text-[15px] font-semibold text-slate-800">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#123A73]/10 text-[#123A73]">
-              <AlertTriangle className="h-4 w-4" />
-            </span>
-            {lang === 'ta' ? 'பிரச்சினைகள் கண்காணிப்பு அட்டவணை' : 'Issues monitoring register'}
-          </h3>
-          <p className="mt-2 text-[12px] leading-relaxed text-slate-500">
-            {lang === 'ta'
-              ? 'மண்டலம், மாவட்டம், பேரூராட்சி மற்றும் நிலை வாரியாக வடிகட்டி பார்க்கவும்.'
-              : 'Filter by zone, district, town panchayat, and status for a live summary.'}
-          </p>
+      <div id="abstract-register-section" className="portal-dashboard-panel">
+        <div className="portal-dash-head">
+          <div>
+            <h3>
+              <span className="portal-dash-icon">
+                <AlertTriangle className="h-3 w-3" />
+              </span>
+              {lang === 'ta' ? 'பிரச்சினைகள் கண்காணிப்பு அட்டவணை' : 'Issues monitoring register'}
+            </h3>
+            <p>
+              {lang === 'ta'
+                ? 'மண்டலம், மாவட்டம், பேரூராட்சி மற்றும் நிலை வாரியாக வடிகட்டி பார்க்கவும்.'
+                : 'Filter by zone, district, town panchayat, and status for a live summary.'}
+            </p>
+          </div>
         </div>
 
+        <div className="portal-dash-body portal-dash-register">
         {/* Dynamic Filters Bar */}
-        <div className="grid grid-cols-1 gap-4 rounded-xl border border-slate-100 bg-slate-50/60 p-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="portal-dash-fields">
           {/* Zone Filter */}
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+            <label>
               {lang === 'ta' ? 'மண்டலம்' : 'Zone'}
             </label>
-            <select
+            <ThemeSelect
               value={filterZoneId}
               onChange={(e) => {
                 setFilterZoneId(e.target.value);
                 setFilterDistrictId('');
                 setFilterTPId('');
               }}
-              className="w-full text-xs p-2.5 rounded-xl border border-gray-200 outline-none bg-white font-medium"
             >
               {hodLike && (
                 <option value="">{lang === 'ta' ? 'அனைத்து மண்டலங்கள்' : 'All Zones'}</option>
@@ -1586,21 +1721,20 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               {allowedZones.map((z: any) => (
                 <option key={z.id} value={z.id}>{tObj(z)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* District Filter */}
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+            <label>
               {lang === 'ta' ? 'மாவட்டம்' : 'District'}
             </label>
-            <select
+            <ThemeSelect
               value={filterDistrictId}
               onChange={(e) => {
                 setFilterDistrictId(e.target.value);
                 setFilterTPId('');
               }}
-              className="w-full text-xs p-2.5 rounded-xl border border-gray-200 outline-none bg-white font-medium"
             >
               {currentUser.scopeType !== 'TownPanchayat' && (
                 <option value="">{lang === 'ta' ? 'அனைத்து மாவட்டங்கள்' : 'All Districts'}</option>
@@ -1608,18 +1742,17 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               {availableDistricts.map((d: any) => (
                 <option key={d.id} value={d.id}>{tObj(d)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Town Panchayat Filter */}
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+            <label>
               {lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}
             </label>
-            <select
+            <ThemeSelect
               value={filterTPId}
               onChange={(e) => setFilterTPId(e.target.value)}
-              className="w-full text-xs p-2.5 rounded-xl border border-gray-200 outline-none bg-white font-medium"
             >
               {currentUser.scopeType !== 'TownPanchayat' && (
                 <option value="">{lang === 'ta' ? 'அனைத்து பேரூராட்சிகள்' : 'All Town Panchayats'}</option>
@@ -1627,18 +1760,17 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               {availableTPs.map((tp: any) => (
                 <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Category Filter */}
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+            <label>
               {lang === 'ta' ? 'பிரிவு (Category)' : 'Category'}
             </label>
-            <select
+            <ThemeSelect
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
-              className="w-full text-xs p-2.5 rounded-xl border border-gray-200 outline-none bg-white font-medium"
             >
               <option value="">{lang === 'ta' ? 'அனைத்து பிரிவுகள்' : 'All Categories'}</option>
               {Object.keys(CATEGORIES_MAP).map((catId) => (
@@ -1646,32 +1778,30 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                   {lang === 'ta' ? CATEGORIES_MAP[catId].ta : CATEGORIES_MAP[catId].en}
                 </option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Stage / Status Filter */}
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+            <label>
               {lang === 'ta' ? 'நிலை (Stage)' : 'Stage / Status'}
             </label>
-            <select
+            <ThemeSelect
               value={filterStage}
               onChange={(e) => setFilterStage(e.target.value)}
-              className="w-full text-xs p-2.5 rounded-xl border border-gray-200 outline-none bg-white font-medium"
             >
               <option value="">{lang === 'ta' ? 'அனைத்து நிலைகள்' : 'All Stages'}</option>
               <option value="Pending">{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</option>
               <option value="In Progress">{lang === 'ta' ? 'நடவடிக்கை (In Progress)' : 'In Progress'}</option>
               <option value="Resolved">{lang === 'ta' ? 'தீர்க்கப்பட்டது (Resolved)' : 'Resolved'}</option>
-            </select>
+            </ThemeSelect>
           </div>
         </div>
 
         {/* Abstract Table (Summary Matrix of Issue Counts based on active filters) */}
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-2 rounded-2xl border border-gray-100">
-            {/* Left side: View Mode Toggles */}
-            <div className="flex items-center gap-1 bg-slate-50 p-1.5 rounded-xl border border-slate-100 shrink-0">
+        <div className="flex flex-col gap-2">
+          <div className="portal-dash-toolbar">
+            <div className="portal-dash-pills">
               {permissibleModes.includes('category') && (
                 <button
                   type="button"
@@ -1681,11 +1811,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                     setSelectedAbstractSubcategory('');
                     setSelectedAbstractStatus('');
                   }}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    abstractViewMode === 'category'
-                      ? 'bg-white text-indigo-700 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
+                  className={`portal-dash-pill ${abstractViewMode === 'category' ? 'is-active' : ''}`}
                 >
                   {lang === 'ta' ? 'வகை வாரியாக' : 'Category Wise'}
                 </button>
@@ -1699,11 +1825,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                     setSelectedAbstractSubcategory('');
                     setSelectedAbstractStatus('');
                   }}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    abstractViewMode === 'zone'
-                      ? 'bg-white text-indigo-700 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
+                  className={`portal-dash-pill ${abstractViewMode === 'zone' ? 'is-active' : ''}`}
                 >
                   {lang === 'ta' ? 'மண்டல வாரியாக' : 'Zone Wise'}
                 </button>
@@ -1717,30 +1839,25 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                     setSelectedAbstractSubcategory('');
                     setSelectedAbstractStatus('');
                   }}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    abstractViewMode === 'district'
-                      ? 'bg-white text-indigo-700 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
+                  className={`portal-dash-pill ${abstractViewMode === 'district' ? 'is-active' : ''}`}
                 >
                   {lang === 'ta' ? 'மாவட்ட வாரியாக' : 'District Wise'}
                 </button>
               )}
             </div>
 
-            {/* Right side: Refresh & Download Excel Buttons */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={handleRefreshAbstract}
                 disabled={isRefreshingAbstract}
-                className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold shadow-2xs transition-all cursor-pointer select-none disabled:opacity-60"
+                className="portal-fis-chip"
                 title={lang === 'ta' ? 'அட்டவணை சுருக்கத்தைப் புதுப்பி' : 'Refresh Abstract Table'}
               >
-                <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 ${isRefreshingAbstract ? 'animate-spin' : ''}`} />
-                <span>{lang === 'ta' ? 'புதுப்பி (Refresh)' : 'Refresh'}</span>
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingAbstract ? 'animate-spin' : ''}`} style={{ color: 'var(--theme-accent)' }} />
+                <span>{lang === 'ta' ? 'புதுப்பி' : 'Refresh'}</span>
                 {abstractRefreshTime && (
-                  <span className="text-[10px] text-slate-400 font-mono hidden md:inline ml-1">
+                  <span className="text-[10px] text-slate-400 font-mono hidden md:inline">
                     {abstractRefreshTime}
                   </span>
                 )}
@@ -1749,29 +1866,29 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               <button
                 type="button"
                 onClick={() => downloadExcel('abstract')}
-                className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer select-none"
+                className="portal-fis-chip portal-fis-chip-excel"
               >
-                <FileText className="w-4 h-4" />
-                <span>{lang === 'ta' ? 'அட்டவணை சுருக்கம் பதிவிறக்கம் (Excel)' : 'Download Abstract Excel'}</span>
+                <FileText className="w-3.5 h-3.5" />
+                <span>{lang === 'ta' ? 'எக்செல்' : 'Excel Export'}</span>
               </button>
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-gray-150 shadow-2xs">
+          <div className="portal-dash-table overflow-x-auto">
             <table className="w-full text-center text-xs border-collapse">
               {abstractViewMode === 'category' && (
                 <>
                   <thead>
-                    <tr className="bg-slate-50 font-bold text-slate-600 border-b border-gray-150 text-[10px] uppercase tracking-wider">
-                      <th className="p-3 text-left border-r border-gray-150">{lang === 'ta' ? 'வகை' : 'Category'}</th>
-                      <th className="p-3 text-left border-r border-gray-150">{lang === 'ta' ? 'துணைப் பிரிவு' : 'Subcategory'}</th>
-                      <th className="p-3 border-r border-gray-150">{lang === 'ta' ? 'மொத்தப் பிரச்சினைகள்' : 'Total Issues'}</th>
-                      <th className="p-3 border-r border-gray-150 text-amber-700">{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</th>
-                      <th className="p-3 border-r border-gray-150 text-indigo-700">{lang === 'ta' ? 'செயல்பாட்டில் (In Progress)' : 'In Progress'}</th>
-                      <th className="p-3 border-r border-gray-150 text-emerald-700">{lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved'}</th>
+                    <tr>
+                      <th className="text-left">{lang === 'ta' ? 'வகை' : 'Category'}</th>
+                      <th className="text-left">{lang === 'ta' ? 'துணைப் பிரிவு' : 'Subcategory'}</th>
+                      <th>{lang === 'ta' ? 'மொத்தப் பிரச்சினைகள்' : 'Total Issues'}</th>
+                      <th>{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</th>
+                      <th>{lang === 'ta' ? 'செயல்பாட்டில் (In Progress)' : 'In Progress'}</th>
+                      <th>{lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved'}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-150 font-medium text-slate-700">
+                  <tbody>
                     {visibleCategories.flatMap((cat: any) => 
                       (cat.subcategories || []).map((sub: any) => {
                         const subcatIssues = baseFilteredIssues.filter((i: any) => i.category === cat.id && i.subcategory === sub.id);
@@ -1784,7 +1901,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                         return (
                           <tr 
                             key={`${cat.id}-${sub.id}`} 
-                            className={`hover:bg-slate-50/40 transition cursor-pointer ${isSelected ? 'bg-fuchsia-50/70 font-bold' : ''}`}
+                            className={`cursor-pointer ${isSelected ? 'is-selected' : ''}`}
                             onClick={() => {
                               if (isSelected) {
                                 setSelectedAbstractCategory('');
@@ -1795,42 +1912,42 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                               }
                             }}
                           >
-                            <td className="p-3 text-left font-bold border-r border-gray-150 bg-slate-50/20">{lang === 'ta' ? cat.nameTa : cat.nameEn}</td>
-                            <td className="p-3 text-left border-r border-gray-150">{lang === 'ta' ? sub.nameTa : sub.nameEn}</td>
-                            <td className="p-3 font-bold border-r border-gray-150">{total}</td>
-                            <td className="p-3 border-r border-gray-150 font-bold text-amber-600">{pending}</td>
-                            <td className="p-3 border-r border-gray-150 font-bold text-indigo-600">{inProgress}</td>
-                            <td className="p-3 border-r border-gray-150 font-bold text-emerald-600">{resolved}</td>
+                            <td className="text-left font-bold">{lang === 'ta' ? cat.nameTa : cat.nameEn}</td>
+                            <td className="text-left">{lang === 'ta' ? sub.nameTa : sub.nameEn}</td>
+                            <td className="portal-dash-num">{total}</td>
+                            <td className="portal-dash-num is-pending">{pending}</td>
+                            <td className="portal-dash-num is-progress">{inProgress}</td>
+                            <td className="portal-dash-num is-resolved">{resolved}</td>
                           </tr>
                         );
                       })
                     )}
                   </tbody>
-                  <tfoot className="border-t-2 border-slate-300 font-bold text-slate-800 bg-slate-100">
+                  <tfoot>
                     <tr>
-                      <td colSpan={2} className="p-3 text-right border-r border-gray-150 font-extrabold text-[11px] uppercase tracking-wider">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
-                      <td className="p-3 border-r border-gray-150 font-extrabold text-sm">{(() => {
+                      <td colSpan={2} className="text-right">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
+                      <td>{(() => {
                         let total = 0;
                         visibleCategories.forEach((cat: any) => (cat.subcategories || []).forEach((sub: any) => {
                           total += baseFilteredIssues.filter((i: any) => i.category === cat.id && i.subcategory === sub.id).length;
                         }));
                         return total;
                       })()}</td>
-                      <td className="p-3 border-r border-gray-150 font-extrabold text-sm text-amber-700">{(() => {
+                      <td className="portal-dash-num is-pending">{(() => {
                         let pending = 0;
                         visibleCategories.forEach((cat: any) => (cat.subcategories || []).forEach((sub: any) => {
                           pending += baseFilteredIssues.filter((i: any) => i.category === cat.id && i.subcategory === sub.id && i.status === 'Pending').length;
                         }));
                         return pending;
                       })()}</td>
-                      <td className="p-3 border-r border-gray-150 font-extrabold text-sm text-indigo-700">{(() => {
+                      <td className="portal-dash-num is-progress">{(() => {
                         let inProgress = 0;
                         visibleCategories.forEach((cat: any) => (cat.subcategories || []).forEach((sub: any) => {
                           inProgress += baseFilteredIssues.filter((i: any) => i.category === cat.id && i.subcategory === sub.id && (i.status === 'In Progress' || i.status === 'Active')).length;
                         }));
                         return inProgress;
                       })()}</td>
-                      <td className="p-3 border-r border-gray-150 font-extrabold text-sm text-emerald-700">{(() => {
+                      <td className="portal-dash-num is-resolved">{(() => {
                         let resolved = 0;
                         visibleCategories.forEach((cat: any) => (cat.subcategories || []).forEach((sub: any) => {
                           resolved += baseFilteredIssues.filter((i: any) => i.category === cat.id && i.subcategory === sub.id && (i.status === 'Resolved' || i.status === 'Closed')).length;
@@ -1845,15 +1962,15 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               {abstractViewMode === 'zone' && (
                 <>
                   <thead>
-                    <tr className="bg-slate-50 font-bold text-slate-600 border-b border-gray-150 text-[10px] uppercase tracking-wider">
-                      <th className="p-3 text-left border-r border-gray-150">{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</th>
-                      <th className="p-3 border-r border-gray-150">{lang === 'ta' ? 'மொத்தப் பிரச்சினைகள்' : 'Total Issues'}</th>
-                      <th className="p-3 border-r border-gray-150 text-amber-700">{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</th>
-                      <th className="p-3 border-r border-gray-150 text-indigo-700">{lang === 'ta' ? 'செயல்பாட்டில் (In Progress)' : 'In Progress'}</th>
-                      <th className="p-3 border-r border-gray-150 text-emerald-700">{lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved'}</th>
+                    <tr>
+                      <th className="text-left">{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</th>
+                      <th>{lang === 'ta' ? 'மொத்தப் பிரச்சினைகள்' : 'Total Issues'}</th>
+                      <th>{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</th>
+                      <th>{lang === 'ta' ? 'செயல்பாட்டில் (In Progress)' : 'In Progress'}</th>
+                      <th>{lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved'}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-150 font-medium text-slate-700">
+                  <tbody>
                     {zones.map((zone: any) => {
                       const zoneTPs = townPanchayats.filter((tp: any) => tp.zoneId === zone.id);
                       const tpIds = zoneTPs.map((tp: any) => tp.id);
@@ -1867,7 +1984,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                       return (
                         <tr 
                           key={zone.id} 
-                          className={`hover:bg-slate-50/40 transition cursor-pointer ${isSelected ? 'bg-indigo-50/70 font-bold' : ''}`}
+                          className={`cursor-pointer ${isSelected ? 'is-selected' : ''}`}
                           onClick={() => {
                             if (isSelected) {
                               setFilterZoneId('');
@@ -1878,19 +1995,19 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                             }
                           }}
                         >
-                          <td className="p-3 text-left font-bold border-r border-gray-150 bg-slate-50/20">{tObj(zone)}</td>
-                          <td className="p-3 font-bold border-r border-gray-150">{total}</td>
-                          <td className="p-3 border-r border-gray-150 font-bold text-amber-600">{pending}</td>
-                          <td className="p-3 border-r border-gray-150 font-bold text-indigo-600">{inProgress}</td>
-                          <td className="p-3 border-r border-gray-150 font-bold text-emerald-600">{resolved}</td>
+                          <td className="text-left font-bold">{tObj(zone)}</td>
+                          <td className="portal-dash-num">{total}</td>
+                          <td className="portal-dash-num is-pending">{pending}</td>
+                          <td className="portal-dash-num is-progress">{inProgress}</td>
+                          <td className="portal-dash-num is-resolved">{resolved}</td>
                         </tr>
                       );
                     })}
                   </tbody>
-                  <tfoot className="border-t-2 border-slate-300 font-bold text-slate-800 bg-slate-100">
+                  <tfoot>
                     <tr>
-                      <td className="p-3 text-right border-r border-gray-150 font-extrabold text-[11px] uppercase tracking-wider">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
-                      <td className="p-3 border-r border-gray-150 font-extrabold text-sm">{(() => {
+                      <td className="text-right">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
+                      <td>{(() => {
                         let total = 0;
                         zones.forEach((zone: any) => {
                           const zoneTPs = townPanchayats.filter((tp: any) => tp.zoneId === zone.id);
@@ -1899,7 +2016,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                         });
                         return total;
                       })()}</td>
-                      <td className="p-3 border-r border-gray-150 font-extrabold text-sm text-amber-700">{(() => {
+                      <td className="portal-dash-num is-pending">{(() => {
                         let pending = 0;
                         zones.forEach((zone: any) => {
                           const zoneTPs = townPanchayats.filter((tp: any) => tp.zoneId === zone.id);
@@ -1908,7 +2025,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                         });
                         return pending;
                       })()}</td>
-                      <td className="p-3 border-r border-gray-150 font-extrabold text-sm text-indigo-700">{(() => {
+                      <td className="portal-dash-num is-progress">{(() => {
                         let inProgress = 0;
                         zones.forEach((zone: any) => {
                           const zoneTPs = townPanchayats.filter((tp: any) => tp.zoneId === zone.id);
@@ -1917,7 +2034,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                         });
                         return inProgress;
                       })()}</td>
-                      <td className="p-3 border-r border-gray-150 font-extrabold text-sm text-emerald-700">{(() => {
+                      <td className="portal-dash-num is-resolved">{(() => {
                         let resolved = 0;
                         zones.forEach((zone: any) => {
                           const zoneTPs = townPanchayats.filter((tp: any) => tp.zoneId === zone.id);
@@ -1934,16 +2051,16 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               {abstractViewMode === 'district' && (
                 <>
                   <thead>
-                    <tr className="bg-slate-50 font-bold text-slate-600 border-b border-gray-150 text-[10px] uppercase tracking-wider">
-                      <th className="p-3 text-left border-r border-gray-150">{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</th>
-                      <th className="p-3 text-left border-r border-gray-150">{lang === 'ta' ? 'மாவட்டம்' : 'District'}</th>
-                      <th className="p-3 border-r border-gray-150">{lang === 'ta' ? 'மொத்தப் பிரச்சினைகள்' : 'Total Issues'}</th>
-                      <th className="p-3 border-r border-gray-150 text-amber-700">{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</th>
-                      <th className="p-3 border-r border-gray-150 text-indigo-700">{lang === 'ta' ? 'செயல்பாட்டில் (In Progress)' : 'In Progress'}</th>
-                      <th className="p-3 border-r border-gray-150 text-emerald-700">{lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved'}</th>
+                    <tr>
+                      <th className="text-left">{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</th>
+                      <th className="text-left">{lang === 'ta' ? 'மாவட்டம்' : 'District'}</th>
+                      <th>{lang === 'ta' ? 'மொத்தப் பிரச்சினைகள்' : 'Total Issues'}</th>
+                      <th>{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</th>
+                      <th>{lang === 'ta' ? 'செயல்பாட்டில் (In Progress)' : 'In Progress'}</th>
+                      <th>{lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved'}</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-150 font-medium text-slate-700">
+                  <tbody>
                     {(() => {
                       const userDistricts = currentUser.scopeType === 'Zone' 
                         ? districts.filter((d: any) => d.zoneId === currentUser.scopeId) 
@@ -1963,7 +2080,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                         return (
                           <tr 
                             key={district.id} 
-                            className={`hover:bg-slate-50/40 transition cursor-pointer ${isSelected ? 'bg-indigo-50/70 font-bold' : ''}`}
+                            className={`cursor-pointer ${isSelected ? 'is-selected' : ''}`}
                             onClick={() => {
                               if (isSelected) {
                                 setFilterDistrictId('');
@@ -1974,21 +2091,21 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                               }
                             }}
                           >
-                            <td className="p-3 text-left border-r border-gray-150 text-gray-400 font-normal">{zone ? tObj(zone) : ''}</td>
-                            <td className="p-3 text-left font-bold border-r border-gray-150 bg-slate-50/20">{tObj(district)}</td>
-                            <td className="p-3 font-bold border-r border-gray-150">{total}</td>
-                            <td className="p-3 border-r border-gray-150 font-bold text-amber-600">{pending}</td>
-                            <td className="p-3 border-r border-gray-150 font-bold text-indigo-600">{inProgress}</td>
-                            <td className="p-3 border-r border-gray-150 font-bold text-emerald-600">{resolved}</td>
+                            <td className="text-left text-slate-400">{zone ? tObj(zone) : ''}</td>
+                            <td className="text-left font-bold">{tObj(district)}</td>
+                            <td className="portal-dash-num">{total}</td>
+                            <td className="portal-dash-num is-pending">{pending}</td>
+                            <td className="portal-dash-num is-progress">{inProgress}</td>
+                            <td className="portal-dash-num is-resolved">{resolved}</td>
                           </tr>
                         );
                       });
                     })()}
                   </tbody>
-                  <tfoot className="border-t-2 border-slate-300 font-bold text-slate-800 bg-slate-100">
+                  <tfoot>
                     <tr>
-                      <td colSpan={2} className="p-3 text-right border-r border-gray-150 font-extrabold text-[11px] uppercase tracking-wider">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
-                      <td className="p-3 border-r border-gray-150 font-extrabold text-sm">{(() => {
+                      <td colSpan={2} className="text-right">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
+                      <td>{(() => {
                         let total = 0;
                         const userDistricts = currentUser.scopeType === 'Zone' 
                           ? districts.filter((d: any) => d.zoneId === currentUser.scopeId) 
@@ -2000,7 +2117,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                         });
                         return total;
                       })()}</td>
-                      <td className="p-3 border-r border-gray-150 font-extrabold text-sm text-amber-700">{(() => {
+                      <td className="portal-dash-num is-pending">{(() => {
                         let pending = 0;
                         const userDistricts = currentUser.scopeType === 'Zone' 
                           ? districts.filter((d: any) => d.zoneId === currentUser.scopeId) 
@@ -2012,7 +2129,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                         });
                         return pending;
                       })()}</td>
-                      <td className="p-3 border-r border-gray-150 font-extrabold text-sm text-indigo-700">{(() => {
+                      <td className="portal-dash-num is-progress">{(() => {
                         let inProgress = 0;
                         const userDistricts = currentUser.scopeType === 'Zone' 
                           ? districts.filter((d: any) => d.zoneId === currentUser.scopeId) 
@@ -2024,7 +2141,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                         });
                         return inProgress;
                       })()}</td>
-                      <td className="p-3 border-r border-gray-150 font-extrabold text-sm text-emerald-700">{(() => {
+                      <td className="portal-dash-num is-resolved">{(() => {
                         let resolved = 0;
                         const userDistricts = currentUser.scopeType === 'Zone' 
                           ? districts.filter((d: any) => d.zoneId === currentUser.scopeId) 
@@ -2046,22 +2163,22 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
 
         {/* Feedback Filter Bar for Issues Table */}
         {(selectedAbstractCategory || selectedAbstractSubcategory || selectedAbstractStatus) && (
-          <div className="flex flex-wrap justify-between items-center gap-3 bg-fuchsia-50 p-4 rounded-xl border border-fuchsia-100 text-xs">
-            <span className="font-semibold text-fuchsia-800 flex flex-wrap items-center gap-2">
+          <div className="portal-dash-toolbar text-xs">
+            <span className="font-semibold text-slate-700 flex flex-wrap items-center gap-2">
               <span>{lang === 'ta' ? 'அட்டவணை வடிகட்டப்பட்டது: ' : 'Detailed View Filtered By: '}</span>
               {selectedAbstractCategory && (
-                <span className="bg-white px-2 py-1 rounded-md border border-fuchsia-200">
-                  {lang === 'ta' ? 'வகை' : 'Category'}: <strong className="text-fuchsia-900 font-extrabold">{CATEGORIES_MAP[selectedAbstractCategory]?.[lang] || selectedAbstractCategory}</strong>
+                <span className="portal-dash-chip">
+                  {lang === 'ta' ? 'வகை' : 'Category'}: <strong>{CATEGORIES_MAP[selectedAbstractCategory]?.[lang] || selectedAbstractCategory}</strong>
                 </span>
               )}
               {selectedAbstractSubcategory && (
-                <span className="bg-white px-2 py-1 rounded-md border border-fuchsia-200">
-                  {lang === 'ta' ? 'துணைப் பிரிவு' : 'Subcategory'}: <strong className="text-fuchsia-900 font-extrabold">{getSubcategoryName(selectedAbstractCategory, selectedAbstractSubcategory, lang)}</strong>
+                <span className="portal-dash-chip">
+                  {lang === 'ta' ? 'துணைப் பிரிவு' : 'Subcategory'}: <strong>{getSubcategoryName(selectedAbstractCategory, selectedAbstractSubcategory, lang)}</strong>
                 </span>
               )}
               {selectedAbstractStatus && (
-                <span className="bg-white px-2 py-1 rounded-md border border-fuchsia-200">
-                  {lang === 'ta' ? 'நிலை' : 'Stage'}: <strong className="text-fuchsia-900 font-extrabold">{selectedAbstractStatus}</strong>
+                <span className="portal-dash-chip">
+                  {lang === 'ta' ? 'நிலை' : 'Stage'}: <strong>{selectedAbstractStatus}</strong>
                 </span>
               )}
             </span>
@@ -2072,7 +2189,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                 setSelectedAbstractSubcategory('');
                 setSelectedAbstractStatus('');
               }}
-              className="text-[11px] font-bold text-fuchsia-700 bg-white hover:bg-fuchsia-100 px-3 py-1.5 rounded-lg border border-fuchsia-200 transition cursor-pointer"
+              className="portal-dash-pill is-active"
             >
               {lang === 'ta' ? 'அனைத்தையும் காட்டு' : 'Clear Cell Selection'}
             </button>
@@ -2080,11 +2197,11 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
         )}
 
         {/* Detailed Issues Table */}
-        <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+        <div className="flex flex-col gap-2">
+          <div className="portal-dash-toolbar">
+            <h4 className="portal-fis-bar-label">
               <span>{lang === 'ta' ? 'விவரமானப் பிரச்சினைகள் பட்டியல்' : 'Detailed Issues Ledger'}</span>
-              <span className="text-xs text-gray-400 font-normal">({lang === 'ta' ? 'காண்பிக்கப்படும் வரிசைகள்' : 'Showing rows'}: {sortedIssues.length})</span>
+              <span className="text-xs text-slate-400 font-normal">({lang === 'ta' ? 'வரிசைகள்' : 'Rows'}: {sortedIssues.length})</span>
             </h4>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -2100,68 +2217,68 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                     alert(lang === 'ta' ? 'காண்பிக்க பிரச்சினைகள் எதுவும் இல்லை!' : 'No issues to display in slide view!');
                   }
                 }}
-                className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer select-none"
+                className="portal-dash-pill is-active"
               >
-                <MonitorPlay className="w-4 h-4 text-indigo-200" />
+                <MonitorPlay className="w-3.5 h-3.5" />
                 <span>{lang === 'ta' ? 'விளக்க காட்சி' : 'Slide View'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => downloadExcel('detailed')}
-                className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer select-none"
+                className="portal-fis-chip portal-fis-chip-excel"
               >
-                <FileText className="w-4 h-4" />
-                <span>{lang === 'ta' ? 'விவரமானப் பட்டியல் பதிவிறக்கம் (Excel)' : 'Download Detailed Excel'}</span>
+                <FileText className="w-3.5 h-3.5" />
+                <span>{lang === 'ta' ? 'எக்செல்' : 'Excel Export'}</span>
               </button>
             </div>
           </div>
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
+          <div className="portal-dash-table overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-50 font-bold text-slate-600 border-b border-gray-150 text-[10px] uppercase tracking-wider select-none">
-                  <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('issueId')}>
+                <tr>
+                  <th className="cursor-pointer" onClick={() => handleSort('issueId')}>
                     <div className="flex items-center">
                       {lang === 'ta' ? 'விண்ணப்ப எண்' : 'Issue ID'}
                       {renderSortIcon('issueId')}
                     </div>
                   </th>
-                  <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('zone')}>
+                  <th className="cursor-pointer" onClick={() => handleSort('zone')}>
                     <div className="flex items-center">
                       {lang === 'ta' ? 'மண்டலம்' : 'Zone'}
                       {renderSortIcon('zone')}
                     </div>
                   </th>
-                  <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('district')}>
+                  <th className="cursor-pointer" onClick={() => handleSort('district')}>
                     <div className="flex items-center">
                       {lang === 'ta' ? 'மாவட்டம்' : 'District'}
                       {renderSortIcon('district')}
                     </div>
                   </th>
-                  <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('townPanchayatId')}>
+                  <th className="cursor-pointer" onClick={() => handleSort('townPanchayatId')}>
                     <div className="flex items-center">
                       {lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}
                       {renderSortIcon('townPanchayatId')}
                     </div>
                   </th>
-                  <th className="p-3 cursor-pointer hover:bg-slate-100 transition min-w-[250px] max-w-[350px]" onClick={() => handleSort('subject')}>
+                  <th className="cursor-pointer min-w-[250px] max-w-[350px]" onClick={() => handleSort('subject')}>
                     <div className="flex items-center">
                       {lang === 'ta' ? 'பொருள் (Subject)' : 'Subject'}
                       {renderSortIcon('subject')}
                     </div>
                   </th>
-                  <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('category')}>
+                  <th className="cursor-pointer" onClick={() => handleSort('category')}>
                     <div className="flex items-center">
                       {lang === 'ta' ? 'வகை / உட்பிரிவு' : 'Category Sub category'}
                       {renderSortIcon('category')}
                     </div>
                   </th>
-                  <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('lastUpdated')}>
+                  <th className="cursor-pointer" onClick={() => handleSort('lastUpdated')}>
                     <div className="flex items-center">
                       {lang === 'ta' ? 'கடைசியாக புதுப்பிக்கப்பட்டது' : 'Last updated date'}
                       {renderSortIcon('lastUpdated')}
                     </div>
                   </th>
-                  <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('status')}>
+                  <th className="cursor-pointer" onClick={() => handleSort('status')}>
                     <div className="flex items-center">
                       {lang === 'ta' ? 'நிலை (Stage)' : 'Stage status'}
                       {renderSortIcon('status')}
@@ -2169,7 +2286,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50 font-medium text-slate-700">
+              <tbody>
                 {sortedIssues.map((issue: any) => {
                   const catName = CATEGORIES_MAP[issue.category]?.[lang] || issue.category;
                   const lastUpdateDateStr = issue.updatedAt || issue.createdAt;
@@ -2186,33 +2303,33 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                   return (
                     <tr 
                       key={issue.id} 
-                      className="hover:bg-indigo-50/20 transition cursor-pointer"
+                      className="cursor-pointer"
                       onClick={() => {
                         setSelectedLedgerIssue(issue);
                         setActivePreviewFile(null);
                       }}
                     >
-                      <td className="p-3 font-mono font-bold text-indigo-700">{issue.issueId}</td>
-                      <td className="p-3">{getZoneNameByTP(issue.townPanchayatId)}</td>
-                      <td className="p-3">{getDistrictNameByTP(issue.townPanchayatId)}</td>
-                      <td className="p-3">{getTPName(issue.townPanchayatId)}</td>
-                      <td className="p-3 min-w-[250px] max-w-[350px] text-slate-800 font-bold whitespace-normal break-words" title={issue.subject || '-'}>{issue.subject || '-'}</td>
-                      <td className="p-3">
-                        <span className="font-bold text-slate-800">{catName}</span>
-                        <span className="text-gray-400 font-semibold"> / {getSubcategoryName(issue.category, issue.subcategory, lang)}</span>
+                      <td className="portal-dash-id">{issue.issueId}</td>
+                      <td>{getZoneNameByTP(issue.townPanchayatId)}</td>
+                      <td>{getDistrictNameByTP(issue.townPanchayatId)}</td>
+                      <td>{getTPName(issue.townPanchayatId)}</td>
+                      <td className="min-w-[250px] max-w-[350px] font-bold whitespace-normal break-words" title={issue.subject || '-'}>{issue.subject || '-'}</td>
+                      <td>
+                        <span className="font-bold">{catName}</span>
+                        <span className="text-slate-400"> / {getSubcategoryName(issue.category, issue.subcategory, lang)}</span>
                       </td>
-                      <td className="p-3 font-mono text-gray-400">
+                      <td className="font-mono text-slate-400">
                         {lastUpdateDateStr ? new Date(lastUpdateDateStr).toLocaleDateString(lang === 'ta' ? 'ta-IN' : 'en-US', {
                           month: 'short',
                           day: 'numeric',
                           year: 'numeric'
                         }) : '-'}
                       </td>
-                      <td className="p-3">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
-                          displayStatus === 'Pending' ? 'bg-amber-50 text-amber-800 border-amber-200' :
-                          displayStatus === 'In Progress' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                          'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      <td>
+                        <span className={`portal-dash-status ${
+                          displayStatus === 'Pending' ? 'is-pending' :
+                          displayStatus === 'In Progress' ? 'is-progress' :
+                          'is-resolved'
                         }`}>
                           {lang === 'ta'
                             ? (displayStatus === 'Pending' ? 'நிலுவை' : displayStatus === 'In Progress' ? 'நடவடிக்கை' : 'முடிக்கப்பட்டது')
@@ -2225,7 +2342,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                 })}
                 {sortedIssues.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-gray-400 font-semibold italic">
+                    <td colSpan={8} className="py-5 text-center text-gray-400 font-semibold italic">
                       {lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட வடிகட்டிகளில் பிரச்சினைகள் எதுவும் இல்லை.' : 'No issues match the selected filter criteria.'}
                     </td>
                   </tr>
@@ -2234,20 +2351,21 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
             </table>
           </div>
         </div>
+        </div>
       </div>
 
       {/* Ledger Issue Details Popup Modal */}
       {selectedLedgerIssue && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+        <div className="portal-modal-overlay">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]"
+            className="portal-modal w-full max-w-5xl"
           >
             {/* Modal Header */}
-            <div className="flex justify-between items-center bg-indigo-950 px-6 py-4 text-white">
+            <div className="portal-dash-modal-head flex justify-between items-center px-6 py-4">
               <div>
-                <span className="bg-indigo-900 text-indigo-200 text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider border border-indigo-850">
+                <span className="portal-dash-modal-badge text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider">
                   {selectedLedgerIssue.status}
                 </span>
                 <h3 className="text-md font-extrabold tracking-tight mt-1">
@@ -2257,7 +2375,8 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               <button 
                 type="button" 
                 onClick={() => setSelectedLedgerIssue(null)}
-                className="p-1.5 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition cursor-pointer"
+                className="portal-modal-close"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2504,7 +2623,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                               href={currentPreview.url} 
                               target="_blank" 
                               rel="noreferrer" 
-                              className="text-[10px] bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-md font-bold transition cursor-pointer shrink-0"
+                              className="portal-dash-action text-[10px] px-2.5 py-1 rounded-md font-bold transition cursor-pointer shrink-0"
                             >
                               {lang === 'ta' ? 'பதிவிறக்கம்' : 'Open in New Tab'}
                             </a>
@@ -2536,7 +2655,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
             </div>
 
             {/* Modal Footer */}
-            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
+            <div className="portal-modal-foot">
               <button
                 type="button"
                 onClick={() => setSelectedLedgerIssue(null)}
@@ -2578,28 +2697,28 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
         return (
           <div className="fixed inset-0 z-50 bg-slate-100 text-slate-800 flex flex-col overflow-hidden select-none animate-in fade-in duration-200">
             {/* Header with Theme Color Background and Single Line Details */}
-            <div className="bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 border-b border-indigo-800 px-6 py-3.5 flex flex-row justify-between items-center gap-4 shrink-0 shadow-md text-white overflow-hidden">
+            <div className="portal-dash-modal-head px-6 py-3.5 flex flex-row justify-between items-center gap-4 shrink-0 shadow-md overflow-hidden">
               <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar">
-                <div className="flex items-center gap-2 whitespace-nowrap text-xs md:text-sm text-slate-100 font-medium">
+                <div className="flex items-center gap-2 whitespace-nowrap text-xs md:text-sm text-white/90 font-medium">
                   {/* Zone */}
-                  <span className="text-fuchsia-300 font-bold">{getZoneNameByTP(currentIssue.townPanchayatId)}</span>
-                  <span className="text-indigo-700 font-light">/</span>
+                  <span className="text-white font-bold">{getZoneNameByTP(currentIssue.townPanchayatId)}</span>
+                  <span className="text-white/40 font-light">/</span>
                   {/* District */}
-                  <span className="text-slate-100 font-bold">{getDistrictNameByTP(currentIssue.townPanchayatId)}</span>
-                  <span className="text-indigo-700 font-light">/</span>
+                  <span className="text-white font-bold">{getDistrictNameByTP(currentIssue.townPanchayatId)}</span>
+                  <span className="text-white/40 font-light">/</span>
                   {/* TP */}
                   <span className="text-white font-bold">{getTPName(currentIssue.townPanchayatId)}</span>
-                  <span className="text-indigo-700 font-light">/</span>
+                  <span className="text-white/40 font-light">/</span>
                   {/* Cat */}
-                  <span className="text-indigo-100 font-bold">
+                  <span className="text-white/90 font-bold">
                     {CATEGORIES_MAP[currentIssue.category]?.[lang] || currentIssue.category}
                   </span>
-                  <span className="text-indigo-700 font-light">/</span>
+                  <span className="text-white/40 font-light">/</span>
                   {/* Sub */}
-                  <span className="text-fuchsia-200 font-bold">{getSubcategoryName(currentIssue.category, currentIssue.subcategory, lang)}</span>
-                  <span className="text-indigo-700 font-light">/</span>
+                  <span className="text-white font-bold">{getSubcategoryName(currentIssue.category, currentIssue.subcategory, lang)}</span>
+                  <span className="text-white/40 font-light">/</span>
                   {/* ID */}
-                  <span className="font-mono text-fuchsia-300 bg-indigo-900/50 px-2.5 py-0.5 rounded-lg border border-indigo-700/60 shadow-inner font-black text-xs md:text-sm">
+                  <span className="portal-dash-modal-badge font-mono px-2.5 py-0.5 rounded-lg font-black text-xs md:text-sm">
                     {currentIssue.issueId}
                   </span>
                 </div>
@@ -2612,18 +2731,18 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                     type="button"
                     onClick={handlePrevSlide}
                     disabled={activeSlideIndex === 0}
-                    className="p-2 bg-indigo-900/40 hover:bg-indigo-800 disabled:opacity-30 rounded-xl transition cursor-pointer text-indigo-100 border border-indigo-800/40"
+                    className="p-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 rounded-xl transition cursor-pointer text-white border border-white/15"
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
-                  <span className="text-xs font-bold font-mono px-2 text-indigo-200">
+                  <span className="text-xs font-bold font-mono px-2 text-white/80">
                     {activeSlideIndex + 1} / {sortedIssues.length}
                   </span>
                   <button
                     type="button"
                     onClick={handleNextSlide}
                     disabled={activeSlideIndex === sortedIssues.length - 1}
-                    className="p-2 bg-indigo-900/40 hover:bg-indigo-800 disabled:opacity-30 rounded-xl transition cursor-pointer text-indigo-100 border border-indigo-800/40"
+                    className="p-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 rounded-xl transition cursor-pointer text-white border border-white/15"
                   >
                     <ChevronRight className="w-5 h-5" />
                   </button>
@@ -2637,7 +2756,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                       document.exitFullscreen().catch((err) => console.log("Exit fullscreen failed:", err));
                     }
                   }}
-                  className="p-2 bg-indigo-900/40 hover:bg-rose-900/80 hover:text-rose-100 rounded-xl transition cursor-pointer text-indigo-200 border border-indigo-800/40"
+                  className="p-2 bg-white/10 hover:bg-rose-700/80 hover:text-rose-100 rounded-xl transition cursor-pointer text-white border border-white/15"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -2650,14 +2769,14 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               <div className="lg:col-span-7 flex flex-col overflow-y-auto p-6 space-y-6 border-r border-slate-200 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
                 {/* Subject & Main Details */}
                 <div className="space-y-3 bg-white border border-slate-200/60 p-5 rounded-2xl shadow-xs">
-                  <span className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">
+                  <span className="text-[10px] font-black uppercase portal-dash-label tracking-wider">
                     {lang === 'ta' ? 'விண்ணப்பத் தலைப்பு (பொருள்)' : 'Subject'}
                   </span>
                   <h2 className="text-md font-black text-slate-900 leading-snug">
                     {currentIssue.subject || (lang === 'ta' ? 'விவரம் ஏதுமில்லை' : 'No subject specified')}
                   </h2>
                   <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                    <span className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">
+                    <span className="text-[10px] font-black uppercase portal-dash-label tracking-wider">
                       {lang === 'ta' ? 'பிரச்சினையின் விவரங்கள்' : 'Issue Details'}
                     </span>
                     <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap">
@@ -2669,8 +2788,8 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                 {/* Dynamic Schema Fields (Other Fields) */}
                 {hasFields && (
                   <div className="space-y-3 bg-white border border-slate-200/60 p-5 rounded-2xl text-xs shadow-xs">
-                    <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-wider flex items-center gap-2">
-                      <Sliders className="w-4 h-4 text-indigo-600" />
+                    <h4 className="text-[10px] font-black uppercase portal-dash-label tracking-wider flex items-center gap-2">
+                      <Sliders className="w-4 h-4 portal-dash-label" />
                       {lang === 'ta' ? 'பிற விவரப் புலங்கள்' : 'Dynamic Fields / Other Information'}
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
@@ -2711,7 +2830,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
 
                 {/* Updations & History Timeline */}
                 <div className="space-y-4 bg-white border border-slate-200/60 p-5 rounded-2xl shadow-xs">
-                  <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-wider flex items-center gap-1.5">
+                  <h4 className="text-[10px] font-black uppercase portal-dash-label tracking-wider flex items-center gap-1.5">
                     <Clock className="w-4 h-4" />
                     {lang === 'ta' ? 'நடவடிக்கை குறிப்பேடு & புதுப்பிப்புகள்' : 'Action Logs & Comments Timeline'}
                   </h4>
@@ -2775,7 +2894,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               <div className="lg:col-span-3 flex flex-col overflow-hidden p-6 bg-slate-100 border-t lg:border-t-0 border-slate-200">
                 <div className="flex-1 flex flex-col min-h-0 space-y-4">
                   <div className="space-y-2 flex-1 flex flex-col min-h-0">
-                    <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">
+                    <h4 className="text-[10px] font-black uppercase portal-dash-label tracking-wider">
                       {lang === 'ta' ? 'இணைக்கப்பட்ட ஆவணங்கள்' : 'Attached Documents'}
                     </h4>
                     
@@ -2795,7 +2914,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                                 onClick={() => setSlideActivePreviewFile(file)}
                                 className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer ${
                                   isActive 
-                                    ? 'bg-indigo-600 border-indigo-700 text-white' 
+                                    ? 'portal-dash-action border-transparent text-white' 
                                     : 'bg-white border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50'
                                 }`}
                               >
@@ -2814,7 +2933,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                               href={activeDoc?.url}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-indigo-600 font-extrabold hover:underline"
+                              className="portal-dash-label font-extrabold hover:underline"
                             >
                               {lang === 'ta' ? 'புதிய தாவலில் திற' : 'Open in New Tab'}
                             </a>
@@ -2856,7 +2975,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               <form onSubmit={handleSlideUpdateSubmit} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                 {/* Status selection */}
                 <div className="md:col-span-2 space-y-1">
-                  <label className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">
+                  <label className="text-[10px] font-black uppercase portal-dash-label tracking-wider">
                     {lang === 'ta' ? 'அடுத்த கட்ட நிலை' : 'Next Stage'}
                   </label>
                   <select
@@ -2884,7 +3003,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
 
                 {/* Notes/Remarks */}
                 <div className="md:col-span-6 space-y-1">
-                  <label className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">
+                  <label className="text-[10px] font-black uppercase portal-dash-label tracking-wider">
                     {lang === 'ta' ? 'நடவடிக்கை விபரம் & கருத்துரை *' : 'Action Taken Remarks *'}
                   </label>
                   <input
@@ -2899,7 +3018,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
 
                 {/* File upload */}
                 <div className="md:col-span-2 space-y-1">
-                  <label className="text-[10px] font-black uppercase text-indigo-600 tracking-wider block">
+                  <label className="text-[10px] font-black uppercase portal-dash-label tracking-wider block">
                     {lang === 'ta' ? 'ஆதாரக் கோப்பு' : 'Supporting File'}
                   </label>
                   <div className="flex items-center gap-2">
@@ -2934,7 +3053,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                   <button
                     type="submit"
                     disabled={isSubmittingSlideUpdate || isUploadingSlideFile}
-                    className="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-extrabold uppercase rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    className="portal-dash-action w-full px-4 py-2.5 disabled:opacity-50 text-white text-xs font-extrabold uppercase rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                   >
                     {isSubmittingSlideUpdate ? (
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />

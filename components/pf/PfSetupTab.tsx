@@ -5,8 +5,6 @@ import {
   Coins, 
   AlertCircle, 
   CheckCircle, 
-  Check, 
-  AlertTriangle, 
   Edit2, 
   Trash2,
   FileText,
@@ -280,15 +278,19 @@ export default function PfSetupTab({
 
   return (
     <>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Office Setup Form Container */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-5">
-        <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-          <Coins className="w-5 h-5 text-indigo-600" />
-          <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-            {lang === 'ta' ? 'அலுவலக ஆரம்ப இருப்பு' : 'Office Opening Balance'}
-          </h2>
+      <div className="portal-wt-grid">
+      <div className="portal-dashboard-panel">
+        <div className="portal-dash-head">
+          <div>
+            <h3>
+              <span className="portal-dash-icon">
+                <Coins className="h-3 w-3" />
+              </span>
+              {lang === 'ta' ? 'அலுவலக ஆரம்ப இருப்பு' : 'Office Opening Balance'}
+            </h3>
+          </div>
         </div>
+        <div className="portal-dash-body portal-wt-form">
 
         {setupError && (
           <div className="p-3.5 bg-rose-50 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2 border border-rose-100">
@@ -304,160 +306,134 @@ export default function PfSetupTab({
           </div>
         )}
 
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'தொடக்க தேதி' : 'Opening Date'}</label>
-            <input
-              type="date"
-              required
-              value={officeOpeningDate}
-              onChange={(e) => setOfficeOpeningDate(e.target.value)}
-              className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'மொத்த ஆரம்ப இருப்பு (₹)' : 'Total Office Opening Balance (₹)'}</label>
+        <div>
+          <label>{lang === 'ta' ? 'தொடக்க தேதி' : 'Opening Date'}</label>
+          <input
+            type="date"
+            required
+            value={officeOpeningDate}
+            onChange={(e) => setOfficeOpeningDate(e.target.value)}
+          />
+        </div>
+        <div>
+          <label>{lang === 'ta' ? 'மொத்த ஆரம்ப இருப்பு (₹)' : 'Total Office Opening Balance (₹)'}</label>
+          <input
+            type="number"
+            required
+            placeholder="e.g. 500000"
+            value={officeOpeningBalance}
+            onChange={(e) => setOfficeOpeningBalance(e.target.value)}
+          />
+        </div>
+        <div>
+          <label>
+            {lang === 'ta' ? 'ஓய்வுபெற்ற ஊழியர் தொகை (₹)' : 'Retired Employee Amount (₹)'}
+            {retiredDetails.length > 0 && (
+              <span className="portal-dash-status is-resolved" style={{ marginLeft: '0.4rem' }}>
+                {retiredDetails.length} {lang === 'ta' ? 'நபர்கள்' : 'records'}
+              </span>
+            )}
+          </label>
+          <div className="flex gap-2">
             <input
               type="number"
-              required
-              placeholder="e.g. 500000"
-              value={officeOpeningBalance}
-              onChange={(e) => setOfficeOpeningBalance(e.target.value)}
-              className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none font-mono font-bold"
+              placeholder="e.g. 100000"
+              value={derivedRetiredAmount}
+              onChange={(e) => setRetiredEmployeeAmount(e.target.value)}
+              readOnly={retiredDetails.length > 0}
+              title={retiredDetails.length > 0 ? (lang === 'ta' ? 'விவரங்களின் அடிப்படையில் தானாகவே கணக்கிடப்படுகிறது' : 'Automatically calculated from details') : undefined}
             />
+            <button
+              type="button"
+              onClick={() => handleOpenDetails('retired')}
+              className="portal-dash-head-action"
+              title={lang === 'ta' ? 'ஓய்வுபெற்ற ஊழியர் விவரங்கள்' : 'Retired employee details'}
+            >
+              <FileText className="h-3 w-3" />
+              {lang === 'ta' ? 'விவரங்கள்' : 'Details'}
+            </button>
           </div>
-
-          <div className="space-y-1">
-            <div className="flex justify-between items-center">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'ஓய்வுபெற்ற ஊழியர் தொகை (₹)' : 'Retired Employee Amount (₹)'}</label>
-              {retiredDetails.length > 0 && (
-                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                  {retiredDetails.length} {lang === 'ta' ? 'நபர்கள்' : 'records'}
-                </span>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                placeholder="e.g. 100000"
-                value={derivedRetiredAmount}
-                onChange={(e) => setRetiredEmployeeAmount(e.target.value)}
-                readOnly={retiredDetails.length > 0}
-                className={`w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none font-mono ${retiredDetails.length > 0 ? 'bg-slate-50 text-slate-500 cursor-not-allowed font-bold' : ''}`}
-                title={retiredDetails.length > 0 ? (lang === 'ta' ? 'விவரங்களின் அடிப்படையில் தானாகவே கணக்கிடப்படுகிறது' : 'Automatically calculated from details') : undefined}
-              />
-              <button
-                type="button"
-                onClick={() => handleOpenDetails('retired')}
-                className="px-3 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-200 rounded-2xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 shadow-xs"
-                title={lang === 'ta' ? 'ஓய்வுபெற்ற ஊழியர் விவரங்கள்' : 'Retired employee details'}
-              >
-                <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                <span>{lang === 'ta' ? 'விவரங்கள்' : 'Enter Details'}</span>
-              </button>
-            </div>
+        </div>
+        <div>
+          <label>
+            {lang === 'ta' ? 'மரணித்த ஊழியர் தொகை (₹)' : 'Death Employee Amount (₹)'}
+            {deathDetails.length > 0 && (
+              <span className="portal-dash-status is-resolved" style={{ marginLeft: '0.4rem' }}>
+                {deathDetails.length} {lang === 'ta' ? 'நபர்கள்' : 'records'}
+              </span>
+            )}
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              placeholder="e.g. 50000"
+              value={derivedDeathAmount}
+              onChange={(e) => setDeathEmployeeAmount(e.target.value)}
+              readOnly={deathDetails.length > 0}
+              title={deathDetails.length > 0 ? (lang === 'ta' ? 'விவரங்களின் அடிப்படையில் தானாகவே கணக்கிடப்படுகிறது' : 'Automatically calculated from details') : undefined}
+            />
+            <button
+              type="button"
+              onClick={() => handleOpenDetails('death')}
+              className="portal-dash-head-action"
+              title={lang === 'ta' ? 'மரணித்த ஊழியர் விவரங்கள்' : 'Death employee details'}
+            >
+              <FileText className="h-3 w-3" />
+              {lang === 'ta' ? 'விவரங்கள்' : 'Details'}
+            </button>
           </div>
-
-          <div className="space-y-1">
-            <div className="flex justify-between items-center">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'மரணித்த ஊழியர் தொகை (₹)' : 'Death Employee Amount (₹)'}</label>
-              {deathDetails.length > 0 && (
-                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                  {deathDetails.length} {lang === 'ta' ? 'நபர்கள்' : 'records'}
-                </span>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                placeholder="e.g. 50000"
-                value={derivedDeathAmount}
-                onChange={(e) => setDeathEmployeeAmount(e.target.value)}
-                readOnly={deathDetails.length > 0}
-                className={`w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none font-mono ${deathDetails.length > 0 ? 'bg-slate-50 text-slate-500 cursor-not-allowed font-bold' : ''}`}
-                title={deathDetails.length > 0 ? (lang === 'ta' ? 'விவரங்களின் அடிப்படையில் தானாகவே கணக்கிடப்படுகிறது' : 'Automatically calculated from details') : undefined}
-              />
-              <button
-                type="button"
-                onClick={() => handleOpenDetails('death')}
-                className="px-3 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-200 rounded-2xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 shadow-xs"
-                title={lang === 'ta' ? 'மரணித்த ஊழியர் விவரங்கள்' : 'Death employee details'}
-              >
-                <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                <span>{lang === 'ta' ? 'விவரங்கள்' : 'Enter Details'}</span>
-              </button>
-            </div>
+        </div>
+        <div>
+          <label>
+            {lang === 'ta' ? 'தகுதியற்ற இதர தொகை (₹)' : 'Other Ineligible Amount (₹)'}
+            {otherDetails.length > 0 && (
+              <span className="portal-dash-status is-resolved" style={{ marginLeft: '0.4rem' }}>
+                {otherDetails.length} {lang === 'ta' ? 'நபர்கள்' : 'records'}
+              </span>
+            )}
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              placeholder="e.g. 20000"
+              value={derivedOtherAmount}
+              onChange={(e) => setOtherIneligibleAmount(e.target.value)}
+              readOnly={otherDetails.length > 0}
+              title={otherDetails.length > 0 ? (lang === 'ta' ? 'விவரங்களின் அடிப்படையில் தானாகவே கணக்கிடப்படுகிறது' : 'Automatically calculated from details') : undefined}
+            />
+            <button
+              type="button"
+              onClick={() => handleOpenDetails('other')}
+              className="portal-dash-head-action"
+              title={lang === 'ta' ? 'இதர தகுதியற்ற விவரங்கள்' : 'Other ineligible details'}
+            >
+              <FileText className="h-3 w-3" />
+              {lang === 'ta' ? 'விவரங்கள்' : 'Details'}
+            </button>
           </div>
-
-          <div className="space-y-1">
-            <div className="flex justify-between items-center">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'தகுதியற்ற இதர தொகை (₹)' : 'Other Ineligible Amount (₹)'}</label>
-              {otherDetails.length > 0 && (
-                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                  {otherDetails.length} {lang === 'ta' ? 'நபர்கள்' : 'records'}
-                </span>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                placeholder="e.g. 20000"
-                value={derivedOtherAmount}
-                onChange={(e) => setOtherIneligibleAmount(e.target.value)}
-                readOnly={otherDetails.length > 0}
-                className={`w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none font-mono ${otherDetails.length > 0 ? 'bg-slate-50 text-slate-500 cursor-not-allowed font-bold' : ''}`}
-                title={otherDetails.length > 0 ? (lang === 'ta' ? 'விவரங்களின் அடிப்படையில் தானாகவே கணக்கிடப்படுகிறது' : 'Automatically calculated from details') : undefined}
-              />
-              <button
-                type="button"
-                onClick={() => handleOpenDetails('other')}
-                className="px-3 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-200 rounded-2xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 shadow-xs"
-                title={lang === 'ta' ? 'இதர தகுதியற்ற விவரங்கள்' : 'Other ineligible details'}
-              >
-                <FileText className="w-3.5 h-3.5 text-indigo-500" />
-                <span>{lang === 'ta' ? 'விவரங்கள்' : 'Enter Details'}</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Dynamic Auto Calculated Eligible Amount Card */}
-          <div className="bg-indigo-50/70 border border-indigo-100 p-4 rounded-2xl space-y-1 text-center">
-            <span className="text-[9px] font-extrabold text-indigo-700 uppercase tracking-wider">Actual Eligible Amount for Interest Calculation</span>
-            <p className="text-xl font-black text-indigo-900 font-mono">
-              ₹ {actualEligibleAmount.toLocaleString('en-IN')}
-            </p>
-            <p className="text-[10px] text-slate-400 font-medium">Calculated after deducting Retired, Death & Ineligible amounts.</p>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleSaveOfficeSetup}
-            disabled={!isBreakupTallied}
-            className={`w-full py-3.5 rounded-2xl text-xs font-bold uppercase tracking-wider shadow transition-all ${
-              isBreakupTallied 
-                ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer' 
-                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-            }`}
-          >
-            {lang === 'ta' ? 'அலுவலக அமைப்பை சேமி' : 'Save Office Setup'}
-          </button>
+        </div>
+        <div className="portal-wt-section">
+          <p className="portal-wt-section-title">{lang === 'ta' ? 'தகுதியான தொகை' : 'Actual eligible amount'}</p>
+          <p className="portal-dash-num">₹ {actualEligibleAmount.toLocaleString('en-IN')}</p>
+          <p className="portal-switch-hint">After deducting retired, death, and other ineligible amounts.</p>
+        </div>
+        <button type="submit" onClick={handleSaveOfficeSetup} disabled={!isBreakupTallied}>
+          {lang === 'ta' ? 'அலுவலக அமைப்பை சேமி' : 'Save Office Setup'}
+        </button>
         </div>
       </div>
 
-      {/* Employee-wise Breakup Section */}
-      <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 p-6 space-y-6">
-        <div>
-          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider border-b border-slate-50 pb-2">
-            {lang === 'ta' ? 'ஊழியர் வாரியான ஒதுக்கீடு' : 'Employee-wise Breakup Entry'}
-          </h3>
-          <p className="text-xs text-slate-500 mt-1">Add individual employee opening balances to map against the Actual Eligible Amount.</p>
+      <div className="portal-dashboard-panel">
+        <div className="portal-dash-head">
+          <div>
+            <h3>{lang === 'ta' ? 'ஊழியர் வாரியான ஒதுக்கீடு' : 'Employee-wise Breakup Entry'}</h3>
+            <p>Add individual employee opening balances against the actual eligible amount.</p>
+          </div>
         </div>
-
-        {/* Quick adding breakup item */}
-        <form onSubmit={handleAddOfficeBreakup} className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-          <div className="space-y-1">
-            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'ஊழியர்' : 'Choose Employee'}</label>
+        <div className="portal-dash-body">
+        <form onSubmit={handleAddOfficeBreakup} className="portal-dash-fields" style={{ gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 0.9fr) auto' }}>
+          <div>
+            <label>{lang === 'ta' ? 'ஊழியர்' : 'Choose Employee'}</label>
             <select
               value={breakupEmpId}
               onChange={(e) => {
@@ -470,7 +446,6 @@ export default function PfSetupTab({
                   setBreakupAmount('');
                 }
               }}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-300 outline-none"
             >
               <option value="">{lang === 'ta' ? '-- தேர்ந்தெடு --' : '-- Choose Employee --'}</option>
               {employees
@@ -483,91 +458,78 @@ export default function PfSetupTab({
               }
             </select>
           </div>
-
-          <div className="space-y-1">
-            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'தொகை (₹)' : 'Eligible Balance Amount (₹)'}</label>
+          <div>
+            <label>{lang === 'ta' ? 'தொகை (₹)' : 'Eligible Balance Amount (₹)'}</label>
             <input
               type="number"
               placeholder="e.g. 50000"
               value={breakupAmount}
               onChange={(e) => setBreakupAmount(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-300 outline-none font-mono"
             />
           </div>
-
-          <button
-            type="submit"
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold uppercase rounded-xl py-2 self-end shadow-sm"
-          >
-            {lang === 'ta' ? 'பட்டியலில் சேர்' : 'Add to List'}
-          </button>
+          <div>
+            <label>&nbsp;</label>
+            <button type="submit" className="portal-dash-head-action">
+              {lang === 'ta' ? 'பட்டியலில் சேர்' : 'Add to List'}
+            </button>
+          </div>
         </form>
 
-        {/* Tally Verification Banner */}
-        <div className={`p-4 rounded-2xl border flex items-center justify-between text-xs font-semibold ${
-          isBreakupTallied 
-            ? 'bg-emerald-50 border-emerald-100 text-emerald-800' 
-            : 'bg-amber-50 border-amber-100 text-amber-800'
-        }`}>
-          <div className="flex items-center gap-2">
-            {isBreakupTallied ? <Check className="w-4 h-4 shrink-0 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />}
-            <span>
-              {isBreakupTallied 
-                ? (lang === 'ta' ? 'ஒதுக்கீடு தாள்களுடன் சரியாக பொருந்தியது!' : 'Breakup completely tallied with Actual Eligible Amount!')
-                : (lang === 'ta' ? `தவறான ஒதுக்கீடு! வித்தியாசம்: ₹${Math.abs(actualEligibleAmount - totalBreakupAmount).toLocaleString('en-IN')}` : `Breakup does not match! Difference: ₹${Math.abs(actualEligibleAmount - totalBreakupAmount).toLocaleString('en-IN')}`)
-              }
-            </span>
-          </div>
-          <div className="text-right font-mono text-[11px] font-bold">
-            Total entered: ₹ {totalBreakupAmount.toLocaleString('en-IN')} / ₹ {actualEligibleAmount.toLocaleString('en-IN')}
-          </div>
+        <div className={`portal-wt-note ${isBreakupTallied ? '' : ''}`} style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+          <span className={`portal-dash-status ${isBreakupTallied ? 'is-resolved' : 'is-pending'}`}>
+            {isBreakupTallied
+              ? (lang === 'ta' ? 'ஒதுக்கீடு தாள்களுடன் சரியாக பொருந்தியது!' : 'Breakup tallied with eligible amount')
+              : (lang === 'ta' ? `வித்தியாசம்: ₹${Math.abs(actualEligibleAmount - totalBreakupAmount).toLocaleString('en-IN')}` : `Difference: ₹${Math.abs(actualEligibleAmount - totalBreakupAmount).toLocaleString('en-IN')}`)}
+          </span>
+          <span className="portal-dash-num">₹ {totalBreakupAmount.toLocaleString('en-IN')} / ₹ {actualEligibleAmount.toLocaleString('en-IN')}</span>
         </div>
 
-        {/* Breakups List Table */}
-        <div className="overflow-x-auto rounded-2xl border border-slate-100">
-          <table className="w-full text-left border-collapse text-xs">
+        <div className="portal-dash-table overflow-x-auto" style={{ marginTop: '0.75rem' }}>
+          <table>
             <thead>
-              <tr className="bg-slate-50 font-bold text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-100">
-                <th className="p-4">Employee ID</th>
-                <th className="p-4">Employee Name</th>
-                <th className="p-4 font-mono text-right">Eligible Balance</th>
-                <th className="p-4 text-center">Action</th>
+              <tr>
+                <th>Employee ID</th>
+                <th>Employee Name</th>
+                <th>Eligible Balance</th>
+                <th>Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {officeBreakups.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-8 text-center text-slate-400 font-medium">
+                  <td colSpan={4}>
                     {lang === 'ta' ? 'இதுவரை எந்தவொரு ஊழியர் ஒதுக்கீடுகளும் இல்லை.' : 'No employee breakups added yet.'}
                   </td>
                 </tr>
               ) : (
                 officeBreakups.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50">
-                    <td className="p-4 font-mono font-bold text-slate-700">{item.employeeId}</td>
-                    <td className="p-4">{getEmpName(item.employeeId)}</td>
-                    <td className="p-4 font-mono text-right font-bold text-indigo-700">₹ {item.amount.toLocaleString('en-IN')}</td>
-                    <td className="p-4 text-center flex items-center justify-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setBreakupEmpId(item.employeeId);
-                          setBreakupAmount(String(item.amount));
-                          handleRemoveBreakup(item.employeeId);
-                        }}
-                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                        title={lang === 'ta' ? 'திருத்து' : 'Edit'}
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveBreakup(item.employeeId)}
-                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition"
-                        title={lang === 'ta' ? 'நீக்கு' : 'Delete'}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                  <tr key={idx}>
+                    <td><span className="portal-dash-id">{item.employeeId}</span></td>
+                    <td>{getEmpName(item.employeeId)}</td>
+                    <td className="portal-dash-num">₹ {item.amount.toLocaleString('en-IN')}</td>
+                    <td>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBreakupEmpId(item.employeeId);
+                            setBreakupAmount(String(item.amount));
+                            handleRemoveBreakup(item.employeeId);
+                          }}
+                          className="portal-fis-icon-btn"
+                          title={lang === 'ta' ? 'திருத்து' : 'Edit'}
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBreakup(item.employeeId)}
+                          className="portal-fis-icon-btn is-danger"
+                          title={lang === 'ta' ? 'நீக்கு' : 'Delete'}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -575,43 +537,32 @@ export default function PfSetupTab({
             </tbody>
           </table>
         </div>
+        </div>
       </div>
     </div>
 
-      {/* Reference Details Modal for Retired / Death / Other Ineligible */}
       {activeDetailsCategory && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-800 text-sm">
-                    {activeDetailsCategory === 'retired' && (lang === 'ta' ? 'ஓய்வுபெற்ற ஊழியர் விவரங்கள் (குறிப்புக்காக மட்டும்)' : 'Retired Employee Details (Reference Only)')}
-                    {activeDetailsCategory === 'death' && (lang === 'ta' ? 'மரணித்த ஊழியர் விவரங்கள் (குறிப்புக்காக மட்டும்)' : 'Death Employee Details (Reference Only)')}
-                    {activeDetailsCategory === 'other' && (lang === 'ta' ? 'இதர தகுதியற்ற விவரங்கள் (குறிப்புக்காக மட்டும்)' : 'Other Ineligible Details (Reference Only)')}
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    {lang === 'ta' 
-                      ? 'இவ்விவரங்கள் குறிப்பு நோக்கத்திற்காக மட்டுமே; புதிய ஊழியர் சுயவிவரங்கள் உருவாக்கப்படாது.' 
-                      : 'These details are for reference only; no new employee accounts will be created.'}
-                  </p>
-                </div>
+        <div className="portal-modal-overlay">
+          <div className="portal-modal max-w-2xl w-full">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  {activeDetailsCategory === 'retired' && (lang === 'ta' ? 'ஓய்வுபெற்ற ஊழியர் விவரங்கள் (குறிப்புக்காக மட்டும்)' : 'Retired Employee Details (Reference Only)')}
+                  {activeDetailsCategory === 'death' && (lang === 'ta' ? 'மரணித்த ஊழியர் விவரங்கள் (குறிப்புக்காக மட்டும்)' : 'Death Employee Details (Reference Only)')}
+                  {activeDetailsCategory === 'other' && (lang === 'ta' ? 'இதர தகுதியற்ற விவரங்கள் (குறிப்புக்காக மட்டும்)' : 'Other Ineligible Details (Reference Only)')}
+                </h3>
+                <p>
+                  {lang === 'ta' 
+                    ? 'இவ்விவரங்கள் குறிப்பு நோக்கத்திற்காக மட்டுமே; புதிய ஊழியர் சுயவிவரங்கள் உருவாக்கப்படாது.' 
+                    : 'These details are for reference only; no new employee accounts will be created.'}
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setActiveDetailsCategory(null)}
-                className="w-8 h-8 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-600 flex items-center justify-center transition"
-              >
-                <X className="w-4 h-4" />
+              <button type="button" onClick={() => setActiveDetailsCategory(null)} className="portal-dash-head-action">
+                <X className="h-3 w-3" />
+                {lang === 'ta' ? 'முடிந்தது' : 'Done'}
               </button>
             </div>
-
-            {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-6">
+            <div className="portal-dash-body overflow-y-auto">
               {detailError && (
                 <div className="p-3 bg-rose-50 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2 border border-rose-100">
                   <AlertCircle className="w-4 h-4 shrink-0" />
@@ -619,124 +570,100 @@ export default function PfSetupTab({
                 </div>
               )}
 
-              {/* Add form */}
-              <form onSubmit={handleAddDetail} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      {lang === 'ta' ? 'பெயர்' : 'Employee Name'} *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder={lang === 'ta' ? 'பெயர் உள்ளிடவும்' : 'e.g. S. Murugan'}
-                      value={detailName}
-                      onChange={(e) => setDetailName(e.target.value)}
-                      className="w-full border border-slate-200 bg-white rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-indigo-100 outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      {lang === 'ta' ? 'பதவி' : 'Designation'}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder={lang === 'ta' ? 'பதவி உள்ளிடவும்' : 'e.g. Assistant Engineer'}
-                      value={detailDesignation}
-                      onChange={(e) => setDetailDesignation(e.target.value)}
-                      className="w-full border border-slate-200 bg-white rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-indigo-100 outline-none"
-                    />
-                  </div>
+              <form onSubmit={handleAddDetail} className="portal-dash-fields" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+                <div>
+                  <label>{lang === 'ta' ? 'பெயர்' : 'Employee Name'} *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder={lang === 'ta' ? 'பெயர் உள்ளிடவும்' : 'e.g. S. Murugan'}
+                    value={detailName}
+                    onChange={(e) => setDetailName(e.target.value)}
+                  />
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1 sm:col-span-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      {lang === 'ta' ? 'தொகை (₹)' : 'Principal Amount (₹)'} *
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      placeholder="e.g. 25000"
-                      value={detailAmount}
-                      onChange={(e) => setDetailAmount(e.target.value)}
-                      className="w-full border border-slate-200 bg-white rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-indigo-100 outline-none font-mono font-bold"
-                    />
-                  </div>
-                  <div className="space-y-1 sm:col-span-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      {lang === 'ta' ? 'வட்டி (₹)' : 'Interest (₹)'}
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 1500"
-                      value={detailInterest}
-                      onChange={(e) => setDetailInterest(e.target.value)}
-                      className="w-full border border-slate-200 bg-white rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-indigo-100 outline-none font-mono"
-                    />
-                  </div>
-                  <div className="flex items-end sm:col-span-1">
-                    <button
-                      type="submit"
-                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-xs transition flex items-center justify-center gap-1"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>{lang === 'ta' ? 'சேர்' : 'Add Detail'}</span>
-                    </button>
-                  </div>
+                <div>
+                  <label>{lang === 'ta' ? 'பதவி' : 'Designation'}</label>
+                  <input
+                    type="text"
+                    placeholder={lang === 'ta' ? 'பதவி உள்ளிடவும்' : 'e.g. Assistant Engineer'}
+                    value={detailDesignation}
+                    onChange={(e) => setDetailDesignation(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label>{lang === 'ta' ? 'தொகை (₹)' : 'Principal Amount (₹)'} *</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    placeholder="e.g. 25000"
+                    value={detailAmount}
+                    onChange={(e) => setDetailAmount(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label>{lang === 'ta' ? 'வட்டி (₹)' : 'Interest (₹)'}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 1500"
+                    value={detailInterest}
+                    onChange={(e) => setDetailInterest(e.target.value)}
+                  />
+                </div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <button type="submit" className="portal-dash-head-action">
+                    <Plus className="h-3 w-3" />
+                    {lang === 'ta' ? 'சேர்' : 'Add Detail'}
+                  </button>
                 </div>
               </form>
 
-              {/* Records Table */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                    {lang === 'ta' ? 'பதிவு செய்யப்பட்ட விவரங்கள்' : 'Entered Reference Records'}
-                  </span>
-                  <span className="text-[11px] text-slate-400">
+              <div className="portal-dash-head" style={{ padding: '0.65rem 0 0.4rem', marginTop: '0.55rem' }}>
+                <div>
+                  <h3>{lang === 'ta' ? 'பதிவு செய்யப்பட்ட விவரங்கள்' : 'Entered Reference Records'}</h3>
+                  <p>
                     {((activeDetailsCategory === 'retired' ? retiredDetails : activeDetailsCategory === 'death' ? deathDetails : otherDetails) || []).length} {lang === 'ta' ? 'பதிவுகள்' : 'entries'}
-                  </span>
+                  </p>
                 </div>
-
-                <div className="border border-slate-200 rounded-2xl overflow-hidden max-h-60 overflow-y-auto">
-                  <table className="w-full text-left border-collapse text-xs">
+              </div>
+              <div className="portal-dash-table overflow-x-auto" style={{ maxHeight: '15rem', overflowY: 'auto' }}>
+                  <table>
                     <thead>
-                      <tr className="bg-slate-50 font-bold text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-200 sticky top-0 bg-white">
-                        <th className="p-3">#</th>
-                        <th className="p-3">{lang === 'ta' ? 'பெயர்' : 'Name'}</th>
-                        <th className="p-3">{lang === 'ta' ? 'பதவி' : 'Designation'}</th>
-                        <th className="p-3 font-mono text-right">{lang === 'ta' ? 'தொகை (₹)' : 'Amount (₹)'}</th>
-                        <th className="p-3 font-mono text-right">{lang === 'ta' ? 'வட்டி (₹)' : 'Interest (₹)'}</th>
-                        <th className="p-3 font-mono text-right">{lang === 'ta' ? 'மொத்தம் (₹)' : 'Total (₹)'}</th>
-                        <th className="p-3 text-center">{lang === 'ta' ? 'செயல்' : 'Action'}</th>
+                      <tr>
+                        <th>#</th>
+                        <th>{lang === 'ta' ? 'பெயர்' : 'Name'}</th>
+                        <th>{lang === 'ta' ? 'பதவி' : 'Designation'}</th>
+                        <th>{lang === 'ta' ? 'தொகை (₹)' : 'Amount (₹)'}</th>
+                        <th>{lang === 'ta' ? 'வட்டி (₹)' : 'Interest (₹)'}</th>
+                        <th>{lang === 'ta' ? 'மொத்தம் (₹)' : 'Total (₹)'}</th>
+                        <th>{lang === 'ta' ? 'செயல்' : 'Action'}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody>
                       {((activeDetailsCategory === 'retired' ? retiredDetails : activeDetailsCategory === 'death' ? deathDetails : otherDetails) || []).length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="p-6 text-center text-slate-400 font-medium">
+                          <td colSpan={7}>
                             {lang === 'ta' ? 'இன்னும் எந்த விவரங்களும் சேர்க்கப்படவில்லை.' : 'No reference details added yet.'}
                           </td>
                         </tr>
                       ) : (
                         ((activeDetailsCategory === 'retired' ? retiredDetails : activeDetailsCategory === 'death' ? deathDetails : otherDetails) || []).map((rec, idx) => (
-                          <tr key={rec.id} className="hover:bg-slate-50/50">
-                            <td className="p-3 font-mono text-slate-400">{idx + 1}</td>
-                            <td className="p-3 font-semibold text-slate-800">{rec.name}</td>
-                            <td className="p-3 text-slate-500">{rec.designation}</td>
-                            <td className="p-3 font-mono text-right font-bold text-slate-700">₹ {rec.amount.toLocaleString('en-IN')}</td>
-                            <td className="p-3 font-mono text-right text-emerald-600">₹ {(rec.interest || 0).toLocaleString('en-IN')}</td>
-                            <td className="p-3 font-mono text-right font-bold text-indigo-900">₹ {(rec.amount + (rec.interest || 0)).toLocaleString('en-IN')}</td>
-                            <td className="p-3 text-center">
+                          <tr key={rec.id}>
+                            <td>{idx + 1}</td>
+                            <td>{rec.name}</td>
+                            <td>{rec.designation}</td>
+                            <td className="portal-dash-num">₹ {rec.amount.toLocaleString('en-IN')}</td>
+                            <td className="portal-dash-num">₹ {(rec.interest || 0).toLocaleString('en-IN')}</td>
+                            <td className="portal-dash-num">₹ {(rec.amount + (rec.interest || 0)).toLocaleString('en-IN')}</td>
+                            <td>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteDetail(activeDetailsCategory, rec.id)}
-                                className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg transition"
+                                className="portal-fis-icon-btn is-danger"
                                 title={lang === 'ta' ? 'நீக்கு' : 'Delete'}
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="h-3 w-3" />
                               </button>
                             </td>
                           </tr>
@@ -744,18 +671,16 @@ export default function PfSetupTab({
                       )}
                     </tbody>
                     {((activeDetailsCategory === 'retired' ? retiredDetails : activeDetailsCategory === 'death' ? deathDetails : otherDetails) || []).length > 0 && (
-                      <tfoot className="bg-slate-50/80 font-bold border-t border-slate-200">
+                      <tfoot>
                         <tr>
-                          <td colSpan={3} className="p-3 text-right uppercase text-[10px] text-slate-600">
-                            {lang === 'ta' ? 'மொத்தம்' : 'Total'}
-                          </td>
-                          <td className="p-3 font-mono text-right text-indigo-700">
+                          <td colSpan={3}>{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
+                          <td className="portal-dash-num">
                             ₹ {((activeDetailsCategory === 'retired' ? retiredDetails : activeDetailsCategory === 'death' ? deathDetails : otherDetails) || []).reduce((s, i) => s + i.amount, 0).toLocaleString('en-IN')}
                           </td>
-                          <td className="p-3 font-mono text-right text-emerald-700">
+                          <td className="portal-dash-num">
                             ₹ {((activeDetailsCategory === 'retired' ? retiredDetails : activeDetailsCategory === 'death' ? deathDetails : otherDetails) || []).reduce((s, i) => s + (i.interest || 0), 0).toLocaleString('en-IN')}
                           </td>
-                          <td className="p-3 font-mono text-right text-indigo-950 font-black">
+                          <td className="portal-dash-num">
                             ₹ {((activeDetailsCategory === 'retired' ? retiredDetails : activeDetailsCategory === 'death' ? deathDetails : otherDetails) || []).reduce((s, i) => s + i.amount + (i.interest || 0), 0).toLocaleString('en-IN')}
                           </td>
                           <td></td>
@@ -763,22 +688,10 @@ export default function PfSetupTab({
                       </tfoot>
                     )}
                   </table>
-                </div>
               </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-              <span className="text-xs text-slate-500">
+              <p className="portal-switch-hint" style={{ marginTop: '0.55rem' }}>
                 {lang === 'ta' ? 'தொகை தானாகவே படிவத்தில் புதுப்பிக்கப்பட்டது.' : 'Amount is automatically updated in the setup form.'}
-              </span>
-              <button
-                type="button"
-                onClick={() => setActiveDetailsCategory(null)}
-                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition shadow-xs"
-              >
-                {lang === 'ta' ? 'முடிந்தது' : 'Done'}
-              </button>
+              </p>
             </div>
           </div>
         </div>

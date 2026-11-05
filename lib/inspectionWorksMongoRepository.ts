@@ -337,7 +337,15 @@ export function buildInspectionWorksMongoMatch(
         normId(x.code).toLowerCase() === c ||
         normId(x.nameEn).toLowerCase() === c
     );
-    const or: Record<string, unknown>[] = [{ categoryId: { $in: idVariants(filter.categoryId) } }];
+    const siblingIds = (masters.inspectionCategories || [])
+      .filter((x) => {
+        if (!cat?.nameEn) return false;
+        return normId(x.nameEn).toLowerCase() === normId(cat.nameEn).toLowerCase();
+      })
+      .flatMap((x) => idVariants(x.id));
+    const or: Record<string, unknown>[] = [
+      { categoryId: { $in: [...new Set([...idVariants(filter.categoryId), ...siblingIds])] } },
+    ];
     if (cat?.id) or.push({ categoryId: cat.id });
     if (cat?.code) or.push({ categoryId: cat.code });
     if (cat?.nameEn) or.push({ categoryId: cat.nameEn }, { categoryNameEn: cat.nameEn });

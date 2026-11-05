@@ -6,29 +6,22 @@ import {
   Users, 
   User,
   UserPlus, 
-  FolderLock, 
   Database, 
-  GitPullRequest, 
   Upload, 
   Trash2, 
   Edit3, 
   Lock, 
   FileText, 
-  CheckCircle, 
   XCircle,
   Eye,
   EyeOff,
-  Search,
-  Key,
-  AlertTriangle,
-  ArrowRight,
   Printer,
   Building2,
   Briefcase,
   ShieldCheck,
   Check,
   Copy,
-  Plus
+  ChevronRight
 } from 'lucide-react';
 import { Language, translations } from './translations';
 
@@ -133,6 +126,8 @@ export default function EmployeeManagementView({
 
   // Activity Log search query state
   const [logSearchQuery, setLogSearchQuery] = useState('');
+  const [openEmpFormSections, setOpenEmpFormSections] = useState<Record<string, boolean>>({});
+  const EMP_MODULE_TONES = ['#1d4ed8', '#0f766e', '#c2410c', '#7c3aed', '#be185d', '#0369a1', '#b45309', '#4f46e5'];
 
   // Sorted and filtered activity logs
   const filteredLogs = [...activityLogs]
@@ -819,263 +814,258 @@ export default function EmployeeManagementView({
     const applicableFields = emp ? getApplicableFields(emp.postId) : [];
 
     return (
-      <div id="employee-management-container" className="space-y-6">
-        {/* Official Header Banner */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-xs p-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-5">
-            <div className="flex items-start gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white shadow-md font-bold text-xl shrink-0 overflow-hidden">
-                {emp?.profileImage ? (
-                  <img src={emp.profileImage} alt={emp.nameEn} className="w-full h-full object-cover" />
-                ) : (
-                  (emp?.nameEn ? emp.nameEn.charAt(0).toUpperCase() : 'E')
-                )}
-              </div>
-              <div>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h2 className="text-lg font-bold text-gray-900">
-                    {emp ? (lang === 'ta' ? (emp.nameTa || emp.nameEn) : emp.nameEn) : (currentUser.nameEn || currentUser.username)}
-                  </h2>
-                  <span className="font-mono text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-bold border border-indigo-200">
-                    {emp?.employeeId || currentUser.employeeId || currentUser.username}
-                  </span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${emp?.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
-                    {emp?.status === 'Active' ? (lang === 'ta' ? 'செயலில் உள்ளார்' : 'Active') : (lang === 'ta' ? 'செயலற்றவர்' : 'Inactive')}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1 flex items-center gap-2">
-                  <Building2 className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{tp ? tObj(tp) : 'Town Panchayat'}</span>
-                  <span>•</span>
-                  <span>{pst ? tObj(pst) : 'Employee'}</span>
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs font-semibold flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-amber-600" />
-                <span>{lang === 'ta' ? 'பார்வையாளர் முறை (View Only)' : 'Personal View Only'}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-semibold transition flex items-center gap-1.5"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>{lang === 'ta' ? 'அச்சிடு' : 'Print'}</span>
-              </button>
+      <div id="employee-management-container" className="portal-studio portal-page">
+        <div className="portal-fis-hero">
+          <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20 overflow-hidden">
+              {emp?.profileImage ? (
+                <img src={emp.profileImage} alt={emp.nameEn} className="h-full w-full object-cover" />
+              ) : (
+                <User className="h-3.5 w-3.5" />
+              )}
+            </span>
+            <div className="min-w-0 leading-tight">
+              <h3 className="text-[14px] font-semibold tracking-tight text-white">
+                {emp ? (lang === 'ta' ? (emp.nameTa || emp.nameEn) : emp.nameEn) : (currentUser.nameEn || currentUser.username)}
+              </h3>
+              <p className="text-[10px] text-white/70">
+                {emp?.employeeId || currentUser.employeeId || currentUser.username}
+                {' • '}
+                {tp ? tObj(tp) : (lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat')}
+                {' • '}
+                {pst ? tObj(pst) : (lang === 'ta' ? 'ஊழியர்' : 'Employee')}
+                {' • '}
+                {emp?.status === 'Active' ? (lang === 'ta' ? 'செயலில்' : 'Active') : (lang === 'ta' ? 'செயலற்றவர்' : 'Inactive')}
+              </p>
             </div>
           </div>
-
-          <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-gray-500 gap-2">
-            <span className="italic">
-              {lang === 'ta' 
-                ? 'அரசாணை மற்றும் விதிமுறைகளின்படி தங்களின் தனிப்பட்ட சேவை விவரங்கள் மட்டுமே இங்கே காட்சிப்படுத்தப்பட்டுள்ளன.' 
-                : 'As per government service rules, only your authenticated personnel profile is accessible in this portal.'}
+          <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white">
+              <ShieldCheck className="h-3 w-3" />
+              {lang === 'ta' ? 'பார்வையாளர் முறை' : 'Personal View Only'}
             </span>
-            <span className="font-mono text-[11px] bg-gray-50 px-2 py-0.5 rounded text-gray-400">
-              ID: {emp?.employeeId || currentUser.username}
-            </span>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+            >
+              <Printer className="h-3 w-3" />
+              {lang === 'ta' ? 'அச்சிடு' : 'Print'}
+            </button>
           </div>
         </div>
 
         {emp ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Column: Personnel & Office Information */}
-            <div className="lg:col-span-6 space-y-6">
-              {/* Card 1: Personal Identification */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-xs p-6 space-y-4">
-                <div className="flex items-center gap-2 text-indigo-700 font-bold text-sm border-b border-gray-100 pb-3">
-                  <User className="w-4 h-4" />
-                  <h4>{lang === 'ta' ? '1. பணியாளர் தனிப்பட்ட விவரங்கள்' : '1. Personal Identification Details'}</h4>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="space-y-3">
+              <div className="portal-dashboard-panel">
+                <div className="portal-dash-head">
+                  <div>
+                    <h3>
+                      <span className="portal-dash-icon">
+                        <User className="h-3 w-3" />
+                      </span>
+                      {lang === 'ta' ? '1. பணியாளர் தனிப்பட்ட விவரங்கள்' : '1. Personal Identification Details'}
+                    </h3>
+                  </div>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'ஊழியர் பெயர் (ஆங்கிலம்)' : 'Full Name (English)'}</span>
-                    <span className="font-semibold text-gray-900 text-sm">{emp.nameEn || '--'}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'ஊழியர் பெயர் (தமிழ்)' : 'Full Name (Tamil)'}</span>
-                    <span className="font-semibold text-gray-900 text-sm">{emp.nameTa || '--'}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'ஊழியர் அடையாள எண்' : 'Employee ID'}</span>
-                    <span className="font-mono font-bold text-indigo-700">{emp.employeeId}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'பாலினம்' : 'Gender'}</span>
-                    <span className="font-medium text-gray-800">{emp.gender || 'Not Specified'}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'பிறந்த தேதி' : 'Date of Birth (DOB)'}</span>
-                    <span className="font-medium text-gray-800">{emp.dob || 'Not Recorded'}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'பணி ஓய்வு பெறும் நாள்' : 'Superannuation / Retirement Date'}</span>
-                    <span className="font-medium text-indigo-700 font-semibold">{emp.retirementDate || 'Not Recorded'}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'ஆதார் எண்' : 'Aadhaar Number'}</span>
-                    <span className="font-mono font-medium text-gray-800">
-                      {emp.aadharNo ? `•••• •••• ${emp.aadharNo.slice(-4)}` : 'Not Linked'}
-                    </span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'சமூகம் / வகுப்பு' : 'Community'}</span>
-                    <span className="font-bold text-indigo-700 uppercase">{emp.community || 'OC'}</span>
+                <div className="portal-dash-body portal-wt-form">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label>{lang === 'ta' ? 'ஊழியர் பெயர் (ஆங்கிலம்)' : 'Full Name (English)'}</label>
+                      <p>{emp.nameEn || '--'}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'ஊழியர் பெயர் (தமிழ்)' : 'Full Name (Tamil)'}</label>
+                      <p>{emp.nameTa || '--'}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'ஊழியர் அடையாள எண்' : 'Employee ID'}</label>
+                      <p className="font-mono">{emp.employeeId}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'பாலினம்' : 'Gender'}</label>
+                      <p>{emp.gender || 'Not Specified'}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'பிறந்த தேதி' : 'Date of Birth (DOB)'}</label>
+                      <p>{emp.dob || 'Not Recorded'}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'பணி ஓய்வு பெறும் நாள்' : 'Superannuation / Retirement Date'}</label>
+                      <p>{emp.retirementDate || 'Not Recorded'}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'ஆதார் எண்' : 'Aadhaar Number'}</label>
+                      <p className="font-mono">{emp.aadharNo ? `•••• •••• ${emp.aadharNo.slice(-4)}` : 'Not Linked'}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'சமூகம் / வகுப்பு' : 'Community'}</label>
+                      <p className="uppercase">{emp.community || 'OC'}</p>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Card 2: Office & Jurisdiction */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-xs p-6 space-y-4">
-                <div className="flex items-center gap-2 text-indigo-700 font-bold text-sm border-b border-gray-100 pb-3">
-                  <Building2 className="w-4 h-4" />
-                  <h4>{lang === 'ta' ? '2. அலுவலகம் மற்றும் நிர்வாக வரம்பு' : '2. Office & Jurisdiction'}</h4>
+              <div className="portal-dashboard-panel">
+                <div className="portal-dash-head">
+                  <div>
+                    <h3>
+                      <span className="portal-dash-icon">
+                        <Building2 className="h-3 w-3" />
+                      </span>
+                      {lang === 'ta' ? '2. அலுவலகம் மற்றும் நிர்வாக வரம்பு' : '2. Office & Jurisdiction'}
+                    </h3>
+                  </div>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'தற்போதைய பேரூராட்சி' : 'Town Panchayat'}</span>
-                    <span className="font-bold text-gray-900">{tp ? tObj(tp) : emp.townPanchayatId}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'மாவட்டம்' : 'District'}</span>
-                    <span className="font-medium text-gray-800">{dist ? tObj(dist) : '--'}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</span>
-                    <span className="font-medium text-gray-800">{zn ? tObj(zn) : '--'}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'அலுவலக வகை' : 'Office Category'}</span>
-                    <span className="font-medium text-gray-800">Town Panchayat (பேரூராட்சி)</span>
+                <div className="portal-dash-body portal-wt-form">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label>{lang === 'ta' ? 'தற்போதைய பேரூராட்சி' : 'Town Panchayat'}</label>
+                      <p>{tp ? tObj(tp) : emp.townPanchayatId}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'மாவட்டம்' : 'District'}</label>
+                      <p>{dist ? tObj(dist) : '--'}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</label>
+                      <p>{zn ? tObj(zn) : '--'}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'அலுவலக வகை' : 'Office Category'}</label>
+                      <p>Town Panchayat (பேரூராட்சி)</p>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Right Column: Cadre, Documents, Additional Details */}
-            <div className="lg:col-span-6 space-y-6">
-              {/* Card 3: Post & Cadre Details */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-xs p-6 space-y-4">
-                <div className="flex items-center gap-2 text-indigo-700 font-bold text-sm border-b border-gray-100 pb-3">
-                  <Briefcase className="w-4 h-4" />
-                  <h4>{lang === 'ta' ? '3. பதவி மற்றும் ஊதியக் குழு விவரங்கள்' : '3. Cadre & Compensation Details'}</h4>
+            <div className="space-y-3">
+              <div className="portal-dashboard-panel">
+                <div className="portal-dash-head">
+                  <div>
+                    <h3>
+                      <span className="portal-dash-icon">
+                        <Briefcase className="h-3 w-3" />
+                      </span>
+                      {lang === 'ta' ? '3. பதவி மற்றும் ஊதியக் குழு விவரங்கள்' : '3. Cadre & Compensation Details'}
+                    </h3>
+                  </div>
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  <div className="p-3 bg-gray-50 rounded-xl sm:col-span-2">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'பதவி / பதவிப் பெயர்' : 'Designation / Post'}</span>
-                    <span className="font-bold text-gray-900 text-sm">{pst ? tObj(pst) : emp.postId}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'பணியாளர் பிரிவு (Group)' : 'Cadre Group'}</span>
-                    <span className="font-bold text-indigo-700">{emp.groupId || 'Group C'}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'பிரிவு வகை' : 'Category'}</span>
-                    <span className="font-medium text-gray-800">{cat ? tObj(cat) : emp.categoryId || '--'}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'பதவியின் தன்மை' : 'Nature of Post'}</span>
-                    <span className="font-medium text-gray-800">{nature ? tObj(nature) : emp.postNatureId || 'Permanent'}</span>
-                  </div>
-
-                  <div className="p-3 bg-gray-50 rounded-xl">
-                    <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? 'ஊதிய நிலை (Pay Level)' : 'Pay Level / Scale'}</span>
-                    <span className="font-semibold text-emerald-700">{pay ? tObj(pay) : emp.payLevelId || '--'}</span>
+                <div className="portal-dash-body portal-wt-form">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <label>{lang === 'ta' ? 'பதவி / பதவிப் பெயர்' : 'Designation / Post'}</label>
+                      <p>{pst ? tObj(pst) : emp.postId}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'பணியாளர் பிரிவு (Group)' : 'Cadre Group'}</label>
+                      <p>{emp.groupId || 'Group C'}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'பிரிவு வகை' : 'Category'}</label>
+                      <p>{cat ? tObj(cat) : emp.categoryId || '--'}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'பதவியின் தன்மை' : 'Nature of Post'}</label>
+                      <p>{nature ? tObj(nature) : emp.postNatureId || 'Permanent'}</p>
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'ஊதிய நிலை (Pay Level)' : 'Pay Level / Scale'}</label>
+                      <p>{pay ? tObj(pay) : emp.payLevelId || '--'}</p>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Card 4: Attached Documents */}
               {emp.documents && emp.documents.length > 0 && (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-xs p-6 space-y-4">
-                  <div className="flex items-center gap-2 text-indigo-700 font-bold text-sm border-b border-gray-100 pb-3">
-                    <FileText className="w-4 h-4" />
-                    <h4>{lang === 'ta' ? '4. சேவை ஆவணங்கள் மற்றும் சான்றிதழ்கள்' : '4. Official Documents on Record'}</h4>
+                <div className="portal-dashboard-panel">
+                  <div className="portal-dash-head">
+                    <div>
+                      <h3>
+                        <span className="portal-dash-icon">
+                          <FileText className="h-3 w-3" />
+                        </span>
+                        {lang === 'ta' ? '4. சேவை ஆவணங்கள் மற்றும் சான்றிதழ்கள்' : '4. Official Documents on Record'}
+                      </h3>
+                    </div>
                   </div>
-
-                  <div className="space-y-2.5">
-                    {emp.documents.map((doc: any, idx: number) => (
-                      <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs hover:bg-indigo-50/40 transition">
-                        <div className="flex items-center gap-2.5">
-                          <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
-                          <div>
-                            <span className="font-semibold text-gray-900 block">{doc.name || `Document ${idx + 1}`}</span>
-                            <span className="text-[10px] text-gray-400 font-medium bg-white px-1.5 py-0.5 rounded border border-gray-200">
-                              {doc.category || 'Service Record'}
-                            </span>
+                  <div className="portal-dash-body portal-wt-form">
+                    <div className="space-y-2">
+                      {emp.documents.map((doc: any, idx: number) => (
+                        <div key={idx} className="flex items-center justify-between gap-2 text-xs">
+                          <div className="min-w-0">
+                            <p className="font-semibold truncate">{doc.name || `Document ${idx + 1}`}</p>
+                            <p className="text-[10px] text-slate-500">{doc.category || 'Service Record'}</p>
                           </div>
+                          {doc.url && (
+                            <a
+                              href={doc.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="portal-wt-link inline-flex items-center gap-1 shrink-0"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              {lang === 'ta' ? 'காண்க' : 'View'}
+                            </a>
+                          )}
                         </div>
-                        {doc.url && (
-                          <a
-                            href={doc.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-2.5 py-1.5 bg-white hover:bg-indigo-600 hover:text-white text-indigo-600 rounded-lg border border-indigo-200 text-xs font-semibold transition flex items-center gap-1 shrink-0"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>{lang === 'ta' ? 'காண்க' : 'View'}</span>
-                          </a>
-                        )}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Card 5: Additional Dynamic Module Fields (if any) */}
               {applicableFields.length > 0 && emp.dynamicData && Object.keys(emp.dynamicData).length > 0 && (
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-xs p-6 space-y-4">
-                  <div className="flex items-center gap-2 text-indigo-700 font-bold text-sm border-b border-gray-100 pb-3">
-                    <Database className="w-4 h-4" />
-                    <h4>{lang === 'ta' ? '5. கூடுதல் சேவைப் பதிவுகள்' : '5. Additional Service Attributes'}</h4>
+                <div className="portal-dashboard-panel">
+                  <div className="portal-dash-head">
+                    <div>
+                      <h3>
+                        <span className="portal-dash-icon">
+                          <Database className="h-3 w-3" />
+                        </span>
+                        {lang === 'ta' ? '5. கூடுதல் சேவைப் பதிவுகள்' : '5. Additional Service Attributes'}
+                      </h3>
+                    </div>
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    {applicableFields.map((f: any) => {
-                      const val = emp.dynamicData?.[f.id];
-                      if (val === undefined || val === null || val === '') return null;
-                      return (
-                        <div key={f.id} className="p-3 bg-gray-50 rounded-xl">
-                          <span className="text-gray-400 block mb-0.5">{lang === 'ta' ? (f.nameTa || f.nameEn) : f.nameEn}</span>
-                          <span className="font-semibold text-gray-800">
-                            {Array.isArray(val) ? val.length + ' item(s)' : typeof val === 'object' ? JSON.stringify(val) : String(val)}
-                          </span>
-                        </div>
-                      );
-                    })}
+                  <div className="portal-dash-body portal-wt-form">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {applicableFields.map((f: any) => {
+                        const val = emp.dynamicData?.[f.id];
+                        if (val === undefined || val === null || val === '') return null;
+                        return (
+                          <div key={f.id}>
+                            <label>{lang === 'ta' ? (f.nameTa || f.nameEn) : f.nameEn}</label>
+                            <p>
+                              {Array.isArray(val) ? val.length + ' item(s)' : typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}
             </div>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-xs p-8 text-center">
-            <User className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <h3 className="text-sm font-bold text-gray-800">{lang === 'ta' ? 'ஊழியர் விவரங்கள் பதிவு செய்யப்படவில்லை' : 'Employee Profile Not Found'}</h3>
-            <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
-              {lang === 'ta' 
-                ? 'உங்கள் ஊழியர் அடையாள எண் அமைப்பில் உள்ளீடு செய்யப்பட்டுள்ளதா என்பதை செயல் அலுவலரிடம் உறுதி செய்யவும்.' 
-                : `No employee record was found matching ID "${loggedInEmpId}". Please check with your Executive Officer.`}
-            </p>
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <User className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'ஊழியர் விவரங்கள் பதிவு செய்யப்படவில்லை' : 'Employee Profile Not Found'}
+                </h3>
+                <p>
+                  {lang === 'ta'
+                    ? 'உங்கள் ஊழியர் அடையாள எண் அமைப்பில் உள்ளீடு செய்யப்பட்டுள்ளதா என்பதை செயல் அலுவலரிடம் உறுதி செய்யவும்.'
+                    : `No employee record was found matching ID "${loggedInEmpId}". Please check with your Executive Officer.`}
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1083,240 +1073,254 @@ export default function EmployeeManagementView({
   }
 
   return (
-    <div id="employee-management-container" className="space-y-6">
-      {/* Sub Tabs */}
-      <div className="flex justify-start sm:justify-center overflow-x-auto scrollbar-custom whitespace-nowrap border-b border-gray-100 bg-white px-6 pt-4 rounded-t-2xl shadow-xs">
-        <button
-          onClick={() => setActiveTab('list')}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'list' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          {t('employeeDetails')}
-        </button>
-        {!currentUser.isEmployee && (
+    <div id="employee-management-container" className="portal-studio portal-page">
+      <div className="portal-fis-hero">
+        <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
+            <Users className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0 leading-tight">
+            <h3 className="text-[14px] font-semibold tracking-tight text-white">
+              {t('employeeManagement')}
+            </h3>
+            <p className="text-[10px] text-white/70">
+              {lang === 'ta'
+                ? 'ஊழியர் பதிவுகள், பதவிகள் மற்றும் உள்நுழைவு விவரங்களை நிர்வகிக்கவும்.'
+                : 'Manage personnel records, designations, and portal credentials.'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="portal-dash-toolbar">
+        <div className="portal-dash-pills">
           <button
-            onClick={() => { setActiveTab('create'); if (!isEditing) resetForm(); }}
-            className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'create' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            type="button"
+            onClick={() => setActiveTab('list')}
+            className={`portal-dash-pill ${activeTab === 'list' ? 'is-active' : ''}`}
           >
-            {isEditing ? t('edit') : t('createEmployeeAccount')}
+            <Users className="h-3.5 w-3.5" />
+            <span>{t('employeeDetails')}</span>
+            <span className="portal-fis-count">{visibleEmployees.length}</span>
           </button>
-        )}
-        {!isTPUser && !isZoneUser && (
-          <button
-            onClick={() => setActiveTab('activityLogs')}
-            className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'activityLogs' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-          >
-            {t('activityLogsTab')}
-          </button>
-        )}
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('deletedEmployees')}
-            className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'deletedEmployees' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-          >
-            {lang === 'ta' ? 'நீக்கப்பட்ட ஊழியர்கள்' : 'Deleted Employees'}
-          </button>
-        )}
+          {!currentUser.isEmployee && (
+            <button
+              type="button"
+              onClick={() => { setActiveTab('create'); if (!isEditing) resetForm(); }}
+              className={`portal-dash-pill ${activeTab === 'create' ? 'is-active' : ''}`}
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              <span>{isEditing ? t('edit') : t('createEmployeeAccount')}</span>
+            </button>
+          )}
+          {!isTPUser && !isZoneUser && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('activityLogs')}
+              className={`portal-dash-pill ${activeTab === 'activityLogs' ? 'is-active' : ''}`}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span>{t('activityLogsTab')}</span>
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('deletedEmployees')}
+              className={`portal-dash-pill ${activeTab === 'deletedEmployees' ? 'is-active' : ''}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>{lang === 'ta' ? 'நீக்கப்பட்ட ஊழியர்கள்' : 'Deleted Employees'}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {activeTab === 'list' && (
-        <div className="space-y-6">
-          {/* List Matrix */}
-          <div className="bg-white rounded-2xl border border-gray-150 shadow-xs overflow-hidden">
-            {/* Header & Record count */}
-            <div className="p-5 border-b border-gray-100 flex flex-wrap justify-between items-center gap-3">
-              <div>
-                <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2">
-                  <Users className="w-4 h-4 text-indigo-600" />
-                  {t('employeeDetails')}
-                </h3>
-                <p className="text-[11px] text-gray-400 mt-0.5">
-                  {lang === 'ta' ? 'ஊழியர் உள்நுழைவுத் தகவல்கள் மற்றும் பணி விவரங்கள்' : 'Employee credentials & jurisdictional personnel roster'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-lg font-bold">
-                  {visibleEmployees.length} {lang === 'ta' ? 'ஊழியர்கள்' : 'records'}
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>
+                <span className="portal-dash-icon">
+                  <Users className="h-3 w-3" />
                 </span>
-              </div>
+                {t('employeeDetails')}
+              </h3>
+              <p>
+                {lang === 'ta' ? 'ஊழியர் உள்நுழைவுத் தகவல்கள் மற்றும் பணி விவரங்கள்' : 'Employee credentials & jurisdictional personnel roster'}
+              </p>
             </div>
+            {(filterZoneId || filterDistrictId || filterTPId || searchQuery) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterZoneId('');
+                  setFilterDistrictId('');
+                  setFilterTPId('');
+                  setSearchQuery('');
+                }}
+                className="portal-dash-head-action"
+              >
+                {lang === 'ta' ? 'வடிப்பானை நீக்கு' : 'Reset'}
+              </button>
+            )}
+          </div>
+          <div className="portal-dash-body">
+            <div
+              className="portal-dash-fields"
+              style={{
+                gridTemplateColumns: isDtpUser || isZoneUser
+                  ? 'repeat(4, minmax(0, 1fr))'
+                  : 'minmax(0, 1.1fr) minmax(0, 1.6fr)'
+              }}
+            >
+              {isDtpUser && (
+                <>
+                  <div>
+                    <label>{t('zone')}</label>
+                    <select
+                      value={filterZoneId}
+                      onChange={(e) => {
+                        setFilterZoneId(e.target.value);
+                        setFilterDistrictId('');
+                        setFilterTPId('');
+                      }}
+                    >
+                      <option value="">-- {lang === 'ta' ? 'அனைத்து மண்டலங்கள்' : 'All Zones'} --</option>
+                      {zones.map((z: any) => (
+                        <option key={z.id} value={z.id}>{tObj(z)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label>{t('district')}</label>
+                    <select
+                      value={filterDistrictId}
+                      onChange={(e) => {
+                        setFilterDistrictId(e.target.value);
+                        setFilterTPId('');
+                      }}
+                    >
+                      <option value="">-- {lang === 'ta' ? 'அனைத்து மாவட்டங்கள்' : 'All Districts'} --</option>
+                      {(filterZoneId
+                        ? districts.filter((d: any) => d.zoneId === filterZoneId)
+                        : districts
+                      ).map((d: any) => (
+                        <option key={d.id} value={d.id}>{tObj(d)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label>{t('townPanchayat')}</label>
+                    <select
+                      value={filterTPId}
+                      onChange={(e) => setFilterTPId(e.target.value)}
+                    >
+                      <option value="">-- {lang === 'ta' ? 'அனைத்து பேரூராட்சிகள்' : 'All Town Panchayats'} --</option>
+                      {(() => {
+                        if (filterDistrictId) {
+                          return townPanchayats.filter((tp: any) => tp.districtId === filterDistrictId);
+                        }
+                        if (filterZoneId) {
+                          const zDistIds = districts.filter((d: any) => d.zoneId === filterZoneId).map((d: any) => d.id);
+                          return townPanchayats.filter((tp: any) => zDistIds.includes(tp.districtId));
+                        }
+                        return townPanchayats;
+                      })().map((tp: any) => (
+                        <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
 
-            {/* Hierarchical Filter Toolbar */}
-            <div className="p-4 bg-slate-50/70 border-b border-gray-100 flex flex-wrap gap-3 items-center justify-between">
-              <div className="flex flex-wrap items-center gap-3">
-                {/* 1. DTP User: Zone, District, Town Panchayat wise cascading dropdowns */}
-                {isDtpUser && (
-                  <>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-slate-500 uppercase">{t('zone')}:</span>
-                      <select
-                        value={filterZoneId}
-                        onChange={(e) => {
-                          setFilterZoneId(e.target.value);
-                          setFilterDistrictId('');
-                          setFilterTPId('');
-                        }}
-                        className="border border-slate-200 bg-white rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-100"
-                      >
-                        <option value="">-- {lang === 'ta' ? 'அனைத்து மண்டலங்கள்' : 'All Zones'} --</option>
-                        {zones.map((z: any) => (
-                          <option key={z.id} value={z.id}>{tObj(z)}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-slate-500 uppercase">{t('district')}:</span>
-                      <select
-                        value={filterDistrictId}
-                        onChange={(e) => {
-                          setFilterDistrictId(e.target.value);
-                          setFilterTPId('');
-                        }}
-                        className="border border-slate-200 bg-white rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-100"
-                      >
-                        <option value="">-- {lang === 'ta' ? 'அனைத்து மாவட்டங்கள்' : 'All Districts'} --</option>
-                        {(filterZoneId 
-                          ? districts.filter((d: any) => d.zoneId === filterZoneId)
-                          : districts
-                        ).map((d: any) => (
-                          <option key={d.id} value={d.id}>{tObj(d)}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-slate-500 uppercase">{t('townPanchayat')}:</span>
-                      <select
-                        value={filterTPId}
-                        onChange={(e) => setFilterTPId(e.target.value)}
-                        className="border border-slate-200 bg-white rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-100"
-                      >
-                        <option value="">-- {lang === 'ta' ? 'அனைத்து பேரூராட்சிகள்' : 'All Town Panchayats'} --</option>
+              {isZoneUser && (
+                <>
+                  <div>
+                    <label>{t('zone')}</label>
+                    <select value={currentUser.scopeId} disabled>
+                      <option value={currentUser.scopeId}>
                         {(() => {
-                          if (filterDistrictId) {
-                            return townPanchayats.filter((tp: any) => tp.districtId === filterDistrictId);
-                          }
-                          if (filterZoneId) {
-                            const zDistIds = districts.filter((d: any) => d.zoneId === filterZoneId).map((d: any) => d.id);
-                            return townPanchayats.filter((tp: any) => zDistIds.includes(tp.districtId));
-                          }
-                          return townPanchayats;
-                        })().map((tp: any) => (
-                          <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
-
-                {/* 2. Zone User: select District and TP within their zone */}
-                {isZoneUser && (
-                  <>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg">
-                        {t('zone')}: {(() => {
                           const myZone = zones.find((z: any) => z.id === currentUser.scopeId);
                           return myZone ? tObj(myZone) : currentUser.scopeId;
                         })()}
-                      </span>
-                    </div>
+                      </option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>{t('district')}</label>
+                    <select
+                      value={filterDistrictId}
+                      onChange={(e) => {
+                        setFilterDistrictId(e.target.value);
+                        setFilterTPId('');
+                      }}
+                    >
+                      <option value="">-- {lang === 'ta' ? 'மண்டலத்தின் அனைத்து மாவட்டங்கள்' : 'All Districts in Zone'} --</option>
+                      {districts.filter((d: any) => d.zoneId === currentUser.scopeId).map((d: any) => (
+                        <option key={d.id} value={d.id}>{tObj(d)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label>{t('townPanchayat')}</label>
+                    <select
+                      value={filterTPId}
+                      onChange={(e) => setFilterTPId(e.target.value)}
+                    >
+                      <option value="">-- {lang === 'ta' ? 'அனைத்து பேரூராட்சிகள்' : 'All Town Panchayats'} --</option>
+                      {(() => {
+                        const zDistIds = districts.filter((d: any) => d.zoneId === currentUser.scopeId).map((d: any) => d.id);
+                        if (filterDistrictId) {
+                          return townPanchayats.filter((tp: any) => tp.districtId === filterDistrictId);
+                        }
+                        return townPanchayats.filter((tp: any) => zDistIds.includes(tp.districtId));
+                      })().map((tp: any) => (
+                        <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
 
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-slate-500 uppercase">{t('district')}:</span>
-                      <select
-                        value={filterDistrictId}
-                        onChange={(e) => {
-                          setFilterDistrictId(e.target.value);
-                          setFilterTPId('');
-                        }}
-                        className="border border-slate-200 bg-white rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-100"
-                      >
-                        <option value="">-- {lang === 'ta' ? 'மண்டலத்தின் அனைத்து மாவட்டங்கள்' : 'All Districts in Zone'} --</option>
-                        {districts.filter((d: any) => d.zoneId === currentUser.scopeId).map((d: any) => (
-                          <option key={d.id} value={d.id}>{tObj(d)}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-slate-500 uppercase">{t('townPanchayat')}:</span>
-                      <select
-                        value={filterTPId}
-                        onChange={(e) => setFilterTPId(e.target.value)}
-                        className="border border-slate-200 bg-white rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-100"
-                      >
-                        <option value="">-- {lang === 'ta' ? 'அனைத்து பேரூராட்சிகள்' : 'All Town Panchayats'} --</option>
-                        {(() => {
-                          const zDistIds = districts.filter((d: any) => d.zoneId === currentUser.scopeId).map((d: any) => d.id);
-                          if (filterDistrictId) {
-                            return townPanchayats.filter((tp: any) => tp.districtId === filterDistrictId);
-                          }
-                          return townPanchayats.filter((tp: any) => zDistIds.includes(tp.districtId));
-                        })().map((tp: any) => (
-                          <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
-                )}
-
-                {/* 3. TP User: only show their TP */}
-                {isTPUser && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5 text-emerald-600" />
-                      {lang === 'ta' ? 'பேரூராட்சி அலுவலகம்' : 'Town Panchayat'}: {(() => {
+              {isTPUser && (
+                <div>
+                  <label>{lang === 'ta' ? 'பேரூராட்சி அலுவலகம்' : 'Town Panchayat'}</label>
+                  <select value={currentUser?.scopeId || selectedTP} disabled>
+                    <option value={currentUser?.scopeId || selectedTP}>
+                      {(() => {
                         const myTp = townPanchayats.find((tp: any) => tp.id === (currentUser?.scopeId || selectedTP));
                         return myTp ? tObj(myTp) : (currentUser?.scopeId || selectedTP);
                       })()}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Search input & clear filters */}
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={lang === 'ta' ? 'பெயர் / பதவி / ஐடி தேட...' : 'Search name, post, ID...'}
-                    className="border border-slate-200 bg-white rounded-xl pl-8 pr-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-100 w-48 sm:w-60"
-                  />
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                    </option>
+                  </select>
                 </div>
-                {(filterZoneId || filterDistrictId || filterTPId || searchQuery) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFilterZoneId('');
-                      setFilterDistrictId('');
-                      setFilterTPId('');
-                      setSearchQuery('');
-                    }}
-                    className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 bg-rose-50 px-2.5 py-1.5 rounded-xl transition border border-rose-100"
-                  >
-                    {lang === 'ta' ? 'வடிப்பானை நீக்கு' : 'Reset'}
-                  </button>
-                )}
+              )}
+              <div>
+                <label>{lang === 'ta' ? 'தேடல்' : 'Search'}</label>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={lang === 'ta' ? 'பெயர் / பதவி / ஐடி தேட...' : 'Search name, post, ID...'}
+                />
               </div>
             </div>
 
-            <div className="overflow-x-auto scrollbar-custom w-full">
-              <table className="w-full min-w-[1050px] text-left border-collapse">
+            <div className="portal-dash-table is-center overflow-x-auto">
+              <table>
                 <thead>
-                  <tr className="bg-gray-50/80 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    <th className="p-4 pl-6">{lang === 'ta' ? 'ஊழியர் பெயர்' : 'Employee Name'}</th>
-                    <th className="p-4">{lang === 'ta' ? 'பதவி' : 'Designation'}</th>
-                    <th className="p-4">{lang === 'ta' ? 'பயனர் ஐடி (User ID)' : 'User ID'}</th>
-                    <th className="p-4">{lang === 'ta' ? 'கடவுச்சொல் (Password)' : 'Password'}</th>
-                    <th className="p-4">{t('townPanchayat')}</th>
-                    <th className="p-4">{t('status')}</th>
-                    <th className="p-4 text-right pr-6">{t('actions')}</th>
+                  <tr>
+                    <th>{lang === 'ta' ? 'ஊழியர் பெயர்' : 'Employee Name'}</th>
+                    <th>{lang === 'ta' ? 'பதவி' : 'Designation'}</th>
+                    <th>{lang === 'ta' ? 'பயனர் ஐடி (User ID)' : 'User ID'}</th>
+                    <th>{lang === 'ta' ? 'கடவுச்சொல் (Password)' : 'Password'}</th>
+                    <th>{t('townPanchayat')}</th>
+                    <th>{t('status')}</th>
+                    <th>{t('actions')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-xs text-gray-600">
+                <tbody>
                   {visibleEmployees.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-8 text-center text-gray-400 italic">
@@ -1332,63 +1336,40 @@ export default function EmployeeManagementView({
                       const isPwdVisible = !!visiblePasswords[emp.id];
 
                       return (
-                        <tr key={emp.id} className="hover:bg-indigo-50/20 transition">
-                          {/* 1. Name */}
-                          <td className="p-4 pl-6">
-                            <div className="font-bold text-gray-900 text-sm">{tObj(emp)}</div>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="font-mono text-[11px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
-                                ID: {emp.employeeId}
-                              </span>
-                              {emp.community && (
-                                <span className="text-[10px] bg-amber-50 px-1.5 py-0.2 rounded text-amber-700 font-bold uppercase border border-amber-100">
-                                  {emp.community}
-                                </span>
-                              )}
-                            </div>
-                            {(emp.dob || emp.retirementDate) && (
-                              <div className="text-[10px] text-gray-400 mt-1 flex gap-2">
-                                {emp.dob && <span>DOB: {emp.dob}</span>}
-                                {emp.retirementDate && <span className="text-indigo-600">Retires: {emp.retirementDate}</span>}
+                        <tr key={emp.id}>
+                          <td>
+                            <div className="portal-user-identity">
+                              <strong>{tObj(emp)}</strong>
+                              <span className="portal-dash-id">ID: {emp.employeeId}</span>
+                              <div className="portal-wt-chips">
+                                {emp.community && <span className="portal-wt-chip">{String(emp.community).toUpperCase()}</span>}
+                                {emp.dob && <span className="portal-wt-chip">DOB {emp.dob}</span>}
+                                {emp.retirementDate && <span className="portal-wt-chip">Retires {emp.retirementDate}</span>}
                               </div>
-                            )}
-                          </td>
-
-                          {/* 2. Designation */}
-                          <td className="p-4">
-                            <div className="font-semibold text-gray-800">{pst ? tObj(pst) : emp.postId}</div>
-                            <div className="flex items-center gap-1 mt-1">
-                              <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded font-mono font-semibold text-[10px]">
-                                Grp {emp.groupId || 'C'}
-                              </span>
-                              <span className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-[10px]">
-                                {cat ? tObj(cat) : (emp.categoryId || 'General')}
-                              </span>
                             </div>
                           </td>
-
-                          {/* 3. User ID */}
-                          <td className="p-4">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono text-xs font-bold text-indigo-800 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded-md select-all">
-                                {emp.username || emp.employeeId}
-                              </span>
+                          <td>
+                            <div className="portal-user-identity">
+                              <strong>{pst ? tObj(pst) : emp.postId}</strong>
+                              <div className="portal-wt-chips">
+                                <span className="portal-wt-chip">Grp {emp.groupId || 'C'}</span>
+                                <span className="portal-wt-chip">{cat ? tObj(cat) : (emp.categoryId || 'General')}</span>
+                              </div>
                             </div>
                           </td>
-
-                          {/* 4. Password */}
-                          <td className="p-4">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono text-xs font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md select-all">
-                                {isPwdVisible ? empPwd : '••••••••'}
-                              </span>
+                          <td>
+                            <span className="portal-dash-id select-all">{emp.username || emp.employeeId}</span>
+                          </td>
+                          <td>
+                            <div className="flex items-center gap-1">
+                              <span className="portal-dash-id select-all">{isPwdVisible ? empPwd : '••••••••'}</span>
                               <button
                                 type="button"
                                 onClick={() => setVisiblePasswords(prev => ({ ...prev, [emp.id]: !prev[emp.id] }))}
-                                className="p-1 hover:bg-slate-200/70 text-slate-400 hover:text-slate-700 rounded transition"
+                                className="portal-fis-icon-btn"
                                 title={isPwdVisible ? (lang === 'ta' ? 'கடவுச்சொல்லை மறை' : 'Hide password') : (lang === 'ta' ? 'கடவுச்சொல்லைக் காட்டு' : 'Show password')}
                               >
-                                {isPwdVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                {isPwdVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                               </button>
                               <button
                                 type="button"
@@ -1401,36 +1382,31 @@ export default function EmployeeManagementView({
                                   setCopiedId(emp.id);
                                   setTimeout(() => setCopiedId(null), 2000);
                                 }}
-                                className={`p-1 rounded transition ${copiedId === emp.id ? 'bg-emerald-50 text-emerald-600' : 'hover:bg-indigo-50 text-indigo-500'}`}
+                                className="portal-fis-icon-btn"
                                 title={lang === 'ta' ? 'பயனர் ஐடி & கடவுச்சொல் நகலெடு' : 'Copy Username & Password'}
                               >
-                                {copiedId === emp.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                                {copiedId === emp.id ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                               </button>
                             </div>
                           </td>
-
-                          {/* 5. Town Panchayat */}
-                          <td className="p-4">
-                            <div className="font-medium text-gray-800">{tp ? tObj(tp) : emp.townPanchayatId}</div>
-                            <div className="text-[10px] text-gray-400">
-                              {(() => {
-                                const d = districts.find((dist: any) => dist.id === tp?.districtId || dist.id === emp.districtId);
-                                return d ? tObj(d) : '';
-                              })()}
+                          <td>
+                            <div className="portal-user-identity">
+                              <strong>{tp ? tObj(tp) : emp.townPanchayatId}</strong>
+                              <span className="portal-wt-meta">
+                                {(() => {
+                                  const d = districts.find((dist: any) => dist.id === tp?.districtId || dist.id === emp.districtId);
+                                  return d ? tObj(d) : '';
+                                })()}
+                              </span>
                             </div>
                           </td>
-
-                          {/* 6. Status */}
-                          <td className="p-4">
-                            <span className={`px-2.5 py-1 rounded-full font-bold text-[10px] ${emp.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' : 'bg-rose-50 text-rose-700 border border-rose-150'}`}>
+                          <td>
+                            <span className={`portal-dash-status ${emp.status === 'Active' ? 'is-resolved' : 'is-pending'}`}>
                               {emp.status === 'Active' ? t('activeStatus') : t('inactiveStatus')}
                             </span>
                           </td>
-
-                          {/* 7. Actions */}
-                          <td className="p-4 text-right pr-6">
-                            <div className="flex justify-end gap-1.5 items-center">
-                              {/* Credentials Card Button */}
+                          <td>
+                            <div className="flex items-center gap-1">
                               <button
                                 type="button"
                                 onClick={() => setShowCredentialsModal({
@@ -1440,23 +1416,19 @@ export default function EmployeeManagementView({
                                   username: emp.username || emp.employeeId,
                                   password: empPwd
                                 })}
-                                className="p-1.5 hover:bg-indigo-50 hover:text-indigo-600 text-gray-400 rounded-lg transition"
+                                className="portal-fis-icon-btn"
                                 title={lang === 'ta' ? 'அனைத்து உள்நுழைவுத் தகவல்கள் அட்டை' : 'View Full Credentials Card'}
                               >
-                                <Lock className="w-4 h-4 text-indigo-600" />
+                                <Lock className="h-3 w-3" />
                               </button>
-
-                              {/* Edit Button */}
                               <button
                                 type="button"
                                 onClick={() => handleEditClick(emp)}
-                                className="p-1.5 hover:bg-indigo-50 hover:text-indigo-600 text-gray-400 rounded-lg transition"
+                                className="portal-fis-icon-btn"
                                 title={t('edit')}
                               >
-                                <Edit3 className="w-4 h-4" />
+                                <Edit3 className="h-3 w-3" />
                               </button>
-
-                              {/* Delete Button */}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1466,10 +1438,11 @@ export default function EmployeeManagementView({
                                     onDeleteEmployee(emp.id);
                                   }
                                 }}
-                                className={`p-1.5 rounded-lg transition ${currentUser.scopeType === 'HOD' ? 'text-gray-400 hover:bg-red-50 hover:text-red-600' : 'text-gray-200 cursor-not-allowed'}`}
+                                className={`portal-fis-icon-btn is-danger${currentUser.scopeType === 'HOD' ? '' : ''}`}
+                                disabled={currentUser.scopeType !== 'HOD'}
                                 title={currentUser.scopeType === 'HOD' ? t('delete') : t('deletePermissionWarning')}
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="h-3 w-3" />
                               </button>
                             </div>
                           </td>
@@ -1485,39 +1458,50 @@ export default function EmployeeManagementView({
       )}
 
       {activeTab === 'create' && (
-        <div className="max-w-4xl mx-auto">
-          <form onSubmit={handleSaveEmployee} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-6">
-            <h3 className="font-semibold text-gray-800 text-md border-b border-gray-50 pb-3">
-              {isEditing ? (lang === 'ta' ? 'ஊழியர் கோப்பினை திருத்து' : 'Edit Personnel Profile') : (lang === 'ta' ? 'புதிய ஊழியர் சுயவிவரம் உருவாக்கு' : 'Create New Personnel Profile')}
-            </h3>
-
-            {/* Form Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>
+                <span className="portal-dash-icon">
+                  <UserPlus className="h-3 w-3" />
+                </span>
+                {isEditing ? (lang === 'ta' ? 'ஊழியர் கோப்பினை திருத்து' : 'Edit Personnel Profile') : (lang === 'ta' ? 'புதிய ஊழியர் சுயவிவரம் உருவாக்கு' : 'Create New Personnel Profile')}
+              </h3>
+            </div>
+            {isEditing && (
+              <button
+                type="button"
+                onClick={() => { setActiveTab('list'); setIsEditing(null); resetForm(); }}
+                className="portal-dash-head-action"
+              >
+                {t('cancel')}
+              </button>
+            )}
+          </div>
+          <div className="portal-dash-body portal-wt-form">
+          <form onSubmit={handleSaveEmployee} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {isEditing && (
                 <div>
-                  <label className="text-xs font-semibold text-gray-500">
-                    {lang === 'ta' ? 'ஊழியர் அடையாள எண் (Employee ID)' : 'Employee ID'}
-                  </label>
-                  <div className="w-full border border-gray-200 bg-gray-50 rounded-xl p-3 text-sm mt-1 font-mono font-bold text-indigo-700">
-                    {empId}
-                  </div>
+                  <label>{lang === 'ta' ? 'ஊழியர் அடையாள எண் (Employee ID)' : 'Employee ID'}</label>
+                  <input type="text" value={empId} readOnly disabled />
                 </div>
               )}
-
               <div>
-                <label className="text-xs font-semibold text-gray-500">{t('townPanchayat')}</label>
+                <label>{t('townPanchayat')}</label>
                 {currentUser?.scopeType === 'TP' || (currentUser?.scopeType !== 'HOD' && currentUser?.scopeType !== 'Zone') ? (
-                  <div className="w-full border border-gray-200 bg-gray-50 rounded-xl p-3 text-sm mt-1 font-semibold text-gray-700">
-                    {(() => {
-                      const myTp = townPanchayats.find((tp: any) => tp.id === (currentUser?.scopeId || selectedTP));
-                      return myTp ? tObj(myTp) : (currentUser?.scopeId || selectedTP);
-                    })()}
-                  </div>
+                  <select value={currentUser?.scopeId || selectedTP} disabled>
+                    <option value={currentUser?.scopeId || selectedTP}>
+                      {(() => {
+                        const myTp = townPanchayats.find((tp: any) => tp.id === (currentUser?.scopeId || selectedTP));
+                        return myTp ? tObj(myTp) : (currentUser?.scopeId || selectedTP);
+                      })()}
+                    </option>
+                  </select>
                 ) : (
                   <select
                     value={selectedTP}
                     onChange={(e) => setSelectedTP(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white font-semibold text-gray-700"
                     required
                   >
                     <option value="">-- Choose Town Panchayat --</option>
@@ -1535,31 +1519,8 @@ export default function EmployeeManagementView({
                   </select>
                 )}
               </div>
-
               <div>
-                <label className="text-xs font-semibold text-gray-500">{t('empFullNameEn')}</label>
-                <input
-                  type="text"
-                  value={nameEn}
-                  onChange={(e) => setNameEn(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-gray-500">{t('empFullNameTa')}</label>
-                <input
-                  type="text"
-                  value={nameTa}
-                  onChange={(e) => setNameTa(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-gray-500">{t('post')}</label>
+                <label>{t('post')}</label>
                 <select
                   value={selectedPost}
                   onChange={(e) => {
@@ -1573,7 +1534,6 @@ export default function EmployeeManagementView({
                       if (matchedPost.groupId) setSelectedGroup(matchedPost.groupId);
                     }
                   }}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white font-semibold text-gray-700"
                   required
                 >
                   <option value="">-- Choose Post --</option>
@@ -1582,53 +1542,60 @@ export default function EmployeeManagementView({
                       || officeCategories.find((oc: any) => oc.id === 'tp' || oc.type === 'TP');
                     const filteredPosts = targetOfficeForSanctions?.sanctions
                       ? posts.filter((p: any) => Number(targetOfficeForSanctions.sanctions[p.id]) > 0)
-                      : posts; // Fallback to all if none configured
+                      : posts;
                     return filteredPosts.map((p: any) => (
                       <option key={p.id} value={p.id}>{tObj(p)}</option>
                     ));
                   })()}
                 </select>
               </div>
-
               <div>
-                <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'பிறந்த தேதி' : 'Date of Birth (DOB)'}</label>
+                <label>{t('empFullNameEn')}</label>
+                <input
+                  type="text"
+                  value={nameEn}
+                  onChange={(e) => setNameEn(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label>{t('empFullNameTa')}</label>
+                <input
+                  type="text"
+                  value={nameTa}
+                  onChange={(e) => setNameTa(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label>{lang === 'ta' ? 'பிறந்த தேதி' : 'Date of Birth (DOB)'}</label>
                 <input
                   type="date"
                   value={dob}
                   onChange={(e) => handleDobChange(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white font-semibold text-gray-700"
                   required
                 />
               </div>
-
               <div>
-                <div className="flex justify-between items-center">
-                  <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'ஓய்வு பெறும் தேதி' : 'Date of Retirement'}</label>
-                  <span className="text-[10px] text-indigo-600 font-medium bg-indigo-50 px-1.5 py-0.5 rounded">
-                    {lang === 'ta' ? 'அரசு விதிமுறை: 60 வயது' : 'Govt Rule: 60 Yrs'}
-                  </span>
-                </div>
+                <label>{lang === 'ta' ? 'ஓய்வு பெறும் தேதி' : 'Date of Retirement'}</label>
                 <input
                   type="date"
                   value={retirementDate}
                   readOnly
                   disabled
-                  className="w-full border border-gray-200 bg-gray-50 rounded-xl p-3 text-sm mt-1 outline-none font-semibold text-gray-700 cursor-not-allowed"
                   required
                 />
-                <p className="text-[11px] text-gray-400 mt-1">
-                  {lang === 'ta' 
-                    ? '1-ஆம் தேதி பிறந்தவர்களுக்கு முந்தைய மாத இறுதி நாள்; மற்றவர்களுக்கு அதே மாத இறுதி நாள்.' 
-                    : '1st of month birth retires previous month-end; other dates retire month-end.'}
+                <p className="portal-switch-hint">
+                  {lang === 'ta'
+                    ? 'அரசு விதிமுறை: 60 வயது. 1-ஆம் தேதி பிறந்தவர்களுக்கு முந்தைய மாத இறுதி நாள்; மற்றவர்களுக்கு அதே மாத இறுதி நாள்.'
+                    : 'Govt Rule: 60 Yrs. 1st of month birth retires previous month-end; other dates retire month-end.'}
                 </p>
               </div>
-
               <div>
-                <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'பாலினம்' : 'Gender'}</label>
+                <label>{lang === 'ta' ? 'பாலினம்' : 'Gender'}</label>
                 <select
                   value={gender}
                   onChange={(e) => setGender(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white font-semibold text-gray-700"
                   required
                 >
                   <option value="Male">{lang === 'ta' ? 'ஆண்' : 'Male'}</option>
@@ -1636,9 +1603,8 @@ export default function EmployeeManagementView({
                   <option value="Transgender">{lang === 'ta' ? 'திருநங்கை / திருநம்பி' : 'Transgender'}</option>
                 </select>
               </div>
-
               <div>
-                <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'ஆதார் எண்' : 'Aadhar No'}</label>
+                <label>{lang === 'ta' ? 'ஆதார் எண்' : 'Aadhar No'}</label>
                 <input
                   type="text"
                   maxLength={12}
@@ -1648,19 +1614,14 @@ export default function EmployeeManagementView({
                     const val = e.target.value.replace(/\D/g, '');
                     setAadharNo(val);
                   }}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white font-semibold text-gray-700 font-mono"
                   required
                 />
               </div>
-
               <div>
-                <label className="text-xs font-semibold text-gray-500">
-                  {lang === 'ta' ? 'சமூகம் / வகுப்பு (Community)' : 'Community'}
-                </label>
+                <label>{lang === 'ta' ? 'சமூகம் / வகுப்பு (Community)' : 'Community'}</label>
                 <select
                   value={community}
                   onChange={(e) => setCommunity(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white font-semibold text-gray-700"
                   required
                 >
                   <option value="oc">OC</option>
@@ -1672,70 +1633,54 @@ export default function EmployeeManagementView({
               </div>
             </div>
 
-            {/* Dynamic Custom Modules & Fields Section (Grouped by Module Name) */}
             {(() => {
               const activeModulesWithFields = getApplicableModulesWithFields();
               if (activeModulesWithFields.length === 0) {
                 return (
-                  <div className="pt-4 border-t border-gray-100">
-                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500 italic text-center">
-                      {selectedPost 
-                        ? (lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட பதவிக்கு கூடுதல் தொகுதிகள் வரையறுக்கப்படவில்லை.' : 'No additional custom module fields configured for this designation.')
-                        : (lang === 'ta' ? 'கூடுதல் தொகுதி புலங்களைக் காண (எ.கா. தகுதிகாண் பருவம் விவரங்கள் / Probation Details) பதவியைத் தேர்ந்தெடுக்கவும்.' : 'Please choose a designation / post above to view applicable module fields (e.g. Probation Details).')
-                      }
-                    </div>
-                  </div>
+                  <p className="portal-wt-note">
+                    {selectedPost
+                      ? (lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட பதவிக்கு கூடுதல் தொகுதிகள் வரையறுக்கப்படவில்லை.' : 'No additional custom module fields configured for this designation.')
+                      : (lang === 'ta' ? 'கூடுதல் தொகுதி புலங்களைக் காண (எ.கா. தகுதிகாண் பருவம் விவரங்கள் / Probation Details) பதவியைத் தேர்ந்தெடுக்கவும்.' : 'Please choose a designation / post above to view applicable module fields (e.g. Probation Details).')}
+                  </p>
                 );
               }
 
               return (
-                <div className="space-y-6 pt-4 border-t border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                      <Briefcase className="w-5 h-5 text-indigo-600" />
-                      {lang === 'ta' ? 'கூடுதல் தொகுதி விவரங்கள்' : 'Additional Custom Module Details'}
-                    </h4>
-                    <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full">
-                      {activeModulesWithFields.length} {lang === 'ta' ? 'தொகுதிகள்' : 'Modules Active'}
-                    </span>
-                  </div>
-
-                  {activeModulesWithFields.map((mod: any) => (
-                    <div 
-                      key={mod.id} 
-                      className="bg-white border-2 border-indigo-100/80 rounded-2xl p-5 space-y-4 shadow-2xs hover:border-indigo-200 transition"
+                <div className="portal-wt-tree">
+                  {activeModulesWithFields.map((mod: any, modIdx: number) => {
+                    const moduleOpen = Boolean(openEmpFormSections[mod.id]);
+                    return (
+                    <div
+                      key={mod.id}
+                      className={`portal-wt-node${moduleOpen ? ' is-open' : ''}`}
+                      style={{ ['--wt-tone' as string]: EMP_MODULE_TONES[modIdx % EMP_MODULE_TONES.length] }}
                     >
-                      {/* Module Name Header */}
-                      <div className="flex items-center justify-between border-b border-indigo-50 pb-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
-                            <FolderLock className="w-4 h-4 text-indigo-600" />
+                      <div className="portal-wt-node-head">
+                        <button
+                          type="button"
+                          className="portal-wt-toggle"
+                          onClick={() => setOpenEmpFormSections((prev) => ({ ...prev, [mod.id]: !prev[mod.id] }))}
+                          aria-expanded={moduleOpen}
+                        >
+                          <ChevronRight className={`portal-wt-caret${moduleOpen ? ' is-open' : ''}`} />
+                          <div className="portal-wt-copy">
+                            <div className="portal-wt-title">
+                              <span>{tObj(mod)}</span>
+                              <span className="portal-wt-count">{mod.fields.length} {lang === 'ta' ? 'புலங்கள்' : 'fields'}</span>
+                            </div>
                           </div>
-                          <div>
-                            <h5 className="font-bold text-gray-900 text-sm">
-                              {tObj(mod)} {/* e.g. "Probation Details" or "தகுதிகாண் பருவம் விவரங்கள்" */}
-                            </h5>
-                            <p className="text-[11px] text-gray-400">
-                              {lang === 'ta' 
-                                ? `${tObj(mod)} தொகுதி சார்ந்த விவரங்கள் மற்றும் புலங்கள்` 
-                                : `Custom records and data fields for ${mod.nameEn}`}
-                            </p>
-                          </div>
-                        </div>
-                        <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-lg">
-                          {mod.fields.length} {lang === 'ta' ? 'புலங்கள்' : 'fields'}
-                        </span>
+                        </button>
                       </div>
-
-                      {/* Fields inside this module */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                      {moduleOpen && (
+                      <div className="portal-wt-fields">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {mod.fields.map((field: any) => {
                           const currentVal = dynamicData[field.id] || '';
                           return (
-                            <div key={field.id} className="space-y-1.5">
-                              <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                            <div key={field.id}>
+                              <label>
                                 {tObj(field)}
-                                {field.validations?.required && <span className="text-rose-500 font-bold">*</span>}
+                                {field.validations?.required && <span> *</span>}
                               </label>
 
                               {field.type === 'text' && (
@@ -1744,7 +1689,6 @@ export default function EmployeeManagementView({
                                   value={currentVal}
                                   placeholder={lang === 'ta' ? `${tObj(field)} உள்ளிடவும்` : `Enter ${field.nameEn}`}
                                   onChange={(e) => handleDynamicChange(field.id, e.target.value)}
-                                  className="w-full border border-gray-200 rounded-xl p-3 text-xs bg-white focus:ring-2 focus:ring-indigo-100 outline-none transition"
                                   required={field.validations?.required}
                                 />
                               )}
@@ -1757,7 +1701,6 @@ export default function EmployeeManagementView({
                                   value={currentVal}
                                   placeholder="0"
                                   onChange={(e) => handleDynamicChange(field.id, parseInt(e.target.value) || '')}
-                                  className="w-full border border-gray-200 rounded-xl p-3 text-xs bg-white focus:ring-2 focus:ring-indigo-100 outline-none transition font-mono"
                                   required={field.validations?.required}
                                 />
                               )}
@@ -1767,7 +1710,6 @@ export default function EmployeeManagementView({
                                   type="date"
                                   value={currentVal}
                                   onChange={(e) => handleDynamicChange(field.id, e.target.value)}
-                                  className="w-full border border-gray-200 rounded-xl p-3 text-xs bg-white focus:ring-2 focus:ring-indigo-100 outline-none transition font-medium"
                                   required={field.validations?.required}
                                 />
                               )}
@@ -1776,7 +1718,6 @@ export default function EmployeeManagementView({
                                 <select
                                   value={currentVal}
                                   onChange={(e) => handleDynamicChange(field.id, e.target.value)}
-                                  className="w-full border border-gray-200 rounded-xl p-3 text-xs bg-white focus:ring-2 focus:ring-indigo-100 outline-none transition font-medium"
                                   required={field.validations?.required}
                                 >
                                   <option value="">-- {lang === 'ta' ? 'தேர்வு செய்யவும்' : 'Choose Option'} --</option>
@@ -1787,30 +1728,24 @@ export default function EmployeeManagementView({
                               )}
 
                               {field.type === 'file' && (
-                                <div className="space-y-2 border border-slate-200 p-3 bg-slate-50/50 rounded-xl">
-                                  {/* Validation hints */}
-                                  <div className="text-[10px] text-gray-400 font-medium flex justify-between">
-                                    <span>Formats: <span className="font-semibold text-gray-500 uppercase">{field.validations?.allowedTypes || 'both'}</span></span>
-                                    <span>Max Size: <span className="font-semibold text-gray-500">{field.validations?.maxSizeMb || 5}MB</span></span>
-                                  </div>
-
-                                  {/* Upload Button */}
+                                <div className="space-y-2">
+                                  <p className="portal-wt-note">
+                                    Formats: {field.validations?.allowedTypes || 'both'} • Max Size: {field.validations?.maxSizeMb || 5}MB
+                                  </p>
                                   {(!field.validations?.multiple && Array.isArray(currentVal) && currentVal.length >= 1) ? (
-                                    <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-100 flex items-center justify-between">
-                                      <span>File uploaded. Delete to replace.</span>
-                                    </div>
+                                    <p className="portal-wt-note">File uploaded. Delete to replace.</p>
                                   ) : (
-                                    <label className="flex items-center justify-center gap-2 border border-dashed border-gray-300 hover:bg-white rounded-xl text-xs font-semibold text-indigo-600 cursor-pointer p-2.5 transition bg-white">
-                                      <Upload className="w-4 h-4" />
+                                    <label className="portal-wt-link inline-flex items-center gap-1.5 cursor-pointer">
+                                      <Upload className="h-3.5 w-3.5" />
                                       <span>{uploadingFieldId === field.id ? 'Uploading...' : (field.validations?.multiple ? 'Upload Files' : 'Upload File')}</span>
                                       <input
                                         type="file"
                                         multiple={field.validations?.multiple}
                                         accept={
-                                          field.validations?.allowedTypes === 'pdf' 
-                                            ? 'application/pdf' 
-                                            : field.validations?.allowedTypes === 'image' 
-                                            ? 'image/*' 
+                                          field.validations?.allowedTypes === 'pdf'
+                                            ? 'application/pdf'
+                                            : field.validations?.allowedTypes === 'image'
+                                            ? 'image/*'
                                             : 'application/pdf,image/*'
                                         }
                                         onChange={(e) => handleUploadDynamicFile(e, field)}
@@ -1819,26 +1754,19 @@ export default function EmployeeManagementView({
                                       />
                                     </label>
                                   )}
-
-                                  {/* Upload error feedback */}
                                   {fieldUploadErrors[field.id] && (
                                     <p className="text-[10px] text-rose-600 font-semibold">{fieldUploadErrors[field.id]}</p>
                                   )}
-
-                                  {/* Display Uploaded Files */}
-                                  <div className="space-y-1.5 mt-2">
+                                  <div className="space-y-1">
                                     {Array.isArray(currentVal) && currentVal.map((fileItem: any, fIdx: number) => (
-                                      <div key={fIdx} className="p-2 bg-white border border-gray-200 rounded-lg flex justify-between items-center text-[11px]">
-                                        <div className="flex items-center gap-1.5 truncate max-w-[70%]">
-                                          <FileText className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                                          <span className="font-semibold text-gray-700 truncate" title={fileItem.name}>{fileItem.name}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <a 
-                                            href={fileItem.url} 
-                                            target="_blank" 
-                                            rel="noreferrer" 
-                                            className="text-indigo-600 hover:underline font-bold text-[10px]"
+                                      <div key={fIdx} className="flex justify-between items-center gap-2 text-[11px]">
+                                        <span className="truncate" title={fileItem.name}>{fileItem.name}</span>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                          <a
+                                            href={fileItem.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="portal-wt-link"
                                           >
                                             View
                                           </a>
@@ -1848,7 +1776,7 @@ export default function EmployeeManagementView({
                                               const nextVal = currentVal.filter((_, idx) => idx !== fIdx);
                                               handleDynamicChange(field.id, nextVal);
                                             }}
-                                            className="text-rose-600 hover:text-rose-800 font-bold px-1"
+                                            className="portal-wt-link"
                                           >
                                             ×
                                           </button>
@@ -1862,63 +1790,67 @@ export default function EmployeeManagementView({
                           );
                         })}
                       </div>
+                      </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })()}
 
-            {/* S3 Documents Uploading Block */}
             {empId && (
-              <div className="space-y-4 pt-4 border-t border-gray-50">
-                {!showUploadBlock ? (
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50">
+              <div className="portal-wt-tree">
+              <div
+                className={`portal-wt-node${openEmpFormSections.documents ? ' is-open' : ''}`}
+                style={{ ['--wt-tone' as string]: '#0369a1' }}
+              >
+                <div className="portal-wt-node-head">
+                  <button
+                    type="button"
+                    className="portal-wt-toggle"
+                    onClick={() => setOpenEmpFormSections((prev) => ({ ...prev, documents: !prev.documents }))}
+                    aria-expanded={Boolean(openEmpFormSections.documents)}
+                  >
+                    <ChevronRight className={`portal-wt-caret${openEmpFormSections.documents ? ' is-open' : ''}`} />
+                    <div className="portal-wt-copy">
+                      <div className="portal-wt-title">
+                        <span>{t('documentsUpload')}</span>
+                        <span className="portal-wt-count">{documents.length}</span>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+                {openEmpFormSections.documents && (
+                <div className="portal-wt-fields">
+                <p className="portal-switch-hint">
+                  {lang === 'ta' ? 'அதிகாரப்பூர்வ சேவை ஆவணங்களை விருப்பப்பட்டால் பதிவேற்றலாம்.' : 'Uploading official service documents is optional.'}
+                </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <h4 className="font-semibold text-gray-800 text-xs uppercase tracking-wide">{t('documentsUpload')}</h4>
-                      <p className="text-[10px] text-gray-400 mt-0.5">
-                        {lang === 'ta' ? 'அதிகாரப்பூர்வ சேவை ஆவணங்களை விருப்பப்பட்டால் பதிவேற்றலாம்.' : 'Uploading official service documents is optional.'}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowUploadBlock(true)}
-                      className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-xs border border-indigo-100/50"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>{lang === 'ta' ? 'ஆவணங்களைப் பதிவேற்று' : 'Upload Documents'}</span>
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex justify-between items-center pb-1">
-                      <h4 className="font-semibold text-gray-800 text-xs uppercase tracking-wide">{t('documentsUpload')}</h4>
-                      <button
-                        type="button"
-                        onClick={() => setShowUploadBlock(false)}
-                        className="text-[10px] text-gray-400 hover:text-gray-600 font-bold uppercase transition"
-                      >
-                        {lang === 'ta' ? 'மறை' : 'Hide'}
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <label>{lang === 'ta' ? 'ஆவணப் பெயர்' : 'Document name'}</label>
                       <input
                         type="text"
                         placeholder="e.g. Appointment Order"
                         value={docName}
                         onChange={(e) => setDocName(e.target.value)}
-                        className="border border-gray-200 rounded-xl p-2.5 text-xs outline-none bg-white"
                       />
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'வகை' : 'Category'}</label>
                       <select
                         value={docCategory}
                         onChange={(e) => setDocCategory(e.target.value)}
-                        className="border border-gray-200 rounded-xl p-2.5 text-xs outline-none bg-white"
                       >
                         <option value="Appointment">Appointment Order</option>
                         <option value="Probation">Probation Clearance</option>
                         <option value="Transfer">Transfer Certificate</option>
                       </select>
-                      <label className="flex items-center justify-center gap-2 border border-dashed border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-semibold text-indigo-600 cursor-pointer p-2.5 transition">
-                        <Upload className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <label>{lang === 'ta' ? 'கோப்பு' : 'File'}</label>
+                      <label className="portal-wt-link inline-flex items-center gap-1.5 cursor-pointer mt-1">
+                        <Upload className="h-3.5 w-3.5" />
                         {uploadingDoc ? t('uploading') : 'Select File'}
                         <input
                           type="file"
@@ -1928,28 +1860,23 @@ export default function EmployeeManagementView({
                         />
                       </label>
                     </div>
-                  </>
-                )}
-
+                  </div>
                 {documents.length > 0 && (
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     {documents.map((doc, idx) => (
-                      <div key={idx} className="p-3 bg-gray-50 border border-gray-100 rounded-xl flex justify-between items-center text-xs">
-                        <div className="flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-indigo-500" />
-                          <div>
-                            <p className="font-bold text-gray-800">{doc.name}</p>
-                            <span className="text-[10px] text-gray-400 font-medium">{doc.category}</span>
-                          </div>
+                      <div key={idx} className="flex justify-between items-center gap-2 text-xs">
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">{doc.name}</p>
+                          <p className="text-[10px] text-slate-500">{doc.category}</p>
                         </div>
-                        <div className="flex gap-2">
-                          <a href={doc.url} download className="text-indigo-600 font-semibold hover:underline" target="_blank" rel="noreferrer">
+                        <div className="flex gap-2 shrink-0">
+                          <a href={doc.url} download className="portal-wt-link" target="_blank" rel="noreferrer">
                             {t('download')}
                           </a>
                           <button
                             type="button"
                             onClick={() => setDocuments(prev => prev.filter((_, dIdx) => dIdx !== idx))}
-                            className="text-rose-600 font-bold px-1 text-base leading-none"
+                            className="portal-wt-link"
                           >
                             ×
                           </button>
@@ -1958,171 +1885,161 @@ export default function EmployeeManagementView({
                     ))}
                   </div>
                 )}
+                </div>
+                )}
+              </div>
               </div>
             )}
 
-            {/* Form Buttons */}
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-50">
-              <button
-                type="button"
-                onClick={() => { setActiveTab('list'); setIsEditing(null); resetForm(); }}
-                className="px-5 py-2.5 border border-gray-200 rounded-xl text-xs font-semibold text-gray-500 hover:bg-gray-50 transition"
-              >
-                {t('cancel')}
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs"
-              >
-                {t('save')}
-              </button>
-            </div>
+            <button type="submit">
+              {t('save')}
+            </button>
           </form>
+          </div>
         </div>
       )}
 
       {activeTab === 'activityLogs' && !isTPUser && !isZoneUser && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
-          <div className="p-6 border-b border-gray-50 bg-gradient-to-r from-gray-50/50 via-white to-gray-50/30">
-            <h3 className="font-semibold text-gray-800 text-base">{t('activityLogsTab')}</h3>
-            <p className="text-xs text-gray-500 mt-1 max-w-2xl">{t('activityLogDescription')}</p>
-            
-            {/* Filters bar */}
-            <div className="mt-5 flex flex-col sm:flex-row gap-3 items-center justify-between">
-              <div className="relative w-full sm:max-w-xs">
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>
+                <span className="portal-dash-icon">
+                  <FileText className="h-3 w-3" />
+                </span>
+                {t('activityLogsTab')}
+              </h3>
+              <p>{t('activityLogDescription')}</p>
+            </div>
+            <span className="portal-fis-count">{filteredLogs.length}</span>
+          </div>
+          <div className="portal-dash-body">
+            <div className="portal-dash-fields" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
+              <div>
                 <input
                   type="text"
                   placeholder={lang === 'ta' ? "ஊழியர் ஐடி, பெயர் அல்லது செயல்பாட்டைத் தேடுக..." : "Search logs by ID, Name, Action, Actor..."}
                   value={logSearchQuery}
                   onChange={(e) => setLogSearchQuery(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl p-2.5 pl-3 text-xs outline-none focus:border-indigo-500 bg-white"
                 />
               </div>
-              <span className="text-xs font-mono text-gray-400 bg-gray-50 px-2.5 py-1 rounded select-none shrink-0">
-                Logged Activities: {filteredLogs.length} events
-              </span>
             </div>
-          </div>
-
-          <div className="overflow-x-auto scrollbar-custom w-full">
-            <table className="w-full min-w-[950px] text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50/70 border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider font-sans">
-                  <th className="p-4 pl-6">{t('timestamp')}</th>
-                  <th className="p-4">{t('employeeId')}</th>
-                  <th className="p-4">{lang === 'ta' ? 'ஊழியர் பெயர்' : 'Employee Name'}</th>
-                  <th className="p-4">{t('action')}</th>
-                  <th className="p-4">{t('details')}</th>
-                  <th className="p-4 pr-6">{t('performedBy')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 text-xs text-gray-600">
+            <div className="portal-dash-table overflow-x-auto" style={{ marginTop: '0.75rem' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>{t('timestamp')}</th>
+                    <th>{t('employeeId')}</th>
+                    <th>{lang === 'ta' ? 'ஊழியர் பெயர்' : 'Employee Name'}</th>
+                    <th>{t('action')}</th>
+                    <th>{t('details')}</th>
+                    <th>{t('performedBy')}</th>
+                  </tr>
+                </thead>
+                <tbody>
                 {filteredLogs.map((log: any) => {
-                  let badgeColor = "bg-gray-50 text-gray-600";
-                  if (log.action?.includes("Created")) {
-                    badgeColor = "bg-emerald-50 text-emerald-700 border border-emerald-100";
-                  } else if (log.action?.includes("Updated")) {
-                    badgeColor = "bg-indigo-50 text-indigo-700 border border-indigo-100";
-                  } else if (log.action?.includes("Deleted")) {
-                    badgeColor = "bg-rose-50 text-rose-700 border border-rose-100";
-                  } else if (log.action?.includes("Transfer")) {
-                    badgeColor = "bg-amber-50 text-amber-700 border border-amber-100";
-                  }
+                  const statusClass = log.action?.includes("Created")
+                    ? 'is-resolved'
+                    : log.action?.includes("Deleted")
+                    ? 'is-pending'
+                    : log.action?.includes("Updated") || log.action?.includes("Transfer")
+                    ? 'is-progress'
+                    : '';
 
                   return (
-                    <tr key={log.id} className="hover:bg-gray-50/50 transition">
-                      <td className="p-4 pl-6 font-mono text-gray-400">
-                        {new Date(log.timestamp).toLocaleString(lang === 'ta' ? 'ta-IN' : 'en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit'
-                        })}
-                      </td>
-                      <td className="p-4 font-mono font-bold text-indigo-600">{log.employeeId}</td>
-                      <td className="p-4 font-semibold text-gray-800">{log.employeeName}</td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${badgeColor}`}>
-                          {log.action}
+                    <tr key={log.id}>
+                      <td>
+                        <span className="portal-dash-id">
+                          {new Date(log.timestamp).toLocaleString(lang === 'ta' ? 'ta-IN' : 'en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                          })}
                         </span>
                       </td>
-                      <td className="p-4 max-w-sm font-medium text-gray-500 leading-relaxed break-words">
-                        {log.details}
+                      <td><span className="portal-dash-id">{log.employeeId}</span></td>
+                      <td>{log.employeeName}</td>
+                      <td>
+                        <span className={`portal-dash-status ${statusClass}`}>{log.action}</span>
                       </td>
-                      <td className="p-4 pr-6 font-semibold text-gray-700">
-                        {log.changedBy}
-                      </td>
+                      <td>{log.details}</td>
+                      <td>{log.changedBy}</td>
                     </tr>
                   );
                 })}
                 {filteredLogs.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="text-center py-12 text-gray-400 italic">
+                    <td colSpan={6}>
                       {lang === 'ta' ? "செயல்பாட்டு பதிவுகள் ஏதும் இல்லை" : "No activity logs match your search filter."}
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}
 
       {activeTab === 'deletedEmployees' && isAdmin && (
-        <div className="bg-white rounded-2xl border border-gray-150 shadow-xs overflow-hidden">
-          <div className="p-6 border-b border-gray-50 bg-gradient-to-r from-gray-50/50 via-white to-gray-50/30">
-            <h3 className="font-semibold text-gray-800 text-base">
-              {lang === 'ta' ? 'நீக்கப்பட்ட ஊழியர்கள் விவரங்கள் அறிக்கை' : 'Deleted User Details Archive & S3 Report'}
-            </h3>
-            <p className="text-xs text-gray-500 mt-1 max-w-2xl">
-              {lang === 'ta' 
-                ? 'அமைப்பிலிருந்து நீக்கப்பட்ட ஊழியர்களின் முழு விவரங்கள், பாதுகாப்பு காரணங்களுக்காக S3 கிடங்கில் கோப்பாகப் பாதுகாக்கப்பட்டுள்ளது.' 
-                : 'Auditable registry of all removed personnel profiles. Raw historical data is archived securely in S3 folder.'}
-            </p>
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>
+                <span className="portal-dash-icon">
+                  <Trash2 className="h-3 w-3" />
+                </span>
+                {lang === 'ta' ? 'நீக்கப்பட்ட ஊழியர்கள் விவரங்கள் அறிக்கை' : 'Deleted User Details Archive & S3 Report'}
+              </h3>
+              <p>
+                {lang === 'ta'
+                  ? 'அமைப்பிலிருந்து நீக்கப்பட்ட ஊழியர்களின் முழு விவரங்கள், பாதுகாப்பு காரணங்களுக்காக S3 கிடங்கில் கோப்பாகப் பாதுகாக்கப்பட்டுள்ளது.'
+                  : 'Auditable registry of all removed personnel profiles. Raw historical data is archived securely in S3 folder.'}
+              </p>
+            </div>
           </div>
-
-          <div className="overflow-x-auto scrollbar-custom w-full">
-            <table className="w-full min-w-[950px] text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50/70 border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider font-sans">
-                  <th className="p-4 pl-6">{lang === 'ta' ? 'நீக்கப்பட்ட தேதி' : 'Date Deleted'}</th>
-                  <th className="p-4">{lang === 'ta' ? 'ஊழியர் அடையாள எண்' : 'Employee ID'}</th>
-                  <th className="p-4">{lang === 'ta' ? 'பணியாளர் பெயர்' : 'Full Name'}</th>
-                  <th className="p-4">{lang === 'ta' ? 'பதவி' : 'Archived Designation'}</th>
-                  <th className="p-4">{lang === 'ta' ? 'S3 கிடங்கு பாதை' : 'S3 Archive Path'}</th>
-                  <th className="p-4 pr-6 text-right">{lang === 'ta' ? 'செயல்கள்' : 'Actions'}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 text-xs text-gray-600">
+          <div className="portal-dash-body">
+            <div className="portal-dash-table overflow-x-auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{lang === 'ta' ? 'நீக்கப்பட்ட தேதி' : 'Date Deleted'}</th>
+                    <th>{lang === 'ta' ? 'ஊழியர் அடையாள எண்' : 'Employee ID'}</th>
+                    <th>{lang === 'ta' ? 'பணியாளர் பெயர்' : 'Full Name'}</th>
+                    <th>{lang === 'ta' ? 'பதவி' : 'Archived Designation'}</th>
+                    <th>{lang === 'ta' ? 'S3 கிடங்கு பாதை' : 'S3 Archive Path'}</th>
+                    <th>{lang === 'ta' ? 'செயல்கள்' : 'Actions'}</th>
+                  </tr>
+                </thead>
+                <tbody>
                 {deletedEmployees.map((emp: any) => {
                   const matchedPost = posts.find((p: any) => p.id === emp.postId);
                   return (
-                    <tr key={emp.id || emp.employeeId} className="hover:bg-gray-50/50 transition">
-                      <td className="p-4 pl-6 font-mono text-gray-400">
+                    <tr key={emp.id || emp.employeeId}>
+                      <td className="font-mono">
                         {emp.deletedAt ? new Date(emp.deletedAt).toLocaleString(lang === 'ta' ? 'ta-IN' : 'en-US') : '--'}
                       </td>
-                      <td className="p-4 font-mono font-bold text-indigo-600">{emp.employeeId}</td>
-                      <td className="p-4 font-semibold text-gray-800">
+                      <td className="font-mono">{emp.employeeId}</td>
+                      <td>
                         {lang === 'ta' ? (emp.nameTa || emp.nameEn) : emp.nameEn}
                       </td>
-                      <td className="p-4 font-medium text-gray-500">
+                      <td>
                         {matchedPost ? tObj(matchedPost) : emp.postId || '--'}
                       </td>
-                      <td className="p-4 max-w-sm font-mono text-[10px] text-indigo-500 break-all">
-                        <span className="bg-indigo-50/50 px-2 py-1 rounded border border-indigo-100">
-                          {emp.s3Path || `deleted_employees/${emp.employeeId}/details.json`}
-                        </span>
+                      <td className="font-mono text-[10px] break-all">
+                        {emp.s3Path || `deleted_employees/${emp.employeeId}/details.json`}
                       </td>
-                      <td className="p-4 pr-6 text-right">
+                      <td>
                         <button
                           type="button"
                           onClick={() => setViewDeletedEmployee(emp)}
-                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-150 rounded-xl text-xs font-semibold transition inline-flex items-center gap-1"
+                          className="portal-wt-link inline-flex items-center gap-1"
                         >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>{lang === 'ta' ? 'விவரங்களை காண்' : 'View Data'}</span>
+                          <Eye className="h-3.5 w-3.5" />
+                          {lang === 'ta' ? 'விவரங்களை காண்' : 'View Data'}
                         </button>
                       </td>
                     </tr>
@@ -2130,21 +2047,22 @@ export default function EmployeeManagementView({
                 })}
                 {deletedEmployees.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="text-center py-12 text-gray-400 italic">
+                    <td colSpan={6}>
                       {lang === 'ta' ? "நீக்கப்பட்ட ஊழியர்கள் விவரங்கள் ஏதும் இல்லை" : "No deleted employees found in S3 archive database."}
                     </td>
                   </tr>
                 )}
-              </tbody>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
 
       {/* View Deleted Employee details modal */}
       {viewDeletedEmployee && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl border border-gray-150 max-w-2xl w-full shadow-2xl p-6 space-y-6 max-h-[90vh] overflow-y-auto scrollbar-custom">
+        <div className="portal-modal-overlay is-top">
+          <div className="portal-modal max-w-2xl w-full p-6 space-y-6 overflow-y-auto scrollbar-custom">
             <div className="flex items-center justify-between border-b border-gray-100 pb-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center border border-rose-100 text-rose-600">
@@ -2162,7 +2080,8 @@ export default function EmployeeManagementView({
               <button
                 type="button"
                 onClick={() => setViewDeletedEmployee(null)}
-                className="text-gray-400 hover:text-gray-600 transition"
+                className="portal-modal-close"
+                aria-label="Close"
               >
                 <XCircle className="w-5 h-5" />
               </button>
@@ -2233,8 +2152,8 @@ export default function EmployeeManagementView({
 
       {/* Credentials Confirmation Modal */}
       {showCredentialsModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl border border-gray-150 max-w-md w-full shadow-2xl p-6 space-y-6 transform scale-100 transition-all">
+        <div className="portal-modal-overlay is-top">
+          <div className="portal-modal max-w-md w-full p-6 space-y-6">
             <div className="flex items-center gap-3 border-b border-gray-100 pb-4">
               <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center border border-emerald-100 text-emerald-600">
                 <Check className="w-5 h-5" />

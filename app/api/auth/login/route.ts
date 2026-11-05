@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
       password === 'admin' ||
       password === 'admin123' ||
       password === 'password123' ||
-      password === 'dtp123' ||
+      password === 'dtp8122' ||
       password === 'ad123' ||
       password === 'eo123' ||
       password === 'zonal123' ||

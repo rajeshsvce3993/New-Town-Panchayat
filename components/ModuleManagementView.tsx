@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion } from 'motion/react';
 import { 
   Layers, 
   Settings, 
   Plus, 
   Trash2, 
-  Check, 
   Hash, 
   Calendar, 
   Type, 
@@ -19,7 +18,8 @@ import {
   CheckCircle,
   FileText,
   FileSpreadsheet,
-  AlertTriangle
+  AlertTriangle,
+  ChevronRight
 } from 'lucide-react';
 import { Language, translations } from './translations';
 
@@ -31,6 +31,9 @@ interface ModuleManagementViewProps {
 
 export default function ModuleManagementView({ state, lang, onSaveCollection }: ModuleManagementViewProps) {
   const [activeTab, setActiveTab] = useState<'modules' | 'fields' | 'issueCategories'>('modules');
+  const [openModules, setOpenModules] = useState<Record<string, boolean>>({});
+  const [openFieldGroups, setOpenFieldGroups] = useState<Record<string, boolean>>({});
+  const MODULE_TONES = ['#1d4ed8', '#0f766e', '#c2410c', '#7c3aed', '#be185d', '#0369a1', '#b45309', '#4f46e5'];
 
   const {
     posts = [],
@@ -119,6 +122,7 @@ export default function ModuleManagementView({ state, lang, onSaveCollection }: 
 
   // Bulk CSV states
   const [csvFeedback, setCsvFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const t = (key: keyof typeof translations['en']) => {
     return translations[lang][key] || translations['en'][key] || key;
@@ -445,548 +449,623 @@ export default function ModuleManagementView({ state, lang, onSaveCollection }: 
   };
 
   return (
-    <div id="module-management-container" className="space-y-6">
-      {/* Tab bar */}
-      <div className="flex justify-start sm:justify-center overflow-x-auto scrollbar-custom whitespace-nowrap border-b border-gray-100 bg-white px-6 pt-4 rounded-t-2xl shadow-xs">
-        <button
-          onClick={() => setActiveTab('modules')}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'modules' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          {t('moduleCategoryTab')}
-        </button>
-        <button
-          onClick={() => setActiveTab('fields')}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'fields' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          {t('fieldManagementTab')}
-        </button>
-        <button
-          onClick={() => setActiveTab('issueCategories')}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'issueCategories' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          {lang === 'ta' ? 'பிரச்சினை வகை & பிரிவு உருவாக்கம்' : 'Issue Categories & Subcategories'}
-        </button>
-      </div>
-
-      {/* Bulk Upload CSV Widget */}
-      <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-50 pb-3">
-          <div className="flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5 text-indigo-500" />
-            <div>
-              <h3 className="font-bold text-gray-800 text-sm">Bulk Import Modules & Custom Fields</h3>
-              <p className="text-[11px] text-gray-400">Upload a single CSV to setup module schemes and dynamic fields instantly</p>
-            </div>
+    <div id="module-management-container" className="portal-studio portal-page">
+      <div className="portal-fis-hero">
+        <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
+            <Layers className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0 leading-tight">
+            <h3 className="text-[14px] font-semibold tracking-tight text-white">
+              {t('moduleManagement')}
+            </h3>
+            <p className="text-[10px] text-white/70">
+              {lang === 'ta'
+                ? 'தொகுதி வகைகள், தனிப்பயன் புலங்கள் மற்றும் பிரச்சினை வகைகளை நிர்வகிக்கவும்.'
+                : 'Configure module categories, custom fields, and issue categories.'}
+            </p>
           </div>
+        </div>
+
+        <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           <button
             type="button"
             onClick={downloadCSVTemplate}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl transition"
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5" />
-            Download Model Template CSV
+            <Download className="h-3 w-3" />
+            {lang === 'ta' ? 'மாதிரி படிவம் (CSV)' : 'Template (CSV)'}
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-md hover:brightness-110 cursor-pointer"
+            style={{ background: 'var(--theme-accent)' }}
+          >
+            <Upload className="h-3 w-3" />
+            {lang === 'ta' ? 'பல்க் பதிவேற்றம்' : 'Bulk CSV Upload'}
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept=".csv"
+            onChange={handleCsvUpload}
+            className="hidden"
+          />
+        </div>
+      </div>
+
+      {csvFeedback && (
+        <div className={`p-3 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+          {csvFeedback.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
+          <p className="text-xs font-medium">{csvFeedback.message}</p>
+        </div>
+      )}
+
+      <div className="portal-dash-toolbar">
+        <div className="portal-dash-pills">
+          <button
+            type="button"
+            onClick={() => setActiveTab('modules')}
+            className={`portal-dash-pill ${activeTab === 'modules' ? 'is-active' : ''}`}
+          >
+            <Layers className="h-3.5 w-3.5" />
+            <span>{t('moduleCategoryTab')}</span>
+            <span className="portal-fis-count">{modules.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('fields')}
+            className={`portal-dash-pill ${activeTab === 'fields' ? 'is-active' : ''}`}
+          >
+            <Settings className="h-3.5 w-3.5" />
+            <span>{t('fieldManagementTab')}</span>
+            <span className="portal-fis-count">{fields.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('issueCategories')}
+            className={`portal-dash-pill ${activeTab === 'issueCategories' ? 'is-active' : ''}`}
+          >
+            <AlertTriangle className="h-3.5 w-3.5" />
+            <span>{lang === 'ta' ? 'பிரச்சினை வகை & பிரிவு உருவாக்கம்' : 'Issue Categories & Subcategories'}</span>
+            <span className="portal-fis-count">{currentIssueCategories.length}</span>
           </button>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-          <div className="text-xs text-gray-500 leading-normal space-y-1.5">
-            <p className="font-semibold text-gray-700">How it works:</p>
-            <ul className="list-disc pl-4 space-y-1">
-              <li>Fill out the columns for module categories and field validation definitions.</li>
-              <li>Multiple fields under the same module should be grouped in consecutive rows.</li>
-              <li>Leave the ModuleNameEn empty in succeeding rows to inherit the previous module.</li>
-            </ul>
-          </div>
-          <div>
-            <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/20 rounded-2xl p-5 cursor-pointer transition text-center group">
-              <Upload className="w-6 h-6 text-gray-400 group-hover:text-indigo-500 mb-2 animate-pulse" />
-              <span className="text-xs font-bold text-gray-600 group-hover:text-indigo-700">Choose CSV File</span>
-              <span className="text-[10px] text-gray-400 mt-1">Accepts .csv encoded files</span>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleCsvUpload}
-                className="hidden"
-              />
-            </label>
-          </div>
-        </div>
-
-        {/* Feedback Messages */}
-        {csvFeedback && (
-          <div className={`p-4 rounded-xl border flex items-start gap-3 text-xs ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
-            {csvFeedback.type === 'success' ? <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />}
-            <div>
-              <p className="font-bold">{csvFeedback.type === 'success' ? 'Import Succeeded!' : 'Import Failed'}</p>
-              <p className="mt-0.5 font-medium">{csvFeedback.message}</p>
-            </div>
-          </div>
-        )}
       </div>
 
       {activeTab === 'modules' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Create Module side */}
-          <div className="lg:col-span-5">
-            <form onSubmit={handleAddModule} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-              <h3 className="font-semibold text-gray-800 text-md flex items-center gap-2 border-b border-gray-50 pb-2">
-                <Layers className="w-5 h-5 text-indigo-500" />
-                {lang === 'ta' ? 'புதிய தொகுதி வகை' : 'Create Module Category'}
-              </h3>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('moduleNameEn')}</label>
-                  <input
-                    type="text"
-                    value={moduleEn}
-                    onChange={(e) => setModuleEn(e.target.value)}
-                    placeholder="e.g. Probation Details"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('moduleNameTa')}</label>
-                  <input
-                    type="text"
-                    value={moduleTa}
-                    onChange={(e) => setModuleTa(e.target.value)}
-                    placeholder="எ.கா. தகுதிகாண் பருவம் விவரங்கள்"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2 pt-2 border-t border-gray-50">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-gray-800">{t('applicablePosts')}</span>
-                    <button
-                      type="button"
-                      onClick={handleSelectAllPosts}
-                      className="text-[10px] font-bold text-indigo-600 uppercase hover:underline"
-                    >
-                      {selectedPosts.length === posts.length ? 'Clear All' : 'Select All'}
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 max-h-44 overflow-y-auto pr-1">
-                    {posts.map((p: any) => {
-                      const active = selectedPosts.includes(p.id);
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => handleTogglePost(p.id)}
-                          className={`flex items-center gap-2 p-2 rounded-lg border text-left text-xs font-medium transition truncate ${
-                            active ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-gray-150 text-gray-500 hover:bg-gray-50'
-                          }`}
-                        >
-                          <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                            active ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300'
-                          }`}>
-                            {active && <Check className="w-3 h-3" />}
-                          </div>
-                          <span className="truncate">{tObj(p)}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+        <div className="portal-wt-grid">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Plus className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'புதிய தொகுதி வகை' : 'Create Module Category'}
+                </h3>
+              </div>
+            </div>
+            <div className="portal-dash-body portal-wt-form">
+            <form onSubmit={handleAddModule} className="space-y-3">
+              <div>
+                <label>{t('moduleNameEn')}</label>
+                <input
+                  type="text"
+                  value={moduleEn}
+                  onChange={(e) => setModuleEn(e.target.value)}
+                  placeholder="e.g. Probation Details"
+                  required
+                />
+              </div>
+              <div>
+                <label>{t('moduleNameTa')}</label>
+                <input
+                  type="text"
+                  value={moduleTa}
+                  onChange={(e) => setModuleTa(e.target.value)}
+                  placeholder="எ.கா. தகுதிகாண் பருவம் விவரங்கள்"
+                  required
+                />
               </div>
 
-              <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition mt-2 shadow-xs">
+              <div className="portal-wt-section">
+                <div className="portal-wt-section-title">
+                  <span>{t('applicablePosts')}</span>
+                  <button
+                    type="button"
+                    onClick={handleSelectAllPosts}
+                    className="portal-wt-link"
+                  >
+                    {selectedPosts.length === posts.length
+                      ? (lang === 'ta' ? 'அனைத்தையும் நீக்கு' : 'Clear All')
+                      : (lang === 'ta' ? 'அனைத்தையும் தேர்வு' : 'Select All')}
+                  </button>
+                </div>
+                <div className="portal-post-picks">
+                  {posts.length === 0 && (
+                    <span className="portal-wt-meta">{lang === 'ta' ? 'பதவிகள் இல்லை' : 'No posts available'}</span>
+                  )}
+                  {posts.map((p: any) => {
+                    const active = selectedPosts.includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={`portal-post-pick${active ? ' is-on' : ''}`}
+                        onClick={() => handleTogglePost(p.id)}
+                        aria-pressed={active}
+                      >
+                        {tObj(p)}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="portal-switch-hint" style={{ marginTop: '0.35rem' }}>
+                  {selectedPosts.length} {lang === 'ta' ? 'பதவிகள் தேர்வு' : 'posts selected'}
+                </p>
+              </div>
+
+              <button type="submit">
                 {lang === 'ta' ? 'தொகுதியை சேர்' : 'Save Module Category'}
               </button>
             </form>
+            </div>
           </div>
 
-          {/* Module List side */}
-          <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-            <h4 className="font-semibold text-gray-800 text-sm border-b border-gray-50 pb-2">{lang === 'ta' ? 'செயலில் உள்ள தொகுதிகள்' : 'Active Module Category Schemes'}</h4>
-            <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
-              {/* Core System Module: Provident Fund */}
-              <div className="p-4 bg-indigo-50/55 border border-indigo-100 rounded-xl space-y-3 relative overflow-hidden">
-                <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-bl-lg uppercase tracking-wide">
-                  Core Module
-                </div>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h5 className="font-bold text-indigo-900 text-sm">
-                      {lang === 'ta' ? 'வருங்கால வைப்பு நிதி (PF) மேலாண்மை' : 'Provident Fund (PF) Management'}
-                    </h5>
-                    <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wide mt-0.5">
-                      {lang === 'ta' ? 'அமைப்பு சார்ந்த தொகுதி' : 'Integrated System Module'}
-                    </p>
-                  </div>
-                </div>
-                <p className="text-[11px] text-slate-600 leading-relaxed">
-                  {lang === 'ta' ? 'ஊழியர்களின் சேமநலநிதி சந்தாக்கள், வட்டி கணக்கீடுகள், திரும்பப் பெறுதல்கள் மற்றும் கணக்கு சீட்டுகளை நிர்வகிப்பதற்கான முழுமையான தொகுதி.' : 'Manages subscriber PF ledgers, monthly subscriptions, withdrawal posts, interest auto-accruals (compounded annually), and printable account slip generation.'}
-                </p>
-                <div className="space-y-2 pt-2 border-t border-indigo-100/50 text-[10px]">
-                  <div className="flex justify-between text-indigo-800 font-bold">
-                    <span>{lang === 'ta' ? 'செயல்பாடுகள்:' : 'Functions:'}</span>
-                    <span className="text-emerald-700">{lang === 'ta' ? 'செயலில் உள்ளது' : 'Enabled & Live'}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    <span className="bg-white border border-indigo-150 text-[9px] font-semibold text-indigo-800 px-2 py-0.5 rounded">
-                      {lang === 'ta' ? 'ஆண்டு வட்டி விகிதங்கள்' : 'Yearly Interest Rate Timeline'}
-                    </span>
-                    <span className="bg-white border border-indigo-150 text-[9px] font-semibold text-indigo-800 px-2 py-0.5 rounded">
-                      {lang === 'ta' ? 'சந்தா கணக்குகள்' : 'Subscriber Ledgers'}
-                    </span>
-                    <span className="bg-white border border-indigo-150 text-[9px] font-semibold text-indigo-800 px-2 py-0.5 rounded">
-                      {lang === 'ta' ? 'கணக்கு சீட்டுகள்' : 'Printable Account Slips'}
-                    </span>
-                  </div>
-                </div>
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Layers className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'செயலில் உள்ள தொகுதிகள்' : 'Active Module Category Schemes'}
+                </h3>
               </div>
-
-              {modules.map((m: any) => {
-                const activeFields = fields.filter((f: any) => f.moduleId === m.id);
-                return (
-                  <div key={m.id} className="p-4 bg-gray-50 border border-gray-100 rounded-xl space-y-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h5 className="font-bold text-gray-900 text-sm">{tObj(m)}</h5>
-                        <p className="text-[10px] text-gray-400 font-medium mt-0.5">ID: {m.id}</p>
-                      </div>
-                      <button
-                        onClick={() => handleDeleteModule(m.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-2 pt-2 border-t border-gray-150">
-                      <div>
-                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">{lang === 'ta' ? 'பொருந்தும் பதவிகள்' : 'Applicable Posts'}</span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {m.applicablePosts?.map((postId: string) => {
-                            const p = posts.find((x: any) => x.id === postId);
-                            return (
-                              <span key={postId} className="bg-white border border-gray-150 text-[10px] font-medium text-gray-600 px-2 py-0.5 rounded">
-                                {p ? tObj(p) : postId}
+            </div>
+            <div className="portal-dash-body">
+              <div className="portal-wt-note" style={{ marginBottom: '0.55rem' }}>
+                <span>
+                  <strong>{lang === 'ta' ? 'வருங்கால வைப்பு நிதி (PF) மேலாண்மை' : 'Provident Fund (PF) Management'}</strong>
+                  {' — '}
+                  {lang === 'ta' ? 'அமைப்பு சார்ந்த தொகுதி. சந்தாக்கள், வட்டி, திரும்பப் பெறுதல்கள் மற்றும் கணக்கு சீட்டுகள்.' : 'Integrated system module for subscriber ledgers, interest, withdrawals, and account slips.'}
+                </span>
+              </div>
+              <div className="portal-wt-tree">
+                {modules.length === 0 && (
+                  <p className="portal-wt-empty is-center">
+                    {lang === 'ta' ? 'தொகுதிகள் எதுவும் உருவாக்கப்படவில்லை.' : 'No modules created yet.'}
+                  </p>
+                )}
+                {modules.map((m: any, mIdx: number) => {
+                  const activeFields = fields.filter((f: any) => f.moduleId === m.id);
+                  const moduleOpen = Boolean(openModules[m.id]);
+                  const moduleTone = MODULE_TONES[mIdx % MODULE_TONES.length];
+                  return (
+                    <div
+                      key={m.id}
+                      className={`portal-wt-node${moduleOpen ? ' is-open' : ''}`}
+                      style={{ ['--wt-tone' as string]: moduleTone }}
+                    >
+                      <div className="portal-wt-node-head">
+                        <button
+                          type="button"
+                          className="portal-wt-toggle"
+                          onClick={() => setOpenModules((prev) => ({ ...prev, [m.id]: !prev[m.id] }))}
+                          aria-expanded={moduleOpen}
+                        >
+                          <ChevronRight className={`portal-wt-caret${moduleOpen ? ' is-open' : ''}`} />
+                          <div className="portal-wt-copy">
+                            <div className="portal-wt-title">
+                              <span>{tObj(m)}</span>
+                              <span className="portal-wt-count">
+                                {activeFields.length} {lang === 'ta' ? 'புலங்கள்' : 'fields'}
                               </span>
-                            );
-                          })}
+                            </div>
+                          </div>
+                        </button>
+                        <div className="portal-wt-actions">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteModule(m.id)}
+                            className="portal-fis-icon-btn is-danger"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
                         </div>
                       </div>
-
-                      <div>
-                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">{lang === 'ta' ? 'தனிப்பயன் புலங்கள்' : 'Dynamic Fields'} ({activeFields.length})</span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {activeFields.map((f: any) => (
-                            <span key={f.id} className="bg-indigo-50/50 border border-indigo-100 text-[10px] font-semibold text-indigo-700 px-2.5 py-0.5 rounded">
-                              {tObj(f)}
-                            </span>
-                          ))}
-                          {activeFields.length === 0 && (
-                            <span className="text-[10px] text-gray-400 italic pl-1">{lang === 'ta' ? 'புலங்கள் இன்னும் உருவாக்கப்படவில்லை' : 'No fields added yet.'}</span>
+                      {moduleOpen && (
+                        <div className="portal-wt-fields">
+                          <div className="portal-wt-field">
+                            <div className="portal-wt-field-main">
+                              <div className="portal-wt-field-name">
+                                {lang === 'ta' ? 'பொருந்தும் பதவிகள்' : 'Applicable posts'}
+                              </div>
+                              <div className="portal-wt-chips">
+                                {(m.applicablePosts || []).length === 0 && (
+                                  <span className="portal-wt-meta">{lang === 'ta' ? 'பதவிகள் இல்லை' : 'No posts mapped'}</span>
+                                )}
+                                {(m.applicablePosts || []).map((postId: string) => {
+                                  const p = posts.find((x: any) => x.id === postId);
+                                  return (
+                                    <span key={postId} className="portal-wt-chip">
+                                      {p ? tObj(p) : postId}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                          {activeFields.length === 0 ? (
+                            <p className="portal-wt-empty">{lang === 'ta' ? 'புலங்கள் இன்னும் உருவாக்கப்படவில்லை' : 'No fields added yet.'}</p>
+                          ) : (
+                            activeFields.map((f: any) => (
+                              <div key={f.id} className="portal-wt-field">
+                                <div className="portal-wt-field-main">
+                                  <div className="portal-wt-field-name">
+                                    <span>{tObj(f)}</span>
+                                    <span className="portal-dash-id">{f.type?.toUpperCase()}</span>
+                                  </div>
+                                  <p className="portal-wt-meta">
+                                    {f.validations?.required ? (lang === 'ta' ? 'கட்டாயம்' : 'Required') : (lang === 'ta' ? 'விருப்பம்' : 'Optional')}
+                                    {f.validations?.options ? ` · ${f.validations.options.join(', ')}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                            ))
                           )}
                         </div>
-                      </div>
+                      )}
                     </div>
-                  </div>
-                );
-              })}
-              {modules.length === 0 && (
-                <div className="text-center py-10">
-                  <p className="text-sm text-gray-400 italic">{lang === 'ta' ? 'தொகுதிகள் எதுவும் உருவாக்கப்படவில்லை.' : 'No modules created yet.'}</p>
-                </div>
-              )}
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
       ) : activeTab === 'fields' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Create Field side */}
-          <div className="lg:col-span-5">
-            <form onSubmit={handleAddField} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-              <h3 className="font-semibold text-gray-800 text-md flex items-center gap-2 border-b border-gray-50 pb-2">
-                <Settings className="w-5 h-5 text-indigo-500" />
-                {lang === 'ta' ? 'புதிய தனிப்பயன் களம் உருவாக்கு' : 'Add Dynamic Custom Field'}
-              </h3>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('selectModule')}</label>
-                  <select
-                    value={selectedModuleId}
-                    onChange={(e) => setSelectedModuleId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white"
-                    required
-                  >
-                    <option value="">-- Choose Module Category --</option>
-                    {modules.map((m: any) => (
-                      <option key={m.id} value={m.id}>{tObj(m)}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('fieldNameEn')}</label>
-                  <input
-                    type="text"
-                    value={fieldEn}
-                    onChange={(e) => setFieldEn(e.target.value)}
-                    placeholder="e.g. Passport Number"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('fieldNameTa')}</label>
-                  <input
-                    type="text"
-                    value={fieldTa}
-                    onChange={(e) => setFieldTa(e.target.value)}
-                    placeholder="எ.கா. கடவுச்சீட்டு எண்"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500">{t('fieldType')}</label>
-                    <select
-                      value={fieldType}
-                      onChange={(e) => setFieldType(e.target.value as any)}
-                      className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none bg-white"
-                    >
-                      <option value="text">Text (உரை)</option>
-                      <option value="number">Number (எண்)</option>
-                      <option value="date">Date (தேதி)</option>
-                      <option value="select">Dropdown Select (பட்டியல்)</option>
-                      <option value="file">File Upload (கோப்புப் பதிவேற்றம்)</option>
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-2 pt-6 pl-2">
-                    <input
-                      type="checkbox"
-                      id="isRequired"
-                      checked={isRequired}
-                      onChange={(e) => setIsRequired(e.target.checked)}
-                      className="w-4 h-4 rounded text-indigo-600 border-gray-300"
-                    />
-                    <label htmlFor="isRequired" className="text-xs font-semibold text-gray-600 cursor-pointer">{t('isRequired')}</label>
-                  </div>
-                </div>
-
-                {fieldType === 'file' && (
-                  <div className="space-y-3 p-3 bg-indigo-50/30 rounded-xl border border-indigo-50 mt-2">
-                    <span className="text-xs font-bold text-indigo-900 block flex items-center gap-1.5">
-                      <Upload className="w-3.5 h-3.5 text-indigo-600" />
-                      File Upload Restrictions
-                    </span>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-500">Allowed Formats</label>
-                        <select
-                          value={fileAllowedTypes}
-                          onChange={(e) => setFileAllowedTypes(e.target.value as any)}
-                          className="w-full border border-gray-200 rounded-lg p-2 text-xs mt-1 outline-none bg-white"
-                        >
-                          <option value="both">PDF & Images</option>
-                          <option value="pdf">PDF Only</option>
-                          <option value="image">Images Only</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-500">Max File Size (MB)</label>
-                        <input
-                          type="number"
-                          value={fileMaxSizeMb}
-                          onChange={(e) => setFileMaxSizeMb(e.target.value)}
-                          placeholder="e.g. 5"
-                          className="w-full border border-gray-200 rounded-lg p-2 text-xs mt-1 outline-none bg-white"
-                          min="1"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 pt-1">
-                      <input
-                        type="checkbox"
-                        id="fileMultiple"
-                        checked={fileMultiple}
-                        onChange={(e) => setFileMultiple(e.target.checked)}
-                        className="w-4 h-4 rounded text-indigo-600 border-gray-300"
-                      />
-                      <label htmlFor="fileMultiple" className="text-xs font-semibold text-gray-600 cursor-pointer">Allow Multiple Files</label>
-                    </div>
-                  </div>
-                )}
-
-                {fieldType === 'select' && (
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500">Dropdown Selection Options (Comma separated En)</label>
-                    <input
-                      type="text"
-                      value={selectOptions}
-                      onChange={(e) => setSelectOptions(e.target.value)}
-                      placeholder="e.g. Married, Unmarried, Divorced"
-                      className="w-full border border-gray-200 rounded-xl p-3 text-xs mt-1 outline-none"
-                      required
-                    />
-                  </div>
-                )}
-
-                {fieldType === 'number' && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('minLimit')}</label>
-                      <input
-                        type="number"
-                        value={minLimit}
-                        onChange={(e) => setNewIssueSubEn(e.target.value)}
-                        placeholder="e.g. 0"
-                        className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('maxLimit')}</label>
-                      <input
-                        type="number"
-                        value={maxLimit}
-                        onChange={(e) => setMaxLimit(e.target.value)}
-                        placeholder="e.g. 100"
-                        className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none"
-                      />
-                    </div>
-                  </div>
-                )}
+        <div className="portal-wt-grid">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Plus className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'புதிய தனிப்பயன் களம் உருவாக்கு' : 'Add Dynamic Custom Field'}
+                </h3>
+              </div>
+            </div>
+            <div className="portal-dash-body portal-wt-form">
+            <form onSubmit={handleAddField} className="space-y-3">
+              <div>
+                <label>{t('selectModule')}</label>
+                <select
+                  value={selectedModuleId}
+                  onChange={(e) => setSelectedModuleId(e.target.value)}
+                  required
+                >
+                  <option value="">-- Choose Module Category --</option>
+                  {modules.map((m: any) => (
+                    <option key={m.id} value={m.id}>{tObj(m)}</option>
+                  ))}
+                </select>
               </div>
 
-              <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition mt-2 shadow-xs">
+              <div>
+                <label>{t('fieldNameEn')}</label>
+                <input
+                  type="text"
+                  value={fieldEn}
+                  onChange={(e) => setFieldEn(e.target.value)}
+                  placeholder="e.g. Passport Number"
+                  required
+                />
+              </div>
+
+              <div>
+                <label>{t('fieldNameTa')}</label>
+                <input
+                  type="text"
+                  value={fieldTa}
+                  onChange={(e) => setFieldTa(e.target.value)}
+                  placeholder="எ.கா. கடவுச்சீட்டு எண்"
+                  required
+                />
+              </div>
+
+              <div>
+                <label>{t('fieldType')}</label>
+                <select
+                  value={fieldType}
+                  onChange={(e) => setFieldType(e.target.value as any)}
+                >
+                  <option value="text">Text (உரை)</option>
+                  <option value="number">Number (எண்)</option>
+                  <option value="date">Date (தேதி)</option>
+                  <option value="select">Dropdown Select (பட்டியல்)</option>
+                  <option value="file">File Upload (கோப்புப் பதிவேற்றம்)</option>
+                </select>
+              </div>
+
+              <div className="portal-wt-section">
+                <div className="portal-wt-section-title">
+                  {lang === 'ta' ? 'கள சரிபார்ப்பு' : 'Field validation'}
+                </div>
+                <div className="portal-switch-row">
+                  <div className="portal-switch-copy">
+                    <p className="portal-switch-label" id="isRequired-label">{t('isRequired')}</p>
+                    <p className="portal-switch-hint">
+                      {lang === 'ta' ? 'இந்தக் களத்தை நிரப்புவது கட்டாயம்' : 'This field must be completed when entering data'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    id="isRequired"
+                    className={`portal-switch${isRequired ? ' is-on' : ''}`}
+                    aria-labelledby="isRequired-label"
+                    aria-pressed={isRequired}
+                    onClick={() => setIsRequired((v) => !v)}
+                  >
+                    <span />
+                  </button>
+                </div>
+              </div>
+
+              {fieldType === 'file' && (
+                <div className="portal-wt-section">
+                  <div className="portal-wt-section-title">File Upload Restrictions</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label>Allowed Formats</label>
+                      <select
+                        value={fileAllowedTypes}
+                        onChange={(e) => setFileAllowedTypes(e.target.value as any)}
+                      >
+                        <option value="both">PDF & Images</option>
+                        <option value="pdf">PDF Only</option>
+                        <option value="image">Images Only</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label>Max File Size (MB)</label>
+                      <input
+                        type="number"
+                        value={fileMaxSizeMb}
+                        onChange={(e) => setFileMaxSizeMb(e.target.value)}
+                        placeholder="e.g. 5"
+                        min="1"
+                      />
+                    </div>
+                  </div>
+                  <div className="portal-switch-row" style={{ marginTop: '0.4rem' }}>
+                    <div className="portal-switch-copy">
+                      <p className="portal-switch-label">{lang === 'ta' ? 'பல கோப்புகள்' : 'Allow multiple files'}</p>
+                    </div>
+                    <button
+                      type="button"
+                      id="fileMultiple"
+                      className={`portal-switch${fileMultiple ? ' is-on' : ''}`}
+                      aria-pressed={fileMultiple}
+                      onClick={() => setFileMultiple((v) => !v)}
+                    >
+                      <span />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {fieldType === 'select' && (
+                <div>
+                  <label>Dropdown Selection Options (Comma separated En)</label>
+                  <input
+                    type="text"
+                    value={selectOptions}
+                    onChange={(e) => setSelectOptions(e.target.value)}
+                    placeholder="e.g. Married, Unmarried, Divorced"
+                    required
+                  />
+                </div>
+              )}
+
+              {fieldType === 'number' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label>{t('minLimit')}</label>
+                    <input
+                      type="number"
+                      value={minLimit}
+                      onChange={(e) => setNewIssueSubEn(e.target.value)}
+                      placeholder="e.g. 0"
+                    />
+                  </div>
+                  <div>
+                    <label>{t('maxLimit')}</label>
+                    <input
+                      type="number"
+                      value={maxLimit}
+                      onChange={(e) => setMaxLimit(e.target.value)}
+                      placeholder="e.g. 100"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button type="submit">
                 {lang === 'ta' ? 'புலத்தை சேர்' : 'Save Dynamic Field'}
               </button>
             </form>
+            </div>
           </div>
 
-          {/* Fields List side */}
-          <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-            <h4 className="font-semibold text-gray-800 text-sm border-b border-gray-50 pb-2">{lang === 'ta' ? 'அனைத்து தனிப்பயன் புலங்கள்' : 'Active Dynamic Fields Matrix'}</h4>
-            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
-              {fields.map((f: any) => {
-                const mod = modules.find((m: any) => m.id === f.moduleId);
-                return (
-                  <div key={f.id} className="flex justify-between items-center p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs hover:border-gray-200 transition">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-gray-900 text-sm">{tObj(f)}</span>
-                        <span className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded">
-                          {f.type.toUpperCase()}
-                        </span>
-                        {f.validations?.required && (
-                          <span className="text-[9px] bg-rose-50 text-rose-600 border border-rose-100 px-1 py-0.5 rounded font-semibold font-mono">
-                            REQUIRED
-                          </span>
-                        )}
-                        {f.type === 'file' && (
-                          <span className="text-[9px] bg-sky-50 border border-sky-100 text-sky-700 px-1.5 py-0.5 rounded font-mono font-medium">
-                            {f.validations?.allowedTypes?.toUpperCase() || 'BOTH'} | Max: {f.validations?.maxSizeMb || 5}MB {f.validations?.multiple ? '(MULTIPLE)' : '(SINGLE)'}
-                          </span>
-                        )}
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Settings className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'அனைத்து தனிப்பயன் புலங்கள்' : 'Active Dynamic Fields Matrix'}
+                </h3>
+                <p>{fields.length} {lang === 'ta' ? 'புலங்கள்' : 'fields'}</p>
+              </div>
+            </div>
+            <div className="portal-dash-body">
+              {fields.length === 0 && (
+                <p className="portal-wt-empty is-center">
+                  {lang === 'ta' ? 'புலங்கள் எதுவும் உருவாக்கப்படவில்லை.' : 'No custom fields created yet.'}
+                </p>
+              )}
+              <div className="portal-wt-tree">
+                {modules.map((m: any, mIdx: number) => {
+                  const moduleFields = fields.filter((f: any) => f.moduleId === m.id);
+                  if (moduleFields.length === 0) return null;
+                  const isOpen = Boolean(openFieldGroups[m.id]);
+                  const tone = MODULE_TONES[mIdx % MODULE_TONES.length];
+                  return (
+                    <div
+                      key={m.id}
+                      className={`portal-wt-node${isOpen ? ' is-open' : ''}`}
+                      style={{ ['--wt-tone' as string]: tone }}
+                    >
+                      <div className="portal-wt-node-head">
+                        <button
+                          type="button"
+                          className="portal-wt-toggle"
+                          onClick={() => setOpenFieldGroups((prev) => ({ ...prev, [m.id]: !prev[m.id] }))}
+                          aria-expanded={isOpen}
+                        >
+                          <ChevronRight className={`portal-wt-caret${isOpen ? ' is-open' : ''}`} />
+                          <div className="portal-wt-copy">
+                            <div className="portal-wt-title">
+                              <span>{tObj(m)}</span>
+                              <span className="portal-wt-count">{moduleFields.length}</span>
+                            </div>
+                          </div>
+                        </button>
                       </div>
-                      <p className="text-[10px] text-gray-400">
-                        {lang === 'ta' ? 'தொகுதி:' : 'Module:'} <span className="font-semibold text-gray-500">{mod ? tObj(mod) : f.moduleId}</span>
-                      </p>
-                      {f.validations?.options && (
-                        <p className="text-[10px] text-gray-400 italic">
-                          Options: {f.validations.options.join(', ')}
-                        </p>
+                      {isOpen && (
+                        <div className="portal-wt-fields">
+                          {moduleFields.map((f: any) => (
+                            <div key={f.id} className="portal-wt-field">
+                              <div className="portal-wt-field-main">
+                                <div className="portal-wt-field-name">
+                                  <span>{tObj(f)}</span>
+                                  <span className="portal-dash-id">{f.type?.toUpperCase()}</span>
+                                </div>
+                                <div className="portal-wt-chips">
+                                  <span className="portal-wt-chip">
+                                    {f.validations?.required ? (lang === 'ta' ? 'கட்டாயம்' : 'Required') : (lang === 'ta' ? 'விருப்பம்' : 'Optional')}
+                                  </span>
+                                  {f.type === 'file' && (
+                                    <span className="portal-wt-chip">
+                                      {(f.validations?.allowedTypes || 'both').toUpperCase()} · {f.validations?.maxSizeMb || 5}MB · {f.validations?.multiple ? (lang === 'ta' ? 'பல' : 'Multiple') : (lang === 'ta' ? 'ஒன்று' : 'Single')}
+                                    </span>
+                                  )}
+                                  {(f.validations?.options || []).map((opt: string) => (
+                                    <span key={opt} className="portal-wt-chip">{opt}</span>
+                                  ))}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteField(f.id)}
+                                className="portal-fis-icon-btn is-danger"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
-
-                    <button
-                      onClick={() => handleDeleteField(f.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                );
-              })}
-              {fields.length === 0 && (
-                <div className="text-center py-10">
-                  <p className="text-sm text-gray-400 italic">{lang === 'ta' ? 'புலங்கள் எதுவும் உருவாக்கப்படவில்லை.' : 'No custom fields created yet.'}</p>
-                </div>
-              )}
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
       ) : (
-        /* Issue categories and subcategories layout workspace */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Create Issue Category Side */}
-          <div className="lg:col-span-5 space-y-6">
-            <form onSubmit={handleAddIssueCategory} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-              <h3 className="font-semibold text-gray-800 text-md flex items-center gap-2 border-b border-gray-50 pb-2">
-                <Layers className="w-5 h-5 text-indigo-500" />
-                {lang === 'ta' ? 'புதிய பிரச்சினை வகை உருவாக்கு' : 'Create Issue Category'}
-              </h3>
-              <div className="space-y-3">
+        <div className="portal-wt-grid">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Plus className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'புதிய பிரச்சினை வகை உருவாக்கு' : 'Create Issue Category'}
+                </h3>
+              </div>
+            </div>
+            <div className="portal-dash-body portal-wt-form">
+              <form onSubmit={handleAddIssueCategory} className="space-y-3">
                 <div>
-                  <label className="text-xs font-semibold text-gray-500">Category Name (English)</label>
+                  <label>{lang === 'ta' ? 'வகை பெயர் (ஆங்கிலம்)' : 'Category Name (English)'}</label>
                   <input
                     type="text"
                     value={newIssueCatEn}
                     onChange={(e) => setNewIssueCatEn(e.target.value)}
                     placeholder="e.g. Water Supply"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none"
                     required
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-500">Category Name (Tamil)</label>
+                  <label>{lang === 'ta' ? 'வகை பெயர் (தமிழ்)' : 'Category Name (Tamil)'}</label>
                   <input
                     type="text"
                     value={newIssueCatTa}
                     onChange={(e) => setNewIssueCatTa(e.target.value)}
                     placeholder="எ.கா. குடிநீர் விநியோகம்"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none"
                     required
                   />
                 </div>
-              </div>
-              <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition mt-2 shadow-xs">
-                {lang === 'ta' ? 'வகை சேர்' : 'Save Issue Category'}
-              </button>
-            </form>
+                <button type="submit">
+                  {lang === 'ta' ? 'வகை சேர்' : 'Save Issue Category'}
+                </button>
+              </form>
 
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-              <h4 className="font-semibold text-gray-800 text-sm border-b border-gray-50 pb-2">
-                {lang === 'ta' ? 'செயலில் உள்ள பிரிவுகள்' : 'Active Categories'}
-              </h4>
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                {currentIssueCategories.map((cat: any) => {
+              <div className="portal-wt-tree" style={{ marginTop: '0.55rem' }}>
+                {currentIssueCategories.length === 0 && (
+                  <p className="portal-wt-empty is-center">
+                    {lang === 'ta' ? 'வகைகள் இல்லை' : 'No issue categories yet'}
+                  </p>
+                )}
+                {currentIssueCategories.map((cat: any, catIdx: number) => {
                   const active = selectedIssueCatId === cat.id;
+                  const tone = MODULE_TONES[catIdx % MODULE_TONES.length];
                   return (
-                    <div 
-                      key={cat.id} 
-                      className={`flex justify-between items-center p-3 rounded-xl border text-xs cursor-pointer transition ${
-                        active ? 'bg-indigo-50/50 border-indigo-200 text-indigo-900 font-bold' : 'bg-gray-50 border-gray-100 text-gray-600 hover:bg-gray-100'
-                      }`}
-                      onClick={() => setSelectedIssueCatId(cat.id)}
+                    <div
+                      key={cat.id}
+                      className={`portal-wt-node${active ? ' is-open' : ''}`}
+                      style={{ ['--wt-tone' as string]: tone }}
                     >
-                      <div>
-                        <p className="text-sm">{lang === 'ta' ? (cat.nameTa || cat.nameEn) : (cat.nameEn || cat.nameTa)}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Subcategories: {cat.subcategories?.length || 0}</p>
-                      </div>
-                      <div className="flex items-center gap-1">
+                      <div className="portal-wt-node-head">
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteIssueCategory(cat.id);
-                          }}
-                          className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                          className="portal-wt-toggle"
+                          onClick={() => setSelectedIssueCatId(active ? '' : cat.id)}
+                          aria-pressed={active}
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <ChevronRight className={`portal-wt-caret${active ? ' is-open' : ''}`} />
+                          <div className="portal-wt-copy">
+                            <div className="portal-wt-title">
+                              <span>{lang === 'ta' ? (cat.nameTa || cat.nameEn) : (cat.nameEn || cat.nameTa)}</span>
+                              <span className="portal-wt-count">{cat.subcategories?.length || 0}</span>
+                            </div>
+                          </div>
                         </button>
+                        <div className="portal-wt-actions">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteIssueCategory(cat.id)}
+                            className="portal-fis-icon-btn is-danger"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -995,85 +1074,115 @@ export default function ModuleManagementView({ state, lang, onSaveCollection }: 
             </div>
           </div>
 
-          {/* Subcategories Management Side */}
-          <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-6">
+          <div className="portal-dashboard-panel">
             {selectedIssueCatId ? (() => {
               const selectedCat = currentIssueCategories.find((c: any) => c.id === selectedIssueCatId);
-              if (!selectedCat) return <p className="text-gray-400 italic text-center py-10">Select a category to manage subcategories</p>;
-              return (
-                <>
-                  <div className="border-b border-gray-100 pb-3">
-                    <h3 className="font-bold text-gray-800 text-sm">
-                      {lang === 'ta' ? `வகை: ${selectedCat.nameTa || selectedCat.nameEn}` : `Category: ${selectedCat.nameEn || selectedCat.nameTa}`}
-                    </h3>
-                    <p className="text-[10px] text-gray-400">Add or remove subcategories for this issue area</p>
-                  </div>
-
-                  <form onSubmit={handleAddIssueSubcategory} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 space-y-4">
-                    <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
-                      {lang === 'ta' ? 'புதிய துணைப்பிரிவு சேர்க்கவும்' : 'Add New Subcategory'}
-                    </h4>
-                    <div className="grid grid-cols-2 gap-3">
+              if (!selectedCat) {
+                return (
+                  <>
+                    <div className="portal-dash-head">
                       <div>
-                        <label className="text-[10px] font-semibold text-gray-500">Subcategory Name (English)</label>
-                        <input
-                          type="text"
-                          value={newIssueSubEn}
-                          onChange={(e) => setNewIssueSubEn(e.target.value)}
-                          placeholder="e.g. Pipeline Leakage"
-                          className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none bg-white"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-500">Subcategory Name (Tamil)</label>
-                        <input
-                          type="text"
-                          value={newIssueSubTa}
-                          onChange={(e) => setNewIssueSubTa(e.target.value)}
-                          placeholder="எ.கா. குழாய் கசிவு"
-                          className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none bg-white"
-                          required
-                        />
+                        <h3>
+                          <span className="portal-dash-icon">
+                            <AlertTriangle className="h-3 w-3" />
+                          </span>
+                          {lang === 'ta' ? 'துணைப்பிரிவுகள்' : 'Subcategories'}
+                        </h3>
                       </div>
                     </div>
-                    <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs flex items-center gap-1">
-                      <Plus className="w-3.5 h-3.5" />
-                      {lang === 'ta' ? 'சேர்' : 'Add Subcategory'}
-                    </button>
-                  </form>
+                    <div className="portal-dash-body">
+                      <p className="portal-wt-note">{lang === 'ta' ? 'துணைப்பிரிவுகளை நிர்வகிக்க ஒரு வகையைத் தேர்ந்தெடுக்கவும்' : 'Select a category to manage subcategories'}</p>
+                    </div>
+                  </>
+                );
+              }
+              return (
+                <>
+                  <div className="portal-dash-head">
+                    <div>
+                      <h3>
+                        <span className="portal-dash-icon">
+                          <AlertTriangle className="h-3 w-3" />
+                        </span>
+                        {lang === 'ta' ? `வகை: ${selectedCat.nameTa || selectedCat.nameEn}` : `Category: ${selectedCat.nameEn || selectedCat.nameTa}`}
+                      </h3>
+                      <p>{lang === 'ta' ? 'இந்த பிரச்சினை பகுதிக்கு துணைப்பிரிவுகளை சேர்க்கவும் அல்லது நீக்கவும்' : 'Add or remove subcategories for this issue area'}</p>
+                    </div>
+                  </div>
+                  <div className="portal-dash-body portal-wt-form">
+                    <form onSubmit={handleAddIssueSubcategory} className="space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label>{lang === 'ta' ? 'துணைப்பிரிவு பெயர் (ஆங்கிலம்)' : 'Subcategory Name (English)'}</label>
+                          <input
+                            type="text"
+                            value={newIssueSubEn}
+                            onChange={(e) => setNewIssueSubEn(e.target.value)}
+                            placeholder="e.g. Pipeline Leakage"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label>{lang === 'ta' ? 'துணைப்பிரிவு பெயர் (தமிழ்)' : 'Subcategory Name (Tamil)'}</label>
+                          <input
+                            type="text"
+                            value={newIssueSubTa}
+                            onChange={(e) => setNewIssueSubTa(e.target.value)}
+                            placeholder="எ.கா. குழாய் கசிவு"
+                            required
+                          />
+                        </div>
+                      </div>
+                      <button type="submit">
+                        {lang === 'ta' ? 'சேர்' : 'Add Subcategory'}
+                      </button>
+                    </form>
 
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
-                      {lang === 'ta' ? 'துணைப்பிரிவுகள் பட்டியல்' : 'Subcategories'} ({selectedCat.subcategories?.length || 0})
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[300px] overflow-y-auto pr-2">
-                      {selectedCat.subcategories?.map((sub: any) => (
-                        <div key={sub.id} className="flex justify-between items-center p-3 bg-gray-50 border border-gray-100 rounded-xl text-xs hover:border-gray-200 transition">
-                          <div>
-                            <p className="font-bold text-gray-800">{lang === 'ta' ? (sub.nameTa || sub.nameEn) : (sub.nameEn || sub.nameTa)}</p>
-                            <p className="text-[9px] text-gray-400 mt-0.5 font-mono">ID: {sub.id}</p>
+                    <div className="portal-wt-fields" style={{ marginTop: '0.55rem' }}>
+                      {(!selectedCat.subcategories || selectedCat.subcategories.length === 0) && (
+                        <p className="portal-wt-empty">
+                          {lang === 'ta' ? 'துணைப்பிரிவுகள் எதுவும் சேர்க்கப்படவில்லை' : 'No subcategories added yet.'}
+                        </p>
+                      )}
+                      {(selectedCat.subcategories || []).map((sub: any) => (
+                        <div key={sub.id} className="portal-wt-field">
+                          <div className="portal-wt-field-main">
+                            <div className="portal-wt-field-name">
+                              <span>{lang === 'ta' ? (sub.nameTa || sub.nameEn) : (sub.nameEn || sub.nameTa)}</span>
+                              <span className="portal-dash-id">{sub.id}</span>
+                            </div>
                           </div>
                           <button
                             type="button"
                             onClick={() => handleDeleteIssueSubcategory(selectedCat.id, sub.id)}
-                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                            className="portal-fis-icon-btn is-danger"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="h-3 w-3" />
                           </button>
                         </div>
                       ))}
-                      {(!selectedCat.subcategories || selectedCat.subcategories.length === 0) && (
-                        <p className="col-span-2 text-xs text-gray-400 italic text-center py-8 bg-gray-50/50 rounded-xl border border-dashed border-gray-150">
-                          {lang === 'ta' ? 'துணைப்பிரிவுகள் எதுவும் சேர்க்கப்படவில்லை' : 'No subcategories added yet.'}
-                        </p>
-                      )}
                     </div>
                   </div>
                 </>
               );
             })() : (
-              <p className="text-gray-400 italic text-center py-20">Select a category on the left side to manage its subcategories</p>
+              <>
+                <div className="portal-dash-head">
+                  <div>
+                    <h3>
+                      <span className="portal-dash-icon">
+                        <AlertTriangle className="h-3 w-3" />
+                      </span>
+                      {lang === 'ta' ? 'துணைப்பிரிவுகள்' : 'Subcategories'}
+                    </h3>
+                  </div>
+                </div>
+                <div className="portal-dash-body">
+                  <p className="portal-wt-note">
+                    {lang === 'ta' ? 'துணைப்பிரிவுகளை நிர்வகிக்க இடது பக்கத்தில் ஒரு வகையைத் தேர்ந்தெடுக்கவும்' : 'Select a category on the left side to manage its subcategories'}
+                  </p>
+                </div>
+              </>
             )}
           </div>
         </div>

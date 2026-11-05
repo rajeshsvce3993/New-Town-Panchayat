@@ -32,6 +32,7 @@ import {
   Pencil,
   Trash2,
   RefreshCw,
+  RotateCcw,
   Save,
   ZoomIn,
   ZoomOut,
@@ -42,7 +43,15 @@ import {
   Loader2,
   Sun,
   Moon,
-  RotateCw
+  RotateCw,
+  Users,
+  ChevronUp,
+  ChevronDown,
+  Home,
+  Zap,
+  BarChart3,
+  Building2,
+  Recycle
 } from 'lucide-react';
 import { Language, translations } from './translations';
 import { ThemeType, themesConfig } from '@/lib/themeConfig';
@@ -73,6 +82,7 @@ import {
 } from '@/lib/inspectionWorksQueryFilters';
 import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
 import MapViewReport from './MapViewReport';
+import ThemeSelect from './ThemeSelect';
 import html2canvas from 'html2canvas-pro';
 
 export function formatIndianTime(dateStr: any): string {
@@ -118,6 +128,260 @@ function formatTo12Hr(dateStr: string): string {
   if (!dateStr) return '';
   return formatIndianTime(dateStr);
 }
+
+const TAMIL_SCRIPT_RE = /[\u0B80-\u0BFF]/;
+
+function streetLookupKey(value: any): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function getLocalizedStreetName(work: any, lang: string, streets: any[] = []): string {
+  const isTa = lang === 'ta';
+  const raw = String(work?.streetName || work?.street || '').trim();
+  const storedEn = String(work?.streetNameEn || '').trim();
+  const storedTa = String(work?.streetNameTa || '').trim();
+  if (!raw && !storedEn && !storedTa) return '-';
+
+  const ward = String(work?.wardNumber || work?.wardNo || '').trim().replace(/^0+/, '');
+  const tpNeedles = [
+    streetLookupKey(work?.tpId),
+    streetLookupKey(work?.townPanchayatId),
+    streetLookupKey(work?.tpNameEn),
+    streetLookupKey(work?.tpNameTa),
+  ].filter(Boolean);
+  const nameNeedles = [raw, storedEn, storedTa].map(streetLookupKey).filter(Boolean);
+
+  const streetNameMatches = (ws: any) => {
+    const names = [ws?.streetNameEn, ws?.streetNameTa, ws?.streetName, ws?.nameEn, ws?.nameTa]
+      .map(streetLookupKey)
+      .filter(Boolean);
+    return nameNeedles.some((n) => names.includes(n));
+  };
+  const wardMatches = (ws: any) => {
+    if (!ward) return true;
+    const wsWard = String(ws?.wardNo || ws?.wardNumber || '').trim().replace(/^0+/, '');
+    return !wsWard || wsWard === ward;
+  };
+  const tpMatches = (ws: any) => {
+    if (!tpNeedles.length) return true;
+    const wsTps = [ws?.tpId, ws?.townPanchayatId, ws?.tpNameEn, ws?.tpNameTa].map(streetLookupKey).filter(Boolean);
+    if (!wsTps.length) return true;
+    return wsTps.some((t) => tpNeedles.includes(t));
+  };
+
+  const list = Array.isArray(streets) ? streets : [];
+  const match =
+    list.find((ws) => streetNameMatches(ws) && wardMatches(ws) && tpMatches(ws)) ||
+    list.find((ws) => streetNameMatches(ws) && wardMatches(ws)) ||
+    list.find((ws) => streetNameMatches(ws));
+
+  if (match) {
+    const en = String(match.streetNameEn || match.streetName || '').trim();
+    const ta = String(match.streetNameTa || '').trim();
+    if (isTa) return ta || en || raw || '-';
+    if (en && !TAMIL_SCRIPT_RE.test(en)) return en;
+    if (raw && !TAMIL_SCRIPT_RE.test(raw)) return raw;
+    if (storedEn && !TAMIL_SCRIPT_RE.test(storedEn)) return storedEn;
+    return en || raw || '-';
+  }
+
+  if (isTa) {
+    if (storedTa) return storedTa;
+    if (raw && TAMIL_SCRIPT_RE.test(raw)) return raw;
+    return storedTa || raw || storedEn || '-';
+  }
+
+  if (storedEn && !TAMIL_SCRIPT_RE.test(storedEn)) return storedEn;
+  if (raw && !TAMIL_SCRIPT_RE.test(raw)) return raw;
+  return storedEn || raw || storedTa || '-';
+}
+
+function isYesAnswer(raw: any): boolean {
+  const v = String(raw || '').trim().toLowerCase();
+  if (!v) return false;
+  return (
+    v === 'yes' ||
+    v === 'y' ||
+    v === 'true' ||
+    v === '1' ||
+    v === 'ஆம்' ||
+    v.startsWith('yes') ||
+    v.startsWith('ஆம்') ||
+    v.includes('door locked') ||
+    v === 'locked'
+  );
+}
+
+function SwmHeaderCell({ en, ta, lang, className = '' }: { en: string; ta: string; lang: string; className?: string }) {
+  return (
+    <th className={`portal-swm-th ${className}`.trim()}>
+      {lang === 'ta' ? ta : en}
+    </th>
+  );
+}
+
+function SwmViewportStatus({
+  loading,
+  lang,
+  loadingLabel,
+}: {
+  loading?: boolean;
+  lang: string;
+  loadingLabel: string;
+}) {
+  return (
+    <div className="portal-swm-viewport-msg-inner">
+      {loading ? (
+        <span className="portal-swm-viewport-loader">
+          <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--theme-accent)' }} />
+          {loadingLabel}
+        </span>
+      ) : (
+        <>
+          <svg className="portal-fis-empty-art" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+            <rect x="8" y="18" width="40" height="32" rx="6" fill="#eef2ff" stroke="#c7d2fe" />
+            <path d="M16 28h24M16 34h18M16 40h12" stroke="#818cf8" strokeWidth="2" strokeLinecap="round" />
+            <circle cx="50" cy="46" r="12" fill="#fff" stroke="#6366f1" strokeWidth="3" />
+            <path d="M58 54l8 8" stroke="#6366f1" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+          <p className="portal-swm-viewport-title">
+            {lang === 'ta'
+              ? 'தேர்ந்தெடுத்த வடிகட்டிகளுக்கு SWM பதிவுகள் இல்லை.'
+              : 'No SWM records found for the selected filters.'}
+          </p>
+          <p className="portal-swm-viewport-sub">
+            {lang === 'ta' ? 'வடிகட்டிகளை மாற்றி மீண்டும் முயலவும்.' : 'Please adjust your filters and try again.'}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function isDoorToDoorCategory(c: any): boolean {
+  const name = String(c?.nameEn || c?.name || '').toLowerCase();
+  const id = String(c?.id || '').toLowerCase();
+  return (
+    (name.includes('door') && (name.includes('segregat') || name.includes('source') || name.includes('survey')))
+    || id.includes('door_to_door_source')
+    || id.includes('door-to-door')
+  );
+}
+
+function isSwmDoorToDoorWork(work: any, categoryIds: Set<string>): boolean {
+  const wCat = String(work?.categoryId || '').trim().toLowerCase();
+  const wCatName = String(work?.categoryNameEn || work?.categoryName || work?.categoryNameTa || '').trim().toLowerCase();
+  if (!wCat) return true;
+  return (
+    categoryIds.has(wCat) ||
+    (wCat.includes('door') && (wCat.includes('segregat') || wCat.includes('source'))) ||
+    (wCatName.includes('door') && (wCatName.includes('segregat') || wCatName.includes('source')))
+  );
+}
+
+function readWorkFieldAnswer(work: any, fields: any[], pred: (label: string) => boolean): string {
+  const list = Array.isArray(fields) ? fields : [];
+  for (const field of list) {
+    const blob = [field?.id, field?.nameEn, field?.nameTa, field?.fieldName, field?.fieldNameTa]
+      .map((x) => String(x || '').toLowerCase())
+      .join(' | ');
+    if (!pred(blob)) continue;
+    const value = getWorkDynamicFieldValue(work, field, list);
+    if (String(value || '').trim()) return String(value);
+  }
+  const fd = work?.fieldsData;
+  if (fd && typeof fd === 'object') {
+    for (const [key, value] of Object.entries(fd)) {
+      if (!pred(String(key).toLowerCase())) continue;
+      if (value != null && String(value).trim()) return String(value);
+    }
+  }
+  return '';
+}
+
+function readSwmHouseholdFlags(work: any, fields: any[]) {
+  const segregated =
+    getWorkDynamicFieldValue(work, 'fld_is_waste_segregated_at_source__jdua', fields) ||
+    readWorkFieldAnswer(work, fields, (label) =>
+      label.includes('segregat') && label.includes('source') && !label.includes('worker') && !label.includes('collected')
+    );
+  const locked =
+    getWorkDynamicFieldValue(work, 'fld_is_door_locked__r98z', fields) ||
+    readWorkFieldAnswer(work, fields, (label) =>
+      label.includes('door locked') || label.includes('house locked') || label.includes('வீடு பூட்ட')
+    );
+  const compost =
+    getWorkDynamicFieldValue(work, 'fld_home_composting_available___c5p9', fields) ||
+    readWorkFieldAnswer(work, fields, (label) =>
+      label.includes('compost')
+    );
+  return {
+    segregating: isYesAnswer(segregated),
+    doorLocked: isYesAnswer(locked),
+    homeComposting: isYesAnswer(compost),
+  };
+}
+
+function formatSwmWard(ward: string, lang: string) {
+  const n = String(ward || '').trim() || '0';
+  return lang === 'ta' ? `வார்டு ${n}` : `Ward - ${n}`;
+}
+
+function readSwmBuildingType(work: any, fields: any[]): 'residential' | 'commercial' | '' {
+  const raw =
+    getWorkDynamicFieldValue(work, 'fld_building_type_cu5l', fields) ||
+    readWorkFieldAnswer(work, fields, (label) =>
+      label.includes('building type') || label.includes('கட்டிட')
+    );
+  const v = String(raw || '').trim().toLowerCase();
+  if (!v) return '';
+  if (v.includes('commercial') || v.includes('வணிகம்')) return 'commercial';
+  if (v.includes('residential') || v.includes('குடியிருப்பு')) return 'residential';
+  return '';
+}
+
+function swmPercent(count: number, total: number): number {
+  if (!total) return 0;
+  return Math.round((count / total) * 100);
+}
+
+type SwmAbstractRow = {
+  zoneNameEn: string;
+  zoneNameTa: string;
+  districtNameEn: string;
+  districtNameTa: string;
+  tpNameEn: string;
+  tpNameTa: string;
+  totalWards: number;
+  wardsSurveyed: number;
+  totalStreets: number;
+  streetsSurveyed: number;
+  householdsSurveyed: number;
+  segregating: number;
+  segregatingPct: number;
+  notSegregating: number;
+  notSegregatingPct: number;
+  doorLocked: number;
+  doorLockedPct: number;
+  homeComposting: number;
+  homeCompostingPct: number;
+  wardNumber?: string;
+  streetName?: string;
+};
+
+type SwmTpStreetRow = {
+  wardNumber: string;
+  streetName: string;
+  householdsSurveyed: number;
+  segregating: number;
+  segregatingPct: number;
+  notSegregating: number;
+  notSegregatingPct: number;
+  doorLocked: number;
+  doorLockedPct: number;
+  homeComposting: number;
+  homeCompostingPct: number;
+};
 
 export function extractCalendarDateYMD(dateVal: any): string | null {
   if (!dateVal) return null;
@@ -485,11 +749,18 @@ interface InspectionReportsViewProps {
   lang: Language;
   theme: ThemeType;
   currentUser?: any;
-  defaultActiveTab?: 'abstract' | 'detailed' | 'mapview';
+  defaultActiveTab?: 'abstract' | 'detailed' | 'mapview' | 'tp';
   hideTabsHeader?: boolean;
   hideTopTitle?: boolean;
   /** Dashboard embed: no global refresh hooks; user applies filters explicitly */
   embedMode?: boolean;
+  hideFilterActions?: boolean;
+  onFilterActionsReady?: (actions: {
+    apply: () => void;
+    reset: () => void;
+    isRefreshing: boolean;
+    fetchError: string | null;
+  }) => void;
   onSaveCollection?: (key: string, data: any[]) => Promise<void>;
 }
 
@@ -502,10 +773,19 @@ export default function InspectionReportsView({
   hideTabsHeader = false,
   hideTopTitle = false,
   embedMode = false,
+  hideFilterActions = false,
+  onFilterActionsReady,
   onSaveCollection
 }: InspectionReportsViewProps) {
   // Current active sub-tab: 'abstract' | 'detailed' | 'mapview'
-  const [activeTab, setActiveTab] = useState<'abstract' | 'detailed' | 'mapview'>(defaultActiveTab || 'abstract');
+  const [activeTab, setActiveTab] = useState<'abstract' | 'detailed' | 'mapview' | 'tp'>(defaultActiveTab || 'abstract');
+  const [reportModule, setReportModule] = useState<'inspection' | 'swm'>('inspection');
+  const [swmAbstractWorks, setSwmAbstractWorks] = useState<any[]>([]);
+  const [swmAbstractLoading, setSwmAbstractLoading] = useState(false);
+  const [showSwmDynamicColumns, setShowSwmDynamicColumns] = useState(false);
+  const [swmWardCol, setSwmWardCol] = useState(false);
+  const [swmStreetCol, setSwmStreetCol] = useState(false);
+  const [swmBuildingType, setSwmBuildingType] = useState<'all' | 'residential' | 'commercial'>('all');
 
   useEffect(() => {
     if (defaultActiveTab) {
@@ -951,6 +1231,45 @@ export default function InspectionReportsView({
     });
   }, [state.inspectionSubjects]);
 
+  const swmDoorToDoorCategories = useMemo(
+    () => (state.inspectionCategories || []).filter(isDoorToDoorCategory),
+    [state.inspectionCategories]
+  );
+
+  const swmSubjectId = useMemo(() => {
+    const fromCat = swmDoorToDoorCategories.find((c: any) => c?.subjectId)?.subjectId;
+    if (fromCat) return String(fromCat);
+    const subjects = state.inspectionSubjects || [];
+    const score = (s: any) => {
+      const id = String(s.id || '').trim().toLowerCase();
+      const name = String(s.nameEn || s.name || '').trim().toLowerCase();
+      if (id.includes('swm_monitoring') || name.includes('swm monitoring')) return 4;
+      if (name.includes('swm') && name.includes('monitor')) return 3;
+      return 0;
+    };
+    const ranked = [...subjects].sort((a, b) => score(b) - score(a));
+    return score(ranked[0]) > 0 ? String(ranked[0].id) : 'subj_swm_monitoring_i5a3';
+  }, [state.inspectionSubjects, swmDoorToDoorCategories]);
+
+  const swmDoorToDoorCategoryId = useMemo(() => {
+    const ranked = [...swmDoorToDoorCategories].sort((a: any, b: any) => {
+      const an = String(a.nameEn || '').toLowerCase();
+      const bn = String(b.nameEn || '').toLowerCase();
+      const as = (an.includes('source') ? 2 : 0) + (an.includes('segregat') ? 2 : 0) + (String(a.id).includes('gb8o') ? 1 : 0);
+      const bs = (bn.includes('source') ? 2 : 0) + (bn.includes('segregat') ? 2 : 0) + (String(b.id).includes('gb8o') ? 1 : 0);
+      return bs - as;
+    });
+    return String(ranked[0]?.id || 'cat_door_to_door_source_segregation_gb8o');
+  }, [swmDoorToDoorCategories]);
+
+  const swmDoorToDoorCategoryIds = useMemo(() => {
+    const ids = new Set<string>(swmDoorToDoorCategories.map((c: any) => String(c.id || '').trim().toLowerCase()).filter(Boolean));
+    ids.add(String(swmDoorToDoorCategoryId).toLowerCase());
+    ids.add('cat_door_to_door_source_segregation_gb8o');
+    ids.add('cat_door_to_door_source_segregation_nis3');
+    return ids;
+  }, [swmDoorToDoorCategories, swmDoorToDoorCategoryId]);
+
   // Categories filtered by selected subject - ONLY created categories
   const availableCategories = useMemo(() => {
     const allCats = (state.inspectionCategories || []).filter((c: any) => {
@@ -1203,6 +1522,8 @@ export default function InspectionReportsView({
   // Real-time works data and live refresh
   const [fetchedWorks, setFetchedWorks] = useState<any[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false);
+  const [showDynamicColumns, setShowDynamicColumns] = useState(false);
   const [apiCategoryCounts, setApiCategoryCounts] = useState<Record<string, number>>({});
   const [apiTotalWithoutCategory, setApiTotalWithoutCategory] = useState(0);
   const [apiWorksTotal, setApiWorksTotal] = useState(0);
@@ -1262,6 +1583,8 @@ export default function InspectionReportsView({
 
   const isFetchingRef = React.useRef(false);
   const fetchSeqRef = React.useRef(0);
+  const fetchedWorksRef = React.useRef<any[] | null>(null);
+  fetchedWorksRef.current = fetchedWorks;
   const lastUserActivityRef = React.useRef(Date.now());
   /** Increment to load report rows from API (Apply / Refresh — not dashboard auto-refresh). */
   const [filtersLoadToken, setFiltersLoadToken] = React.useState(0);
@@ -1297,6 +1620,9 @@ export default function InspectionReportsView({
     if (!obj) return '';
     return lang === 'ta' ? (obj.nameTa || obj.nameEn) : (obj.nameEn || obj.nameTa);
   };
+
+  const streetLabel = (work: any, activeLang: string = lang) =>
+    getLocalizedStreetName(work, activeLang, state.wardsAndStreets || []);
 
   // Deduplicate inspection works to eliminate duplicate rows and resolve real subjects and categories
   const worksFromApi = fetchedWorks !== null;
@@ -1718,7 +2044,7 @@ export default function InspectionReportsView({
   );
 
   const requestInspectionWorks = React.useCallback(async () => {
-    if (embedMode) {
+    if (embedMode && fetchedWorksRef.current == null) {
       applyBootstrapStatsFallback();
     }
     const seq = ++fetchSeqRef.current;
@@ -1789,6 +2115,91 @@ export default function InspectionReportsView({
     setFiltersLoadToken((t) => t + 1);
   }, []);
 
+  const handleResetFilters = React.useCallback(() => {
+    const swmMode = reportModule === 'swm';
+    setSelectedSubjectId(swmMode ? swmSubjectId : 'all');
+    setSelectedCategoryId(swmMode ? swmDoorToDoorCategoryId : 'all');
+    setSelectedZoneId(userZoneId || 'all');
+    setSelectedDistrictId(userDistrictId || 'all');
+    setSelectedTpId(userTpId || 'all');
+    setSelectedWard('all');
+    setSelectedStreetName('all');
+    setSearchQuery('');
+    setAdminFilterFieldId('');
+    setAdminFilterValue('');
+    setFromDate(getTodayYmd());
+    setToDate(getTodayYmd());
+    setUserCols({ subject: false, category: false });
+    setLocCols({
+      district: false,
+      tp: false,
+      ward: false,
+      street: false,
+      subject: false,
+      category: false
+    });
+    setShowSwmDynamicColumns(false);
+    setSwmWardCol(false);
+    setSwmStreetCol(false);
+    setSwmBuildingType('all');
+    queueMicrotask(() => applyFiltersAndLoad());
+  }, [applyFiltersAndLoad, reportModule, swmDoorToDoorCategoryId, swmSubjectId, userDistrictId, userTpId, userZoneId]);
+
+  const switchReportModule = React.useCallback((next: 'inspection' | 'swm') => {
+    if (next === reportModule) return;
+    setReportModule(next);
+    if (next === 'swm') {
+      setSwmAbstractWorks([]);
+      setSelectedSubjectId(swmSubjectId);
+      setSelectedCategoryId(swmDoorToDoorCategoryId);
+      setSelectedWard('all');
+      setSelectedStreetName('all');
+      setSearchQuery('');
+      setAdminFilterFieldId('');
+      setAdminFilterValue('');
+      setActiveTab('abstract');
+      filterQueryRef.current = {
+        ...filterQueryRef.current,
+        selectedSubjectId: swmSubjectId,
+        selectedCategoryId: swmDoorToDoorCategoryId,
+        selectedWard: 'all',
+        selectedStreetName: 'all',
+        searchQuery: '',
+        adminFilterFieldId: '',
+        adminFilterValue: '',
+      };
+    } else {
+      const nextSubject = String(selectedSubjectId).toLowerCase() === String(swmSubjectId).toLowerCase() ? 'all' : selectedSubjectId;
+      setSelectedSubjectId(nextSubject);
+      if (nextSubject === 'all') setSelectedCategoryId('all');
+      setFromDate(getTodayYmd());
+      setToDate(getTodayYmd());
+      filterQueryRef.current = {
+        ...filterQueryRef.current,
+        selectedSubjectId: nextSubject,
+        selectedCategoryId: nextSubject === 'all' ? 'all' : filterQueryRef.current.selectedCategoryId,
+        fromDate: getTodayYmd(),
+        toDate: getTodayYmd(),
+      };
+    }
+    queueMicrotask(() => applyFiltersAndLoad());
+  }, [applyFiltersAndLoad, reportModule, selectedSubjectId, swmDoorToDoorCategoryId, swmSubjectId]);
+
+  useEffect(() => {
+    if (reportModule !== 'swm') return;
+    if (activeTab !== 'abstract' && activeTab !== 'tp') setActiveTab('abstract');
+  }, [activeTab, reportModule]);
+
+  useEffect(() => {
+    if (!onFilterActionsReady) return;
+    onFilterActionsReady({
+      apply: () => applyFiltersAndLoad({ refreshRemote: true }),
+      reset: handleResetFilters,
+      isRefreshing,
+      fetchError,
+    });
+  }, [applyFiltersAndLoad, fetchError, handleResetFilters, isRefreshing, onFilterActionsReady]);
+
   const detailedPageFetchSkipRef = React.useRef(false);
 
   useEffect(() => {
@@ -1845,12 +2256,12 @@ export default function InspectionReportsView({
       userZoneId || '',
       userDistrictId || '',
       state.townPanchayats?.length ?? 0,
-      embedMode ? String(state.inspectionWorkStats?.length ?? 0) : '',
+      embedMode ? 'stats' : '',
     ].join('|');
     if (lastAutoLoadKeyRef.current === loadKey) return;
     lastAutoLoadKeyRef.current = loadKey;
 
-    if (embedMode) {
+    if (embedMode && fetchedWorksRef.current == null) {
       queueMicrotask(() => applyBootstrapStatsFallback());
     }
     queueMicrotask(() => applyFiltersAndLoad());
@@ -1862,7 +2273,6 @@ export default function InspectionReportsView({
     userDistrictId,
     state.townPanchayats?.length,
     state.zones?.length,
-    state.inspectionWorkStats?.length,
     applyFiltersAndLoad,
     applyBootstrapStatsFallback,
   ]);
@@ -2569,6 +2979,23 @@ export default function InspectionReportsView({
     return all;
   }, [worksFromApi, filteredWorks, slideRecordTotal, fetchRowsOnlyPage]);
 
+  useEffect(() => {
+    if (embedMode || reportModule !== 'swm' || (activeTab !== 'abstract' && activeTab !== 'tp')) return;
+    if (filtersLoadToken === 0) return;
+    let cancelled = false;
+    setSwmAbstractLoading(true);
+    void fetchAllFilteredWorksForExport()
+      .then((rows) => {
+        if (!cancelled) setSwmAbstractWorks(Array.isArray(rows) ? rows : []);
+      })
+      .finally(() => {
+        if (!cancelled) setSwmAbstractLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, embedMode, fetchAllFilteredWorksForExport, filtersLoadToken, reportModule]);
+
   const currentSlideWork = useMemo(() => {
     const pageSize = REPORTS_SERVER_PAGE_SIZE;
     let work: any = null;
@@ -2672,6 +3099,220 @@ export default function InspectionReportsView({
     },
     [state.zones, state.districts, state.townPanchayats]
   );
+
+  const swmShowWard = showSwmDynamicColumns && swmWardCol;
+  const swmShowStreet = showSwmDynamicColumns && swmStreetCol;
+  const swmBuildingFilter = showSwmDynamicColumns ? swmBuildingType : 'all';
+
+  const swmAbstractRows = useMemo(() => {
+    const fields = state.inspectionFields || [];
+    const streetsMaster = state.wardsAndStreets || [];
+    const groups = new Map<string, SwmAbstractRow & { wardSet: Set<string>; streetSet: Set<string> }>();
+
+    const masterByTp = new Map<string, { wards: Set<string>; streets: number }>();
+    const masterByTpWard = new Map<string, number>();
+    streetsMaster.forEach((ws: any) => {
+      const tpKey = String(ws.tpId || ws.townPanchayatId || ws.tpNameEn || '').trim().toLowerCase();
+      if (!tpKey) return;
+      if (!masterByTp.has(tpKey)) masterByTp.set(tpKey, { wards: new Set(), streets: 0 });
+      const bucket = masterByTp.get(tpKey)!;
+      bucket.streets += 1;
+      const ward = String(ws.wardNo || ws.wardNumber || '').trim().replace(/^0+/, '');
+      if (ward) {
+        bucket.wards.add(ward);
+        const wardKey = `${tpKey}|${ward}`;
+        masterByTpWard.set(wardKey, (masterByTpWard.get(wardKey) || 0) + 1);
+      }
+    });
+
+    const sourceWorks = swmAbstractWorks.length ? swmAbstractWorks : filteredWorks;
+    sourceWorks.forEach((work: any) => {
+      if (isFallbackInspectionWork(work)) return;
+      if (!isSwmDoorToDoorWork(work, swmDoorToDoorCategoryIds)) return;
+      if (swmBuildingFilter !== 'all' && readSwmBuildingType(work, fields) !== swmBuildingFilter) return;
+      const geo = resolveGeoNames(work.zoneId, work.districtId, work.tpId || work.townPanchayatId, work);
+      const tpId = String(work.tpId || work.townPanchayatId || geo.tpNameEn || 'unknown').trim();
+      const ward = String(work.wardNumber || work.wardNo || '').trim().replace(/^0+/, '') || '0';
+      const street = streetLabel(work);
+      const streetKey = street && street !== '-' ? street : '-';
+      const groupKey = [tpId, swmShowWard ? ward : '', swmShowStreet ? streetKey.toLowerCase() : ''].join('|');
+      if (!groups.has(groupKey)) {
+        const master = masterByTp.get(String(work.tpId || work.townPanchayatId || '').toLowerCase())
+          || masterByTp.get(String(geo.tpNameEn || '').toLowerCase());
+        const wardMasterStreets = masterByTpWard.get(`${String(work.tpId || work.townPanchayatId || geo.tpNameEn || '').toLowerCase()}|${ward}`) || 0;
+        groups.set(groupKey, {
+          zoneNameEn: geo.zoneNameEn,
+          zoneNameTa: geo.zoneNameTa,
+          districtNameEn: geo.districtNameEn,
+          districtNameTa: geo.districtNameTa,
+          tpNameEn: geo.tpNameEn,
+          tpNameTa: geo.tpNameTa,
+          wardNumber: ward,
+          streetName: streetKey,
+          totalWards: swmShowStreet || swmShowWard ? 1 : (master?.wards.size || 0),
+          wardsSurveyed: 0,
+          totalStreets: swmShowStreet ? 1 : (swmShowWard ? wardMasterStreets : (master?.streets || 0)),
+          streetsSurveyed: 0,
+          householdsSurveyed: 0,
+          segregating: 0,
+          segregatingPct: 0,
+          notSegregating: 0,
+          notSegregatingPct: 0,
+          doorLocked: 0,
+          doorLockedPct: 0,
+          homeComposting: 0,
+          homeCompostingPct: 0,
+          wardSet: new Set<string>(),
+          streetSet: new Set<string>(),
+        });
+      }
+      const row = groups.get(groupKey)!;
+      row.householdsSurveyed += 1;
+      if (ward) row.wardSet.add(ward);
+      if (streetKey && streetKey !== '-') row.streetSet.add(streetKey.toLowerCase());
+
+      const flags = readSwmHouseholdFlags(work, fields);
+      if (flags.segregating) row.segregating += 1;
+      if (flags.doorLocked) row.doorLocked += 1;
+      if (flags.homeComposting) row.homeComposting += 1;
+    });
+
+    return Array.from(groups.values()).map((row) => {
+      const surveyed = row.householdsSurveyed;
+      const notSegregating = Math.max(0, surveyed - row.segregating);
+      return {
+        zoneNameEn: row.zoneNameEn,
+        zoneNameTa: row.zoneNameTa,
+        districtNameEn: row.districtNameEn,
+        districtNameTa: row.districtNameTa,
+        tpNameEn: row.tpNameEn,
+        tpNameTa: row.tpNameTa,
+        wardNumber: row.wardNumber,
+        streetName: row.streetName,
+        totalWards: row.totalWards,
+        wardsSurveyed: row.wardSet.size,
+        totalStreets: row.totalStreets,
+        streetsSurveyed: row.streetSet.size,
+        householdsSurveyed: surveyed,
+        segregating: row.segregating,
+        segregatingPct: swmPercent(row.segregating, surveyed),
+        notSegregating,
+        notSegregatingPct: swmPercent(notSegregating, surveyed),
+        doorLocked: row.doorLocked,
+        doorLockedPct: swmPercent(row.doorLocked, surveyed),
+        homeComposting: row.homeComposting,
+        homeCompostingPct: swmPercent(row.homeComposting, surveyed),
+      } as SwmAbstractRow;
+    }).sort((a, b) =>
+      String(a.zoneNameEn).localeCompare(String(b.zoneNameEn))
+      || String(a.districtNameEn).localeCompare(String(b.districtNameEn))
+      || String(a.tpNameEn).localeCompare(String(b.tpNameEn))
+      || String(a.wardNumber || '').localeCompare(String(b.wardNumber || ''), undefined, { numeric: true })
+      || String(a.streetName || '').localeCompare(String(b.streetName || ''))
+    );
+  }, [filteredWorks, resolveGeoNames, state.inspectionFields, state.wardsAndStreets, streetLabel, swmAbstractWorks, swmBuildingFilter, swmDoorToDoorCategoryIds, swmShowStreet, swmShowWard]);
+
+  const swmAbstractTotals = useMemo(() => {
+    return swmAbstractRows.reduce((acc, row) => {
+      acc.totalWards += row.totalWards;
+      acc.wardsSurveyed += row.wardsSurveyed;
+      acc.totalStreets += row.totalStreets;
+      acc.streetsSurveyed += row.streetsSurveyed;
+      acc.householdsSurveyed += row.householdsSurveyed;
+      acc.segregating += row.segregating;
+      acc.notSegregating += row.notSegregating;
+      acc.doorLocked += row.doorLocked;
+      acc.homeComposting += row.homeComposting;
+      return acc;
+    }, {
+      totalWards: 0,
+      wardsSurveyed: 0,
+      totalStreets: 0,
+      streetsSurveyed: 0,
+      householdsSurveyed: 0,
+      segregating: 0,
+      notSegregating: 0,
+      doorLocked: 0,
+      homeComposting: 0,
+    });
+  }, [swmAbstractRows]);
+
+  const swmTpStreetRows = useMemo(() => {
+    const fields = state.inspectionFields || [];
+    const groups = new Map<string, SwmTpStreetRow & { sortWard: number }>();
+    const sourceWorks = swmAbstractWorks.length ? swmAbstractWorks : filteredWorks;
+    sourceWorks.forEach((work: any) => {
+      if (isFallbackInspectionWork(work)) return;
+      if (!isSwmDoorToDoorWork(work, swmDoorToDoorCategoryIds)) return;
+      const ward = String(work.wardNumber || work.wardNo || '').trim().replace(/^0+/, '') || '0';
+      const street = streetLabel(work);
+      const streetKey = street && street !== '-' ? street : (lang === 'ta' ? 'தெரியவில்லை' : 'Unknown');
+      const tpKey = String(work.tpId || work.townPanchayatId || '').trim().toLowerCase();
+      const key = `${tpKey}|${ward}|${streetKey.toLowerCase()}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          wardNumber: ward,
+          streetName: streetKey,
+          householdsSurveyed: 0,
+          segregating: 0,
+          segregatingPct: 0,
+          notSegregating: 0,
+          notSegregatingPct: 0,
+          doorLocked: 0,
+          doorLockedPct: 0,
+          homeComposting: 0,
+          homeCompostingPct: 0,
+          sortWard: Number.parseInt(ward, 10) || 0,
+        });
+      }
+      const row = groups.get(key)!;
+      row.householdsSurveyed += 1;
+      const flags = readSwmHouseholdFlags(work, fields);
+      if (flags.segregating) row.segregating += 1;
+      if (flags.doorLocked) row.doorLocked += 1;
+      if (flags.homeComposting) row.homeComposting += 1;
+    });
+
+    return Array.from(groups.values()).map((row) => {
+      const surveyed = row.householdsSurveyed;
+      const notSegregating = Math.max(0, surveyed - row.segregating);
+      return {
+        wardNumber: row.wardNumber,
+        streetName: row.streetName,
+        householdsSurveyed: surveyed,
+        segregating: row.segregating,
+        segregatingPct: swmPercent(row.segregating, surveyed),
+        notSegregating,
+        notSegregatingPct: swmPercent(notSegregating, surveyed),
+        doorLocked: row.doorLocked,
+        doorLockedPct: swmPercent(row.doorLocked, surveyed),
+        homeComposting: row.homeComposting,
+        homeCompostingPct: swmPercent(row.homeComposting, surveyed),
+        sortWard: row.sortWard,
+      };
+    }).sort((a, b) =>
+      a.sortWard - b.sortWard
+      || String(a.wardNumber).localeCompare(String(b.wardNumber), undefined, { numeric: true })
+      || String(a.streetName).localeCompare(String(b.streetName))
+    );
+  }, [filteredWorks, lang, state.inspectionFields, streetLabel, swmAbstractWorks, swmDoorToDoorCategoryIds]);
+
+  const swmTpStreetTotals = useMemo(() => {
+    return swmTpStreetRows.reduce((acc, row) => {
+      acc.householdsSurveyed += row.householdsSurveyed;
+      acc.segregating += row.segregating;
+      acc.notSegregating += row.notSegregating;
+      acc.doorLocked += row.doorLocked;
+      acc.homeComposting += row.homeComposting;
+      return acc;
+    }, {
+      householdsSurveyed: 0,
+      segregating: 0,
+      notSegregating: 0,
+      doorLocked: 0,
+      homeComposting: 0,
+    });
+  }, [swmTpStreetRows]);
 
   // Abstract calculations
   const abstractData = useMemo(() => {
@@ -3348,7 +3989,7 @@ export default function InspectionReportsView({
       w.categoryNameTa || '',
       w.tpNameEn || '',
       w.wardNumber || '',
-      `"${(w.streetName || '').replace(/"/g, '""')}"`,
+      `"${streetLabel(w).replace(/"/g, '""')}"`,
       `"${(w.submittedByUserName || '').replace(/"/g, '""')}"`,
       `"${getInspectorDesignation(w).replace(/"/g, '""')}"`,
       w.latitude || '',
@@ -3412,8 +4053,237 @@ export default function InspectionReportsView({
   };
 
   // Excel Export for current active Abstract Summary view
+  const swmAbstractExportHeaders = (() => {
+    const isTa = lang === 'ta';
+    const headers = [
+      isTa ? 'வ.எண்' : 'S.No',
+      isTa ? 'மண்டலம்' : 'Zone',
+      isTa ? 'மாவட்டம்' : 'District',
+      isTa ? 'பேரூராட்சி' : 'Town Panchayat',
+    ];
+    if (swmShowWard) headers.push(isTa ? 'வார்டு எண்' : 'Ward No');
+    if (swmShowStreet) headers.push(isTa ? 'தெருப்பெயர்' : 'Street Names');
+    if (!swmShowWard && !swmShowStreet) {
+      headers.push(
+        isTa ? 'மொத்த வார்டுகளின் எண்ணிக்கை' : 'Total No of Wards',
+        isTa ? 'ஆய்வுக்குட்படுத்தப்பட்ட வார்டுகளின் எண்ணிக்கை' : 'Wards surveyed',
+        isTa ? 'மொத்த தெருக்களின் எண்ணிக்கை' : 'Total No of Streets',
+        isTa ? 'ஆய்வுக்குட்படுத்தப்பட்ட தெருக்களின் எண்ணிக்கை' : 'Streets surveyed'
+      );
+    } else if (swmShowWard && !swmShowStreet) {
+      headers.push(isTa ? 'ஆய்வுக்குட்படுத்தப்பட்ட தெருக்களின் எண்ணிக்கை' : 'Streets surveyed');
+    }
+    headers.push(
+      isTa ? 'ஆய்வுக்குட்படுத்தப்பட்ட வீடுகளின் எண்ணிக்கை' : 'Total Households Surveyed',
+      isTa ? 'மூலத்திலேயே பிரித்தெடுக்கும் வீடுகள்' : 'Households Segregating Waste at Source',
+      isTa ? 'சதவீதம் (%)' : 'Percentage (%)',
+      isTa ? 'மூலத்திலேயே பிரித்தெடுக்காத வீடுகள்' : 'Households Not Segregating Waste at Source',
+      isTa ? 'சதவீதம் (%)' : 'Percentage (%)',
+      isTa ? 'தாழ் பூட்டிய வீடுகள்' : 'Households with Door Locked',
+      isTa ? 'சதவீதம் (%)' : 'Percentage (%)',
+      isTa ? 'வீட்டிலேயே உரம் தயாரிக்கும் வீடுகள்' : 'Households with Home Composting',
+      isTa ? 'சதவீதம் (%)' : 'Percentage (%)'
+    );
+    return headers;
+  })();
+
+  const swmAbstractExportRows = () => {
+    const rows = swmAbstractRows.map((row, idx) => {
+      const item: (string | number)[] = [
+        idx + 1,
+        lang === 'ta' ? row.zoneNameTa : row.zoneNameEn,
+        lang === 'ta' ? row.districtNameTa : row.districtNameEn,
+        lang === 'ta' ? row.tpNameTa : row.tpNameEn,
+      ];
+      if (swmShowWard) item.push(formatSwmWard(row.wardNumber || '0', lang));
+      if (swmShowStreet) item.push(row.streetName || '-');
+      if (!swmShowWard && !swmShowStreet) {
+        item.push(row.totalWards, row.wardsSurveyed, row.totalStreets, row.streetsSurveyed);
+      } else if (swmShowWard && !swmShowStreet) {
+        item.push(row.streetsSurveyed);
+      }
+      item.push(
+        row.householdsSurveyed,
+        row.segregating,
+        row.segregatingPct,
+        row.notSegregating,
+        row.notSegregatingPct,
+        row.doorLocked,
+        row.doorLockedPct,
+        row.homeComposting,
+        row.homeCompostingPct
+      );
+      return item;
+    });
+    const t = swmAbstractTotals;
+    const total: (string | number)[] = [lang === 'ta' ? 'மொத்தம்' : 'Total', '-', '-', '-'];
+    if (swmShowWard) total.push('-');
+    if (swmShowStreet) total.push('-');
+    if (!swmShowWard && !swmShowStreet) {
+      total.push(t.totalWards, t.wardsSurveyed, t.totalStreets, t.streetsSurveyed);
+    } else if (swmShowWard && !swmShowStreet) {
+      total.push(t.streetsSurveyed);
+    }
+    total.push(
+      t.householdsSurveyed,
+      t.segregating,
+      swmPercent(t.segregating, t.householdsSurveyed),
+      t.notSegregating,
+      swmPercent(t.notSegregating, t.householdsSurveyed),
+      t.doorLocked,
+      swmPercent(t.doorLocked, t.householdsSurveyed),
+      t.homeComposting,
+      swmPercent(t.homeComposting, t.householdsSurveyed)
+    );
+    rows.push(total);
+    return rows;
+  };
+
+  const swmAbstractColCount = swmAbstractExportHeaders.length;
+
+  const swmTpHeaderEn = [
+    'S.No',
+    'Ward No',
+    'Street Names',
+    'Total Households Surveyed',
+    'Households Segregating Waste at Source',
+    'Percentage (%)',
+    'Households Not Segregating Waste at Source',
+    'Percentage (%)',
+    'Households with Door Locked',
+    'Percentage (%)',
+    'Households with Home Composting',
+    'Percentage (%)',
+  ];
+  const swmTpHeaderTa = [
+    'வ.எண்',
+    'வார்டு எண்',
+    'தெருப்பெயர்',
+    'கணக்கெடுக்கப்பட்ட மொத்த குடியிருப்புகள்',
+    'தரம் பிரித்த வழங்கும் வீடுகள்',
+    'சதவீதம் (%)',
+    'தரம் பிரிக்காமல் வழங்கும் வீடுகள்',
+    'சதவீதம் (%)',
+    'பூட்டிய வீடுகள்',
+    'சதவீதம் (%)',
+    'வீட்டு உரமாக்கல் உள்ள வீடுகள்',
+    'சதவீதம் (%)',
+  ];
+  const swmTpExportHeaders = lang === 'ta' ? swmTpHeaderTa : swmTpHeaderEn;
+
+  const swmTpExportRows = () => {
+    const rows = swmTpStreetRows.map((row, idx) => [
+      idx + 1,
+      formatSwmWard(row.wardNumber, lang),
+      row.streetName,
+      row.householdsSurveyed,
+      row.segregating,
+      row.segregatingPct,
+      row.notSegregating,
+      row.notSegregatingPct,
+      row.doorLocked,
+      row.doorLockedPct,
+      row.homeComposting,
+      row.homeCompostingPct,
+    ]);
+    const t = swmTpStreetTotals;
+    rows.push([
+      lang === 'ta' ? 'மொத்தம்' : 'Total',
+      '-',
+      '-',
+      t.householdsSurveyed,
+      t.segregating,
+      swmPercent(t.segregating, t.householdsSurveyed),
+      t.notSegregating,
+      swmPercent(t.notSegregating, t.householdsSurveyed),
+      t.doorLocked,
+      swmPercent(t.doorLocked, t.householdsSurveyed),
+      t.homeComposting,
+      swmPercent(t.homeComposting, t.householdsSurveyed),
+    ]);
+    return rows;
+  };
+
+  const handleExportSwmTpExcel = () => {
+    if (isExportingExcelRef.current) return;
+    isExportingExcelRef.current = true;
+    setIsExportingExcel(true);
+    try {
+      exportMultiSheetExcel([
+        {
+          name: 'SWM TP',
+          data: [
+            [lang === 'ta' ? 'தமிழ்நாடு அரசு • பேரூராட்சிகள் இயக்ககம்' : 'Government of Tamil Nadu • Directorate of Town Panchayats'],
+            [lang === 'ta' ? 'SWM கண்காணிப்பு • வார்டு / தெரு அறிக்கை' : 'SWM Monitoring • Ward / Street Report'],
+            [lang === 'ta' ? `தேதி: ${new Date().toLocaleDateString('ta-IN')}` : `Date: ${new Date().toLocaleDateString()}`],
+            [],
+            swmTpExportHeaders,
+            ...swmTpExportRows(),
+          ],
+        },
+      ], `SWM_Door_to_Door_TP_${getTodayYmd()}.xlsx`);
+    } catch (err: any) {
+      console.error('Error exporting SWM TP Excel:', err);
+      alert('Error: ' + (err?.message || 'Excel export failed'));
+    } finally {
+      isExportingExcelRef.current = false;
+      setIsExportingExcel(false);
+    }
+  };
+
+  const handleExportSwmTpPDF = async () => {
+    if (isExportingPdfRef.current) return;
+    isExportingPdfRef.current = true;
+    setIsExportingPdf(true);
+    try {
+      await generateHtmlTablePDF({
+        title: lang === 'ta' ? 'SWM கண்காணிப்பு பேரூராட்சி அறிக்கை' : 'SWM Monitoring Town Panchayat Report',
+        subtitle: lang === 'ta' ? 'வார்டு மற்றும் தெரு வாரியாக வீடு வீடாக மூலத்திலேயே பிரித்தல்' : 'Ward & Street Door-to-Door Source Segregation',
+        metadata: [
+          { label: lang === 'ta' ? 'தேதி' : 'Date', value: getTodayYmd() },
+          { label: lang === 'ta' ? 'தெருக்கள்' : 'Streets', value: String(swmTpStreetRows.length) },
+        ],
+        headers: swmTpExportHeaders,
+        rows: swmTpExportRows(),
+        filename: `SWM_Door_to_Door_TP_${getTodayYmd()}.pdf`,
+        landscape: true,
+        lang: lang === 'ta' ? 'ta' : 'en',
+      });
+    } catch (err: any) {
+      console.error('Error exporting SWM TP PDF:', err);
+      alert('Error: ' + (err?.message || 'PDF export failed'));
+    } finally {
+      isExportingPdfRef.current = false;
+      setIsExportingPdf(false);
+    }
+  };
+
   const handleExportAbstractExcel = () => {
     try {
+      if (reportModule === 'swm') {
+        if (isExportingExcelRef.current) return;
+        isExportingExcelRef.current = true;
+        setIsExportingExcel(true);
+        try {
+          exportMultiSheetExcel([
+            {
+              name: 'SWM Abstract',
+              data: [
+                [lang === 'ta' ? 'தமிழ்நாடு அரசு • பேரூராட்சிகள் இயக்ககம்' : 'Government of Tamil Nadu • Directorate of Town Panchayats'],
+                [lang === 'ta' ? 'SWM கண்காணிப்பு • வீடு வீடாக மூலத்திலேயே பிரித்தல்' : 'SWM Monitoring • Door-to-Door Source Segregation'],
+                [lang === 'ta' ? `தேதி: ${new Date().toLocaleDateString('ta-IN')}` : `Date: ${new Date().toLocaleDateString()}`],
+                [],
+                swmAbstractExportHeaders,
+                ...swmAbstractExportRows(),
+              ],
+            },
+          ], `SWM_Door_to_Door_Abstract_${getTodayYmd()}.xlsx`);
+        } finally {
+          isExportingExcelRef.current = false;
+          setIsExportingExcel(false);
+        }
+        return;
+      }
       let headers: string[] = [];
       let rows: (string | number)[][] = [];
       const totalSum = activeRows.reduce((sum, r) => sum + (r.totalInspections || 0), 0);
@@ -3491,7 +4361,7 @@ export default function InspectionReportsView({
           if (locCols.district) item.push(lang === 'ta' ? (row.districtNameTa || '-') : (row.districtNameEn || '-'));
           if (locCols.tp) item.push(lang === 'ta' ? (row.tpNameTa || '-') : (row.tpNameEn || '-'));
           if (locCols.ward) item.push(lang === 'ta' ? `வார்டு ${row.wardNumber || '0'}` : `Ward ${row.wardNumber || '0'}`);
-          if (locCols.street) item.push(row.streetName || '-');
+          if (locCols.street) item.push(streetLabel(row));
           if (locCols.subject) item.push(lang === 'ta' ? (row.subjectNameTa || '-') : (row.subjectNameEn || '-'));
           if (locCols.category) item.push(lang === 'ta' ? (row.categoryNameTa || '-') : (row.categoryNameEn || '-'));
           item.push(row.totalInspections);
@@ -3531,6 +4401,30 @@ export default function InspectionReportsView({
   // PDF Export for Abstract Summary view with native Tamil font rendering
   const handleExportAbstractPDF = async () => {
     try {
+      if (reportModule === 'swm') {
+        if (isExportingPdfRef.current) return;
+        isExportingPdfRef.current = true;
+        setIsExportingPdf(true);
+        try {
+          await generateHtmlTablePDF({
+            title: lang === 'ta' ? 'SWM கண்காணிப்பு சுருக்க அறிக்கை' : 'SWM Monitoring Abstract Report',
+            subtitle: lang === 'ta' ? 'வீடு வீடாக மூலத்திலேயே பிரித்தல்' : 'Door-to-Door Source Segregation',
+            metadata: [
+              { label: lang === 'ta' ? 'தேதி' : 'Date', value: getTodayYmd() },
+              { label: lang === 'ta' ? 'பேரூராட்சிகள்' : 'Town Panchayats', value: String(swmAbstractRows.length) },
+            ],
+            headers: swmAbstractExportHeaders,
+            rows: swmAbstractExportRows(),
+            filename: `SWM_Door_to_Door_Abstract_${getTodayYmd()}.pdf`,
+            landscape: true,
+            lang: lang === 'ta' ? 'ta' : 'en',
+          });
+        } finally {
+          isExportingPdfRef.current = false;
+          setIsExportingPdf(false);
+        }
+        return;
+      }
       let headers: string[] = [];
       let rows: (string | number)[][] = [];
       const totalSum = activeRows.reduce((sum, r) => sum + (r.totalInspections || 0), 0);
@@ -3596,7 +4490,7 @@ export default function InspectionReportsView({
           if (locCols.district) item.push(lang === 'ta' ? (row.districtNameTa || '-') : (row.districtNameEn || '-'));
           if (locCols.tp) item.push(lang === 'ta' ? (row.tpNameTa || '-') : (row.tpNameEn || '-'));
           if (locCols.ward) item.push(lang === 'ta' ? `வார்டு ${row.wardNumber || '0'}` : `Ward ${row.wardNumber || '0'}`);
-          if (locCols.street) item.push(row.streetName || '-');
+          if (locCols.street) item.push(streetLabel(row));
           if (locCols.subject) item.push(lang === 'ta' ? (row.subjectNameTa || '-') : (row.subjectNameEn || '-'));
           if (locCols.category) item.push(lang === 'ta' ? (row.categoryNameTa || '-') : (row.categoryNameEn || '-'));
           item.push(row.totalInspections);
@@ -3818,7 +4712,7 @@ export default function InspectionReportsView({
           const groups: Record<string, { ward: string; street: string; sName?: string; cName?: string; count: number; completed: number; pending: number }> = {};
           tp.works.forEach(w => {
             const ward = w.wardNumber ? (lang === 'ta' ? `வார்டு ${w.wardNumber}` : `Ward ${w.wardNumber}`) : '-';
-            const street = w.streetName || '-';
+            const street = streetLabel(w);
             const sName = lang === 'ta' ? (w.subjectNameTa || w.subjectNameEn || '-') : (w.subjectNameEn || w.subjectNameTa || '-');
             const cName = lang === 'ta' ? (w.categoryNameTa || w.categoryNameEn || '-') : (w.categoryNameEn || w.categoryNameTa || '-');
             let key = `${ward}___${street}`;
@@ -4074,7 +4968,7 @@ export default function InspectionReportsView({
           const groups: Record<string, { ward: string; street: string; sName?: string; cName?: string; count: number; completed: number; pending: number }> = {};
           tp.works.forEach(w => {
             const ward = w.wardNumber ? (lang === 'ta' ? `வார்டு ${w.wardNumber}` : `Ward ${w.wardNumber}`) : '-';
-            const street = w.streetName || '-';
+            const street = streetLabel(w);
             const sName = lang === 'ta' ? (w.subjectNameTa || w.subjectNameEn || '-') : (w.subjectNameEn || w.subjectNameTa || '-');
             const cName = lang === 'ta' ? (w.categoryNameTa || w.categoryNameEn || '-') : (w.categoryNameEn || w.categoryNameTa || '-');
             let key = `${ward}___${street}`;
@@ -4427,7 +5321,7 @@ export default function InspectionReportsView({
           lang === 'ta' ? work.categoryNameTa || work.categoryNameEn || '' : work.categoryNameEn || '',
           lang === 'ta' ? work.tpNameTa || work.tpNameEn || '-' : work.tpNameEn || '-',
           `${lang === 'ta' ? 'வார்டு' : 'Ward'} ${work.wardNumber || work.wardNo || '-'}`,
-          work.streetName || '-',
+          streetLabel(work),
           work.submittedByUserName || 'Field Cadre',
           getInspectorDesignation(work),
           work.latitude ? Number(work.latitude).toFixed(5) : '-',
@@ -4608,7 +5502,7 @@ export default function InspectionReportsView({
           lang === 'ta' ? (w.subjectNameTa || w.subjectNameEn || '-') : (w.subjectNameEn || '-'),
           lang === 'ta' ? (w.categoryNameTa || w.categoryNameEn || '-') : (w.categoryNameEn || '-'),
           `${lang === 'ta' ? 'வார்டு' : 'Ward'} ${w.wardNumber || w.wardNo || '-'}`,
-          w.streetName || '-',
+          streetLabel(w),
           w.submittedByUserName || 'Field Cadre',
           getInspectorDesignation(w),
           w.latitude && w.longitude ? `${Number(w.latitude).toFixed(4)}, ${Number(w.longitude).toFixed(4)}` : '-',
@@ -4715,7 +5609,7 @@ export default function InspectionReportsView({
           lang === 'ta' ? (w.subjectNameTa || w.subjectNameEn || '-') : (w.subjectNameEn || '-'),
           lang === 'ta' ? (w.categoryNameTa || w.categoryNameEn || '-') : (w.categoryNameEn || '-'),
           `${lang === 'ta' ? 'வார்டு' : 'Ward'} ${w.wardNumber || w.wardNo || '-'}`,
-          w.streetName || '-',
+          streetLabel(w),
           w.submittedByUserName || 'Field Cadre',
           getInspectorDesignation(w),
           lang === 'ta'
@@ -5158,7 +6052,7 @@ export default function InspectionReportsView({
 
         // Subheader Line 2 - Bigger & Bold
         const wardStr = isTa ? `வார்டு எண்: ${work.wardNumber || '1'}` : `WARD NO: ${work.wardNumber || '1'}`;
-        const streetStr = isTa ? (work.streetNameTa || work.streetName || '-') : String(work.streetNameEn || work.streetName || '-').toUpperCase();
+        const streetStr = isTa ? streetLabel(work, 'ta') : streetLabel(work, 'en').toUpperCase();
         const subjStr = isTa ? (work.subjectNameTa || work.subjectNameEn || '') : String(work.subjectNameEn || '').toUpperCase();
         const photoLbl = isTa ? translatePhotoLabelToTamil(activePhoto.label) : String(activePhoto.label).toUpperCase();
         drawTextWithOutline(`${wardStr}, ${streetStr} • ${subjStr} • ${photoLbl}`, targetWidth / 2, targetHeight + 92, Math.max(20, Math.round(targetWidth * 0.018)));
@@ -5250,7 +6144,7 @@ export default function InspectionReportsView({
       ctx.font = 'bold 16px sans-serif';
       ctx.fillStyle = '#94A3B8';
       const wardStr = isTa ? `வார்டு: ${work.wardNumber || '1'}` : `WARD: ${work.wardNumber || '1'}`;
-      const streetStr = isTa ? (work.streetNameTa || work.streetName || '-') : String(work.streetNameEn || work.streetName || '-').toUpperCase();
+      const streetStr = isTa ? streetLabel(work, 'ta') : streetLabel(work, 'en').toUpperCase();
       const subjStr = isTa ? (work.subjectNameTa || work.subjectNameEn || '') : String(work.subjectNameEn || '').toUpperCase();
       const timeStr = isTa ? formatIndianTime(work.submittedAt).replace('AM', 'மு.ப').replace('PM', 'பி.ப') : formatIndianTime(work.submittedAt).toUpperCase();
       ctx.fillText(`${wardStr} • ${streetStr} • ${subjStr} • ${timeStr} • WORK ID: ${workIdStr}`, collageWidth / 2, 72);
@@ -5448,74 +6342,50 @@ export default function InspectionReportsView({
     return lang === 'ta' ? work?.categoryNameTa : work?.categoryNameEn;
   };
 
+  const embedEmptyMessage = (
+    <div className="portal-fis-empty">
+      <svg className="portal-fis-empty-art" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+        <rect x="8" y="18" width="40" height="32" rx="6" fill="#eef2ff" stroke="#c7d2fe" />
+        <path d="M16 28h24M16 34h18M16 40h12" stroke="#818cf8" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="50" cy="46" r="12" fill="#fff" stroke="#6366f1" strokeWidth="3" />
+        <path d="M58 54l8 8" stroke="#6366f1" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+      <p className="text-[13px] font-semibold text-slate-600">
+        {lang === 'ta' ? 'தேர்ந்தெடுத்த வடிகட்டிகளுக்கு ஆய்வுப் பதிவுகள் இல்லை.' : 'No inspection records found for the selected filters.'}
+      </p>
+      <p className="text-[11px] text-slate-400">
+        {lang === 'ta' ? 'வடிகட்டிகளை மாற்றி மீண்டும் முயலவும்.' : 'Please adjust your filters and try again.'}
+      </p>
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
-      {/* Top Banner & Title with Instant Refresh Status */}
-      {!hideTopTitle && (
-        <div className="flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            {lang === 'ta' ? 'ஆய்வு அறிக்கைகள் (Inspection Reports)' : 'Inspection Reports'}
-          </h1>
-        </div>
-      )}
-
-      {/* THREE MAIN TABS (Abstract, Detailed, MapView) */}
-      {!hideTabsHeader && (
-        <div className="flex flex-wrap border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-t-2xl px-4 md:px-6 pt-4 gap-2 md:gap-4 shadow-xs">
-          <button
-            onClick={() => setActiveTab('abstract')}
-            className={`pb-4 px-4 text-sm font-bold border-b-2 transition flex items-center gap-2 ${
-              activeTab === 'abstract'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-          <Layers className="w-4 h-4" />
-          <span>{lang === 'ta' ? 'சுருக்க அறிக்கை (Abstract)' : 'Abstract Summary Report'}</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('detailed')}
-          className={`pb-4 px-4 text-sm font-bold border-b-2 transition flex items-center gap-2 ${
-            activeTab === 'detailed'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-          }`}
-        >
-          <FileSpreadsheet className="w-4 h-4" />
-          <span>{lang === 'ta' ? 'விரிவான அறிக்கை (Detailed)' : 'Detailed Field Register'}</span>
-          <span className="ml-1.5 px-2 py-0.5 text-xs rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono font-bold">
-            {filteredWorksTotal}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('mapview')}
-          className={`pb-4 px-4 text-sm font-bold border-b-2 transition flex items-center gap-2 ${
-            activeTab === 'mapview'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-          }`}
-        >
-          <MapIcon className="w-4 h-4" />
-          <span>{lang === 'ta' ? 'வரைபடக் காட்சி அறிக்கை (MapView Report)' : 'MapView Report'}</span>
-          <span className="ml-1 px-1.5 py-0.5 text-[10px] uppercase font-bold rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-            Map
-          </span>
-        </button>
-      </div>
-      )}
-
-      {/* COMPREHENSIVE FILTER BAR */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            <Filter className="w-4 h-4 text-indigo-600" />
-            <span>{lang === 'ta' ? 'வடிகட்டி விருப்பங்கள்' : 'Dynamic Filter Controls'}</span>
+    <div className={embedMode ? 'portal-fis-sheet' : 'portal-studio'}>
+      {!embedMode && (
+        <div className="portal-fis-hero">
+          <div className="relative z-[1] min-w-0">
+            <div className="portal-fis-hero-tabs">
+              <button
+                type="button"
+                onClick={() => switchReportModule('inspection')}
+                className={`portal-fis-hero-tab ${reportModule === 'inspection' ? 'is-active' : ''}`}
+              >
+                <FileSpreadsheet />
+                <span>{lang === 'ta' ? 'ஆய்வு அறிக்கைகள்' : 'Inspection Reports'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => switchReportModule('swm')}
+                className={`portal-fis-hero-tab ${reportModule === 'swm' ? 'is-active' : ''}`}
+              >
+                <Recycle />
+                <span>{lang === 'ta' ? 'SWM அறிக்கைகள்' : 'SWM Reports'}</span>
+              </button>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-3">
+          <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
             {fetchError && (
-              <span className="max-w-md text-right text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+              <span className="max-w-[14rem] truncate text-right text-[11px] font-semibold text-rose-100">
                 {fetchError}
               </span>
             )}
@@ -5523,57 +6393,138 @@ export default function InspectionReportsView({
               type="button"
               onClick={() => applyFiltersAndLoad({ refreshRemote: true })}
               disabled={isRefreshing}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-60 cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-md hover:brightness-110 disabled:opacity-60 cursor-pointer"
+              style={{ backgroundImage: `linear-gradient(90deg, ${currentTheme.chartGradient?.[0] || currentTheme.accentColor}, ${currentTheme.accentColor})` }}
+            >
+              <RefreshCw className={`h-3 w-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {lang === 'ta' ? 'வடிகட்டி பயன்படுத்து' : 'Apply Filters'}
+            </button>
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+            >
+              <RotateCcw className="h-3 w-3" />
+              {lang === 'ta' ? 'அனைத்தையும் மீட்டமை' : 'Reset Filters'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className={embedMode ? 'portal-fis-sheet' : 'portal-fis-body'}>
+      {!hideTabsHeader && (
+        <div className="portal-dash-toolbar">
+          <div className="portal-dash-pills">
+            <button
+              type="button"
+              onClick={() => setActiveTab('abstract')}
+              className={`portal-dash-pill ${activeTab === 'abstract' ? 'is-active' : ''}`}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              <span>{lang === 'ta' ? 'சுருக்க அறிக்கை' : 'Abstract'}</span>
+            </button>
+            {reportModule === 'swm' ? (
+            <button
+              type="button"
+              onClick={() => setActiveTab('tp')}
+              className={`portal-dash-pill ${activeTab === 'tp' ? 'is-active' : ''}`}
+            >
+              <Building2 className="h-3.5 w-3.5" />
+              <span>{lang === 'ta' ? 'பேரூராட்சி' : 'TP'}</span>
+            </button>
+            ) : (
+            <>
+            <button
+              type="button"
+              onClick={() => setActiveTab('detailed')}
+              className={`portal-dash-pill ${activeTab === 'detailed' ? 'is-active' : ''}`}
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <span>{lang === 'ta' ? 'விரிவான அறிக்கை' : 'Detailed'}</span>
+              <span className="portal-fis-count">{filteredWorksTotal}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('mapview')}
+              className={`portal-dash-pill ${activeTab === 'mapview' ? 'is-active' : ''}`}
+            >
+              <MapIcon className="h-3.5 w-3.5" />
+              <span>{lang === 'ta' ? 'வரைபடம்' : 'Map View'}</span>
+            </button>
+            </>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="portal-fis-filters">
+        {reportModule !== 'swm' && (
+        <div className="portal-fis-search-bar">
+          <div className="portal-fis-filters-head">
+            <div className="portal-fis-search">
+              <label className="sr-only" htmlFor="inspection-report-search">
+                {lang === 'ta' ? 'தேடு (Work ID, Street)' : 'Search (ID, Street)'}
+              </label>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  id="inspection-report-search"
+                  type="text"
+                  placeholder={lang === 'ta' ? 'தேடு (Work ID, Street)' : 'Search (ID, Street)'}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFiltersCollapsed((open) => !open)}
+              aria-expanded={!filtersCollapsed}
+            >
+              <Filter className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} />
+              <span>{lang === 'ta' ? 'வடிகட்டிகள்' : 'Filters'}</span>
+              {filtersCollapsed ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronUp className="h-4 w-4 text-slate-400" />}
+            </button>
+          </div>
+        </div>
+        )}
+        <div className={`portal-fis-filter-fields${reportModule !== 'swm' && filtersCollapsed ? ' is-collapsed' : ''}`}>
+        {embedMode && !hideFilterActions && (
+        <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
+            {fetchError && (
+              <span className="max-w-md text-right text-[11px] font-semibold text-rose-600">
+                {fetchError}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => applyFiltersAndLoad({ refreshRemote: true })}
+              disabled={isRefreshing}
+              className="portal-dash-pill is-active"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
               {lang === 'ta' ? 'வடிகட்டி பயன்படுத்து' : 'Apply filters'}
             </button>
             <button
               type="button"
-              onClick={() => {
-                setSelectedSubjectId('all');
-                setSelectedCategoryId('all');
-                setSelectedZoneId(userZoneId || 'all');
-                setSelectedDistrictId(userDistrictId || 'all');
-                setSelectedTpId(userTpId || 'all');
-                setSelectedWard('all');
-                setSelectedStreetName('all');
-                setSearchQuery('');
-                setAdminFilterFieldId('');
-                setAdminFilterValue('');
-                setFromDate(getTodayYmd());
-                setToDate(getTodayYmd());
-                setUserCols({ subject: false, category: false });
-                setLocCols({
-                  district: false,
-                  tp: false,
-                  ward: false,
-                  street: false,
-                  subject: false,
-                  category: false
-                });
-                queueMicrotask(() => applyFiltersAndLoad());
-              }}
-              className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold cursor-pointer"
+              onClick={handleResetFilters}
+              className="portal-dash-pill"
             >
               {lang === 'ta' ? 'அனைத்தையும் மீட்டமை' : 'Reset Filters'}
             </button>
           </div>
         </div>
-        <p className="text-[11px] text-slate-500 -mt-2">
-          {lang === 'ta'
-            ? 'வடிகட்டிகளை மாற்றிய பிறகு «வடிகட்டி பயன்படுத்து» ஐ அழுத்தவும். டாஷ்போர்டு தானியங்கி புதுப்பிப்பு இங்கே பயன்படாது.'
-            : 'Change filters, then click Apply filters. Dashboard auto-refresh does not reload this table.'}
-        </p>
+        )}
 
-        {/* 10-Column Multi-tier Filters Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${reportModule === 'swm' ? 'md:grid-cols-3 lg:grid-cols-5' : 'md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'} portal-studio-fields ${reportModule !== 'swm' && filtersCollapsed ? 'hidden' : ''}`}>
           {/* Zone Filter */}
           <div>
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+            <label className="portal-fis-field-label mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+              <MapPin className="h-3 w-3" style={{ color: 'var(--theme-accent)' }} />
               <span>{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</span>
             </label>
-            <select
+            <ThemeSelect
               value={selectedZoneId}
               disabled={!!userZoneId}
               onChange={(e) => {
@@ -5584,11 +6535,6 @@ export default function InspectionReportsView({
                 setSelectedWard('all');
                 setSelectedStreetName('all');
               }}
-              className={`w-full border rounded-xl p-2.5 text-xs outline-none font-semibold ${
-                userZoneId 
-                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 cursor-default' 
-                  : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500'
-              }`}
             >
               {!userZoneId && <option value="all">{lang === 'ta' ? 'அனைத்து மண்டலங்களும்' : 'All Zones'}</option>}
               {filteredZones.map((z: any) => (
@@ -5596,15 +6542,16 @@ export default function InspectionReportsView({
                   {lang === 'ta' ? (z.nameTa || z.nameEn) : (z.nameEn || z.nameTa)}
                 </option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* District Filter */}
           <div>
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+            <label className="portal-fis-field-label mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+              <Building className="h-3 w-3" style={{ color: 'var(--theme-accent)' }} />
               <span>{lang === 'ta' ? 'மாவட்டம்' : 'District'}</span>
             </label>
-            <select
+            <ThemeSelect
               value={selectedDistrictId}
               disabled={!!userDistrictId}
               onChange={(e) => {
@@ -5614,11 +6561,6 @@ export default function InspectionReportsView({
                 setSelectedWard('all');
                 setSelectedStreetName('all');
               }}
-              className={`w-full border rounded-xl p-2.5 text-xs outline-none font-semibold ${
-                userDistrictId 
-                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 cursor-default' 
-                  : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500'
-              }`}
             >
               {!userDistrictId && <option value="all">{lang === 'ta' ? 'அனைத்து மாவட்டங்களும்' : 'All Districts'}</option>}
               {availableDistricts.map((d: any) => (
@@ -5626,15 +6568,16 @@ export default function InspectionReportsView({
                   {lang === 'ta' ? (d.nameTa || d.nameEn) : (d.nameEn || d.nameTa)}
                 </option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Town Panchayat Filter */}
           <div>
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+            <label className="portal-fis-field-label mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+              <Building2 className="h-3 w-3" style={{ color: 'var(--theme-accent)' }} />
               <span>{lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}</span>
             </label>
-            <select
+            <ThemeSelect
               value={selectedTpId}
               disabled={!!userTpId}
               onChange={(e) => {
@@ -5643,11 +6586,6 @@ export default function InspectionReportsView({
                 setSelectedWard('all');
                 setSelectedStreetName('all');
               }}
-              className={`w-full border rounded-xl p-2.5 text-xs outline-none font-semibold ${
-                userTpId 
-                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 cursor-default' 
-                  : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500'
-              }`}
             >
               {!userTpId && <option value="all">{lang === 'ta' ? 'அனைத்து பேரூராட்சிகளும்' : 'All Town Panchayats'}</option>}
               {availableTownPanchayats.map((tp: any) => (
@@ -5655,38 +6593,40 @@ export default function InspectionReportsView({
                   {lang === 'ta' ? (tp.nameTa || tp.nameEn) : (tp.nameEn || tp.nameTa)}
                 </option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
+          {reportModule !== 'swm' && (
+          <>
           {/* Ward Filter */}
           <div>
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+            <label className="portal-fis-field-label mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+              <Home className="h-3 w-3" style={{ color: 'var(--theme-accent)' }} />
               {lang === 'ta' ? 'வார்டு எண்' : 'Ward Number'}
             </label>
-            <select
+            <ThemeSelect
               value={selectedWard}
               onChange={(e) => {
                 setSelectedWard(e.target.value);
                 setSelectedStreetName('all');
               }}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
             >
               <option value="all">{lang === 'ta' ? 'அனைத்து வார்டுகளும்' : 'All Wards'}</option>
               {availableWards.map((w) => (
                 <option key={w} value={w}>Ward {w}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Street Filter */}
           <div>
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+            <label className="portal-fis-field-label mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+              <MapPin className="h-3 w-3" style={{ color: 'var(--theme-accent)' }} />
               {lang === 'ta' ? 'தெரு' : 'Street'}
             </label>
-            <select
+            <ThemeSelect
               value={selectedStreetName}
               onChange={(e) => setSelectedStreetName(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
             >
               <option value="all">
                 {!userTpId && selectedTpId === 'all'
@@ -5696,105 +6636,113 @@ export default function InspectionReportsView({
               {availableStreets.map((st) => (
                 <option key={st} value={st}>{st}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Subject Filter */}
           <div>
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+            <label className="portal-fis-field-label mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+              <Layers className="h-3 w-3" style={{ color: 'var(--theme-accent)' }} />
               {lang === 'ta' ? 'ஆய்வு பிரிவு (Subject)' : 'Inspection Subject'}
             </label>
-            <select
-              value={selectedSubjectId}
+            <ThemeSelect
+              value={reportModule === 'swm' ? swmSubjectId : selectedSubjectId}
+              disabled={reportModule === 'swm'}
               onChange={(e) => {
                 setSelectedSubjectId(e.target.value);
                 setSelectedCategoryId('all');
               }}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
             >
-              <option value="all">{lang === 'ta' ? 'அனைத்து பிரிவுகளும்' : 'All Subjects'}</option>
-              {availableSubjects.map((s: any) => (
+              {reportModule !== 'swm' && (
+                <option value="all">{lang === 'ta' ? 'அனைத்து பிரிவுகளும்' : 'All Subjects'}</option>
+              )}
+              {(reportModule === 'swm'
+                ? availableSubjects.filter((s: any) => String(s.id) === swmSubjectId)
+                : availableSubjects
+              ).map((s: any) => (
                 <option key={s.id} value={s.id}>{tObj(s)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Category Filter */}
           <div>
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+            <label className="portal-fis-field-label mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+              <Layers className="h-3 w-3" style={{ color: 'var(--theme-accent)' }} />
               {lang === 'ta' ? 'ஆய்வு வகை (Category)' : 'Category Hierarchy'}
             </label>
-            <select
+            <ThemeSelect
               value={selectedCategoryId}
               onChange={(e) => {
                 setSelectedCategoryId(e.target.value);
                 setAdminFilterFieldId('');
                 setAdminFilterValue('');
               }}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
             >
               <option value="all">{lang === 'ta' ? 'அனைத்து வகைகளும்' : 'All Categories'}</option>
               {availableCategories.map((c: any) => (
                 <option key={c.id} value={c.id}>{tObj(c)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Admin Dynamic Field Filter */}
           <div>
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
-              ⚡ {lang === 'ta' ? 'புல வடிகட்டி' : 'Dynamic Field Filter'}
+            <label className="portal-fis-field-label mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+              <Zap className="h-3 w-3" style={{ color: 'var(--theme-accent)' }} />
+              {lang === 'ta' ? 'புல வடிகட்டி' : 'Dynamic Field Filter'}
             </label>
-            <select
+            <ThemeSelect
               value={adminFilterFieldId}
               onChange={(e) => {
                 setAdminFilterFieldId(e.target.value);
                 setAdminFilterValue('');
               }}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-indigo-600 dark:text-indigo-400 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
             >
               <option value="">{lang === 'ta' ? '-- புலத்தைத் தேர்வுசெய் --' : '-- Choose Field --'}</option>
               {fieldsForFilter.map((f: any) => (
                 <option key={f.id} value={f.id}>{tObj(f)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Admin Dynamic Field Filter Value */}
           {adminFilterFieldId && (
             <div>
-              <label className="text-[11px] font-bold text-slate-500 block mb-1">
+              <label className="portal-fis-field-label mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
                 {lang === 'ta' ? 'புல மதிப்பு' : 'Field Value'}
               </label>
               {adminFieldValueOptions.length > 0 ? (
-                <select
+                <ThemeSelect
                   value={adminFieldValueOptions.includes(adminFilterValue) ? adminFilterValue : ''}
                   onChange={(e) => setAdminFilterValue(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
                 >
                   <option value="">{lang === 'ta' ? '-- மதிப்பைத் தேர்வுசெய் --' : '-- Select value --'}</option>
                   {adminFieldValueOptions.map((opt) => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               ) : (
                 <input
                   type="text"
                   placeholder={lang === 'ta' ? 'மதிப்பை உள்ளிடவும் (எ.கா. 9894491631)' : 'Type a value (e.g. 9894491631)'}
                   value={adminFilterValue}
                   onChange={(e) => setAdminFilterValue(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 font-semibold"
+                  className="portal-theme-select-trigger"
                 />
               )}
             </div>
           )}
+          </>
+          )}
 
           {/* From Date */}
           <div>
-            <div className="flex justify-between items-center mb-1">
-              <label className="text-[11px] font-bold text-slate-500">
+            <div className="portal-fis-field-label mb-1 flex items-center justify-between gap-1">
+              <span className="flex min-w-0 items-center gap-1 text-[11px] font-semibold text-slate-500">
+                <Calendar className="h-3 w-3 shrink-0" style={{ color: 'var(--theme-accent)' }} />
                 {lang === 'ta' ? 'தொடக்க தேதி' : 'From Date'}
-              </label>
+              </span>
               <button
                 type="button"
                 onClick={() => {
@@ -5814,7 +6762,7 @@ export default function InspectionReportsView({
                     queueMicrotask(() => applyFiltersAndLoad());
                   }
                 }}
-                className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
+                className="portal-fis-today"
               >
                 {fromDate === new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()) && toDate === fromDate 
                   ? (lang === 'ta' ? 'அனைத்தும் (Clear)' : 'Clear Today') 
@@ -5825,111 +6773,85 @@ export default function InspectionReportsView({
               type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2 text-xs text-slate-800 dark:text-slate-200 outline-none"
             />
           </div>
 
           {/* To Date */}
           <div>
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+            <label className="portal-fis-field-label mb-1.5 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
+              <Calendar className="h-3 w-3" style={{ color: 'var(--theme-accent)' }} />
               {lang === 'ta' ? 'முடிவு தேதி' : 'To Date'}
             </label>
             <input
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2 text-xs text-slate-800 dark:text-slate-200 outline-none"
             />
           </div>
-
-          {/* Search Query */}
-          <div>
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
-              {lang === 'ta' ? 'தேடு (Work ID, Street)' : 'Search (ID, Street)'}
-            </label>
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" />
-              <input
-                type="text"
-                placeholder="Search..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
         </div>
+        </div>
+      </div>
 
-
-
-        {/* Dynamic Abstract Grouping & Dynamic Columns (visible to abstract tab only) */}
-        {activeTab === 'abstract' && (
-          <>
-            <div className="h-px bg-slate-100 dark:bg-slate-800 my-4"></div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+      {activeTab === 'abstract' && reportModule !== 'swm' && (
+        <div className="portal-fis-toolbar">
+            <div className="portal-fis-toolbar-row">
+              <div className="portal-fis-group">
+                <span className="portal-fis-bar-label">
+                  <BarChart3 className="h-3.5 w-3.5" />
                   {lang === 'ta' ? 'அறிக்கைக் குழு முறை' : 'Abstract Report Grouping'}
                 </span>
-                <div className="inline-flex p-1 bg-slate-150 dark:bg-slate-800 rounded-xl gap-1 self-start">
+                <div className="portal-fis-pills">
                   <button
-                    onClick={() => setGroupingStyle('subject')}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                      groupingStyle === 'subject'
-                        ? 'bg-white text-indigo-600 dark:bg-slate-700 dark:text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                    }`}
+                    type="button"
+                    onClick={() => {
+                      setGroupingStyle('subject');
+                      setShowDynamicColumns(false);
+                    }}
+                    className={`portal-fis-pill ${groupingStyle === 'subject' ? 'is-active' : ''}`}
                   >
+                    <Layers className="h-3.5 w-3.5" />
                     {lang === 'ta' ? 'பிரிவு வாரியாக' : 'Subject wise'}
                   </button>
                   <button
-                    onClick={() => setGroupingStyle('user')}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                      groupingStyle === 'user'
-                        ? 'bg-white text-indigo-600 dark:bg-slate-700 dark:text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                    }`}
+                    type="button"
+                    onClick={() => {
+                      setGroupingStyle('user');
+                      setShowDynamicColumns(true);
+                    }}
+                    className={`portal-fis-pill ${groupingStyle === 'user' ? 'is-active' : ''}`}
                   >
+                    <Users className="h-3.5 w-3.5" />
                     {lang === 'ta' ? 'பயனர் வாரியாக' : 'User wise'}
                   </button>
                   <button
-                    onClick={() => setGroupingStyle('location')}
-                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                      groupingStyle === 'location'
-                        ? 'bg-white text-indigo-600 dark:bg-slate-700 dark:text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                    }`}
+                    type="button"
+                    onClick={() => {
+                      setGroupingStyle('location');
+                      setShowDynamicColumns(true);
+                    }}
+                    className={`portal-fis-pill ${groupingStyle === 'location' ? 'is-active' : ''}`}
                   >
+                    <MapPin className="h-3.5 w-3.5" />
                     {lang === 'ta' ? 'இடம் வாரியாக' : 'Location wise'}
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
-                  {lang === 'ta' ? 'டைனமிக் நெடுவரிசைகள் (கூடுதல் பத்திகளைத் தேர்ந்தெடுக்கவும்)' : 'Dynamic Columns'}
-                </span>
-                <div className="flex flex-wrap gap-2">
+              <div className="portal-fis-columns">
+                <div className={`portal-fis-pills${showDynamicColumns && groupingStyle !== 'subject' ? '' : ' hidden'}`}>
                   {groupingStyle === 'user' && (
                     <>
                       <button
+                        type="button"
                         onClick={() => handleToggleUserCol('subject')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                          userCols.subject
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                        }`}
+                        className={`portal-fis-pill ${userCols.subject ? 'is-active' : ''}`}
                       >
                         <span>{lang === 'ta' ? 'பிரிவு (Subject)' : 'Subject'}</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleToggleUserCol('category')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                          userCols.category
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                        }`}
+                        className={`portal-fis-pill ${userCols.category ? 'is-active' : ''}`}
                       >
                         <span>{lang === 'ta' ? 'வகை (Category)' : 'Category'}</span>
                       </button>
@@ -5939,117 +6861,225 @@ export default function InspectionReportsView({
                   {groupingStyle === 'location' && (
                     <>
                       <button
+                        type="button"
                         onClick={() => handleToggleLocCol('district')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                          locCols.district
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                        }`}
+                        className={`portal-fis-pill ${locCols.district ? 'is-active' : ''}`}
                       >
                         <span>{lang === 'ta' ? 'மாவட்டம்' : 'District'}</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleToggleLocCol('tp')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                          locCols.tp
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                        }`}
+                        className={`portal-fis-pill ${locCols.tp ? 'is-active' : ''}`}
                       >
                         <span>{lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleToggleLocCol('ward')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                          locCols.ward
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                        }`}
+                        className={`portal-fis-pill ${locCols.ward ? 'is-active' : ''}`}
                       >
                         <span>{lang === 'ta' ? 'வார்டு' : 'Ward'}</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleToggleLocCol('street')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                          locCols.street
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                        }`}
+                        className={`portal-fis-pill ${locCols.street ? 'is-active' : ''}`}
                       >
                         <span>{lang === 'ta' ? 'தெரு' : 'Street'}</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleToggleLocCol('subject')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                          locCols.subject
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                        }`}
+                        className={`portal-fis-pill ${locCols.subject ? 'is-active' : ''}`}
                       >
                         <span>{lang === 'ta' ? 'பிரிவு' : 'Subject'}</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleToggleLocCol('category')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                          locCols.category
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                            : 'bg-white dark:bg-slate-800 border-slate-200 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                        }`}
+                        className={`portal-fis-pill ${locCols.category ? 'is-active' : ''}`}
                       >
                         <span>{lang === 'ta' ? 'வகை' : 'Category'}</span>
                       </button>
                     </>
                   )}
                 </div>
+                <>
+                    <span className="portal-fis-bar-label">
+                      <BarChart3 className="h-3.5 w-3.5" />
+                      {lang === 'ta' ? 'டைனமிக் நெடுவரிசைகள்' : 'Dynamic Columns'}
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={showDynamicColumns && groupingStyle !== 'subject'}
+                      disabled={groupingStyle === 'subject'}
+                      className={`portal-fis-switch${showDynamicColumns && groupingStyle !== 'subject' ? ' is-on' : ''}`}
+                      onClick={() => groupingStyle !== 'subject' && setShowDynamicColumns((open) => !open)}
+                    >
+                      <span className="portal-fis-switch-knob" />
+                    </button>
+                  </>
               </div>
             </div>
-          </>
-        )}
-      </div>
+        </div>
+      )}
+
+      {activeTab === 'abstract' && reportModule === 'swm' && (
+        <div className="portal-fis-toolbar portal-swm-dyn">
+          <div className="portal-swm-dyn-row">
+            <div className="portal-swm-dyn-left">
+              <span className="portal-fis-bar-label">
+                <BarChart3 className="h-3.5 w-3.5" />
+                {lang === 'ta' ? 'டைனமிக் நெடுவரிசைகள்' : 'Dynamic Columns'}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showSwmDynamicColumns}
+                className={`portal-fis-switch${showSwmDynamicColumns ? ' is-on' : ''}`}
+                onClick={() => setShowSwmDynamicColumns((open) => !open)}
+              >
+                <span className="portal-fis-switch-knob" />
+              </button>
+            </div>
+            {showSwmDynamicColumns && (
+              <div className="portal-swm-dyn-right">
+                <div className="portal-fis-pills">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSwmWardCol((open) => {
+                        const next = !open;
+                        if (!next) setSwmStreetCol(false);
+                        return next;
+                      });
+                    }}
+                    className={`portal-fis-pill ${swmWardCol ? 'is-active' : ''}`}
+                  >
+                    <Home className="h-3 w-3" />
+                    <span>{lang === 'ta' ? 'வார்டு வாரியாக' : 'Ward wise'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSwmStreetCol((open) => {
+                        const next = !open;
+                        if (next) setSwmWardCol(true);
+                        return next;
+                      });
+                    }}
+                    className={`portal-fis-pill ${swmStreetCol ? 'is-active' : ''}`}
+                  >
+                    <MapPin className="h-3 w-3" />
+                    <span>{lang === 'ta' ? 'தெரு வாரியாக' : 'Street wise'}</span>
+                  </button>
+                </div>
+                <div className="portal-swm-build">
+                  <span className="portal-swm-build-label">
+                    <Building2 className="h-3 w-3" />
+                    {lang === 'ta' ? 'கட்டிட வகை' : 'Building Type'}
+                  </span>
+                  <div className="portal-swm-build-track" role="radiogroup" aria-label={lang === 'ta' ? 'கட்டிட வகை' : 'Building Type'}>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={swmBuildingType === 'all'}
+                      className={swmBuildingType === 'all' ? 'is-active' : ''}
+                      onClick={() => setSwmBuildingType('all')}
+                    >
+                      {lang === 'ta' ? 'அனைத்தும்' : 'All'}
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={swmBuildingType === 'residential'}
+                      className={swmBuildingType === 'residential' ? 'is-active' : ''}
+                      onClick={() => setSwmBuildingType('residential')}
+                    >
+                      {lang === 'ta' ? 'குடியிருப்பு' : 'Residential'}
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={swmBuildingType === 'commercial'}
+                      className={swmBuildingType === 'commercial' ? 'is-active' : ''}
+                      onClick={() => setSwmBuildingType('commercial')}
+                    >
+                      {lang === 'ta' ? 'வணிகம்' : 'Commercial'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* TAB 1: ABSTRACT SUMMARY VIEW                                              */}
       {/* ========================================================================= */}
       {activeTab === 'abstract' && (
-        <div className="space-y-6">
+        <div className="portal-fis-follow">
           {/* Grouped Abstract breakdown table */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/50">
-              <h3 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
-                <Layers className="w-4 h-4 text-indigo-600" />
+          <div className="portal-fis-results">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between portal-fis-results-head">
+              <h3 className="flex items-center font-semibold text-slate-800 gap-1.5 text-[13px]">
+                {reportModule === 'swm' ? (
+                  <Recycle className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} />
+                ) : (
+                  <BarChart3 className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} />
+                )}
                 <span>
-                  {groupingStyle === 'subject' && (lang === 'ta' ? 'பிரிவு மற்றும் வகை வாரியான சுருக்கம்' : 'Subject & Category Level Breakdown')}
-                  {groupingStyle === 'user' && (lang === 'ta' ? 'பயனர் வாரியான ஆய்வுச் சுருக்கம்' : 'User Wise Inspection Summary')}
-                  {groupingStyle === 'location' && (lang === 'ta' ? 'மண்டல/இட வாரியான ஆய்வுச் சுருக்கம்' : 'Location Wise Inspection Summary')}
+                  {reportModule === 'swm'
+                    ? (lang === 'ta' ? 'SWM கண்காணிப்பு • வீடு வீடாக மூலத்திலேயே பிரித்தல்' : 'SWM Monitoring • Door-to-Door Source Segregation')
+                    : groupingStyle === 'subject'
+                      ? (lang === 'ta' ? 'பிரிவு மற்றும் வகை வாரியான சுருக்கம்' : 'Subject & Category Level Breakdown')
+                      : groupingStyle === 'user'
+                        ? (lang === 'ta' ? 'பயனர் வாரியான ஆய்வுச் சுருக்கம்' : 'User Wise Inspection Summary')
+                        : (lang === 'ta' ? 'மண்டல/இட வாரியான ஆய்வுச் சுருக்கம்' : 'Location Wise Inspection Summary')}
                 </span>
               </h3>
               <div className="flex flex-wrap items-center gap-2">
                 {/* Standard Excel Export */}
                 <button
+                  type="button"
                   onClick={handleExportAbstractExcel}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:hover:bg-emerald-900 dark:text-emerald-300 transition cursor-pointer"
+                  disabled={reportModule === 'swm' ? (isExportingExcel || swmAbstractRows.length === 0) : false}
+                  className="portal-fis-chip portal-fis-chip-excel disabled:opacity-40"
                   title={lang === 'ta' ? 'சுருக்க அறிக்கை எக்செல்' : 'Export Abstract to Excel'}
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  {isExportingExcel && reportModule === 'swm' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                  )}
                   <span>{lang === 'ta' ? 'எக்செல்' : 'Excel Export'}</span>
                 </button>
 
                 {/* Standard PDF Export */}
                 <button
+                  type="button"
                   onClick={handleExportAbstractPDF}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950 dark:hover:bg-red-900 dark:text-red-300 transition cursor-pointer"
+                  disabled={reportModule === 'swm' ? (isExportingPdf || swmAbstractRows.length === 0) : false}
+                  className="portal-fis-chip portal-fis-chip-pdf disabled:opacity-40"
                   title={lang === 'ta' ? 'சுருக்க அறிக்கை PDF' : 'Export Abstract to PDF'}
                 >
-                  <FileText className="w-3.5 h-3.5" />
+                  {isExportingPdf && reportModule === 'swm' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5" />
+                  )}
                   <span>{lang === 'ta' ? 'PDF' : 'PDF Export'}</span>
                 </button>
 
                 {/* Admin Role Only: TP Wise Excel */}
-                {isAdminRole && (
+                {isAdminRole && reportModule !== 'swm' && (
                   <button
                     onClick={handleExportAbstractTPWiseExcel}
                     disabled={filteredWorks.length === 0}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs transition cursor-pointer disabled:opacity-40 border-none"
+                    className="portal-fis-chip portal-fis-chip-tp-excel"
                     title={
                       lang === 'ta'
                         ? `பேரூராட்சி வாரியாக ${groupingStyle === 'subject' ? 'பிரிவு & வகை' : groupingStyle === 'user' ? 'பயனர் வாரியாக' : 'வார்டு & தெரு'} எக்செல் பதிவிறக்கம்`
@@ -6067,11 +7097,11 @@ export default function InspectionReportsView({
                 )}
 
                 {/* Admin Role Only: TP Wise PDF (ZIP) */}
-                {isAdminRole && (
+                {isAdminRole && reportModule !== 'swm' && (
                   <button
                     onClick={handleExportAbstractTPWisePDF}
                     disabled={filteredWorks.length === 0 || isExportingZip}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition cursor-pointer disabled:opacity-40 border-none"
+                    className="portal-fis-chip portal-fis-chip-tp-pdf"
                     title={
                       lang === 'ta'
                         ? `பேரூராட்சி வாரியாக ${groupingStyle === 'subject' ? 'பிரிவு & வகை' : groupingStyle === 'user' ? 'பயனர் வாரியாக' : 'வார்டு & தெரு'} தனித்தனி PDF-களை ZIP வடிவில் பதிவிறக்கம்`
@@ -6094,28 +7124,153 @@ export default function InspectionReportsView({
               </div>
             </div>
 
+            <div className={`portal-fis-table${reportModule === 'swm' ? ' is-wide' : ''}`}>
+            {reportModule === 'swm' ? (
+            <div className="overflow-x-auto portal-swm-table-view">
+              <table className="w-full text-left text-xs border-collapse portal-studio-table">
+                <thead>
+                  <tr>
+                    <SwmHeaderCell lang={lang} en="S.No" ta="வ.எண்" />
+                    <SwmHeaderCell lang={lang} en="Zone" ta="மண்டலம்" />
+                    <SwmHeaderCell lang={lang} en="District" ta="மாவட்டம்" />
+                    <SwmHeaderCell lang={lang} en="Town Panchayat" ta="பேரூராட்சி" />
+                    {swmShowWard && <SwmHeaderCell lang={lang} en="Ward No" ta="வார்டு எண்" />}
+                    {swmShowStreet && <SwmHeaderCell lang={lang} en="Street Names" ta="தெருப்பெயர்" />}
+                    {!swmShowWard && !swmShowStreet && (
+                      <>
+                        <SwmHeaderCell lang={lang} en="Total No of Wards" ta="மொத்த வார்டுகளின் எண்ணிக்கை" className="text-right" />
+                        <SwmHeaderCell lang={lang} en="Wards surveyed" ta="ஆய்வுக்குட்படுத்தப்பட்ட வார்டுகளின் எண்ணிக்கை" className="text-right" />
+                        <SwmHeaderCell lang={lang} en="Total No of Streets" ta="மொத்த தெருக்களின் எண்ணிக்கை" className="text-right" />
+                        <SwmHeaderCell lang={lang} en="Streets surveyed" ta="ஆய்வுக்குட்படுத்தப்பட்ட தெருக்களின் எண்ணிக்கை" className="text-right" />
+                      </>
+                    )}
+                    {swmShowWard && !swmShowStreet && (
+                      <SwmHeaderCell lang={lang} en="Streets surveyed" ta="ஆய்வுக்குட்படுத்தப்பட்ட தெருக்களின் எண்ணிக்கை" className="text-right" />
+                    )}
+                    <SwmHeaderCell lang={lang} en="Total Households Surveyed" ta="ஆய்வுக்குட்படுத்தப்பட்ட வீடுகளின் எண்ணிக்கை" className="text-right" />
+                    <SwmHeaderCell lang={lang} en="Households Segregating Waste at Source" ta="மூலத்திலேயே பிரித்தெடுக்கும் வீடுகள்" className="text-right" />
+                    <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
+                    <SwmHeaderCell lang={lang} en="Households Not Segregating Waste at Source" ta="மூலத்திலேயே பிரித்தெடுக்காத வீடுகள்" className="text-right" />
+                    <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
+                    <SwmHeaderCell lang={lang} en="Households with Door Locked" ta="தாழ் பூட்டிய வீடுகள்" className="text-right" />
+                    <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
+                    <SwmHeaderCell lang={lang} en="Households with Home Composting" ta="வீட்டிலேயே உரம் தயாரிக்கும் வீடுகள்" className="text-right" />
+                    <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+                  {swmAbstractLoading && swmAbstractRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={swmAbstractColCount} className="portal-swm-viewport-msg">
+                        <SwmViewportStatus
+                          loading
+                          lang={lang}
+                          loadingLabel={lang === 'ta' ? 'SWM சுருக்கம் ஏற்றப்படுகிறது...' : 'Loading SWM abstract...'}
+                        />
+                      </td>
+                    </tr>
+                  ) : swmAbstractRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={swmAbstractColCount} className="portal-swm-viewport-msg">
+                        <SwmViewportStatus
+                          lang={lang}
+                          loadingLabel=""
+                        />
+                      </td>
+                    </tr>
+                  ) : (
+                    swmAbstractRows.map((row, idx) => (
+                      <tr key={`${row.tpNameEn}-${row.wardNumber || ''}-${row.streetName || ''}-${idx}`}>
+                        <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-800">{idx + 1}</td>
+                        <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800">{lang === 'ta' ? row.zoneNameTa : row.zoneNameEn}</td>
+                        <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800">{lang === 'ta' ? row.districtNameTa : row.districtNameEn}</td>
+                        <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-800">{lang === 'ta' ? row.tpNameTa : row.tpNameEn}</td>
+                        {swmShowWard && (
+                          <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800">{formatSwmWard(row.wardNumber || '0', lang)}</td>
+                        )}
+                        {swmShowStreet && (
+                          <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800">{row.streetName || '-'}</td>
+                        )}
+                        {!swmShowWard && !swmShowStreet && (
+                          <>
+                            <td className="text-right">{row.totalWards}</td>
+                            <td className="text-right">{row.wardsSurveyed}</td>
+                            <td className="text-right">{row.totalStreets}</td>
+                            <td className="text-right">{row.streetsSurveyed}</td>
+                          </>
+                        )}
+                        {swmShowWard && !swmShowStreet && (
+                          <td className="text-right">{row.streetsSurveyed}</td>
+                        )}
+                        <td className="text-right">{row.householdsSurveyed}</td>
+                        <td className="text-right">{row.segregating}</td>
+                        <td className="text-right">{row.segregatingPct}%</td>
+                        <td className="text-right">{row.notSegregating}</td>
+                        <td className="text-right">{row.notSegregatingPct}%</td>
+                        <td className="text-right">{row.doorLocked}</td>
+                        <td className="text-right">{row.doorLockedPct}%</td>
+                        <td className="text-right">{row.homeComposting}</td>
+                        <td className="text-right">{row.homeCompostingPct}%</td>
+                      </tr>
+                    ))
+                  )}
+                  {!swmAbstractLoading && swmAbstractRows.length > 0 && (
+                    <tr className="portal-fis-total">
+                      <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
+                      <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
+                      <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
+                      <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
+                      {swmShowWard && <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>}
+                      {swmShowStreet && <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>}
+                      {!swmShowWard && !swmShowStreet && (
+                        <>
+                          <td className="text-right">{swmAbstractTotals.totalWards}</td>
+                          <td className="text-right">{swmAbstractTotals.wardsSurveyed}</td>
+                          <td className="text-right">{swmAbstractTotals.totalStreets}</td>
+                          <td className="text-right">{swmAbstractTotals.streetsSurveyed}</td>
+                        </>
+                      )}
+                      {swmShowWard && !swmShowStreet && (
+                        <td className="text-right">{swmAbstractTotals.streetsSurveyed}</td>
+                      )}
+                      <td className="text-right">{swmAbstractTotals.householdsSurveyed}</td>
+                      <td className="text-right">{swmAbstractTotals.segregating}</td>
+                      <td className="text-right">{swmPercent(swmAbstractTotals.segregating, swmAbstractTotals.householdsSurveyed)}%</td>
+                      <td className="text-right">{swmAbstractTotals.notSegregating}</td>
+                      <td className="text-right">{swmPercent(swmAbstractTotals.notSegregating, swmAbstractTotals.householdsSurveyed)}%</td>
+                      <td className="text-right">{swmAbstractTotals.doorLocked}</td>
+                      <td className="text-right">{swmPercent(swmAbstractTotals.doorLocked, swmAbstractTotals.householdsSurveyed)}%</td>
+                      <td className="text-right">{swmAbstractTotals.homeComposting}</td>
+                      <td className="text-right">{swmPercent(swmAbstractTotals.homeComposting, swmAbstractTotals.householdsSurveyed)}%</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            ) : (
+            <>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
+              <table className="w-full text-left text-xs border-collapse portal-studio-table">
                 {/* 1. SUBJECT WISE RENDER */}
                 {groupingStyle === 'subject' && (
                   <>
-                    <thead className="bg-slate-50 dark:bg-slate-800/60 font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider text-[11px] border-b border-slate-200 dark:border-slate-800">
+                    <thead>
                       <tr>
                         <th 
                           onClick={() => requestSort(lang === 'ta' ? 'subjectNameTa' : 'subjectNameEn')}
-                          className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none"
+                          className="cursor-pointer"
                         >
                           {lang === 'ta' ? 'ஆய்வுப் பிரிவு' : 'Subject'} {sortConfig?.key === (lang === 'ta' ? 'subjectNameTa' : 'subjectNameEn') ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                         </th>
                         <th 
                           onClick={() => requestSort(lang === 'ta' ? 'categoryNameTa' : 'categoryNameEn')}
-                          className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none"
+                          className="cursor-pointer"
                         >
                           {lang === 'ta' ? 'ஆய்வு வகை' : 'Category'} {sortConfig?.key === (lang === 'ta' ? 'categoryNameTa' : 'categoryNameEn') ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                         </th>
                         <th 
                           onClick={() => requestSort('totalInspections')}
-                          className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none text-right"
+                          className="cursor-pointer text-right"
                         >
                           {lang === 'ta' ? 'ஆய்வு எண்ணிக்கை' : 'Total Count of Inspections'} {sortConfig?.key === 'totalInspections' ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                         </th>
@@ -6124,13 +7279,13 @@ export default function InspectionReportsView({
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                       {paginatedRows.length === 0 ? (
                         <tr>
-                          <td colSpan={3} className="py-8 text-center text-slate-400 border border-slate-100 dark:border-slate-800">
-                            {lang === 'ta' ? 'தரவுகள் எதுவும் இல்லை' : 'No inspection records found for the selected filters.'}
+                          <td colSpan={3} className="border-0">
+                            {embedEmptyMessage}
                           </td>
                         </tr>
                       ) : (
                         paginatedRows.map((row: any, idx: number) => (
-                          <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                          <tr key={idx}>
                             <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-800">
                               {lang === 'ta' ? row.subjectNameTa : row.subjectNameEn}
                             </td>
@@ -6144,10 +7299,12 @@ export default function InspectionReportsView({
                         ))
                       )}
                       {activeRows.length > 0 && (
-                        <tr className="bg-slate-100 dark:bg-slate-800 font-bold">
+                        <tr className="portal-fis-total">
                           <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
                           <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
-                          <td className="py-3 px-4 border border-slate-200 dark:border-slate-700 text-right font-black text-sm text-slate-900 dark:text-white">{activeRowsTotal}</td>
+                          <td className="py-3 px-4 border border-slate-200 dark:border-slate-700 text-right font-black text-sm text-slate-900 dark:text-white">
+                            <span className="portal-fis-count">{activeRowsTotal}</span>
+                          </td>
                         </tr>
                       )}
                     </tbody>
@@ -6157,34 +7314,34 @@ export default function InspectionReportsView({
                 {/* 2. USER WISE RENDER */}
                 {groupingStyle === 'user' && (
                   <>
-                    <thead className="bg-slate-50 dark:bg-slate-800/60 font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider text-[11px] border-b border-slate-200 dark:border-slate-800">
+                    <thead>
                       <tr>
-                        <th onClick={() => requestSort(lang === 'ta' ? 'zoneNameTa' : 'zoneNameEn')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                        <th onClick={() => requestSort(lang === 'ta' ? 'zoneNameTa' : 'zoneNameEn')} className="cursor-pointer">
                           {lang === 'ta' ? 'மண்டலம்' : 'Zone'} {sortConfig?.key === (lang === 'ta' ? 'zoneNameTa' : 'zoneNameEn') ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                         </th>
-                        <th onClick={() => requestSort(lang === 'ta' ? 'districtNameTa' : 'districtNameEn')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                        <th onClick={() => requestSort(lang === 'ta' ? 'districtNameTa' : 'districtNameEn')} className="cursor-pointer">
                           {lang === 'ta' ? 'மாவட்டம்' : 'District'} {sortConfig?.key === (lang === 'ta' ? 'districtNameTa' : 'districtNameEn') ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                         </th>
-                        <th onClick={() => requestSort(lang === 'ta' ? 'tpNameTa' : 'tpNameEn')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                        <th onClick={() => requestSort(lang === 'ta' ? 'tpNameTa' : 'tpNameEn')} className="cursor-pointer">
                           {lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'} {sortConfig?.key === (lang === 'ta' ? 'tpNameTa' : 'tpNameEn') ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                         </th>
-                        <th onClick={() => requestSort('userName')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                        <th onClick={() => requestSort('userName')} className="cursor-pointer">
                           {lang === 'ta' ? 'பயனர் பெயர்' : 'User Name'} {sortConfig?.key === 'userName' ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                         </th>
-                        <th onClick={() => requestSort('userDesignation')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                        <th onClick={() => requestSort('userDesignation')} className="cursor-pointer">
                           {lang === 'ta' ? 'பதவி' : 'Designation'} {sortConfig?.key === 'userDesignation' ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                         </th>
                         {userCols.subject && (
-                          <th onClick={() => requestSort(lang === 'ta' ? 'subjectNameTa' : 'subjectNameEn')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                          <th onClick={() => requestSort(lang === 'ta' ? 'subjectNameTa' : 'subjectNameEn')} className="cursor-pointer">
                             {lang === 'ta' ? 'ஆய்வுப் பிரிவு' : 'Subject'} {sortConfig?.key === (lang === 'ta' ? 'subjectNameTa' : 'subjectNameEn') ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                           </th>
                         )}
                         {userCols.category && (
-                          <th onClick={() => requestSort(lang === 'ta' ? 'categoryNameTa' : 'categoryNameEn')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                          <th onClick={() => requestSort(lang === 'ta' ? 'categoryNameTa' : 'categoryNameEn')} className="cursor-pointer">
                             {lang === 'ta' ? 'ஆய்வு வகை' : 'Category'} {sortConfig?.key === (lang === 'ta' ? 'categoryNameTa' : 'categoryNameEn') ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                           </th>
                         )}
-                        <th onClick={() => requestSort('totalInspections')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none text-right">
+                        <th onClick={() => requestSort('totalInspections')} className="cursor-pointer text-right">
                           {lang === 'ta' ? 'ஆய்வு எண்ணிக்கை' : 'Total Inspection'} {sortConfig?.key === 'totalInspections' ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                         </th>
                       </tr>
@@ -6192,13 +7349,13 @@ export default function InspectionReportsView({
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                       {paginatedRows.length === 0 ? (
                         <tr>
-                          <td colSpan={5 + (userCols.subject ? 1 : 0) + (userCols.category ? 1 : 0) + 1} className="py-8 text-center text-slate-400 border border-slate-100 dark:border-slate-800">
-                            {lang === 'ta' ? 'தரவுகள் எதுவும் இல்லை' : 'No inspection records found for the selected filters.'}
+                          <td colSpan={5 + (userCols.subject ? 1 : 0) + (userCols.category ? 1 : 0) + 1} className="border-0">
+                            {embedEmptyMessage}
                           </td>
                         </tr>
                       ) : (
                         paginatedRows.map((row: any, idx: number) => (
-                          <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                          <tr key={idx}>
                             <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 font-medium border border-slate-100 dark:border-slate-800">
                               {lang === 'ta' ? row.zoneNameTa : row.zoneNameEn}
                             </td>
@@ -6224,14 +7381,14 @@ export default function InspectionReportsView({
                                 {lang === 'ta' ? row.categoryNameTa : row.categoryNameEn}
                               </td>
                             )}
-                            <td className="py-3.5 px-4 text-right font-black text-indigo-600 dark:text-indigo-400 text-sm border border-slate-100 dark:border-slate-800">
+                            <td className="text-right">
                               {row.totalInspections}
                             </td>
                           </tr>
                         ))
                       )}
                       {activeRows.length > 0 && (
-                        <tr className="bg-slate-100 dark:bg-slate-800 font-bold">
+                        <tr className="portal-fis-total">
                           <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
                           <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
                           <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
@@ -6239,7 +7396,9 @@ export default function InspectionReportsView({
                           <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
                           {userCols.subject && <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>}
                           {userCols.category && <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>}
-                          <td className="py-3 px-4 border border-slate-200 dark:border-slate-700 text-right font-black text-sm text-indigo-600 dark:text-indigo-400">{activeRowsTotal}</td>
+                          <td className="text-right">
+                            <span className="portal-fis-count">{activeRowsTotal}</span>
+                          </td>
                         </tr>
                       )}
                     </tbody>
@@ -6249,42 +7408,42 @@ export default function InspectionReportsView({
                 {/* 3. LOCATION WISE RENDER */}
                 {groupingStyle === 'location' && (
                   <>
-                    <thead className="bg-slate-50 dark:bg-slate-800/60 font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider text-[11px] border-b border-slate-200 dark:border-slate-800">
+                    <thead>
                       <tr>
-                        <th onClick={() => requestSort(lang === 'ta' ? 'zoneNameTa' : 'zoneNameEn')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                        <th onClick={() => requestSort(lang === 'ta' ? 'zoneNameTa' : 'zoneNameEn')} className="cursor-pointer">
                           {lang === 'ta' ? 'மண்டலம்' : 'Zone'} {sortConfig?.key === (lang === 'ta' ? 'zoneNameTa' : 'zoneNameEn') ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                         </th>
                         {locCols.district && (
-                          <th onClick={() => requestSort(lang === 'ta' ? 'districtNameTa' : 'districtNameEn')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                          <th onClick={() => requestSort(lang === 'ta' ? 'districtNameTa' : 'districtNameEn')} className="cursor-pointer">
                             {lang === 'ta' ? 'மாவட்டம்' : 'District'} {sortConfig?.key === (lang === 'ta' ? 'districtNameTa' : 'districtNameEn') ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                           </th>
                         )}
                         {locCols.tp && (
-                          <th onClick={() => requestSort(lang === 'ta' ? 'tpNameTa' : 'tpNameEn')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                          <th onClick={() => requestSort(lang === 'ta' ? 'tpNameTa' : 'tpNameEn')} className="cursor-pointer">
                             {lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'} {sortConfig?.key === (lang === 'ta' ? 'tpNameTa' : 'tpNameEn') ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                           </th>
                         )}
                         {locCols.ward && (
-                          <th onClick={() => requestSort('wardNumber')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                          <th onClick={() => requestSort('wardNumber')} className="cursor-pointer">
                             {lang === 'ta' ? 'வார்டு' : 'Ward'} {sortConfig?.key === 'wardNumber' ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                           </th>
                         )}
                         {locCols.street && (
-                          <th onClick={() => requestSort('streetName')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                          <th onClick={() => requestSort('streetName')} className="cursor-pointer">
                             {lang === 'ta' ? 'தெரு' : 'Street'} {sortConfig?.key === 'streetName' ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                           </th>
                         )}
                         {locCols.subject && (
-                          <th onClick={() => requestSort(lang === 'ta' ? 'subjectNameTa' : 'subjectNameEn')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                          <th onClick={() => requestSort(lang === 'ta' ? 'subjectNameTa' : 'subjectNameEn')} className="cursor-pointer">
                             {lang === 'ta' ? 'பிரிவு' : 'Subject'} {sortConfig?.key === (lang === 'ta' ? 'subjectNameTa' : 'subjectNameEn') ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                           </th>
                         )}
                         {locCols.category && (
-                          <th onClick={() => requestSort(lang === 'ta' ? 'categoryNameTa' : 'categoryNameEn')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none">
+                          <th onClick={() => requestSort(lang === 'ta' ? 'categoryNameTa' : 'categoryNameEn')} className="cursor-pointer">
                             {lang === 'ta' ? 'வகை' : 'Category'} {sortConfig?.key === (lang === 'ta' ? 'categoryNameTa' : 'categoryNameEn') ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                           </th>
                         )}
-                        <th onClick={() => requestSort('totalInspections')} className="py-3 px-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition select-none text-right">
+                        <th onClick={() => requestSort('totalInspections')} className="cursor-pointer text-right">
                           {lang === 'ta' ? 'ஆய்வு எண்ணிக்கை' : 'Total Inspection'} {sortConfig?.key === 'totalInspections' ? (sortConfig.direction === 'ascending' ? '▲' : '▼') : '↕'}
                         </th>
                       </tr>
@@ -6292,13 +7451,13 @@ export default function InspectionReportsView({
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
                       {paginatedRows.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="py-8 text-center text-slate-400 border border-slate-100 dark:border-slate-800">
-                            {lang === 'ta' ? 'தரவுகள் எதுவும் இல்லை' : 'No inspection records found for the selected filters.'}
+                          <td colSpan={8} className="border-0">
+                            {embedEmptyMessage}
                           </td>
                         </tr>
                       ) : (
                         paginatedRows.map((row: any, idx: number) => (
-                          <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                          <tr key={idx}>
                             <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-800">
                               {lang === 'ta' ? row.zoneNameTa : row.zoneNameEn}
                             </td>
@@ -6319,7 +7478,7 @@ export default function InspectionReportsView({
                             )}
                             {locCols.street && (
                               <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400 font-mono text-xs border border-slate-100 dark:border-slate-800">
-                                {row.streetName || '-'}
+                                {streetLabel(row)}
                               </td>
                             )}
                             {locCols.subject && (
@@ -6332,14 +7491,14 @@ export default function InspectionReportsView({
                                 {lang === 'ta' ? row.categoryNameTa : row.categoryNameEn}
                               </td>
                             )}
-                            <td className="py-3.5 px-4 text-right font-black text-indigo-600 dark:text-indigo-400 text-sm border border-slate-100 dark:border-slate-800">
+                            <td className="text-right">
                               {row.totalInspections}
                             </td>
                           </tr>
                         ))
                       )}
                       {activeRows.length > 0 && (
-                        <tr className="bg-slate-100 dark:bg-slate-800 font-bold">
+                        <tr className="portal-fis-total">
                           <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
                           {locCols.district && <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>}
                           {locCols.tp && <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>}
@@ -6347,7 +7506,9 @@ export default function InspectionReportsView({
                           {locCols.street && <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>}
                           {locCols.subject && <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>}
                           {locCols.category && <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>}
-                          <td className="py-3 px-4 border border-slate-200 dark:border-slate-700 text-right font-black text-sm text-indigo-600 dark:text-indigo-400">{activeRowsTotal}</td>
+                          <td className="text-right">
+                            <span className="portal-fis-count">{activeRowsTotal}</span>
+                          </td>
                         </tr>
                       )}
                     </tbody>
@@ -6358,7 +7519,7 @@ export default function InspectionReportsView({
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="portal-fis-pager">
                 <span className="text-xs font-bold text-slate-500">
                   {lang === 'ta'
                     ? `பக்கம் ${abstractPage} / ${totalPages} (மொத்தம் ${activeRows.length} வரிசைகள்)`
@@ -6382,122 +7543,242 @@ export default function InspectionReportsView({
                 </div>
               </div>
             )}
+            </>
+            )}
+            </div>
           </div>
 
           {/* Dynamic 0-entry (Not entered) Users & Subjects/Categories Lists based on filters */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* 0-Entry Users */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
-              <div className="border-b border-slate-100 dark:border-slate-800 pb-3 flex items-center justify-between gap-2 flex-wrap">
+          {!embedMode && reportModule !== 'swm' && (
+          <div className="portal-fis-zero-grid">
+            <div className="portal-dashboard-panel">
+              <div className="portal-dash-head">
                 <div>
-                  <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                  <h3>
+                    <span className="portal-dash-icon"><Users className="h-3.5 w-3.5" /></span>
                     <span>{lang === 'ta' ? 'ஆய்வுப் பதிவு செய்யாத பணியாளர்கள்' : 'Not Entered Single Entry User List'}</span>
-                    <span className="bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-100">
-                      {zeroEntryUsers.length}
-                    </span>
-                  </h4>
-                  <p className="text-[11px] text-gray-400 mt-0.5">
-                    {lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட வடிகட்டிகளின் கீழ் 0 ஆய்வு செய்தவர்கள்' : 'Users with 0 work entries based on current filters'}
-                  </p>
+                    <span className="portal-fis-count">{zeroEntryUsers.length}</span>
+                  </h3>
+                  <p>{lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட வடிகட்டிகளின் கீழ் 0 ஆய்வு செய்தவர்கள்' : 'Users with 0 work entries based on current filters'}</p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
+                    type="button"
                     onClick={handleExportZeroUsersExcel}
                     disabled={zeroEntryUsers.length === 0}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-lg text-[11px] font-bold border border-emerald-200 dark:border-emerald-800 transition disabled:opacity-40 cursor-pointer shadow-2xs"
+                    className="portal-dash-head-action disabled:opacity-40"
                     title="Download Not Entered Users as Excel"
                   >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Excel</span>
+                    <FileSpreadsheet className="h-3 w-3" />
+                    Excel
                   </button>
                   <button
+                    type="button"
                     onClick={handleExportZeroUsersPDF}
                     disabled={zeroEntryUsers.length === 0}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 rounded-lg text-[11px] font-bold border border-rose-200 dark:border-rose-800 transition disabled:opacity-40 cursor-pointer shadow-2xs"
+                    className="portal-dash-head-action disabled:opacity-40"
                     title="Download Not Entered Users as PDF"
                   >
-                    <Download className="w-3.5 h-3.5 text-rose-600" />
-                    <span>PDF</span>
+                    <Download className="h-3 w-3" />
+                    PDF
                   </button>
                 </div>
               </div>
-
-              <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-                {zeroEntryUsers.map((user: any) => (
-                  <div key={user.id} className="flex items-center justify-between p-2.5 rounded-xl bg-rose-50/40 dark:bg-rose-950/10 border border-rose-100/50 text-xs">
-                    <div>
-                      <div className="font-bold text-gray-950 dark:text-white">{tObj(user)}</div>
-                      <div className="text-[10px] text-gray-500">@{user.username} • {user.mobile}</div>
+              <div className="portal-dash-body">
+                <div className="portal-dash-bars is-scroll">
+                  {zeroEntryUsers.map((user: any) => (
+                    <div key={user.id} className="portal-fis-zero-item">
+                      <div>
+                        <strong>{tObj(user)}</strong>
+                        <em>@{user.username} • {user.mobile}</em>
+                      </div>
+                      <span className="portal-dash-status is-progress">{user.designation || 'Sanitary Inspector'}</span>
                     </div>
-                    <div className="text-right">
-                      <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300">
-                        {user.designation || 'Sanitary Inspector'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                {zeroEntryUsers.length === 0 && (
-                  <p className="text-center py-8 text-xs text-gray-400 italic">
-                    {lang === 'ta' ? 'அனைத்து பயனர்களும் ஆய்வு செய்துள்ளனர்!' : 'All users have submitted inspections for these filters!'}
-                  </p>
-                )}
+                  ))}
+                  {zeroEntryUsers.length === 0 && (
+                    <p className="portal-fis-empty" style={{ padding: '1.5rem 0.5rem' }}>
+                      {lang === 'ta' ? 'அனைத்து பயனர்களும் ஆய்வு செய்துள்ளனர்!' : 'All users have submitted inspections for these filters!'}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* 0-Entry Subjects/Categories */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
-              <div className="border-b border-slate-100 dark:border-slate-800 pb-3 flex items-center justify-between gap-2 flex-wrap">
+            <div className="portal-dashboard-panel">
+              <div className="portal-dash-head">
                 <div>
-                  <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                  <h3>
+                    <span className="portal-dash-icon"><Layers className="h-3.5 w-3.5" /></span>
                     <span>{lang === 'ta' ? 'ஆய்வு செய்யப்படாத பிரிவுகள் & வகைகள்' : 'Not Entered Subject & Category List'}</span>
-                    <span className="bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-100">
-                      {zeroEntryCategories.length}
-                    </span>
-                  </h4>
-                  <p className="text-[11px] text-gray-400 mt-0.5">
-                    {lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட வடிகட்டிகளின் கீழ் 0 ஆய்வு செய்யப்பட்டவை' : 'Categories with 0 work entries based on current filters'}
-                  </p>
+                    <span className="portal-fis-count">{zeroEntryCategories.length}</span>
+                  </h3>
+                  <p>{lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட வடிகட்டிகளின் கீழ் 0 ஆய்வு செய்யப்பட்டவை' : 'Categories with 0 work entries based on current filters'}</p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
+                    type="button"
                     onClick={handleExportZeroCategoriesExcel}
                     disabled={zeroEntryCategories.length === 0}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-lg text-[11px] font-bold border border-emerald-200 dark:border-emerald-800 transition disabled:opacity-40 cursor-pointer shadow-2xs"
+                    className="portal-dash-head-action disabled:opacity-40"
                     title="Download Not Entered Categories as Excel"
                   >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Excel</span>
+                    <FileSpreadsheet className="h-3 w-3" />
+                    Excel
                   </button>
                   <button
+                    type="button"
                     onClick={handleExportZeroCategoriesPDF}
                     disabled={zeroEntryCategories.length === 0}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 rounded-lg text-[11px] font-bold border border-amber-200 dark:border-amber-800 transition disabled:opacity-40 cursor-pointer shadow-2xs"
+                    className="portal-dash-head-action disabled:opacity-40"
                     title="Download Not Entered Categories as PDF"
                   >
-                    <Download className="w-3.5 h-3.5 text-amber-600" />
-                    <span>PDF</span>
+                    <Download className="h-3 w-3" />
+                    PDF
                   </button>
                 </div>
               </div>
+              <div className="portal-dash-body">
+                <div className="portal-dash-bars is-scroll">
+                  {zeroEntryCategories.map((cat: any) => (
+                    <div key={cat.id} className="portal-fis-zero-item">
+                      <div>
+                        <strong>{lang === 'ta' ? cat.nameTa : cat.nameEn}</strong>
+                        <em>{lang === 'ta' ? `பிரிவு: ${cat.subjectNameTa}` : `Subject: ${cat.subjectNameEn}`}</em>
+                      </div>
+                    </div>
+                  ))}
+                  {zeroEntryCategories.length === 0 && (
+                    <p className="portal-fis-empty" style={{ padding: '1.5rem 0.5rem' }}>
+                      {lang === 'ta' ? 'அனைத்து பிரிவுகளிலும் ஆய்வு செய்யப்பட்டுள்ளது!' : 'All categories have inspections for these filters!'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+          )}
+        </div>
+      )}
 
-              <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
-                {zeroEntryCategories.map((cat: any) => (
-                  <div key={cat.id} className="p-2.5 rounded-xl bg-amber-50/40 dark:bg-amber-950/10 border border-amber-100/50 text-xs">
-                    <div className="font-bold text-gray-950 dark:text-white">
-                      {lang === 'ta' ? cat.nameTa : cat.nameEn}
-                    </div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">
-                      {lang === 'ta' ? `பிரிவு: ${cat.subjectNameTa}` : `Subject: ${cat.subjectNameEn}`}
-                    </div>
-                  </div>
-                ))}
-                {zeroEntryCategories.length === 0 && (
-                  <p className="text-center py-8 text-xs text-gray-400 italic">
-                    {lang === 'ta' ? 'அனைத்து பிரிவுகளிலும் ஆய்வு செய்யப்பட்டுள்ளது!' : 'All categories have inspections for these filters!'}
-                  </p>
-                )}
+      {activeTab === 'tp' && reportModule === 'swm' && (
+        <div className="portal-fis-follow">
+          <div className="portal-fis-results">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between portal-fis-results-head">
+              <h3 className="flex items-center font-semibold text-slate-800 gap-1.5 text-[13px]">
+                <Building2 className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} />
+                <span>
+                  {lang === 'ta'
+                    ? 'SWM கண்காணிப்பு • வார்டு / தெரு அறிக்கை'
+                    : 'SWM Monitoring • Ward / Street Report'}
+                </span>
+              </h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportSwmTpExcel}
+                  disabled={isExportingExcel || swmTpStreetRows.length === 0}
+                  className="portal-fis-chip portal-fis-chip-excel disabled:opacity-40"
+                  title={lang === 'ta' ? 'பேரூராட்சி அறிக்கை எக்செல்' : 'Export TP report to Excel'}
+                >
+                  {isExportingExcel ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                  )}
+                  <span>{lang === 'ta' ? 'எக்செல்' : 'Excel Export'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportSwmTpPDF}
+                  disabled={isExportingPdf || swmTpStreetRows.length === 0}
+                  className="portal-fis-chip portal-fis-chip-pdf disabled:opacity-40"
+                  title={lang === 'ta' ? 'பேரூராட்சி அறிக்கை PDF' : 'Export TP report to PDF'}
+                >
+                  {isExportingPdf ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5" />
+                  )}
+                  <span>{lang === 'ta' ? 'PDF' : 'PDF Export'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="portal-fis-table is-wide">
+              <div className="overflow-x-auto portal-swm-table-view">
+                <table className="w-full text-left text-xs border-collapse portal-studio-table">
+                  <thead>
+                    <tr>
+                      <SwmHeaderCell lang={lang} en="S.No" ta="வ.எண்" />
+                      <SwmHeaderCell lang={lang} en="Ward No" ta="வார்டு எண்" />
+                      <SwmHeaderCell lang={lang} en="Street Names" ta="தெருப்பெயர்" />
+                      <SwmHeaderCell lang={lang} en="Total Households Surveyed" ta="கணக்கெடுக்கப்பட்ட மொத்த குடியிருப்புகள்" className="text-right" />
+                      <SwmHeaderCell lang={lang} en="Households Segregating Waste at Source" ta="தரம் பிரித்த வழங்கும் வீடுகள்" className="text-right" />
+                      <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
+                      <SwmHeaderCell lang={lang} en="Households Not Segregating Waste at Source" ta="தரம் பிரிக்காமல் வழங்கும் வீடுகள்" className="text-right" />
+                      <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
+                      <SwmHeaderCell lang={lang} en="Households with Door Locked" ta="பூட்டிய வீடுகள்" className="text-right" />
+                      <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
+                      <SwmHeaderCell lang={lang} en="Households with Home Composting" ta="வீட்டு உரமாக்கல் உள்ள வீடுகள்" className="text-right" />
+                      <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+                    {swmAbstractLoading && swmTpStreetRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={12} className="portal-swm-viewport-msg">
+                          <SwmViewportStatus
+                            loading
+                            lang={lang}
+                            loadingLabel={lang === 'ta' ? 'SWM பேரூராட்சி அறிக்கை ஏற்றப்படுகிறது...' : 'Loading SWM TP report...'}
+                          />
+                        </td>
+                      </tr>
+                    ) : swmTpStreetRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={12} className="portal-swm-viewport-msg">
+                          <SwmViewportStatus
+                            lang={lang}
+                            loadingLabel=""
+                          />
+                        </td>
+                      </tr>
+                    ) : (
+                      swmTpStreetRows.map((row, idx) => (
+                        <tr key={`${row.wardNumber}-${row.streetName}-${idx}`}>
+                          <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-800">{idx + 1}</td>
+                          <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800">{formatSwmWard(row.wardNumber, lang)}</td>
+                          <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-800">{row.streetName}</td>
+                          <td className="text-right">{row.householdsSurveyed}</td>
+                          <td className="text-right">{row.segregating}</td>
+                          <td className="text-right">{row.segregatingPct}%</td>
+                          <td className="text-right">{row.notSegregating}</td>
+                          <td className="text-right">{row.notSegregatingPct}%</td>
+                          <td className="text-right">{row.doorLocked}</td>
+                          <td className="text-right">{row.doorLockedPct}%</td>
+                          <td className="text-right">{row.homeComposting}</td>
+                          <td className="text-right">{row.homeCompostingPct}%</td>
+                        </tr>
+                      ))
+                    )}
+                    {!swmAbstractLoading && swmTpStreetRows.length > 0 && (
+                      <tr className="portal-fis-total">
+                        <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
+                        <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
+                        <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
+                        <td className="text-right">{swmTpStreetTotals.householdsSurveyed}</td>
+                        <td className="text-right">{swmTpStreetTotals.segregating}</td>
+                        <td className="text-right">{swmPercent(swmTpStreetTotals.segregating, swmTpStreetTotals.householdsSurveyed)}%</td>
+                        <td className="text-right">{swmTpStreetTotals.notSegregating}</td>
+                        <td className="text-right">{swmPercent(swmTpStreetTotals.notSegregating, swmTpStreetTotals.householdsSurveyed)}%</td>
+                        <td className="text-right">{swmTpStreetTotals.doorLocked}</td>
+                        <td className="text-right">{swmPercent(swmTpStreetTotals.doorLocked, swmTpStreetTotals.householdsSurveyed)}%</td>
+                        <td className="text-right">{swmTpStreetTotals.homeComposting}</td>
+                        <td className="text-right">{swmPercent(swmTpStreetTotals.homeComposting, swmTpStreetTotals.householdsSurveyed)}%</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -6507,33 +7788,21 @@ export default function InspectionReportsView({
       {/* ========================================================================= */}
       {/* TAB 2: DETAILED FIELD REGISTER VIEW                                       */}
       {/* ========================================================================= */}
-      {activeTab === 'detailed' && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs space-y-0">
-          {/* Header Bar with Download Excel, Download PDF, and Fullscreen Slideview */}
-          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4 flex-wrap bg-white dark:bg-slate-900">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-50 dark:bg-indigo-950/60 rounded-xl text-indigo-600 dark:text-indigo-400">
-                <FileSpreadsheet className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
-                  <span>{lang === 'ta' ? 'முழுமையான கள ஆய்வு பதிவேடு' : 'Detailed Field Work Records'}</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-mono font-bold">
-                    {filteredWorksTotal}
-                  </span>
-                </h3>
-                <p className="text-[11px] text-slate-400">
-                  {lang === 'ta' ? 'வரிசைகள், நேர முத்திரை, ஜிபிஎஸ் மற்றும் புகைப்பட ஆதாரங்களுடன்' : 'Comprehensive inspection entries with Indian Standard Time, GPS Lite map and photo evidence'}
-                </p>
-              </div>
-            </div>
-
+      {activeTab === 'detailed' && reportModule !== 'swm' && (
+        <div className="portal-fis-follow">
+        <div className="portal-fis-results">
+          <div className="portal-fis-results-head">
+            <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-800">
+              <FileSpreadsheet className="h-4 w-4" style={{ color: 'var(--theme-accent)' }} />
+              <span>{lang === 'ta' ? 'முழுமையான கள ஆய்வு பதிவேடு' : 'Detailed Field Work Records'}</span>
+              <span className="portal-fis-count">{filteredWorksTotal}</span>
+            </h3>
             <div className="flex items-center gap-2 flex-wrap">
               {/* Download Excel */}
               <button
                 onClick={handleExportDetailedExcel}
                 disabled={filteredWorks.length === 0 || isExportingExcel}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs disabled:opacity-40 disabled:cursor-wait border-none"
+                className="portal-fis-chip portal-fis-chip-excel disabled:opacity-40"
                 title={selectedCategoryId === 'all' ? (lang === 'ta' ? 'அனைத்து வகைகளும் தனித்தனி தாள்களில் எக்செல் பதிவிறக்கம்' : 'Download Excel with each category in a separate sheet') : (lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட வகைக்கு எக்செல்' : 'Download Excel for selected category')}
               >
                 {isExportingExcel ? (
@@ -6552,7 +7821,7 @@ export default function InspectionReportsView({
               <button
                 onClick={handleExportDetailedPDF}
                 disabled={filteredWorks.length === 0 || isExportingPdf}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs disabled:opacity-40 disabled:cursor-wait border-none"
+                className="portal-fis-chip portal-fis-chip-pdf disabled:opacity-40"
                 title={lang === 'ta' ? 'பிடிஎஃப் பதிவிறக்கம்' : 'Download PDF'}
               >
                 {isExportingPdf ? (
@@ -6572,7 +7841,7 @@ export default function InspectionReportsView({
                 <button
                   onClick={handleExportDetailedTPWiseExcel}
                   disabled={filteredWorks.length === 0}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs disabled:opacity-40 border-none"
+                  className="portal-fis-chip portal-fis-chip-tp-excel disabled:opacity-40"
                   title={lang === 'ta' ? 'பேரூராட்சி வாரியாக ஒவ்வொரு தாளில் எக்செல் பதிவிறக்கம்' : 'Download TP-wise detailed register with each Town Panchayat in a separate sheet'}
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -6585,7 +7854,7 @@ export default function InspectionReportsView({
                 <button
                   onClick={handleExportDetailedTPWisePDF}
                   disabled={filteredWorks.length === 0 || isExportingZip}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs disabled:opacity-40 border-none"
+                  className="portal-fis-chip portal-fis-chip-tp-pdf disabled:opacity-40"
                   title={lang === 'ta' ? 'பேரூராட்சி வாரியாக விரிவான பதிவேடு தனித்தனி PDF-களை ZIP வடிவில் பதிவிறக்கம்' : 'Download ZIP containing individual detailed register PDF for each Town Panchayat'}
                 >
                   {isExportingZip ? (
@@ -6605,7 +7874,7 @@ export default function InspectionReportsView({
                       worksFromApi ? (detailedPage - 1) * REPORTS_SERVER_PAGE_SIZE : 0
                     );
                   }}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs border-none"
+                  className="portal-dash-pill is-active"
                   title={lang === 'ta' ? 'விளக்க காட்சி' : 'Slide View'}
                 >
                   <Maximize2 className="w-3.5 h-3.5" />
@@ -6616,38 +7885,25 @@ export default function InspectionReportsView({
           </div>
 
           {/* Dynamic Categories Buttons for Selected Subject (look like dynamic columns buttons) */}
-          <div className="px-4 py-3 bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800 flex flex-col gap-2">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-600" />
-                <span>{lang === 'ta' ? 'பிரிவின் கீழ் உள்ள ஆய்வு வகைகள் (Categories)' : 'Categories in Subject:'}</span>
-                <span className="text-slate-400 font-normal">
-                  ({categoriesInSelectedSubject.length} categories)
+          {reportModule !== 'swm' && (
+          <div className="portal-fis-toolbar" style={{ margin: '0.4rem 0.65rem', borderRadius: '0.7rem' }}>
+            <div className="portal-fis-toolbar-row" style={{ width: '100%' }}>
+              <div className="portal-fis-group">
+                <span className="portal-fis-bar-label">
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  {lang === 'ta' ? 'பிரிவின் கீழ் உள்ள ஆய்வு வகைகள்' : 'Categories in subject'}
                 </span>
-              </span>
-              <span className="text-[11px] text-slate-400 italic">
-                {selectedCategoryId === 'all' 
-                  ? 'All categories selected - Excel downloads multi-sheet workbook' 
-                  : 'Single category selected - Excel downloads single sheet'}
-              </span>
-            </div>
-
-            <div className="flex flex-wrap gap-2 pt-0.5">
+                <div className="portal-fis-pills">
               <button
+                type="button"
                 onClick={() => {
                   setSelectedCategoryId('all');
                   queueMicrotask(() => applyFiltersAndLoad());
                 }}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                  selectedCategoryId === 'all'
-                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-400'
-                }`}
+                className={`portal-fis-pill ${selectedCategoryId === 'all' ? 'is-active' : ''}`}
               >
                 <span>{lang === 'ta' ? 'அனைத்து வகைகளும்' : 'All Categories'}</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${selectedCategoryId === 'all' ? 'bg-indigo-800 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                  {worksFromApi ? apiTotalWithoutCategory : filteredWorks.length}
-                </span>
+                <span className="portal-fis-count">{worksFromApi ? apiTotalWithoutCategory : filteredWorks.length}</span>
               </button>
               {availableCategories.map((cat: any) => {
                 const isSelected = selectedCategoryId === cat.id || selectedCategoryId === cat.nameEn;
@@ -6656,6 +7912,7 @@ export default function InspectionReportsView({
                 return (
                   <button
                     key={cat.id}
+                    type="button"
                     onClick={() => {
                       if (isSelected) {
                         setSelectedCategoryId('all');
@@ -6667,151 +7924,145 @@ export default function InspectionReportsView({
                       }
                       queueMicrotask(() => applyFiltersAndLoad());
                     }}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                      isSelected
-                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-400'
-                    }`}
+                    className={`portal-fis-pill ${isSelected ? 'is-active' : ''}`}
                   >
                     <span>{lang === 'ta' ? cat.nameTa || cat.nameEn : cat.nameEn}</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${isSelected ? 'bg-indigo-800 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
-                      {count}
-                    </span>
+                    <span className="portal-fis-count">{count}</span>
                   </button>
                 );
               })}
+                </div>
+              </div>
             </div>
           </div>
+          )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-50 dark:bg-slate-800/60 font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider text-[11px] border-b border-slate-200 dark:border-slate-800 select-none">
+          <div className="portal-fis-table is-wide">
+            <table className="w-full text-left text-xs border-collapse portal-studio-table">
+              <thead>
                 <tr>
                   <th 
                     onClick={() => handleDetailedSort('workId')}
-                    className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    className="cursor-pointer"
                     title={lang === 'ta' ? 'வரிசைப்படுத்த கிளிக் செய்யவும்' : 'Click to sort'}
                   >
                     <div className="flex items-center gap-1">
                       <span>{lang === 'ta' ? 'பணி எண்' : 'Work ID'}</span>
-                      <span className="text-[10px] text-indigo-600 font-bold">
+                      <span className="portal-dash-sort text-[10px] font-bold">
                         {detailedSortField === 'workId' ? (detailedSortDirection === 'asc' ? '▲' : '▼') : '↕'}
                       </span>
                     </div>
                   </th>
                   <th 
                     onClick={() => handleDetailedSort('submittedAt')}
-                    className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    className="cursor-pointer"
                     title={lang === 'ta' ? 'வரிசைப்படுத்த கிளிக் செய்யவும்' : 'Click to sort'}
                   >
                     <div className="flex items-center gap-1">
                       <span>{lang === 'ta' ? 'தேதி & நேரம்' : 'Date & Time'}</span>
-                      <span className="text-[10px] text-indigo-600 font-bold">
+                      <span className="portal-dash-sort text-[10px] font-bold">
                         {detailedSortField === 'submittedAt' ? (detailedSortDirection === 'asc' ? '▲' : '▼') : '↕'}
                       </span>
                     </div>
                   </th>
                   <th 
                     onClick={() => handleDetailedSort('subject')}
-                    className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    className="cursor-pointer"
                     title={lang === 'ta' ? 'வரிசைப்படுத்த கிளிக் செய்யவும்' : 'Click to sort'}
                   >
                     <div className="flex items-center gap-1">
                       <span>{lang === 'ta' ? 'ஆய்வுப் பிரிவு' : 'Subject'}</span>
-                      <span className="text-[10px] text-indigo-600 font-bold">
+                      <span className="portal-dash-sort text-[10px] font-bold">
                         {detailedSortField === 'subject' ? (detailedSortDirection === 'asc' ? '▲' : '▼') : '↕'}
                       </span>
                     </div>
                   </th>
                   <th 
                     onClick={() => handleDetailedSort('category')}
-                    className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    className="cursor-pointer"
                     title={lang === 'ta' ? 'வரிசைப்படுத்த கிளிக் செய்யவும்' : 'Click to sort'}
                   >
                     <div className="flex items-center gap-1">
                       <span>{lang === 'ta' ? 'ஆய்வு வகை' : 'Category'}</span>
-                      <span className="text-[10px] text-indigo-600 font-bold">
+                      <span className="portal-dash-sort text-[10px] font-bold">
                         {detailedSortField === 'category' ? (detailedSortDirection === 'asc' ? '▲' : '▼') : '↕'}
                       </span>
                     </div>
                   </th>
                   <th 
                     onClick={() => handleDetailedSort('ward')}
-                    className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    className="cursor-pointer"
                     title={lang === 'ta' ? 'வரிசைப்படுத்த கிளிக் செய்யவும்' : 'Click to sort'}
                   >
                     <div className="flex items-center gap-1">
                       <span>{lang === 'ta' ? 'வார்டு' : 'Ward'}</span>
-                      <span className="text-[10px] text-indigo-600 font-bold">
+                      <span className="portal-dash-sort text-[10px] font-bold">
                         {detailedSortField === 'ward' ? (detailedSortDirection === 'asc' ? '▲' : '▼') : '↕'}
                       </span>
                     </div>
                   </th>
                   <th 
                     onClick={() => handleDetailedSort('street')}
-                    className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    className="cursor-pointer"
                     title={lang === 'ta' ? 'வரிசைப்படுத்த கிளிக் செய்யவும்' : 'Click to sort'}
                   >
                     <div className="flex items-center gap-1">
                       <span>{lang === 'ta' ? 'தெரு' : 'Street'}</span>
-                      <span className="text-[10px] text-indigo-600 font-bold">
+                      <span className="portal-dash-sort text-[10px] font-bold">
                         {detailedSortField === 'street' ? (detailedSortDirection === 'asc' ? '▲' : '▼') : '↕'}
                       </span>
                     </div>
                   </th>
                   <th 
                     onClick={() => handleDetailedSort('username')}
-                    className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    className="cursor-pointer"
                     title={lang === 'ta' ? 'வரிசைப்படுத்த கிளிக் செய்யவும்' : 'Click to sort'}
                   >
                     <div className="flex items-center gap-1">
                       <span>{lang === 'ta' ? 'பயனர் பெயர்' : 'User Name'}</span>
-                      <span className="text-[10px] text-indigo-600 font-bold">
+                      <span className="portal-dash-sort text-[10px] font-bold">
                         {detailedSortField === 'username' ? (detailedSortDirection === 'asc' ? '▲' : '▼') : '↕'}
                       </span>
                     </div>
                   </th>
                   <th 
                     onClick={() => handleDetailedSort('designation')}
-                    className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition"
+                    className="cursor-pointer"
                     title={lang === 'ta' ? 'வரிசைப்படுத்த கிளிக் செய்யவும்' : 'Click to sort'}
                   >
                     <div className="flex items-center gap-1">
                       <span>{lang === 'ta' ? 'பதவி' : 'Designation'}</span>
-                      <span className="text-[10px] text-indigo-600 font-bold">
+                      <span className="portal-dash-sort text-[10px] font-bold">
                         {detailedSortField === 'designation' ? (detailedSortDirection === 'asc' ? '▲' : '▼') : '↕'}
                       </span>
                     </div>
                   </th>
                   <th 
                     onClick={() => handleDetailedSort('gps')}
-                    className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 transition text-center"
+                    className="cursor-pointer"
                     title={lang === 'ta' ? 'வரிசைப்படுத்த கிளிக் செய்யவும்' : 'Click to sort'}
                   >
                     <div className="flex items-center justify-center gap-1">
                       <span>{lang === 'ta' ? 'ஜிபிஎஸ்' : 'GPS Coordinates'}</span>
-                      <span className="text-[10px] text-indigo-600 font-bold">
+                      <span className="portal-dash-sort text-[10px] font-bold">
                         {detailedSortField === 'gps' ? (detailedSortDirection === 'asc' ? '▲' : '▼') : '↕'}
                       </span>
                     </div>
                   </th>
                   {dynamicColumns.map((col: any) => (
-                    <th
-                      key={col.id}
-                      className="py-3 px-3 text-slate-700 dark:text-slate-200 uppercase tracking-wider text-[11px]"
-                    >
+                    <th key={col.id}>
                       {lang === 'ta' ? col.nameTa || col.nameEn : col.nameEn}
                     </th>
                   ))}
-                  <th className="py-3 px-3 text-right">
+                  <th>
                     <span>{lang === 'ta' ? 'செயல்கள்' : 'Actions'}</span>
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+              <tbody>
                 {filteredWorks.length === 0 ? (
                   <tr>
-                    <td colSpan={10 + dynamicColumns.length} className="py-12 text-center text-slate-400">
+                    <td colSpan={10 + dynamicColumns.length} className="border-0">
                       {lang === 'ta' ? 'பொருந்தும் ஆய்வுகள் எதுவும் இல்லை.' : 'No detailed inspection works found matching your filter criteria.'}
                     </td>
                   </tr>
@@ -6821,82 +8072,66 @@ export default function InspectionReportsView({
                     const photos = getWorkPhotos(work);
 
                     return (
-                      <tr key={work.id || work.workId} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition">
-                        {/* 1. Work ID */}
-                        <td className="py-3 px-3 font-mono font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
+                      <tr key={work.id || work.workId}>
+                        <td className="portal-dash-id">
                           {work.workId || work.id}
                         </td>
-
-                        {/* 2. Date & Time (Indian time 9.30 AM/PM) */}
-                        <td className="py-3 px-3 whitespace-nowrap text-slate-600 dark:text-slate-400 font-mono text-[11px]">
+                        <td>
                           {formatIndianTime(work.submittedAt)}
                         </td>
-
-                        {/* 3. Subject */}
-                        <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white whitespace-nowrap">
+                        <td className="portal-fis-clip">
                           {lang === 'ta' ? work.subjectNameTa || work.subjectNameEn : work.subjectNameEn}
                         </td>
-
-                        {/* 4. Category */}
-                        <td className="py-3 px-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                        <td className="portal-fis-clip">
                           {lang === 'ta' ? work.categoryNameTa || work.categoryNameEn : work.categoryNameEn}
                         </td>
-
-                        {/* 5. Ward (separate column) */}
-                        <td className="py-3 px-3 font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap">
+                        <td>
                           Ward {work.wardNumber || work.wardNo || '-'}
                         </td>
-
-                        {/* 6. Street (separate column) */}
-                        <td className="py-3 px-3 text-slate-700 dark:text-slate-300 font-mono text-[11px] whitespace-nowrap">
-                          {work.streetName || '-'}
+                        <td className="portal-fis-clip">
+                          {streetLabel(work)}
                         </td>
-
-                        {/* 7. User Name */}
-                        <td className="py-3 px-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">
+                        <td className="portal-fis-clip">
                           {work.submittedByUserName || work.submittedByName || 'Field Cadre'}
                         </td>
-
-                        {/* 8. Designation (correct designation in inspection employee management) */}
-                        <td className="py-3 px-3 text-slate-600 dark:text-slate-400 text-xs whitespace-nowrap">
-                          <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-medium">
+                        <td>
+                          <span className="portal-dash-status is-progress">
                             {getInspectorDesignation(work)}
                           </span>
                         </td>
-
-                        {/* 9. GPS Coordinates (when click opens in popup google map lite map) */}
-                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <td>
                           {work.latitude && work.longitude ? (
                             <button
+                              type="button"
                               onClick={() => setGpsModalWork(work)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-mono font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 transition cursor-pointer shadow-2xs"
+                              className="portal-fis-gps"
                               title="Click to open Google Map Lite popup"
                             >
-                              <MapPin className="w-3 h-3 text-emerald-500" />
+                              <MapPin className="w-3 h-3" />
                               <span>{Number(work.latitude).toFixed(4)}, {Number(work.longitude).toFixed(4)}</span>
                             </button>
                           ) : (
-                            <span className="text-[10px] text-slate-400 italic">No GPS</span>
+                            <span className="text-[10px] text-slate-400">No GPS</span>
                           )}
                         </td>
-
-                        {/* Dynamic custom field columns */}
                         {dynamicColumns.map((col: any) => {
                           const val = getWorkDynamicFieldValue(work, col, state.inspectionFields || []);
                           const isPhoto = col.type === 'camera' || col.fieldType === 'camera' || (typeof val === 'string' && (val.startsWith('http') || val.startsWith('/uploads') || val.includes('s3.amazonaws.com') || val.endsWith('.jpg') || val.endsWith('.png')));
                           
                           return (
-                            <td key={col.id} className="py-3 px-3 text-slate-600 dark:text-slate-400 font-medium">
+                            <td key={col.id} className="portal-fis-clip">
                               {isPhoto && val ? (
                                 <div 
                                   onClick={() => setPhotoPreviewModal({ url: val, label: lang === 'ta' ? col.nameTa || col.nameEn : col.nameEn, work })}
-                                  className="relative inline-block cursor-pointer group"
+                                  className="portal-fis-thumb-wrap cursor-pointer"
                                   title={lang === 'ta' ? 'பெரிதாக்க கிளிக் செய்க' : 'Click to preview'}
                                 >
                                   <img 
                                     src={val} 
                                     alt={col.nameEn}
-                                    className="w-9 h-9 object-cover rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs group-hover:scale-110 group-hover:border-indigo-500 transition"
+                                    width={16}
+                                    height={16}
+                                    className="portal-fis-thumb"
                                     onError={(e) => {
                                       if (!e.currentTarget.dataset.retried) {
                                         e.currentTarget.dataset.retried = 'true';
@@ -6911,9 +8146,7 @@ export default function InspectionReportsView({
                             </td>
                           );
                         })}
-
-                        {/* 11. Actions */}
-                        <td className="py-3 px-3 text-right whitespace-nowrap">
+                        <td className="portal-fis-actions">
                           <div className="flex items-center justify-end gap-1.5">
                             {/* Slideview Button */}
                             <button
@@ -6926,7 +8159,7 @@ export default function InspectionReportsView({
                                   : (localIdx >= 0 ? localIdx : 0);
                                 openSlideAtGlobalIndex(globalIdx);
                               }}
-                              className="p-1.5 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 hover:bg-indigo-100 transition cursor-pointer"
+                              className="portal-fis-icon-btn"
                               title={lang === 'ta' ? 'விளக்க காட்சி' : 'Open Slide View'}
                             >
                               <Maximize2 className="w-3.5 h-3.5" />
@@ -6936,7 +8169,7 @@ export default function InspectionReportsView({
                             {work.latitude && work.longitude && (
                               <button
                                 onClick={() => setGpsModalWork(work)}
-                                className="p-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 hover:bg-emerald-100 transition cursor-pointer"
+                                className="portal-fis-icon-btn is-map"
                                 title="Open Google Map Lite Popup"
                               >
                                 <MapPin className="w-3.5 h-3.5" />
@@ -6946,7 +8179,7 @@ export default function InspectionReportsView({
                             {/* View Details Modal */}
                             <button
                               onClick={() => setSelectedWorkModal(work)}
-                              className="p-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200 transition cursor-pointer"
+                              className="portal-fis-icon-btn is-muted"
                               title="View Full Details"
                             >
                               <Eye className="w-3.5 h-3.5" />
@@ -6956,7 +8189,7 @@ export default function InspectionReportsView({
                             {isAdmin && (
                               <button
                                 onClick={() => handleDeleteWork(work.id || work.workId)}
-                                className="p-1.5 text-xs font-semibold rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300 hover:bg-rose-100 transition cursor-pointer"
+                                className="portal-fis-icon-btn is-danger"
                                 title="Delete Work"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -6972,186 +8205,144 @@ export default function InspectionReportsView({
             </table>
           </div>
 
-          {/* Pagination Controls */}
           {detailedTotalPages > 1 && (
-            <div className="flex items-center justify-between p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-              <span className="text-xs font-bold text-slate-500">
+            <div className="portal-fis-pager">
+              <span>
                 {lang === 'ta'
                   ? `பக்கம் ${detailedPage} / ${detailedTotalPages} (மொத்தம் ${filteredWorksTotal} வரிசைகள்)`
                   : `Page ${detailedPage} of ${detailedTotalPages} (Total ${filteredWorksTotal} rows)`}
               </span>
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => setDetailedPage(prev => Math.max(prev - 1, 1))}
                   disabled={detailedPage === 1}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50 transition cursor-pointer"
                 >
                   {lang === 'ta' ? 'முந்தைய' : 'Previous'}
                 </button>
                 <button
+                  type="button"
                   onClick={() => setDetailedPage(prev => Math.min(prev + 1, detailedTotalPages))}
                   disabled={detailedPage === detailedTotalPages}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300 disabled:opacity-50 transition cursor-pointer"
                 >
                   {lang === 'ta' ? 'அடுத்தது' : 'Next'}
                 </button>
               </div>
             </div>
           )}
+        </div>
 
-          {/* Dynamic 0-entry (Not entered) Users & Subjects/Categories Lists in Detailed Tab */}
-          <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-900/30">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* 0-Entry Users */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
-                <div className="border-b border-slate-100 dark:border-slate-800 pb-3 flex items-center justify-between gap-2 flex-wrap">
-                  <div>
-                    <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                      <span>{lang === 'ta' ? 'ஆய்வுப் பதிவு செய்யாத பணியாளர்கள்' : 'Not Entered Single Entry User List'}</span>
-                      <span className="bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-100">
-                        {zeroEntryUsers.length}
-                      </span>
-                    </h4>
-                    <p className="text-[11px] text-gray-400 mt-0.5">
-                      {lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட வடிகட்டிகளின் கீழ் 0 ஆய்வு செய்தவர்கள்' : 'Users with 0 work entries based on current filters'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={handleExportZeroUsersExcel}
-                      disabled={zeroEntryUsers.length === 0}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-lg text-[11px] font-bold border border-emerald-200 dark:border-emerald-800 transition disabled:opacity-40 cursor-pointer shadow-2xs"
-                      title="Download Not Entered Users as Excel"
-                    >
-                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Excel</span>
-                    </button>
-                    <button
-                      onClick={handleExportZeroUsersPDF}
-                      disabled={zeroEntryUsers.length === 0}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 rounded-lg text-[11px] font-bold border border-rose-200 dark:border-rose-800 transition disabled:opacity-40 cursor-pointer shadow-2xs"
-                      title="Download Not Entered Users as PDF"
-                    >
-                      <Download className="w-3.5 h-3.5 text-rose-600" />
-                      <span>PDF</span>
-                    </button>
-                  </div>
+          <div className="portal-fis-zero-grid">
+            <div className="portal-dashboard-panel">
+              <div className="portal-dash-head">
+                <div>
+                  <h3>
+                    <span className="portal-dash-icon"><Users className="h-3.5 w-3.5" /></span>
+                    <span>{lang === 'ta' ? 'ஆய்வுப் பதிவு செய்யாத பணியாளர்கள்' : 'Not Entered Single Entry User List'}</span>
+                    <span className="portal-fis-count">{zeroEntryUsers.length}</span>
+                  </h3>
+                  <p>{lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட வடிகட்டிகளின் கீழ் 0 ஆய்வு செய்தவர்கள்' : 'Users with 0 work entries based on current filters'}</p>
                 </div>
-
-                <div className="max-h-[380px] overflow-y-auto space-y-2.5 pr-1">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleExportZeroUsersExcel}
+                    disabled={zeroEntryUsers.length === 0}
+                    className="portal-dash-head-action disabled:opacity-40"
+                    title="Download Not Entered Users as Excel"
+                  >
+                    <FileSpreadsheet className="h-3 w-3" />
+                    Excel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportZeroUsersPDF}
+                    disabled={zeroEntryUsers.length === 0}
+                    className="portal-dash-head-action disabled:opacity-40"
+                    title="Download Not Entered Users as PDF"
+                  >
+                    <Download className="h-3 w-3" />
+                    PDF
+                  </button>
+                </div>
+              </div>
+              <div className="portal-dash-body">
+                <div className="portal-dash-bars is-scroll">
                   {zeroEntryUsers.map((user: any, idx: number) => (
-                    <div key={user.id || idx} className="p-3 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/40 text-xs space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="font-bold text-gray-950 dark:text-white flex items-center gap-1.5 flex-wrap">
-                            <span>{tObj(user)}</span>
-                            <span className="text-[10px] text-gray-500 font-mono bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700">
-                              @{user.username}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-indigo-700 dark:text-indigo-400 font-medium mt-0.5">
-                            {user.mobile ? `📞 ${user.mobile}` : ''}
-                          </div>
-                        </div>
-                        <span className="bg-rose-100 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase shrink-0">
-                          0 Entries
-                        </span>
+                    <div key={user.id || idx} className="portal-fis-zero-item">
+                      <div>
+                        <strong>{tObj(user)}</strong>
+                        <em>
+                          @{user.username}
+                          {user.mobile ? ` • ${user.mobile}` : ''}
+                          {` • ${user.resolvedDesignation || user.designation || 'Field Worker'}`}
+                        </em>
+                        <em>
+                          {[
+                            lang === 'ta' ? user.zoneNameTa || user.zoneNameEn : user.zoneNameEn,
+                            lang === 'ta' ? user.districtNameTa || user.districtNameEn : user.districtNameEn,
+                            lang === 'ta' ? user.tpNameTa || user.tpNameEn : user.tpNameEn,
+                          ].filter(Boolean).join(' • ')}
+                          {` • ${user.lastWorkEntry || 'Never'}`}
+                        </em>
                       </div>
-
-                      {/* Details Grid: Designation, Zone, District, TP, Last Work Entry */}
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-rose-100/70 dark:border-rose-900/30 text-[10px]">
-                        <div>
-                          <span className="text-gray-400 block">{lang === 'ta' ? 'பதவி' : 'Designation'}:</span>
-                          <span className="font-semibold text-gray-800 dark:text-gray-200 truncate block">
-                            {user.resolvedDesignation || user.designation || 'Field Worker'}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400 block">{lang === 'ta' ? 'மண்டலம்' : 'Zone'}:</span>
-                          <span className="font-semibold text-gray-700 dark:text-gray-300 truncate block">
-                            {lang === 'ta' ? user.zoneNameTa || user.zoneNameEn : user.zoneNameEn}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400 block">{lang === 'ta' ? 'மாவட்டம்' : 'District'}:</span>
-                          <span className="font-semibold text-gray-700 dark:text-gray-300 truncate block">
-                            {lang === 'ta' ? user.districtNameTa || user.districtNameEn : user.districtNameEn}
-                          </span>
-                        </div>
-                        <div className="sm:col-span-1">
-                          <span className="text-gray-400 block">{lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}:</span>
-                          <span className="font-semibold text-gray-700 dark:text-gray-300 truncate block">
-                            {lang === 'ta' ? user.tpNameTa || user.tpNameEn : user.tpNameEn}
-                          </span>
-                        </div>
-                        <div className="col-span-2 sm:col-span-2">
-                          <span className="text-gray-400 block">{lang === 'ta' ? 'கடைசி ஆய்வுப் பதிவு' : 'Last Work Entry'}:</span>
-                          <span className={`font-bold font-mono ${user.lastWorkEntryRaw ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400'}`}>
-                            {user.lastWorkEntry || 'Never'}
-                          </span>
-                        </div>
-                      </div>
+                      <span className="portal-dash-status is-pending shrink-0">{lang === 'ta' ? '0 பதிவு' : '0 Entries'}</span>
                     </div>
                   ))}
                   {zeroEntryUsers.length === 0 && (
-                    <p className="text-center py-8 text-xs text-gray-400 italic">
+                    <p className="portal-fis-empty" style={{ padding: '1.5rem 0.5rem' }}>
                       {lang === 'ta' ? 'அனைத்து பணியாளர்களும் ஆய்வு செய்துள்ளனர்!' : 'All users have submitted inspections for these filters!'}
                     </p>
                   )}
                 </div>
               </div>
+            </div>
 
-              {/* 0-Entry Subjects/Categories */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs space-y-4">
-                <div className="border-b border-slate-100 dark:border-slate-800 pb-3 flex items-center justify-between gap-2 flex-wrap">
-                  <div>
-                    <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                      <span>{lang === 'ta' ? 'ஆய்வு செய்யப்படாத பிரிவுகள் & வகைகள்' : 'Not Entered Subject & Category List'}</span>
-                      <span className="bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-100">
-                        {zeroEntryCategories.length}
-                      </span>
-                    </h4>
-                    <p className="text-[11px] text-gray-400 mt-0.5">
-                      {lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட வடிகட்டிகளின் கீழ் 0 ஆய்வு செய்யப்பட்டவை' : 'Categories with 0 work entries based on current filters'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={handleExportZeroCategoriesExcel}
-                      disabled={zeroEntryCategories.length === 0}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-lg text-[11px] font-bold border border-emerald-200 dark:border-emerald-800 transition disabled:opacity-40 cursor-pointer shadow-2xs"
-                      title="Download Not Entered Categories as Excel"
-                    >
-                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Excel</span>
-                    </button>
-                    <button
-                      onClick={handleExportZeroCategoriesPDF}
-                      disabled={zeroEntryCategories.length === 0}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 rounded-lg text-[11px] font-bold border border-amber-200 dark:border-amber-800 transition disabled:opacity-40 cursor-pointer shadow-2xs"
-                      title="Download Not Entered Categories as PDF"
-                    >
-                      <Download className="w-3.5 h-3.5 text-amber-600" />
-                      <span>PDF</span>
-                    </button>
-                  </div>
+            <div className="portal-dashboard-panel">
+              <div className="portal-dash-head">
+                <div>
+                  <h3>
+                    <span className="portal-dash-icon"><Layers className="h-3.5 w-3.5" /></span>
+                    <span>{lang === 'ta' ? 'ஆய்வு செய்யப்படாத பிரிவுகள் & வகைகள்' : 'Not Entered Subject & Category List'}</span>
+                    <span className="portal-fis-count">{zeroEntryCategories.length}</span>
+                  </h3>
+                  <p>{lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட வடிகட்டிகளின் கீழ் 0 ஆய்வு செய்யப்பட்டவை' : 'Categories with 0 work entries based on current filters'}</p>
                 </div>
-
-                <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleExportZeroCategoriesExcel}
+                    disabled={zeroEntryCategories.length === 0}
+                    className="portal-dash-head-action disabled:opacity-40"
+                    title="Download Not Entered Categories as Excel"
+                  >
+                    <FileSpreadsheet className="h-3 w-3" />
+                    Excel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportZeroCategoriesPDF}
+                    disabled={zeroEntryCategories.length === 0}
+                    className="portal-dash-head-action disabled:opacity-40"
+                    title="Download Not Entered Categories as PDF"
+                  >
+                    <Download className="h-3 w-3" />
+                    PDF
+                  </button>
+                </div>
+              </div>
+              <div className="portal-dash-body">
+                <div className="portal-dash-bars is-scroll">
                   {zeroEntryCategories.map((cat: any) => (
-                    <div key={cat.id} className="p-2.5 rounded-xl bg-amber-50/40 dark:bg-amber-950/10 border border-amber-100/50 text-xs">
-                      <div className="font-bold text-gray-950 dark:text-white">
-                        {lang === 'ta' ? cat.nameTa : cat.nameEn}
-                      </div>
-                      <div className="text-[10px] text-gray-500 mt-0.5">
-                        {lang === 'ta' ? `பிரிவு: ${cat.subjectNameTa}` : `Subject: ${cat.subjectNameEn}`}
+                    <div key={cat.id} className="portal-fis-zero-item">
+                      <div>
+                        <strong>{lang === 'ta' ? cat.nameTa : cat.nameEn}</strong>
+                        <em>{lang === 'ta' ? `பிரிவு: ${cat.subjectNameTa}` : `Subject: ${cat.subjectNameEn}`}</em>
                       </div>
                     </div>
                   ))}
                   {zeroEntryCategories.length === 0 && (
-                    <p className="text-center py-8 text-xs text-gray-400 italic">
+                    <p className="portal-fis-empty" style={{ padding: '1.5rem 0.5rem' }}>
                       {lang === 'ta' ? 'அனைத்து பிரிவுகளிலும் ஆய்வு செய்யப்பட்டுள்ளது!' : 'All categories have inspections for these filters!'}
                     </p>
                   )}
@@ -7165,7 +8356,7 @@ export default function InspectionReportsView({
       {/* ========================================================================= */}
       {/* TAB 3: EXPANDED MAP VIEW REPORT WITH 3 MODELS                             */}
       {/* ========================================================================= */}
-      {activeTab === 'mapview' && (
+      {activeTab === 'mapview' && reportModule !== 'swm' && (
         <MapViewReport
           works={filteredWorks}
           state={state}
@@ -7184,36 +8375,35 @@ export default function InspectionReportsView({
           onOpenDetailsModal={(work) => setSelectedWorkModal(work)}
         />
       )}
+      </div>
 
       {/* ========================================================================= */}
       {/* DETAILED WORK SLIP MODAL DIALOG                                           */}
       {/* ========================================================================= */}
       {selectedWorkModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6 relative">
-            {/* Floating Absolute Top-Right Close Button */}
-            <button
-              onClick={() => setSelectedWorkModal(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white p-2 rounded-full bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 transition z-20 shadow-sm border border-slate-100 dark:border-slate-700"
-              aria-label="Close"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            {/* Modal Header */}
-            <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-slate-800 pr-8">
+        <div className="portal-modal-overlay">
+          <div className="portal-modal max-w-2xl w-full">
+            <div className="portal-dash-modal-head flex items-start justify-between gap-3 px-5 py-3.5">
               <div>
-                <span className="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-2.5 py-1 rounded-full">
+                <span className="portal-dash-modal-badge text-[10px] font-mono font-bold px-2.5 py-1 rounded-full">
                   {selectedWorkModal.workId || selectedWorkModal.id}
                 </span>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white mt-2">
+                <h3 className="text-[15px] font-bold tracking-tight mt-1.5">
                   {lang === 'ta' ? selectedWorkModal.subjectNameTa : selectedWorkModal.subjectNameEn} - {lang === 'ta' ? selectedWorkModal.categoryNameTa : selectedWorkModal.categoryNameEn}
                 </h3>
-                <p className="text-xs text-slate-500">
-                  {selectedWorkModal.tpNameEn || 'Thiruporur'} Town Panchayat • Ward {selectedWorkModal.wardNumber} ({selectedWorkModal.streetName})
+                <p className="text-[11px] text-white/70 mt-0.5">
+                  {selectedWorkModal.tpNameEn || 'Thiruporur'} Town Panchayat • Ward {selectedWorkModal.wardNumber} ({streetLabel(selectedWorkModal)})
                 </p>
               </div>
+              <button
+                onClick={() => setSelectedWorkModal(null)}
+                className="portal-modal-close"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
+            <div className="portal-modal-body">
 
             {/* Modal Body */}
             <div className="space-y-4 my-4">
@@ -7252,7 +8442,7 @@ export default function InspectionReportsView({
 
                      {/* Line 2: next line ward & streets, inspection subject, field name stamp */}
                     <div className="font-bold text-[10px] md:text-[11px]">
-                      Ward No: {selectedWorkModal.wardNumber || '1'}, {selectedWorkModal.streetName || 'Main Road'} • {lang === 'ta' ? selectedWorkModal.subjectNameTa : selectedWorkModal.subjectNameEn}
+                      Ward No: {selectedWorkModal.wardNumber || '1'}, {streetLabel(selectedWorkModal)} • {lang === 'ta' ? selectedWorkModal.subjectNameTa : selectedWorkModal.subjectNameEn}
                     </div>
 
                     {/* Line 3: next line is date & time, gps lat & long */}
@@ -7332,7 +8522,7 @@ export default function InspectionReportsView({
                               {selectedWorkModal.tpNameEn || 'Thiruporur'}, {selectedWorkModal.zoneNameEn || 'Zone 1'}, {selectedWorkModal.districtNameEn || 'Chengalpattu'}
                             </div>
                             <div className="font-bold text-[10px] md:text-[11px]">
-                              Ward No: {selectedWorkModal.wardNumber || '1'}, {selectedWorkModal.streetName || 'Main Road'} • {lang === 'ta' ? selectedWorkModal.subjectNameTa : selectedWorkModal.subjectNameEn}
+                              Ward No: {selectedWorkModal.wardNumber || '1'}, {streetLabel(selectedWorkModal)} • {lang === 'ta' ? selectedWorkModal.subjectNameTa : selectedWorkModal.subjectNameEn}
                             </div>
                             <div className="font-bold text-[9px] md:text-[10px]">
                               {formatTo12Hr(selectedWorkModal.submittedAt) || new Date().toLocaleString('en-US', { hour12: true })} • GPS: {selectedWorkModal.latitude || '12.7244'}, {selectedWorkModal.longitude || '80.1873'}
@@ -7356,29 +8546,28 @@ export default function InspectionReportsView({
               </div>
 
               {/* Storage sync breakdown */}
-              <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800 space-y-1.5">
-                <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 text-xs font-bold">
+              <div className="p-3 rounded-xl border space-y-1.5" style={{ borderColor: 'color-mix(in srgb, var(--theme-accent) 16%, #e8edf4)', background: 'color-mix(in srgb, var(--theme-accent) 6%, #ffffff)' }}>
+                <div className="flex items-center gap-2 text-xs font-bold portal-dash-label">
                   <ShieldCheck className="w-4 h-4" />
                   <span>Dual Cloud Storage Verified (MongoDB Primary + S3 Backup)</span>
                 </div>
-                <div className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 break-all">
+                <div className="text-[11px] font-mono text-slate-600 break-all">
                   S3 Hierarchy: <strong>s3://{getWorkS3Path(selectedWorkModal)}</strong>
                 </div>
-                <div className="text-[11px] text-slate-600 dark:text-slate-400">
+                <div className="text-[11px] text-slate-500">
                   Persistent Storage: <strong>MongoDB collection &lsquo;inspectionWorks&rsquo;</strong>
                 </div>
               </div>
             </div>
 
-            {/* Modal Footer with Edit and Delete options */}
-            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
                     setEditingWork({ ...selectedWorkModal });
                     setSelectedWorkModal(null);
                   }}
-                  className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 transition flex items-center gap-1.5"
+                  className="portal-fis-chip portal-fis-chip-tp-pdf"
                 >
                   <Pencil className="w-3.5 h-3.5" />
                   <span>Edit Work</span>
@@ -7387,7 +8576,7 @@ export default function InspectionReportsView({
                 {isAdmin && (
                   <button
                     onClick={() => handleDeleteWork(selectedWorkModal.id || selectedWorkModal.workId)}
-                    className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 transition flex items-center gap-1.5"
+                    className="portal-fis-chip portal-fis-chip-pdf"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Delete</span>
@@ -7398,18 +8587,19 @@ export default function InspectionReportsView({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => window.print()}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 transition flex items-center gap-1.5"
+                  className="portal-fis-chip portal-fis-chip-tp-excel"
                 >
                   <Printer className="w-4 h-4" />
                   <span>Print Slip</span>
                 </button>
                 <button
                   onClick={() => setSelectedWorkModal(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-500 transition"
+                  className="portal-dash-action rounded-lg px-4 py-2 text-xs font-bold"
                 >
                   Close
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -7419,22 +8609,24 @@ export default function InspectionReportsView({
       {/* EDIT INSPECTION WORK MODAL                                                */}
       {/* ========================================================================= */}
       {editingWork && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6 relative">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
-                <Pencil className="w-4 h-4 text-amber-600" />
+        <div className="portal-modal-overlay">
+          <div className="portal-modal max-w-xl w-full">
+            <div className="portal-dash-modal-head flex items-center justify-between gap-3 px-5 py-3.5">
+              <h3 className="flex items-center gap-2">
+                <span className="portal-dash-icon"><Pencil className="h-3.5 w-3.5" /></span>
                 <span>{lang === 'ta' ? 'ஆய்வு விவரங்களை திருத்து' : 'Edit Inspection Work'} ({editingWork.workId || editingWork.id})</span>
               </h3>
               <button
                 onClick={() => setEditingWork(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                className="portal-modal-close"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
+            <div className="portal-modal-body">
 
-            <form onSubmit={handleSaveEditWork} className="mt-4 space-y-4 text-xs">
+            <form onSubmit={handleSaveEditWork} className="space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-semibold text-slate-600 dark:text-slate-300 block mb-1">Status</label>
@@ -7630,24 +8822,25 @@ export default function InspectionReportsView({
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setEditingWork(null)}
-                  className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-semibold hover:bg-slate-50 transition"
+                  className="portal-fis-chip portal-fis-chip-tp-excel"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingEdit}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold flex items-center gap-1.5 transition"
+                  className="portal-dash-action rounded-lg px-4 py-2 text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-60"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>{isSavingEdit ? 'Saving...' : 'Save Changes'}</span>
                 </button>
               </div>
             </form>
+            </div>
           </div>
         </div>
       )}
@@ -7671,7 +8864,7 @@ export default function InspectionReportsView({
             <div className={`w-full h-auto min-h-fit py-2 px-3 md:px-6 flex flex-wrap items-center justify-between shrink-0 gap-2 md:gap-3 z-20 border-b transition-colors duration-200 ${slideTheme === 'light' ? 'bg-white border-slate-200 text-slate-800 shadow-xs' : 'bg-slate-900/95 border-slate-800 text-white'}`}>
               {/* Left: Work index & Nav & Inspector info */}
               <div className="flex items-center gap-2 md:gap-2.5 shrink-0">
-                <span className="bg-indigo-600 text-[11px] font-mono font-bold px-2 py-1 rounded-lg text-white shrink-0">
+                <span className="text-[11px] font-mono font-bold px-2 py-1 rounded-lg text-white shrink-0" style={{ background: 'var(--theme-accent)' }}>
                   {detailedSlideIndex + 1} / {slideRecordTotal}
                 </span>
                 <div className={`hide-on-export flex items-center rounded-lg p-0.5 border transition-colors duration-200 shrink-0 ${slideTheme === 'light' ? 'bg-slate-100 border-slate-200' : 'bg-slate-800 border-slate-700'}`}>
@@ -7692,7 +8885,7 @@ export default function InspectionReportsView({
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
-                <span className={`hidden sm:inline text-xs font-mono font-bold px-2 py-0.5 rounded border transition-colors duration-200 shrink-0 ${slideTheme === 'light' ? 'text-indigo-700 bg-indigo-50 border-indigo-200' : 'text-indigo-400 bg-indigo-950/60 border-indigo-900/50'}`}>
+                <span className="hidden sm:inline text-xs font-mono font-bold px-2 py-0.5 rounded border shrink-0 portal-dash-id" style={{ borderColor: 'color-mix(in srgb, var(--theme-accent) 28%, transparent)', background: 'color-mix(in srgb, var(--theme-accent) 10%, transparent)' }}>
                   {currentSlideWork.workId || currentSlideWork.id}
                 </span>
 
@@ -7727,7 +8920,7 @@ export default function InspectionReportsView({
               {/* CENTER ALIGNED: Hierarchy details & SUBJECT & CATEGORIES */}
               <div className="flex-1 flex flex-col items-center justify-center text-center px-2 min-w-[200px] py-1">
                 <div className="flex items-center gap-1.5 md:gap-2 flex-wrap justify-center">
-                  <span className={`text-xs md:text-sm lg:text-base font-black tracking-wide uppercase ${slideTheme === 'light' ? 'text-indigo-700' : 'text-amber-300'}`}>
+                  <span className="text-xs md:text-sm lg:text-base font-black tracking-wide uppercase portal-dash-label">
                     {slideLang === 'ta'
                       ? (currentSlideWork.subjectNameTa || currentSlideWork.subjectNameEn || 'ஆய்வுப் பிரிவு')
                       : String(currentSlideWork.subjectNameEn || currentSlideWork.subjectNameTa || 'SUBJECT').toUpperCase()
@@ -7758,8 +8951,8 @@ export default function InspectionReportsView({
                   <span className="text-slate-400 font-bold">•</span>
                   <span>
                     {slideLang === 'ta'
-                      ? (currentSlideWork.streetNameTa || currentSlideWork.streetName || '-')
-                      : String(currentSlideWork.streetNameEn || currentSlideWork.streetName || '-').toUpperCase()
+                      ? streetLabel(currentSlideWork, 'ta')
+                      : streetLabel(currentSlideWork, 'en').toUpperCase()
                     }
                   </span>
                   <span className="text-slate-400 font-bold">•</span>
@@ -7792,7 +8985,7 @@ export default function InspectionReportsView({
                 {/* 1. Language Switcher Button in Slideshow */}
                 <button
                   onClick={() => setSlideLang(prev => prev === 'ta' ? 'en' : 'ta')}
-                  className="hide-on-export inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 dark:hover:bg-indigo-900 text-indigo-700 dark:text-amber-300 rounded-xl text-xs font-black transition cursor-pointer border border-indigo-200 dark:border-indigo-800 shrink-0 shadow-xs"
+                  className="hide-on-export portal-fis-chip portal-fis-chip-tp-excel shrink-0"
                   title={slideLang === 'ta' ? 'ஆங்கிலத்திற்கு மாறுக (Switch to English)' : 'தமிழ் மொழிக்கு மாறுக (Switch to Tamil)'}
                 >
                   <Globe className="w-3.5 h-3.5 text-indigo-600 dark:text-amber-400" />
@@ -7817,7 +9010,7 @@ export default function InspectionReportsView({
                 <button
                   onClick={handleDownloadFullSlideAsImage}
                   disabled={isSlideDownloading}
-                  className="hide-on-export inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition shadow-xs cursor-pointer border border-indigo-500 shrink-0 disabled:opacity-60"
+                  className="hide-on-export portal-dash-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black cursor-pointer shrink-0 disabled:opacity-60"
                   title={slideLang === 'ta' ? 'முழு ஸ்லைடு காட்சியையும் படமாக பதிவிறக்குகிறது' : 'DOWNLOAD ENTIRE SLIDE FRAME AS IMAGE'}
                 >
                   {isSlideDownloading ? (
@@ -7982,8 +9175,8 @@ export default function InspectionReportsView({
                           </div>
                           <div className="font-bold text-[10px] md:text-[11px]">
                             {slideLang === 'ta'
-                              ? `வார்டு எண்: ${currentSlideWork.wardNumber || '1'}, ${currentSlideWork.streetNameTa || currentSlideWork.streetName || '-'} • ${currentSlideWork.subjectNameTa || currentSlideWork.subjectNameEn || ''} • ${displayLabel}`
-                              : `WARD NO: ${currentSlideWork.wardNumber || '1'}, ${(currentSlideWork.streetNameEn || currentSlideWork.streetName || '-').toUpperCase()} • ${(currentSlideWork.subjectNameEn || '').toUpperCase()} • ${displayLabel}`
+                              ? `வார்டு எண்: ${currentSlideWork.wardNumber || '1'}, ${streetLabel(currentSlideWork, 'ta')} • ${currentSlideWork.subjectNameTa || currentSlideWork.subjectNameEn || ''} • ${displayLabel}`
+                              : `WARD NO: ${currentSlideWork.wardNumber || '1'}, ${streetLabel(currentSlideWork, 'en').toUpperCase()} • ${(currentSlideWork.subjectNameEn || '').toUpperCase()} • ${displayLabel}`
                             }
                           </div>
                           <div className="font-bold text-[9px] md:text-[10px]">
@@ -8140,7 +9333,7 @@ export default function InspectionReportsView({
                   <button
                     onClick={() => goToSlideIndex(detailedSlideIndex + 1)}
                     disabled={detailedSlideIndex >= slideRecordTotal - 1}
-                    className="flex-1 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-bold text-white disabled:opacity-30 transition flex items-center justify-center gap-1 cursor-pointer"
+                    className="flex-1 py-2 px-3 rounded-xl portal-dash-action text-xs font-bold disabled:opacity-30 flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <span>{slideLang === 'ta' ? 'அடுத்தது' : 'NEXT'}</span>
                     <ChevronRight className="w-3.5 h-3.5" />
@@ -8156,30 +9349,33 @@ export default function InspectionReportsView({
       {/* MAXIMUM LEVEL ZOOM GOOGLE MAP LITE POPUP FOR SLIDEVIEW                     */}
       {/* ========================================================================= */}
       {slideGpsModalOpen && currentSlideWork && currentSlideWork.latitude && currentSlideWork.longitude && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-3xl w-full p-5 shadow-2xl space-y-3 relative text-white">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="portal-modal-overlay is-raised">
+          <div className="portal-modal max-w-3xl w-full">
+            <div className="portal-modal-head">
               <div className="flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-emerald-400" />
+                <span className="portal-dash-icon"><MapPin className="h-3.5 w-3.5" /></span>
                 <div>
-                  <h4 className="font-bold text-sm text-white">
+                  <h4>
                     Work Location at Maximum Level Zoom ({currentSlideWork.workId || currentSlideWork.id})
                   </h4>
-                  <p className="text-[11px] text-slate-400">
-                    {currentSlideWork.tpNameEn || 'Town Panchayat'} • Ward {currentSlideWork.wardNumber} • {currentSlideWork.streetName}
+                  <p>
+                    {currentSlideWork.tpNameEn || 'Town Panchayat'} • Ward {currentSlideWork.wardNumber} • {streetLabel(currentSlideWork)}
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setSlideGpsModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+                className="portal-modal-close"
+                aria-label="Close"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
+            <div className="portal-modal-body space-y-3">
             {/* Google Map Lite Iframe Embed at Zoom 19 (Max Zoom) */}
-            <div className="w-full h-96 rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 shadow-inner relative">
+            <div className="w-full h-96 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 relative">
               <iframe
                 title="Google Map Lite Max Zoom"
                 width="100%"
@@ -8191,18 +9387,19 @@ export default function InspectionReportsView({
             </div>
 
             <div className="flex items-center justify-between text-xs pt-1">
-              <span className="font-mono text-emerald-400 font-bold">
+              <span className="font-mono font-bold portal-dash-id">
                 Coordinates: {Number(currentSlideWork.latitude).toFixed(6)}, {Number(currentSlideWork.longitude).toFixed(6)}
               </span>
               <a
                 href={`https://www.google.com/maps?q=${currentSlideWork.latitude},${currentSlideWork.longitude}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition shadow-sm"
+                className="portal-dash-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>Open in Google Maps</span>
               </a>
+            </div>
             </div>
           </div>
         </div>
@@ -8212,30 +9409,32 @@ export default function InspectionReportsView({
       {/* GPS POPUP MODAL FROM DETAILED REGISTER TABLE                               */}
       {/* ========================================================================= */}
       {gpsModalWork && gpsModalWork.latitude && gpsModalWork.longitude && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-3xl w-full p-5 shadow-2xl space-y-3 relative text-white">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="portal-modal-overlay is-raised">
+          <div className="portal-modal max-w-3xl w-full">
+            <div className="portal-dash-modal-head flex items-center justify-between gap-3 px-5 py-3.5">
               <div className="flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-emerald-400" />
+                <span className="portal-dash-icon"><MapPin className="h-3.5 w-3.5" /></span>
                 <div>
-                  <h4 className="font-bold text-sm text-white">
+                  <h3>
                     Inspection Location Map ({gpsModalWork.workId || gpsModalWork.id})
-                  </h4>
-                  <p className="text-[11px] text-slate-400">
+                  </h3>
+                  <p>
                     {gpsModalWork.tpNameEn || 'Town Panchayat'} • Ward {gpsModalWork.wardNumber} • {gpsModalWork.streetName}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setGpsModalWork(null)}
-                className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+                className="portal-modal-close"
+                aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
+            <div className="portal-modal-body space-y-3">
 
             {/* Google Map Lite Iframe Embed */}
-            <div className="w-full h-96 rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 shadow-inner relative">
+            <div className="w-full h-96 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 relative">
               <iframe
                 title="Google Map Lite"
                 width="100%"
@@ -8247,18 +9446,19 @@ export default function InspectionReportsView({
             </div>
 
             <div className="flex items-center justify-between text-xs pt-1">
-              <span className="font-mono text-emerald-400 font-bold">
+              <span className="font-mono font-bold portal-dash-id">
                 GPS: {Number(gpsModalWork.latitude).toFixed(6)}, {Number(gpsModalWork.longitude).toFixed(6)}
               </span>
               <a
                 href={`https://www.google.com/maps?q=${gpsModalWork.latitude},${gpsModalWork.longitude}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition shadow-sm"
+                className="portal-dash-action rounded-lg px-3 py-1.5 text-xs font-bold inline-flex items-center gap-1.5"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>Open in Google Maps</span>
               </a>
+            </div>
             </div>
           </div>
         </div>
@@ -8268,19 +9468,27 @@ export default function InspectionReportsView({
       {/* HIGH-RESOLUTION PHOTO PREVIEW POPUP MODAL                                  */}
       {/* ========================================================================= */}
       {photoPreviewModal && (
-        <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in">
-          <div className="relative max-w-5xl max-h-[95vh] w-full flex flex-col items-center justify-center">
-            {/* Close button */}
-            <button
-              onClick={() => setPhotoPreviewModal(null)}
-              className="absolute -top-12 right-0 p-2 text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 rounded-full transition cursor-pointer"
-              title="Close Preview (Esc)"
-            >
-              <X className="w-6 h-6" />
-            </button>
+        <div className="portal-modal-overlay is-media">
+          <div className="portal-modal max-w-5xl w-full">
+            <div className="portal-modal-head">
+              <div>
+                <h3>{photoPreviewModal.label}</h3>
+                <p>Photo preview</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPhotoPreviewModal(null)}
+                className="portal-modal-close"
+                title="Close Preview (Esc)"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="portal-modal-body flex flex-col items-center">
 
             {/* Image Box */}
-            <div className="relative rounded-2xl overflow-hidden bg-black border border-slate-700 shadow-2xl max-h-[80vh] flex items-center justify-center">
+            <div className="relative rounded-lg overflow-hidden bg-slate-50 border border-slate-200 max-h-[70vh] w-full flex items-center justify-center">
               <img
                 src={toStableMediaSrc(photoPreviewModal.url) || photoPreviewModal.url}
                 alt={photoPreviewModal.label}
@@ -8297,8 +9505,8 @@ export default function InspectionReportsView({
             </div>
 
             {/* Label and Caption */}
-            <div className="mt-3 flex items-center justify-between w-full max-w-2xl px-4 py-2 bg-slate-900/90 rounded-xl border border-slate-800 text-xs">
-              <span className="font-bold text-amber-300 uppercase tracking-wide">
+            <div className="mt-3 flex items-center justify-between w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+              <span className="font-bold text-slate-700 uppercase tracking-wide">
                 {photoPreviewModal.label}
               </span>
               <div className="flex items-center gap-3">
@@ -8312,7 +9520,7 @@ export default function InspectionReportsView({
                       });
                     }
                   }}
-                  className="text-amber-300 hover:underline flex items-center gap-1 font-semibold cursor-pointer bg-transparent border-none p-0"
+                  className="portal-dash-label hover:underline flex items-center gap-1 font-semibold cursor-pointer bg-transparent border-none p-0"
                 >
                   <Download className="w-3 h-3" />
                   <span>Download photo</span>
@@ -8321,12 +9529,13 @@ export default function InspectionReportsView({
                   href={toStableMediaSrc(photoPreviewModal.url) || photoPreviewModal.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-indigo-400 hover:underline flex items-center gap-1 font-semibold"
+                  className="portal-dash-label hover:underline flex items-center gap-1 font-semibold"
                 >
                   <ExternalLink className="w-3 h-3" />
                   <span>Open Full Image</span>
                 </a>
               </div>
+            </div>
             </div>
           </div>
         </div>

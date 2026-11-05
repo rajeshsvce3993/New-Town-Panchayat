@@ -15,7 +15,8 @@ import {
   Edit2, 
   Trash2, 
   Loader2, 
-  AlertCircle 
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { Language } from '../translations';
 import { 
@@ -289,421 +290,356 @@ export default function PfRatesTab({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Rate Editor Panel */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-4">
-        <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-          <TrendingUp className="w-5 h-5 text-indigo-600" />
-          <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-            {editingRateId 
-              ? (lang === 'ta' ? 'வட்டி விகிதத்தை திருத்து' : 'Edit Interest Rate Period')
-              : (lang === 'ta' ? 'வட்டி விகிதத்தைச் சேர்க்கவும்' : 'Add Interest Rate Period')
-            }
-          </h2>
-        </div>
-
-        {rateError && (
-          <div className="p-3 bg-rose-50 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2 border border-rose-100">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{rateError}</span>
+    <div className="portal-wt-grid">
+      <div className="portal-dashboard-panel">
+        <div className="portal-dash-head">
+          <div>
+            <h3>
+              <span className="portal-dash-icon">
+                <TrendingUp className="h-3 w-3" />
+              </span>
+              {editingRateId
+                ? (lang === 'ta' ? 'வட்டி விகிதத்தை திருத்து' : 'Edit Interest Rate Period')
+                : (lang === 'ta' ? 'வட்டி விகிதத்தைச் சேர்க்கவும்' : 'Add Interest Rate Period')}
+            </h3>
           </div>
-        )}
-
-        {editingRateId ? (
-          <form onSubmit={handleUpdateInterestRate} className="space-y-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'நிதியாண்டு / காலம்' : 'Financial Year / Period'}</label>
-              <input
-                type="text"
-                placeholder="e.g. 1970-71 or 04/2016-06/2016"
-                value={editFinancialYear}
-                onChange={(e) => setEditFinancialYear(e.target.value)}
-                className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none font-mono"
-              />
+          {editingRateId && (
+            <button type="button" onClick={() => setEditingRateId(null)} className="portal-dash-head-action">
+              <X className="h-3 w-3" />
+              {lang === 'ta' ? 'ரத்து' : 'Cancel'}
+            </button>
+          )}
+        </div>
+        <div className="portal-dash-body portal-wt-form">
+          {rateError && (
+            <div className="p-3 bg-rose-50 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2 border border-rose-100">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{rateError}</span>
             </div>
+          )}
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'தொடக்க தேதி' : 'From Date'}</label>
-                <input
-                  type="date"
-                  required
-                  value={editFromDate}
-                  onChange={(e) => setEditFromDate(e.target.value)}
-                  className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-150 outline-none font-mono"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'முடிவு தேதி' : 'To Date'}</label>
-                <input
-                  type="date"
-                  required
-                  value={editToDate}
-                  onChange={(e) => setEditToDate(e.target.value)}
-                  className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-150 outline-none font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'வட்டி விகிதம் (%)' : 'Interest Rate (%)'}</label>
-              <input
-                type="number"
-                step="0.01"
-                required
-                placeholder="e.g. 7.1"
-                value={editRateVal}
-                onChange={(e) => setEditRateVal(e.target.value)}
-                className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-150 outline-none font-mono"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'அரசாணை (நிதித் துறை)' : 'G.O. Authority (Finance Dept)'}</label>
-              <input
-                type="text"
-                placeholder="e.g. 1217, 07.10.1970"
-                value={editAuthority}
-                onChange={(e) => setEditAuthority(e.target.value)}
-                className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'அரசாணை (CPS)' : 'G.O. Authority (CPS)'}</label>
-              <input
-                type="text"
-                placeholder="e.g. 222, 03.06.2008"
-                value={editCpsAuthority}
-                onChange={(e) => setEditCpsAuthority(e.target.value)}
-                className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                {lang === 'ta' ? 'அரசாணை இணைப்பு (விருப்பம்)' : 'GO/Circular Attachment (Optional)'}
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFileUpload(file, 'edit-rate');
-                  }}
-                  className="hidden"
-                  id="edit-rate-file-input"
-                />
-                <label
-                  htmlFor="edit-rate-file-input"
-                  className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer transition-all"
-                >
-                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> : <Paperclip className="w-4 h-4 text-slate-400" />}
-                  <span>{isUploading ? 'Uploading...' : 'Choose File'}</span>
-                </label>
-                {editAttachmentName && (
-                  <span className="text-[11px] text-slate-500 font-mono truncate max-w-[150px]">
-                    {editAttachmentName}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button
-                type="submit"
-                className="flex-1 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold uppercase tracking-wider shadow"
-              >
+          {editingRateId ? (
+            <form onSubmit={handleUpdateInterestRate} className="space-y-3">
+                <div>
+                  <label>{lang === 'ta' ? 'நிதியாண்டு / காலம்' : 'Financial Year / Period'}</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 1970-71 or 04/2016-06/2016"
+                    value={editFinancialYear}
+                    onChange={(e) => setEditFinancialYear(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label>{lang === 'ta' ? 'தொடக்க தேதி' : 'From Date'}</label>
+                    <input
+                      type="date"
+                      required
+                      value={editFromDate}
+                      onChange={(e) => setEditFromDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label>{lang === 'ta' ? 'முடிவு தேதி' : 'To Date'}</label>
+                    <input
+                      type="date"
+                      required
+                      value={editToDate}
+                      onChange={(e) => setEditToDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label>{lang === 'ta' ? 'வட்டி விகிதம் (%)' : 'Interest Rate (%)'}</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="e.g. 7.1"
+                    value={editRateVal}
+                    onChange={(e) => setEditRateVal(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label>{lang === 'ta' ? 'அரசாணை (நிதித் துறை)' : 'G.O. Authority (Finance Dept)'}</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 1217, 07.10.1970"
+                    value={editAuthority}
+                    onChange={(e) => setEditAuthority(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label>{lang === 'ta' ? 'அரசாணை (CPS)' : 'G.O. Authority (CPS)'}</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 222, 03.06.2008"
+                    value={editCpsAuthority}
+                    onChange={(e) => setEditCpsAuthority(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label>{lang === 'ta' ? 'அரசாணை இணைப்பு (விருப்பம்)' : 'GO/Circular Attachment (Optional)'}</label>
+                  <div className="portal-file-pick">
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleFileUpload(file, 'edit-rate');
+                      }}
+                      className="hidden"
+                      id="edit-rate-file-input"
+                    />
+                    <label htmlFor="edit-rate-file-input" className="portal-wt-link inline-flex items-center gap-1.5 cursor-pointer">
+                      {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+                      <span>{isUploading ? 'Uploading...' : 'Choose File'}</span>
+                    </label>
+                    {editAttachmentName && (
+                      <span className="truncate font-mono text-[11px] text-slate-500">{editAttachmentName}</span>
+                    )}
+                  </div>
+                </div>
+              <button type="submit">
                 {lang === 'ta' ? 'விகிதத்தை மாற்று' : 'Update Rate'}
               </button>
-              <button
-                type="button"
-                onClick={() => setEditingRateId(null)}
-                className="px-4 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wider"
-              >
-                {lang === 'ta' ? 'ரத்து' : 'Cancel'}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <form onSubmit={handleAddInterestRate} className="space-y-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'நிதியாண்டு / காலம்' : 'Financial Year / Period'}</label>
-              <input
-                type="text"
-                placeholder="e.g. 2026-27 or 10/2026-03/2027"
-                value={rateFinancialYear}
-                onChange={(e) => setRateFinancialYear(e.target.value)}
-                className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none font-mono"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'தொடக்க தேதி' : 'From Date'}</label>
-                <div className="w-full border border-slate-200 bg-slate-50 rounded-2xl p-3 text-xs font-mono text-slate-600 truncate">
-                  {calculatedNextFromDate}
+            </form>
+          ) : (
+            <form onSubmit={handleAddInterestRate} className="space-y-3">
+                <div>
+                  <label>{lang === 'ta' ? 'நிதியாண்டு / காலம்' : 'Financial Year / Period'}</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 2026-27 or 10/2026-03/2027"
+                    value={rateFinancialYear}
+                    onChange={(e) => setRateFinancialYear(e.target.value)}
+                  />
                 </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'முடிவு தேதி' : 'To Date'}</label>
-                <input
-                  type="date"
-                  required
-                  value={rateToDate}
-                  min={calculatedNextFromDate}
-                  onChange={(e) => setRateToDate(e.target.value)}
-                  className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'வட்டி விகிதம் (%)' : 'Interest Rate (%)'}</label>
-              <input
-                type="number"
-                step="0.01"
-                required
-                placeholder="e.g. 7.1"
-                value={rateInput}
-                onChange={(e) => setRateInput(e.target.value)}
-                className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none font-mono"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'அரசாணை (நிதித் துறை)' : 'G.O. Authority (Finance Dept)'}</label>
-              <input
-                type="text"
-                placeholder="e.g. 145, 24.07.2026"
-                value={rateAuthority}
-                onChange={(e) => setRateAuthority(e.target.value)}
-                className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'அரசாணை (CPS)' : 'G.O. Authority (CPS)'}</label>
-              <input
-                type="text"
-                placeholder="e.g. G.O. Ms. No."
-                value={rateCpsAuthority}
-                onChange={(e) => setRateCpsAuthority(e.target.value)}
-                className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                {lang === 'ta' ? 'அரசாணை இணைப்பு (விருப்பம்)' : 'GO/Circular Attachment (Optional)'}
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFileUpload(file, 'rate');
-                  }}
-                  className="hidden"
-                  id="rate-file-input"
-                />
-                <label
-                  htmlFor="rate-file-input"
-                  className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer transition-all"
-                >
-                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin text-indigo-600" /> : <Paperclip className="w-4 h-4 text-slate-400" />}
-                  <span>{isUploading ? 'Uploading...' : 'Choose File'}</span>
-                </label>
-                {rateAttachmentName && (
-                  <span className="text-[11px] text-slate-500 font-mono truncate max-w-[150px]">
-                    {rateAttachmentName}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-50 hover:to-violet-50 text-white text-xs font-bold uppercase tracking-wider shadow"
-            >
-              {lang === 'ta' ? 'விகிதத்தை சேமி' : 'Save Rate Period'}
-            </button>
-          </form>
-        )}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label>{lang === 'ta' ? 'தொடக்க தேதி' : 'From Date'}</label>
+                    <input
+                      type="date"
+                      readOnly
+                      value={calculatedNextFromDate}
+                      aria-label={lang === 'ta' ? 'தொடக்க தேதி' : 'From Date'}
+                    />
+                    <p className="portal-switch-hint">Continues from the last saved period.</p>
+                  </div>
+                  <div>
+                    <label>{lang === 'ta' ? 'முடிவு தேதி' : 'To Date'}</label>
+                    <input
+                      type="date"
+                      required
+                      value={rateToDate}
+                      min={calculatedNextFromDate}
+                      onChange={(e) => setRateToDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label>{lang === 'ta' ? 'வட்டி விகிதம் (%)' : 'Interest Rate (%)'}</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="e.g. 7.1"
+                    value={rateInput}
+                    onChange={(e) => setRateInput(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label>{lang === 'ta' ? 'அரசாணை (நிதித் துறை)' : 'G.O. Authority (Finance Dept)'}</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 145, 24.07.2026"
+                    value={rateAuthority}
+                    onChange={(e) => setRateAuthority(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label>{lang === 'ta' ? 'அரசாணை (CPS)' : 'G.O. Authority (CPS)'}</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. G.O. Ms. No."
+                    value={rateCpsAuthority}
+                    onChange={(e) => setRateCpsAuthority(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label>{lang === 'ta' ? 'அரசாணை இணைப்பு (விருப்பம்)' : 'GO/Circular Attachment (Optional)'}</label>
+                  <div className="portal-file-pick">
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleFileUpload(file, 'rate');
+                      }}
+                      className="hidden"
+                      id="rate-file-input"
+                    />
+                    <label htmlFor="rate-file-input" className="portal-wt-link inline-flex items-center gap-1.5 cursor-pointer">
+                      {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+                      <span>{isUploading ? 'Uploading...' : 'Choose File'}</span>
+                    </label>
+                    {rateAttachmentName && (
+                      <span className="truncate font-mono text-[11px] text-slate-500">{rateAttachmentName}</span>
+                    )}
+                  </div>
+                </div>
+              <button type="submit">
+                {lang === 'ta' ? 'விகிதத்தை சேமி' : 'Save Rate Period'}
+              </button>
+            </form>
+          )}
+        </div>
       </div>
 
-      {/* Historical Interest Rates Table */}
-      <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b border-slate-100 pb-4">
+      <div className="portal-dashboard-panel">
+        <div className="portal-dash-head">
           <div>
-            <div className="flex items-center gap-3">
-              <Calendar className="w-5 h-5 text-indigo-600" />
-              <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-                {lang === 'ta' ? 'தமிழ்நாடு அரசு GPF & CPS வட்டி விகிதங்கள் (1970-71 முதல்)' : 'Tamil Nadu GPF & CPS Interest Rates (FY 1970-71 Onwards)'}
-              </h2>
-            </div>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              {lang === 'ta' 
-                ? `மொத்தம் ${pfInterestRates.length} காலங்கள் பதிவு செய்யப்பட்டுள்ளன.` 
+            <h3>
+              <span className="portal-dash-icon">
+                <Calendar className="h-3 w-3" />
+              </span>
+              {lang === 'ta' ? 'தமிழ்நாடு அரசு GPF & CPS வட்டி விகிதங்கள் (1970-71 முதல்)' : 'Tamil Nadu GPF & CPS Interest Rates (FY 1970-71 Onwards)'}
+            </h3>
+            <p>
+              {lang === 'ta'
+                ? `மொத்தம் ${pfInterestRates.length} காலங்கள் பதிவு செய்யப்பட்டுள்ளன.`
                 : `Comprehensive audit history covering ${pfInterestRates.length} continuous periods.`}
             </p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
               onClick={handleLoadOfficialRates}
-              className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition border border-slate-200"
+              className="portal-dash-head-action"
               title="Reload official Tamil Nadu government interest rates from 1970-71"
             >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>{lang === 'ta' ? 'அரசாணை வட்டி ஏற்றுக' : 'Reload GO Rates'}</span>
+              <RefreshCw className="h-3 w-3" />
+              {lang === 'ta' ? 'அரசாணை வட்டி ஏற்றுக' : 'Reload GO Rates'}
             </button>
-            <button
-              type="button"
-              onClick={handleExportRatesExcel}
-              className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold flex items-center gap-1.5 transition border border-emerald-200"
-              title="Export to Excel"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Excel</span>
+            <button type="button" onClick={handleExportRatesExcel} className="portal-dash-head-action" title="Export to Excel">
+              <FileSpreadsheet className="h-3 w-3" />
+              Excel
             </button>
-            <button
-              type="button"
-              onClick={handleExportRatesPdf}
-              className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold flex items-center gap-1.5 transition border border-indigo-200"
-              title="Export to PDF"
-            >
-              <FileDown className="w-3.5 h-3.5" />
-              <span>PDF</span>
+            <button type="button" onClick={handleExportRatesPdf} className="portal-dash-head-action" title="Export to PDF">
+              <FileDown className="h-3 w-3" />
+              PDF
             </button>
           </div>
         </div>
-
-        {/* Search & Era Filter Tabs */}
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between pt-1">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={rateSearchQuery}
-              onChange={(e) => setRateSearchQuery(e.target.value)}
-              placeholder={lang === 'ta' ? 'நிதியாண்டு (1970...), வட்டி அல்லது அரசாணை எண் தேடுக...' : 'Search by FY (e.g. 1970, 2024), rate, or G.O. number...'}
-              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-100 outline-none transition"
-            />
+        <div className="portal-dash-body">
+          <div className="portal-fis-search">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={rateSearchQuery}
+                onChange={(e) => setRateSearchQuery(e.target.value)}
+                placeholder={lang === 'ta' ? 'நிதியாண்டு (1970...), வட்டி அல்லது அரசாணை எண் தேடுக...' : 'Search by FY (e.g. 1970, 2024), rate, or G.O. number...'}
+              />
+            </div>
           </div>
-
-          <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
-            {[
-              { id: 'all', label: `All (${pfInterestRates.length})` },
-              { id: '1970-1990', label: '1970-1990' },
-              { id: '1991-2010', label: '1991-2010' },
-              { id: '2011-2020', label: '2011-2020' },
-              { id: '2021-2026', label: '2021-2026+' },
-            ].map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setRateYearFilter(f.id)}
-                className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg whitespace-nowrap transition ${
-                  rateYearFilter === f.id
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
+          <div className="portal-dash-toolbar" style={{ margin: '0.55rem 0' }}>
+            <div className="portal-dash-pills">
+              {[
+                { id: 'all', label: `All (${pfInterestRates.length})` },
+                { id: '1970-1990', label: '1970-1990' },
+                { id: '1991-2010', label: '1991-2010' },
+                { id: '2011-2020', label: '2011-2020' },
+                { id: '2021-2026', label: '2021-2026+' },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setRateYearFilter(f.id)}
+                  className={`portal-dash-pill ${rateYearFilter === f.id ? 'is-active' : ''}`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-
-        <div className="overflow-x-auto rounded-2xl border border-slate-100 max-h-[580px] overflow-y-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="sticky top-0 bg-slate-50 z-10">
-              <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">
-                <th className="p-3">S.No</th>
-                <th className="p-3">{lang === 'ta' ? 'நிதியாண்டு / காலம்' : 'FY / Period'}</th>
-                <th className="p-3">{lang === 'ta' ? 'தொடக்க தேதி' : 'From Date'}</th>
-                <th className="p-3">{lang === 'ta' ? 'முடிவு தேதி' : 'To Date'}</th>
-                <th className="p-3">{lang === 'ta' ? 'வட்டி விகிதம்' : 'Rate (%)'}</th>
-                <th className="p-3">{lang === 'ta' ? 'அரசாணை (நிதித் துறை)' : 'G.O. (Finance)'}</th>
-                <th className="p-3">{lang === 'ta' ? 'அரசாணை (CPS)' : 'G.O. (CPS)'}</th>
-                <th className="p-3">{lang === 'ta' ? 'ஆவணம்' : 'Attachment'}</th>
-                <th className="p-3 text-right">{lang === 'ta' ? 'செயல்பாடு' : 'Actions'}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
-              {filteredRates.length === 0 ? (
+          <div className="portal-dash-table overflow-x-auto" style={{ maxHeight: '580px', overflowY: 'auto' }}>
+            <table>
+              <thead>
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-slate-400 font-medium">
-                    {lang === 'ta' ? 'பதிவுகள் இல்லை.' : 'No rate periods match your search/filter.'}
-                  </td>
+                  <th>S.No</th>
+                  <th>{lang === 'ta' ? 'நிதியாண்டு / காலம்' : 'FY / Period'}</th>
+                  <th>{lang === 'ta' ? 'தொடக்க தேதி' : 'From Date'}</th>
+                  <th>{lang === 'ta' ? 'முடிவு தேதி' : 'To Date'}</th>
+                  <th>{lang === 'ta' ? 'வட்டி விகிதம்' : 'Rate (%)'}</th>
+                  <th>{lang === 'ta' ? 'அரசாணை (நிதித் துறை)' : 'G.O. (Finance)'}</th>
+                  <th>{lang === 'ta' ? 'அரசாணை (CPS)' : 'G.O. (CPS)'}</th>
+                  <th>{lang === 'ta' ? 'ஆவணம்' : 'Attachment'}</th>
+                  <th>{lang === 'ta' ? 'செயல்பாடு' : 'Actions'}</th>
                 </tr>
-              ) : (
-                filteredRates.map((rate: InterestRate) => (
-                  <tr key={rate.id} className="hover:bg-indigo-50/30 transition">
-                    <td className="p-3 font-mono text-slate-500 font-bold">{rate.sNo || '-'}</td>
-                    <td className="p-3 font-medium text-slate-800 whitespace-nowrap">
-                      {rate.financialYear || '-'}
-                    </td>
-                    <td className="p-3 font-mono text-slate-600 whitespace-nowrap">{formatDateLabel(rate.fromDate)}</td>
-                    <td className="p-3 font-mono text-slate-600 whitespace-nowrap">{formatDateLabel(rate.toDate)}</td>
-                    <td className="p-3">
-                      <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 font-mono font-bold px-2 py-0.5 rounded-md text-xs whitespace-nowrap">
-                        {rate.rate.toFixed(2)} %
-                      </span>
-                    </td>
-                    <td className="p-3 text-slate-600 font-mono text-[11px] max-w-[140px] truncate" title={rate.authority || ''}>
-                      {rate.authority || '-'}
-                    </td>
-                    <td className="p-3 text-slate-600 font-mono text-[11px] max-w-[140px] truncate" title={rate.cpsAuthority || ''}>
-                      {rate.cpsAuthority || '-'}
-                    </td>
-                    <td className="p-3">
-                      {rate.attachmentUrl ? (
-                        <button
-                          onClick={() => window.open(rate.attachmentUrl, '_blank')}
-                          className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:underline"
-                        >
-                          <Paperclip className="w-3.5 h-3.5" />
-                          <span className="truncate max-w-[100px]">{rate.attachmentName || 'View GO'}</span>
-                        </button>
-                      ) : (
-                        <span className="text-slate-400 text-[10px]">-</span>
-                      )}
-                    </td>
-                    <td className="p-3 text-right space-x-1 whitespace-nowrap">
-                      <button
-                        onClick={() => handleStartEditRate(rate)}
-                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                        title="Edit Rate Period"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteRate(rate.id)}
-                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition"
-                        title="Delete Rate Period"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+              </thead>
+              <tbody>
+                {filteredRates.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="portal-wt-empty is-center">
+                      {lang === 'ta' ? 'பதிவுகள் இல்லை.' : 'No rate periods match your search/filter.'}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex justify-between items-center text-[11px] text-slate-500 pt-2 px-1">
-          <span>
-            {lang === 'ta' 
-              ? `காட்டப்படுவது: ${filteredRates.length} / ${pfInterestRates.length} காலங்கள்`
-              : `Showing ${filteredRates.length} of ${pfInterestRates.length} rate periods`}
-          </span>
-          <span className="text-[10px] font-mono text-slate-400">
-            {lang === 'ta' ? 'அரசாணைபடி 1970-71 முதல் 2026-27 வரை' : 'Official TN GO Periods: 1970-71 to 2026-27'}
-          </span>
+                ) : (
+                  filteredRates.map((rate: InterestRate) => (
+                    <tr key={rate.id}>
+                      <td className="portal-dash-id">{rate.sNo || '-'}</td>
+                      <td>{rate.financialYear || '-'}</td>
+                      <td>{formatDateLabel(rate.fromDate)}</td>
+                      <td>{formatDateLabel(rate.toDate)}</td>
+                      <td>
+                        <span className="portal-dash-status is-resolved">{rate.rate.toFixed(2)} %</span>
+                      </td>
+                      <td className="max-w-[140px] truncate" title={rate.authority || ''}>{rate.authority || '-'}</td>
+                      <td className="max-w-[140px] truncate" title={rate.cpsAuthority || ''}>{rate.cpsAuthority || '-'}</td>
+                      <td>
+                        {rate.attachmentUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => window.open(rate.attachmentUrl, '_blank')}
+                            className="portal-wt-link inline-flex items-center gap-1"
+                          >
+                            <Paperclip className="h-3.5 w-3.5" />
+                            <span className="truncate max-w-[100px]">{rate.attachmentName || 'View GO'}</span>
+                          </button>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditRate(rate)}
+                          className="portal-fis-icon-btn"
+                          title="Edit Rate Period"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRate(rate.id)}
+                          className="portal-fis-icon-btn is-danger"
+                          title="Delete Rate Period"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="portal-wt-note" style={{ marginTop: '0.55rem' }}>
+            {lang === 'ta'
+              ? `காட்டப்படுவது: ${filteredRates.length} / ${pfInterestRates.length} காலங்கள் • அரசாணைபடி 1970-71 முதல் 2026-27 வரை`
+              : `Showing ${filteredRates.length} of ${pfInterestRates.length} rate periods • Official TN GO Periods: 1970-71 to 2026-27`}
+          </p>
         </div>
       </div>
     </div>

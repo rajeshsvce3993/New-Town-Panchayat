@@ -101,10 +101,10 @@ export const themesConfig: Record<ThemeType, ThemeConfig> = {
     id: 'ocean-wave',
     nameEn: 'Ocean Wave',
     nameTa: 'கடல் அலை',
-    sidebarBg: 'bg-[linear-gradient(135deg,#0f172a,#0891b2,#0d9488)]',
+    sidebarBg: 'bg-[linear-gradient(180deg,#0b1b4b,#1e3a8a,#4338ca)]',
     sidebarActive: 'bg-white/15 text-white shadow-xs border border-white/10',
     sidebarHover: 'hover:bg-white/10 hover:text-white',
-    mainBg: 'bg-[#f4fbfd]',
+    mainBg: 'bg-white',
     accentColor: '#0891b2',
     contrastBg: 'bg-cyan-50/70 text-cyan-900 border-cyan-200',
     cardBorder: 'border-l-4 border-cyan-500',
@@ -291,12 +291,48 @@ export const themesConfig: Record<ThemeType, ThemeConfig> = {
   }
 };
 
+const SIDEBAR_GRADIENTS: Partial<Record<ThemeType, string>> = {
+  light: 'linear-gradient(180deg, #0f172a 0%, #1e3a8a 58%, #2563eb 100%)',
+  dark: 'linear-gradient(180deg, #020617 0%, #1e293b 100%)',
+  'sunset-aurora': 'linear-gradient(165deg, #4c1d95 0%, #b91c1c 52%, #f59e0b 100%)',
+  'ocean-wave': 'linear-gradient(180deg, #0b1b4b 0%, #1e3a8a 52%, #4338ca 100%)',
+  'magic-lavender': 'linear-gradient(165deg, #1e1b4b 0%, #701a75 52%, #db2777 100%)',
+  'rainbow-prism': 'linear-gradient(165deg, #0369a1 0%, #15803d 40%, #a21caf 72%, #be123c 100%)',
+  'nilgiri-emerald': 'linear-gradient(165deg, #064e3b 0%, #0d9488 100%)',
+  'kovai-maroon': 'linear-gradient(165deg, #7f1d1d 0%, #b45309 100%)',
+  'madurai-blue': 'linear-gradient(165deg, #1e3a8a 0%, #581c87 100%)',
+  'nellai-orange': 'linear-gradient(165deg, #c2410c 0%, #991b1b 100%)',
+  'chennai-slate': 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+  'royal-gold': 'linear-gradient(165deg, #78350f 0%, #d97706 55%, #f59e0b 100%)',
+  'crimson-ruby': 'linear-gradient(165deg, #881337 0%, #e11d48 55%, #fb7185 100%)',
+  'cyber-teal': 'linear-gradient(165deg, #134e4a 0%, #0f766e 50%, #14b8a6 100%)',
+};
+
 export function getThemeSidebarGradient(theme: ThemeType, custom?: CustomThemeColors): string {
   if (theme === 'custom' && custom) {
     return `linear-gradient(180deg, ${custom.sidebarFrom} 0%, ${custom.sidebarTo} 100%)`;
   }
+  if (SIDEBAR_GRADIENTS[theme]) return SIDEBAR_GRADIENTS[theme] as string;
   const conf = themesConfig[theme] || themesConfig['ocean-wave'];
   const from = conf.chartGradient?.[0] || '#0f172a';
   const to = conf.chartGradient?.[1] || conf.accentColor || '#64748b';
   return `linear-gradient(180deg, ${from} 0%, ${to} 100%)`;
+}
+
+export function getThemeCanvasColor(theme: ThemeType, custom?: CustomThemeColors): string {
+  if (theme === 'custom' && custom?.appBgColor) return custom.appBgColor;
+  if (theme === 'dark') return '#0b1220';
+  const mainBg = themesConfig[theme]?.mainBg || '';
+  const hex = mainBg.match(/#[0-9a-fA-F]{3,8}/);
+  if (hex) return hex[0];
+  if (mainBg.includes('bg-white')) return '#ffffff';
+  return '#f5f7fa';
+}
+
+export function getThemeHeaderColor(theme: ThemeType, custom?: CustomThemeColors): string {
+  if (theme === 'dark') return '#151a28';
+  const accent = theme === 'custom' && custom?.primaryColor
+    ? custom.primaryColor
+    : (themesConfig[theme]?.accentColor || '#4f46e5');
+  return `color-mix(in srgb, ${accent} 16%, #ffffff)`;
 }

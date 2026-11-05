@@ -584,118 +584,98 @@ export default function MapViewReport({
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl space-y-0 text-white">
-      {/* MAP TOP BAR: MODEL SELECTOR & FILTERS HEADER */}
-      <div className="p-4 bg-slate-900/95 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
-        {/* Title and Geotagged Count */}
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30">
-            <Globe className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="font-extrabold text-sm md:text-base text-white flex items-center gap-2">
-              <span>{lang === 'ta' ? 'அசல் கூகிள் மேப் ஆய்வு அறிக்கை' : 'Real Google Maps Report & Spatial Analytics'}</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-mono font-bold border border-emerald-500/30">
-                {geotaggedWorks.length} {lang === 'ta' ? 'இடங்கள்' : 'Geotagged Locations'}
-              </span>
-            </h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              {lang === 'ta'
-                ? 'அடர்த்தி கொத்து, ஸ்பைடர்ஃபை விரிவு, நேர-மறுபதிவு பயணம் மற்றும் சிற்றலை புள்ளிகள்'
-                : 'Dense Door-to-Door Clusters, Spiderfy Fan-out, Route Replay Scrubber & Interactive Report Dots'}
-            </p>
-          </div>
+    <div className="portal-map-shell">
+      <div className="portal-dash-head" style={{ flexWrap: 'wrap', minHeight: 'auto', padding: '0.5rem 0.8rem' }}>
+        <div className="min-w-0">
+          <h3>
+            <span className="portal-dash-icon">
+              <Globe className="h-3.5 w-3.5" />
+            </span>
+            <span>{lang === 'ta' ? 'அசல் கூகிள் மேப் ஆய்வு அறிக்கை' : 'Real Google Maps Report & Spatial Analytics'}</span>
+            <span className="portal-fis-count">
+              {geotaggedWorks.length} {lang === 'ta' ? 'இடங்கள்' : 'Locations'}
+            </span>
+          </h3>
+          <p>
+            {lang === 'ta'
+              ? 'அடர்த்தி கொத்து, ஸ்பைடர்ஃபை விரிவு, நேர-மறுபதிவு பயணம் மற்றும் சிற்றலை புள்ளிகள்'
+              : 'Dense Door-to-Door Clusters, Spiderfy Fan-out, Route Replay Scrubber & Interactive Report Dots'}
+          </p>
         </div>
 
-        {/* THREE MODEL MODE SELECTOR BUTTONS */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-950/80 rounded-2xl border border-slate-800">
-          {/* Model 1 */}
+        <div className="portal-dash-pills">
           <button
+            type="button"
             onClick={() => {
               setActiveModel('model1');
               setIsPlayingRoute(false);
             }}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeModel === 'model1'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
+            className={`portal-dash-pill ${activeModel === 'model1' ? 'is-active' : ''}`}
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span>{lang === 'ta' ? 'Model 1: அடர்த்தி & Spiderfy' : 'Model 1: Door Cluster & Spiderfy'}</span>
+            <Layers className="h-3.5 w-3.5" />
+            <span>{lang === 'ta' ? 'Model 1: அடர்த்தி' : 'Model 1: Cluster'}</span>
           </button>
-
-          {/* Model 2 */}
           <button
+            type="button"
             onClick={() => {
               setActiveModel('model2');
               setCurrentRouteIndex(0);
             }}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeModel === 'model2'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
+            className={`portal-dash-pill ${activeModel === 'model2' ? 'is-active' : ''}`}
           >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            <span>{lang === 'ta' ? 'Model 2: நேர-பயணம் Replay' : 'Model 2: Route Replay'}</span>
+            <Play className="h-3.5 w-3.5 fill-current" />
+            <span>{lang === 'ta' ? 'Model 2: பயணம்' : 'Model 2: Replay'}</span>
           </button>
-
-          {/* Model 3 */}
           <button
+            type="button"
             onClick={() => {
               setActiveModel('model3');
               setIsPlayingRoute(false);
             }}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
-              activeModel === 'model3'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-            }`}
+            className={`portal-dash-pill ${activeModel === 'model3' ? 'is-active' : ''}`}
           >
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-            <span>{lang === 'ta' ? 'Model 3: ஒளிரும் புள்ளிகள்' : 'Model 3: Blinking Dots'}</span>
+            <span className="h-2 w-2 rounded-full bg-current" />
+            <span>{lang === 'ta' ? 'Model 3: புள்ளிகள்' : 'Model 3: Dots'}</span>
           </button>
         </div>
 
-        {/* Map Type, Fit Bounds & External Link */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
+            type="button"
             onClick={() => setMapType((prev) => (prev === 'roadmap' ? 'satellite' : 'roadmap'))}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer border border-slate-700 flex items-center gap-1.5"
+            className="portal-dash-head-action"
           >
-            <Compass className="w-3.5 h-3.5 text-indigo-400" />
-            <span>{mapType === 'roadmap' ? 'Satellite View' : 'Roadmap View'}</span>
+            <Compass className="h-3 w-3" />
+            <span>{mapType === 'roadmap' ? 'Satellite' : 'Roadmap'}</span>
           </button>
-
           <button
+            type="button"
             onClick={handleFitBounds}
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition cursor-pointer border border-slate-700"
+            className="portal-dash-head-action"
             title="Recenter & Fit All Locations"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className="h-3 w-3" />
           </button>
-
           <a
             href={`https://www.google.com/maps/@${mapCenter.lat},${mapCenter.lng},17z`}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition"
+            className="portal-dash-head-action"
             title="Open in Google Maps Application"
           >
-            <ExternalLink className="w-4 h-4" />
+            <ExternalLink className="h-3 w-3" />
           </a>
         </div>
       </div>
 
       {/* MODEL 2: ROUTE REPLAY TIMELINE SCRUBBER BAR */}
       {activeModel === 'model2' && (
-        <div className="px-5 py-3 bg-indigo-950/60 border-b border-indigo-900/50 flex flex-wrap items-center justify-between gap-4">
+        <div className="portal-map-replay">
           {/* Controls: Play/Pause, Reset, Speed, Audio Mute */}
           <div className="flex items-center gap-3">
             <button
               onClick={() => setIsPlayingRoute(!isPlayingRoute)}
-              className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition flex items-center gap-1.5 shadow-md cursor-pointer"
+              className="portal-dash-action rounded-lg px-3.5 py-1.5 text-xs font-bold inline-flex items-center gap-1.5"
             >
               {isPlayingRoute ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
               <span>{isPlayingRoute ? (lang === 'ta' ? 'நிறுத்து' : 'PAUSE') : (lang === 'ta' ? 'இயக்கு' : 'PLAY REPLAY')}</span>
@@ -706,23 +686,20 @@ export default function MapViewReport({
                 setIsPlayingRoute(false);
                 setCurrentRouteIndex(0);
               }}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition cursor-pointer border border-slate-700"
+              className="portal-fis-icon-btn is-muted"
               title="Reset Route"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
 
             {/* Speed Toggles: 1x, 2x, 5x */}
-            <div className="flex items-center gap-1 p-1 bg-slate-900 rounded-xl border border-slate-800 text-xs">
+            <div className="portal-dash-pills">
               {[1, 2, 5].map((spd) => (
                 <button
                   key={spd}
+                  type="button"
                   onClick={() => setPlaybackSpeed(spd)}
-                  className={`px-2.5 py-1 rounded-lg font-bold font-mono transition cursor-pointer ${
-                    playbackSpeed === spd
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
+                  className={`portal-dash-pill ${playbackSpeed === spd ? 'is-active' : ''}`}
                 >
                   {spd}x
                 </button>
@@ -774,14 +751,14 @@ export default function MapViewReport({
       )}
 
       {/* MAIN MAP CANVAS AREA */}
-      <div className="relative w-full h-[620px] bg-slate-950 overflow-hidden flex">
+      <div className="portal-map-canvas">
         {/* REAL GOOGLE MAPS JS SDK CONTAINER */}
         <div ref={mapContainerRef} className="absolute inset-0 w-full h-full z-0" />
 
         {/* Loading Indicator or API Error Message */}
         {!isMapsLoaded && !mapsError && (
           <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-3 z-30">
-            <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'var(--theme-accent)', borderTopColor: 'transparent' }} />
             <p className="text-xs font-bold text-slate-300">
               {lang === 'ta' ? 'அசல் கூகிள் மேப் ஏற்றப்படுகிறது...' : 'Loading Real Interactive Google Map JS SDK...'}
             </p>
@@ -904,7 +881,7 @@ export default function MapViewReport({
                   onClick={() => {
                     if (onOpenDetailsModal) onOpenDetailsModal(selectedDotWork);
                   }}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition shadow-md cursor-pointer ml-auto"
+                  className="portal-dash-action rounded-lg px-4 py-2 text-xs font-bold ml-auto"
                 >
                   {lang === 'ta' ? 'முழு விவரங்கள்' : 'View Full Report'}
                 </button>

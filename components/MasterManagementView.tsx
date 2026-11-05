@@ -7,7 +7,7 @@ import {
   Plus, 
   Trash2, 
   Download, 
-  UploadCloud, 
+  Upload, 
   MapPin, 
   Briefcase, 
   Grid,
@@ -15,7 +15,12 @@ import {
   CheckCircle,
   AlertCircle,
   Pencil,
-  Layers
+  Layers,
+  FolderTree,
+  Users,
+  X,
+  Home,
+  ChevronRight
 } from 'lucide-react';
 import { Language, translations } from './translations';
 
@@ -35,6 +40,18 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
   const [hierarchyZoneFilter, setHierarchyZoneFilter] = useState('all');
   const [hierarchyDistrictFilter, setHierarchyDistrictFilter] = useState('all');
   const [hierarchyTpFilter, setHierarchyTpFilter] = useState('all');
+  const [openZones, setOpenZones] = useState<Record<string, boolean>>({});
+  const [openDistricts, setOpenDistricts] = useState<Record<string, boolean>>({});
+  const [openPostMasterSections, setOpenPostMasterSections] = useState<Record<string, boolean>>({});
+  const [openPostMasterLists, setOpenPostMasterLists] = useState<Record<string, boolean>>({});
+  const POST_MASTER_TONES: Record<string, string> = {
+    pay: '#1d4ed8',
+    category: '#0f766e',
+    nature: '#c2410c',
+    reason: '#7c3aed',
+  };
+  const ZONE_TONES = ['#1d4ed8', '#7c3aed', '#c2410c', '#0f766e', '#be185d', '#0369a1', '#b45309', '#4f46e5'];
+  const DISTRICT_TONES = ['#0d9488', '#2563eb', '#d97706', '#db2777', '#059669', '#7c3aed', '#ea580c', '#0284c7'];
 
   const [mastersSearch, setMastersSearch] = useState('');
   const [mastersCategoryFilter, setMastersCategoryFilter] = useState('all');
@@ -43,7 +60,6 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [csvFeedback, setCsvFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showTemplateGuide, setShowTemplateGuide] = useState(false);
-  const [replaceOnUpload, setReplaceOnUpload] = useState(true);
 
   // Edit hierarchy modal states
   const [editingType, setEditingType] = useState<'zone' | 'district' | 'tp' | 'ward_street' | null>(null);
@@ -440,10 +456,10 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
 
         if (activeTab === 'hierarchy') {
           // Parsing hierarchy with flexible header detection
-          const uploadedZones = replaceOnUpload ? [] : [...zones];
-          const uploadedDistricts = replaceOnUpload ? [] : [...districts];
-          const uploadedTPs = replaceOnUpload ? [] : [...townPanchayats];
-          const uploadedWardsAndStreets = replaceOnUpload ? [] : [...wardsAndStreets];
+          const uploadedZones: any[] = [];
+          const uploadedDistricts: any[] = [];
+          const uploadedTPs: any[] = [];
+          const uploadedWardsAndStreets: any[] = [];
 
           // Locate columns by name or fallback to index
           const hasCustomHeaders = normHeaders.some(h => h.includes('districtcode') || h.includes('tpcode') || h.includes('townpanchayatcode'));
@@ -649,190 +665,164 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
   };
 
   return (
-    <div id="master-management-container" className="space-y-6">
-      {/* Header Tabs */}
-      <div className="flex justify-start sm:justify-center overflow-x-auto scrollbar-custom whitespace-nowrap border-b border-gray-100 bg-white px-6 pt-4 rounded-t-2xl shadow-xs">
-        <button
-          onClick={() => { setActiveTab('hierarchy'); setCsvFeedback(null); }}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'hierarchy' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          {t('tpTabs')}
-        </button>
-        <button
-          onClick={() => { setActiveTab('employee_masters'); setCsvFeedback(null); }}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'employee_masters' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          {t('employeeTabs')}
-        </button>
-      </div>
-
-      {/* Bulk Upload Widget */}
-      <div className="p-6 bg-white rounded-2xl border border-gray-100 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h3 className="font-semibold text-gray-800 text-md flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-indigo-500" />
-              {t('bulkUpload')}
+    <div id="master-management-container" className="portal-studio portal-page">
+      <div className="portal-fis-hero">
+        <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
+            <Layers className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0 leading-tight">
+            <h3 className="text-[14px] font-semibold tracking-tight text-white">
+              {t('masterManagement')}
             </h3>
-            <p className="text-xs text-gray-400 mt-1">
-              {lang === 'ta' 
+            <p className="text-[10px] text-white/70">
+              {lang === 'ta'
                 ? 'மாதிரி CSV கோப்பைப் பதிவிறக்கி உங்கள் தரவை உள்ளிட்டுப் பதிவேற்றவும்.'
-                : 'Download our standard format, input your master registry rows, and upload to populate the DB.'
-              }
+                : 'Download our standard format, input your master registry rows, and upload to populate the DB.'}
             </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={activeTab === 'hierarchy' ? downloadHierarchyTemplate : downloadEmployeeMastersTemplate}
-              className="flex items-center gap-2 px-4 py-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-semibold text-gray-600 transition"
-            >
-              <Download className="w-4 h-4 text-indigo-600" />
-              {t('downloadTemplate')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowTemplateGuide(!showTemplateGuide)}
-              className="flex items-center gap-1.5 px-3 py-2 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold transition"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-indigo-600" />
-              {showTemplateGuide 
-                ? (lang === 'ta' ? 'வழிகாட்டியை மறை' : 'Hide Format Guide') 
-                : (lang === 'ta' ? 'மாதிரி வழிகாட்டி' : 'View Format Guide')}
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs"
-            >
-              <UploadCloud className="w-4 h-4" />
-              {t('selectFile')}
-            </button>
-            {activeTab === 'hierarchy' && (
-              <label className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 transition shadow-2xs">
-                <input
-                  type="checkbox"
-                  checked={replaceOnUpload}
-                  onChange={(e) => setReplaceOnUpload(e.target.checked)}
-                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
-                />
-                <span>
-                  {lang === 'ta' ? 'வெற்று நிலை பதிவேற்றம் (Replace Blank)' : 'Blank Replace'}
-                </span>
-              </label>
-            )}
-            {activeTab === 'hierarchy' && (
-              <button
-                type="button"
-                onClick={handleClearAllJurisdictions}
-                className="flex items-center gap-1.5 px-3 py-2 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold transition shadow-2xs"
-                title={lang === 'ta' ? 'அனைத்து மாதிரி மண்டலம், மாவட்டம், பேரூராட்சி, வார்டு தெருக்களையும் அழித்து புதிய வெற்று நிலைக்கு மாற்றவும்' : 'Clear all mock zones, districts, TPs, and wards for clean blank state'}
-              >
-                <Trash2 className="w-4 h-4 text-rose-600" />
-                {lang === 'ta' ? 'அனைத்தையும் அழி (Clear Blank)' : 'Clear Blank State'}
-              </button>
-            )}
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept=".csv"
-              onChange={handleCsvUpload}
-              className="hidden"
-            />
           </div>
         </div>
 
-        {/* Model Template Format Guide */}
-        {showTemplateGuide && activeTab === 'hierarchy' && (
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
-              <div className="flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
-                  <FileSpreadsheet className="w-4 h-4" />
-                </span>
-                <div>
-                  <h4 className="text-xs font-bold text-slate-800 flex items-center gap-2">
-                    {lang === 'ta' ? 'படிநிலை மாதிரி CSV கட்டமைப்பு (இருமொழி & Manual Code ஆதரவு)' : 'Hierarchy Model CSV Template (Bilingual & Manual Codes)'}
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-100 text-emerald-800 font-bold">11 Columns (En + Ta)</span>
-                  </h4>
-                  <p className="text-[11px] text-slate-500">
-                    {lang === 'ta'
-                      ? 'மண்டலம், மாவட்டம், பேரூராட்சி, வார்டு மற்றும் தெருக்கள் அனைத்தும் ஆங்கிலம் மற்றும் தமிழ் இருமொழிகளிலும் பதிவேற்றப்பட வேண்டும்.'
-                      : 'Zone, District, Town Panchayat, Ward, and Street all require both English and Tamil names.'}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={downloadHierarchyTemplate}
-                className="self-start sm:self-auto flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition shadow-xs"
-              >
-                <Download className="w-3.5 h-3.5" />
-                {lang === 'ta' ? 'மாதிரி டெம்ப்ளேட் பதிவிறக்கு (CSV)' : 'Download Model Template (CSV)'}
-              </button>
-            </div>
+        <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={activeTab === 'hierarchy' ? downloadHierarchyTemplate : downloadEmployeeMastersTemplate}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+          >
+            <Download className="h-3 w-3" />
+            {lang === 'ta' ? 'மாதிரி படிவம் (CSV)' : 'Template (CSV)'}
+          </button>
 
-            {/* Preview Sample Table */}
-            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-              <table className="w-full text-[11px] text-left">
-                <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+          <button
+            type="button"
+            onClick={() => setShowTemplateGuide(!showTemplateGuide)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+          >
+            <FileSpreadsheet className="h-3 w-3" />
+            {showTemplateGuide
+              ? (lang === 'ta' ? 'வழிகாட்டியை மறை' : 'Hide Format Guide')
+              : (lang === 'ta' ? 'மாதிரி வழிகாட்டி' : 'View Format Guide')}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-md hover:brightness-110 cursor-pointer"
+            style={{ background: 'var(--theme-accent)' }}
+          >
+            <Upload className="h-3 w-3" />
+            {lang === 'ta' ? 'பல்க் பதிவேற்றம்' : 'Bulk CSV Upload'}
+          </button>
+
+          {activeTab === 'hierarchy' && (
+            <button
+              type="button"
+              onClick={handleClearAllJurisdictions}
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+              title={lang === 'ta' ? 'அனைத்து மாதிரி மண்டலம், மாவட்டம், பேரூராட்சி, வார்டு தெருக்களையும் அழித்து புதிய வெற்று நிலைக்கு மாற்றவும்' : 'Clear all mock zones, districts, TPs, and wards for clean blank state'}
+            >
+              <Trash2 className="h-3 w-3" />
+              {lang === 'ta' ? 'அனைத்தையும் அழி (Clear Blank)' : 'Clear Blank State'}
+            </button>
+          )}
+
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept=".csv"
+            onChange={handleCsvUpload}
+            className="hidden"
+          />
+        </div>
+      </div>
+
+      {showTemplateGuide && activeTab === 'hierarchy' && (
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>
+                <span className="portal-dash-icon">
+                  <FileSpreadsheet className="h-3 w-3" />
+                </span>
+                {lang === 'ta' ? 'படிநிலை மாதிரி CSV கட்டமைப்பு (இருமொழி & Manual Code ஆதரவு)' : 'Hierarchy Model CSV Template (Bilingual & Manual Codes)'}
+              </h3>
+              <p>
+                {lang === 'ta'
+                  ? 'மண்டலம், மாவட்டம், பேரூராட்சி, வார்டு மற்றும் தெருக்கள் அனைத்தும் ஆங்கிலம் மற்றும் தமிழ் இருமொழிகளிலும் பதிவேற்றப்பட வேண்டும்.'
+                  : 'Zone, District, Town Panchayat, Ward, and Street all require both English and Tamil names.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={downloadHierarchyTemplate}
+              className="portal-dash-head-action"
+            >
+              <Download className="h-3 w-3" />
+              <span>{lang === 'ta' ? 'மாதிரி டெம்ப்ளேட் பதிவிறக்கு (CSV)' : 'Download Model Template (CSV)'}</span>
+            </button>
+          </div>
+          <div className="portal-dash-body">
+            <div className="portal-dash-table">
+              <table>
+                <thead>
                   <tr>
-                    <th className="p-2">ZoneNameEn</th>
-                    <th className="p-2">ZoneNameTa</th>
-                    <th className="p-2 bg-purple-50 text-purple-900 border-x border-purple-100">DistrictCode</th>
-                    <th className="p-2">DistrictNameEn</th>
-                    <th className="p-2">DistrictNameTa</th>
-                    <th className="p-2 bg-emerald-50 text-emerald-900 border-x border-emerald-100">TownPanchayatCode</th>
-                    <th className="p-2">TownPanchayatNameEn</th>
-                    <th className="p-2">TownPanchayatNameTa</th>
-                    <th className="p-2 bg-indigo-50 text-indigo-900 border-x border-indigo-100 text-center">WardNo</th>
-                    <th className="p-2">StreetNameEn</th>
-                    <th className="p-2">StreetNameTa</th>
+                    <th>ZoneNameEn</th>
+                    <th>ZoneNameTa</th>
+                    <th>DistrictCode</th>
+                    <th>DistrictNameEn</th>
+                    <th>DistrictNameTa</th>
+                    <th>TownPanchayatCode</th>
+                    <th>TownPanchayatNameEn</th>
+                    <th>TownPanchayatNameTa</th>
+                    <th>WardNo</th>
+                    <th>StreetNameEn</th>
+                    <th>StreetNameTa</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-[10px]">
-                  <tr className="hover:bg-slate-50">
-                    <td className="p-2 font-medium">Kanchipuram</td>
-                    <td className="p-2 font-medium">காஞ்சிபுரம்</td>
-                    <td className="p-2 bg-purple-50/50 text-purple-700 font-bold border-x border-purple-100 font-mono">01</td>
-                    <td className="p-2">Thiruvallur</td>
-                    <td className="p-2">திருவள்ளூர்</td>
-                    <td className="p-2 bg-emerald-50/50 text-emerald-700 font-bold border-x border-emerald-100 font-mono">01</td>
-                    <td className="p-2">Thirumazhisai</td>
-                    <td className="p-2">திருமழிசை</td>
-                    <td className="p-2 bg-indigo-50/50 text-indigo-700 font-bold border-x border-indigo-100 font-mono text-center">1</td>
-                    <td className="p-2">Bazaar Street</td>
-                    <td className="p-2">பஜார் தெரு</td>
+                <tbody>
+                  <tr>
+                    <td>Kanchipuram</td>
+                    <td>காஞ்சிபுரம்</td>
+                    <td className="portal-dash-id">01</td>
+                    <td>Thiruvallur</td>
+                    <td>திருவள்ளூர்</td>
+                    <td className="portal-dash-id">01</td>
+                    <td>Thirumazhisai</td>
+                    <td>திருமழிசை</td>
+                    <td className="portal-dash-id">1</td>
+                    <td>Bazaar Street</td>
+                    <td>பஜார் தெரு</td>
                   </tr>
-                  <tr className="hover:bg-slate-50">
-                    <td className="p-2 font-medium">Kanchipuram</td>
-                    <td className="p-2 font-medium">காஞ்சிபுரம்</td>
-                    <td className="p-2 bg-purple-50/50 text-purple-700 font-bold border-x border-purple-100 font-mono">01</td>
-                    <td className="p-2">Thiruvallur</td>
-                    <td className="p-2">திருவள்ளூர்</td>
-                    <td className="p-2 bg-emerald-50/50 text-emerald-700 font-bold border-x border-emerald-100 font-mono">01</td>
-                    <td className="p-2">Thirumazhisai</td>
-                    <td className="p-2">திருமழிசை</td>
-                    <td className="p-2 bg-indigo-50/50 text-indigo-700 font-bold border-x border-indigo-100 font-mono text-center">2</td>
-                    <td className="p-2">Gandhi Street</td>
-                    <td className="p-2">காந்தி தெரு</td>
+                  <tr>
+                    <td>Kanchipuram</td>
+                    <td>காஞ்சிபுரம்</td>
+                    <td className="portal-dash-id">01</td>
+                    <td>Thiruvallur</td>
+                    <td>திருவள்ளூர்</td>
+                    <td className="portal-dash-id">01</td>
+                    <td>Thirumazhisai</td>
+                    <td>திருமழிசை</td>
+                    <td className="portal-dash-id">2</td>
+                    <td>Gandhi Street</td>
+                    <td>காந்தி தெரு</td>
                   </tr>
-                  <tr className="hover:bg-slate-50">
-                    <td className="p-2 font-medium">Kanchipuram</td>
-                    <td className="p-2 font-medium">காஞ்சிபுரம்</td>
-                    <td className="p-2 bg-purple-50/50 text-purple-700 font-bold border-x border-purple-100 font-mono">01</td>
-                    <td className="p-2">Thiruvallur</td>
-                    <td className="p-2">திருவள்ளூர்</td>
-                    <td className="p-2 bg-emerald-50/50 text-emerald-700 font-bold border-x border-emerald-100 font-mono">02</td>
-                    <td className="p-2">Arani</td>
-                    <td className="p-2">ஆரணி</td>
-                    <td className="p-2 bg-indigo-50/50 text-indigo-700 font-bold border-x border-indigo-100 font-mono text-center">1</td>
-                    <td className="p-2">Sannathi Street</td>
-                    <td className="p-2">சன்னதி தெரு</td>
+                  <tr>
+                    <td>Kanchipuram</td>
+                    <td>காஞ்சிபுரம்</td>
+                    <td className="portal-dash-id">01</td>
+                    <td>Thiruvallur</td>
+                    <td>திருவள்ளூர்</td>
+                    <td className="portal-dash-id">02</td>
+                    <td>Arani</td>
+                    <td>ஆரணி</td>
+                    <td className="portal-dash-id">1</td>
+                    <td>Sannathi Street</td>
+                    <td>சன்னதி தெரு</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-
-            <div className="flex flex-wrap items-center gap-4 text-[10px] text-slate-500 pt-1">
+            <div className="flex flex-wrap items-center gap-4 text-[10px] text-slate-500 pt-2">
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
                 <strong>DistrictCode:</strong> {lang === 'ta' ? 'மாநில அளவிலான 2-இலக்க மாவட்ட எண் (எ.கா. 01, 02, 03)' : '2-digit district code across state (e.g. 01, 02, 03)'}
@@ -843,82 +833,117 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
               </span>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* CSV Upload Feedback alerts */}
-        {csvFeedback && (
-          <div className={`p-4 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
-            {csvFeedback.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
-            <p className="text-xs font-medium">{csvFeedback.message}</p>
-          </div>
-        )}
+      {csvFeedback && (
+        <div className={`p-3 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+          {csvFeedback.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
+          <p className="text-xs font-medium">{csvFeedback.message}</p>
+        </div>
+      )}
+
+      <div className="portal-dash-toolbar">
+        <div className="portal-dash-pills">
+          <button
+            type="button"
+            onClick={() => { setActiveTab('hierarchy'); setCsvFeedback(null); }}
+            className={`portal-dash-pill ${activeTab === 'hierarchy' ? 'is-active' : ''}`}
+          >
+            <FolderTree className="h-3.5 w-3.5" />
+            <span>{t('tpTabs')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('employee_masters'); setCsvFeedback(null); }}
+            className={`portal-dash-pill ${activeTab === 'employee_masters' ? 'is-active' : ''}`}
+          >
+            <Users className="h-3.5 w-3.5" />
+            <span>{t('employeeTabs')}</span>
+          </button>
+        </div>
       </div>
 
       {activeTab === 'hierarchy' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Form Side */}
-          <div className="lg:col-span-5 space-y-6">
-            {/* Hierarchy Level Tabs */}
-            <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs flex gap-2">
-              <button
-                onClick={() => setHierarchySubTab('zone')}
-                className={`flex-1 py-2 text-center text-xs font-semibold rounded-lg transition ${hierarchySubTab === 'zone' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-50 text-gray-500'}`}
-              >
-                {lang === 'ta' ? 'மண்டலம்' : 'Zone'}
-              </button>
-              <button
-                onClick={() => setHierarchySubTab('district')}
-                className={`flex-1 py-2 text-center text-xs font-semibold rounded-lg transition ${hierarchySubTab === 'district' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-50 text-gray-500'}`}
-              >
-                {lang === 'ta' ? 'மாவட்டம்' : 'District'}
-              </button>
-              <button
-                onClick={() => setHierarchySubTab('tp')}
-                className={`flex-1 py-2 text-center text-xs font-semibold rounded-lg transition ${hierarchySubTab === 'tp' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-50 text-gray-500'}`}
-              >
-                {lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}
-              </button>
-              <button
-                onClick={() => setHierarchySubTab('ward_street')}
-                className={`flex-1 py-2 text-center text-xs font-semibold rounded-lg transition ${hierarchySubTab === 'ward_street' ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-50 text-gray-500'}`}
-              >
-                {lang === 'ta' ? 'வார்டு & தெரு' : 'Ward & Street'}
-              </button>
+        <div className="portal-wt-grid">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Plus className="h-3 w-3" />
+                  </span>
+                  {hierarchySubTab === 'zone'
+                    ? (lang === 'ta' ? 'புதிய மண்டலம் உருவாக்கு' : 'Create New Zone')
+                    : hierarchySubTab === 'district'
+                      ? (lang === 'ta' ? 'புதிய மாவட்டம் உருவாக்கு' : 'Create New District')
+                      : hierarchySubTab === 'tp'
+                        ? (lang === 'ta' ? 'புதிய பேரூராட்சி உருவாக்கு' : 'Create New Town Panchayat')
+                        : (lang === 'ta' ? 'புதிய வார்டு & தெரு உருவாக்கு' : 'Create New Ward & Street')}
+                </h3>
+              </div>
             </div>
-
-            {/* Creation Forms */}
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs">
+            <div className="portal-dash-body portal-wt-form">
+              <div className="portal-dash-pills">
+                <button
+                  type="button"
+                  onClick={() => setHierarchySubTab('zone')}
+                  className={`portal-dash-pill ${hierarchySubTab === 'zone' ? 'is-active' : ''}`}
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                  <span>{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHierarchySubTab('district')}
+                  className={`portal-dash-pill ${hierarchySubTab === 'district' ? 'is-active' : ''}`}
+                >
+                  <Grid className="h-3.5 w-3.5" />
+                  <span>{lang === 'ta' ? 'மாவட்டம்' : 'District'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHierarchySubTab('tp')}
+                  className={`portal-dash-pill ${hierarchySubTab === 'tp' ? 'is-active' : ''}`}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  <span>{lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHierarchySubTab('ward_street')}
+                  className={`portal-dash-pill ${hierarchySubTab === 'ward_street' ? 'is-active' : ''}`}
+                >
+                  <Home className="h-3.5 w-3.5" />
+                  <span>{lang === 'ta' ? 'வார்டு & தெரு' : 'Ward & Street'}</span>
+                </button>
+              </div>
               {hierarchySubTab === 'zone' && (
                 <form onSubmit={handleAddZone} className="space-y-4">
-                  <h4 className="font-semibold text-gray-800 text-sm border-b border-gray-100 pb-2">
-                    {lang === 'ta' ? 'புதிய மண்டலம் உருவாக்கு' : 'Create New Zone'}
-                  </h4>
                   <div className="space-y-3">
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('zoneNameEn')}</label>
+                      <label>{t('zoneNameEn')}</label>
                       <input
                         type="text"
                         value={zoneEn}
                         onChange={(e) => setZoneEn(e.target.value)}
                         placeholder="e.g. Kanchipuram"
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                         required
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('zoneNameTa')}</label>
+                      <label>{t('zoneNameTa')}</label>
                       <input
                         type="text"
                         value={zoneTa}
                         onChange={(e) => setZoneTa(e.target.value)}
                         placeholder="எ.கா. காஞ்சிபுரம்"
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                         required
                       />
                     </div>
                   </div>
-                  <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2 shadow-xs">
-                    <Plus className="w-4 h-4" />
+                  <button type="submit">
+                    <Plus className="h-3.5 w-3.5" />
                     {lang === 'ta' ? 'மண்டலத்தை சேர்' : 'Add Zone'}
                   </button>
                 </form>
@@ -926,16 +951,12 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
 
               {hierarchySubTab === 'district' && (
                 <form onSubmit={handleAddDistrict} className="space-y-4">
-                  <h4 className="font-semibold text-gray-800 text-sm border-b border-gray-100 pb-2">
-                    {lang === 'ta' ? 'புதிய மாவட்டம் உருவாக்கு' : 'Create New District'}
-                  </h4>
                   <div className="space-y-3">
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('selectZone')}</label>
+                      <label>{t('selectZone')}</label>
                       <select
                         value={selectedZoneId}
                         onChange={(e) => setSelectedZoneId(e.target.value)}
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
                         required
                       >
                         <option value="">-- Choose Zone --</option>
@@ -945,44 +966,41 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('districtNameEn')}</label>
+                      <label>{t('districtNameEn')}</label>
                       <input
                         type="text"
                         value={districtEn}
                         onChange={(e) => setDistrictEn(e.target.value)}
                         placeholder="e.g. Chengalpattu"
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                         required
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('districtNameTa')}</label>
+                      <label>{t('districtNameTa')}</label>
                       <input
                         type="text"
                         value={districtTa}
                         onChange={(e) => setDistrictTa(e.target.value)}
                         placeholder="எ.கா. செங்கல்பட்டு"
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                         required
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'மாவட்ட குறியீடு (2 இலக்கம்)' : 'District Code (2-digit)'}</label>
+                      <label>{lang === 'ta' ? 'மாவட்ட குறியீடு (2 இலக்கம்)' : 'District Code (2-digit)'}</label>
                       <input
                         type="text"
                         maxLength={2}
                         value={districtCode}
                         onChange={(e) => setDistrictCode(e.target.value.replace(/\D/g, ''))}
                         placeholder={getNextDistrictCode()}
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-mono"
                       />
                       <span className="text-[10px] text-gray-400 mt-0.5 block">
                         {lang === 'ta' ? `தானியங்கி குறியீடு: ${getNextDistrictCode()}` : `Auto code suggested: ${getNextDistrictCode()}`}
                       </span>
                     </div>
                   </div>
-                  <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2 shadow-xs">
-                    <Plus className="w-4 h-4" />
+                  <button type="submit">
+                    <Plus className="h-3.5 w-3.5" />
                     {lang === 'ta' ? 'மாவட்டத்தை சேர்' : 'Add District'}
                   </button>
                 </form>
@@ -990,12 +1008,9 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
 
               {hierarchySubTab === 'tp' && (
                 <form onSubmit={handleAddTP} className="space-y-4">
-                  <h4 className="font-semibold text-gray-800 text-sm border-b border-gray-100 pb-2">
-                    {lang === 'ta' ? 'புதிய பேரூராட்சி உருவாக்கு' : 'Create New Town Panchayat'}
-                  </h4>
                   <div className="space-y-3">
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('selectDistrict')}</label>
+                      <label>{t('selectDistrict')}</label>
                       <select
                         value={selectedDistrictId}
                         onChange={(e) => {
@@ -1003,7 +1018,6 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                           setSelectedDistrictId(distId);
                           setTpCode(getNextTpCode(distId));
                         }}
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
                         required
                       >
                         <option value="">-- Choose District --</option>
@@ -1016,36 +1030,33 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('tpNameEn')}</label>
+                      <label>{t('tpNameEn')}</label>
                       <input
                         type="text"
                         value={tpEn}
                         onChange={(e) => setTpEn(e.target.value)}
                         placeholder="e.g. Thiruporur"
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                         required
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('tpNameTa')}</label>
+                      <label>{t('tpNameTa')}</label>
                       <input
                         type="text"
                         value={tpTa}
                         onChange={(e) => setTpTa(e.target.value)}
                         placeholder="எ.கா. திருப்போரூர்"
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                         required
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'பேரூராட்சி குறியீடு (2 இலக்கம்)' : 'Town Panchayat Code (2-digit)'}</label>
+                      <label>{lang === 'ta' ? 'பேரூராட்சி குறியீடு (2 இலக்கம்)' : 'Town Panchayat Code (2-digit)'}</label>
                       <input
                         type="text"
                         maxLength={2}
                         value={tpCode}
                         onChange={(e) => setTpCode(e.target.value.replace(/\D/g, ''))}
                         placeholder={getNextTpCode(selectedDistrictId)}
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-mono"
                       />
                       <span className="text-[10px] text-gray-400 mt-0.5 block">
                         {lang === 'ta' 
@@ -1054,8 +1065,8 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                       </span>
                     </div>
                   </div>
-                  <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2 shadow-xs">
-                    <Plus className="w-4 h-4" />
+                  <button type="submit">
+                    <Plus className="h-3.5 w-3.5" />
                     {lang === 'ta' ? 'பேரூராட்சியை சேர்' : 'Add Town Panchayat'}
                   </button>
                 </form>
@@ -1063,16 +1074,12 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
 
               {hierarchySubTab === 'ward_street' && (
                 <form onSubmit={handleAddWardAndStreet} className="space-y-4">
-                  <h4 className="font-semibold text-gray-800 text-sm border-b border-gray-100 pb-2">
-                    {lang === 'ta' ? 'புதிய வார்டு & தெரு உருவாக்கு' : 'Create New Ward & Street'}
-                  </h4>
                   <div className="space-y-3">
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}</label>
+                      <label>{lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}</label>
                       <select
                         value={wardStreetTpId}
                         onChange={(e) => setWardStreetTpId(e.target.value)}
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
                         required
                       >
                         <option value="">-- Choose Town Panchayat --</option>
@@ -1085,41 +1092,38 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                       </select>
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('wardNo')}</label>
+                      <label>{t('wardNo')}</label>
                       <input
                         type="text"
                         value={wardNo}
                         onChange={(e) => setWardNo(e.target.value)}
                         placeholder="e.g. 1"
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                         required
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('streetNameEn')}</label>
+                      <label>{t('streetNameEn')}</label>
                       <input
                         type="text"
                         value={streetEn}
                         onChange={(e) => setStreetEn(e.target.value)}
                         placeholder="e.g. Anna Street"
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                         required
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('streetNameTa')}</label>
+                      <label>{t('streetNameTa')}</label>
                       <input
                         type="text"
                         value={streetTa}
                         onChange={(e) => setStreetTa(e.target.value)}
                         placeholder="எ.கா. அண்ணா தெரு"
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                         required
                       />
                     </div>
                   </div>
-                  <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2 shadow-xs">
-                    <Plus className="w-4 h-4" />
+                  <button type="submit">
+                    <Plus className="h-3.5 w-3.5" />
                     {lang === 'ta' ? 'வார்டு & தெருவைச் சேர்' : 'Add Ward & Street'}
                   </button>
                 </form>
@@ -1127,38 +1131,37 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
             </div>
           </div>
 
-          {/* List Side */}
-          <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100 pb-3">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
               <div>
-                <h4 className="font-bold text-gray-800 text-md flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-indigo-500" />
+                <h3>
+                  <span className="portal-dash-icon">
+                    <MapPin className="h-3 w-3" />
+                  </span>
                   {lang === 'ta' ? 'தற்போதைய மண்டல படிநிலை வரைபடம்' : 'Active Town Panchayat Jurisdictions'}
-                </h4>
-                <p className="text-[11px] text-gray-400 mt-0.5">
+                </h3>
+                <p>
                   {lang === 'ta' ? 'அனைத்து மண்டலம், மாவட்டம், பேரூராட்சி மற்றும் வார்டுகள்.' : 'Full list of zones, districts, town panchayats, and wards.'}
                 </p>
               </div>
-
-              {/* View Mode Toggle */}
-              <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg text-xs font-semibold">
+              <div className="portal-dash-pills">
                 <button
                   type="button"
                   onClick={() => setHierarchyViewMode('cards')}
-                  className={`px-3 py-1 rounded-md transition ${hierarchyViewMode === 'cards' ? 'bg-white text-indigo-600 shadow-xs' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`portal-dash-pill ${hierarchyViewMode === 'cards' ? 'is-active' : ''}`}
                 >
-                  {lang === 'ta' ? 'வரைபடம்' : 'Tree View'}
+                  {lang === 'ta' ? 'வரைபடம்' : 'Tree'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setHierarchyViewMode('table')}
-                  className={`px-3 py-1 rounded-md transition ${hierarchyViewMode === 'table' ? 'bg-white text-indigo-600 shadow-xs' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`portal-dash-pill ${hierarchyViewMode === 'table' ? 'is-active' : ''}`}
                 >
-                  {lang === 'ta' ? 'அட்டவணை' : 'Table View'}
+                  {lang === 'ta' ? 'அட்டவணை' : 'Table'}
                 </button>
               </div>
             </div>
-
+            <div className="portal-dash-body">
             {hierarchyViewMode === 'table' ? (() => {
               // Construct Flat Hierarchy List
               const flatHierarchy: any[] = [];
@@ -1403,85 +1406,73 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                         placeholder={lang === 'ta' ? 'வார்டு / தெரு மூலம் தேடு...' : 'Search street or zone...'}
                         value={hierarchySearch}
                         onChange={(e) => setHierarchySearch(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg p-2 bg-white text-gray-700 focus:outline-none focus:border-indigo-500"
+                        className="w-full border border-gray-200 rounded-lg p-2 bg-white text-gray-700 outline-none"
                       />
                     </div>
                   </div>
 
-                  {/* Export Controls and Summaries */}
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-1 text-xs">
                     <span className="text-gray-500 font-semibold">
                       {lang === 'ta' ? `காட்டப்படும் உருப்படிகள்: ${filteredHierarchy.length}` : `Showing ${filteredHierarchy.length} hierarchy records`}
                     </span>
                     <div className="flex items-center gap-2">
                       <button
+                        type="button"
                         onClick={handleExportExcel}
-                        className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-bold flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                        className="portal-dash-head-action"
+                        style={{ background: 'var(--theme-accent)', color: '#fff', borderColor: 'transparent' }}
                       >
-                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        <FileSpreadsheet className="h-3 w-3" />
                         {lang === 'ta' ? 'Excel பதிவிறக்கு' : 'Download Excel'}
                       </button>
                       <button
+                        type="button"
                         onClick={handleExportPDF}
-                        className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-bold flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                        className="portal-dash-head-action"
+                        style={{ background: 'var(--theme-accent)', color: '#fff', borderColor: 'transparent' }}
                       >
-                        <Download className="w-3.5 h-3.5" />
+                        <Download className="h-3 w-3" />
                         {lang === 'ta' ? 'PDF பதிவிறக்கு' : 'Download PDF'}
                       </button>
                     </div>
                   </div>
 
-                  {/* Table Element */}
-                  <div className="border border-gray-100 rounded-xl overflow-hidden max-h-[360px] overflow-y-auto">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead className="bg-gray-50 text-[10px] uppercase font-bold text-gray-500 tracking-wider border-b border-gray-200 sticky top-0 z-10">
+                  <div className="portal-dash-table">
+                    <table>
+                      <thead>
                         <tr>
-                          <th className="py-2.5 px-3">{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</th>
-                          <th className="py-2.5 px-3">{lang === 'ta' ? 'மாவட்டம் (குறியீடு)' : 'District (Code)'}</th>
-                          <th className="py-2.5 px-3">{lang === 'ta' ? 'பேரூராட்சி (குறியீடு)' : 'Town Panchayat (Code)'}</th>
-                          <th className="py-2.5 px-3 text-center">{lang === 'ta' ? 'வார்டு எண்' : 'Ward No'}</th>
-                          <th className="py-2.5 px-3">{lang === 'ta' ? 'தெரு / வார்டு பெயர்' : 'Street / Ward Name'}</th>
+                          <th>{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</th>
+                          <th>{lang === 'ta' ? 'மாவட்டம் (குறியீடு)' : 'District (Code)'}</th>
+                          <th>{lang === 'ta' ? 'பேரூராட்சி (குறியீடு)' : 'Town Panchayat (Code)'}</th>
+                          <th>{lang === 'ta' ? 'வார்டு எண்' : 'Ward No'}</th>
+                          <th>{lang === 'ta' ? 'தெரு / வார்டு பெயர்' : 'Street / Ward Name'}</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100">
+                      <tbody>
                         {filteredHierarchy.map((item: any) => (
-                          <tr key={item.id} className="hover:bg-gray-50/70 transition">
-                            <td className="py-2 px-3 font-semibold text-gray-700">{item.zoneName}</td>
-                            <td className="py-2 px-3">
+                          <tr key={item.id}>
+                            <td>{item.zoneName}</td>
+                            <td>
                               <span className="font-semibold text-gray-800">{item.districtName}</span>
-                              <span className="ml-1 px-1 py-0.5 rounded text-[9px] bg-purple-50 text-purple-700 border border-purple-100 font-mono font-bold">
-                                #{item.districtCode}
-                              </span>
+                              <span className="portal-dash-id ml-1">#{item.districtCode}</span>
                             </td>
-                            <td className="py-2 px-3">
+                            <td>
                               <span className="font-semibold text-gray-800">{item.tpName}</span>
-                              <span className="ml-1 px-1 py-0.5 rounded text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-100 font-mono font-bold">
-                                #{item.tpCode}
-                              </span>
+                              <span className="portal-dash-id ml-1">#{item.tpCode}</span>
                             </td>
-                            <td className="py-2 px-3 text-center font-bold text-indigo-600 font-mono">
+                            <td>
                               {item.wardNo && item.wardNo !== '—' 
                                 ? (lang === 'ta' ? `வார்டு ${item.wardNo}` : `Ward ${item.wardNo}`) 
                                 : '—'}
                             </td>
-                            <td className="py-2 px-3 text-gray-600 font-medium">{item.streetName}</td>
+                            <td>{item.streetName}</td>
                           </tr>
                         ))}
 
                         {filteredHierarchy.length === 0 && (
                           <tr>
-                            <td colSpan={5} className="py-12 text-center text-gray-400">
-                              <div className="flex flex-col items-center justify-center gap-2">
-                                <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
-                                  <Layers className="w-5 h-5" />
-                                </div>
-                                <span className="font-semibold text-gray-700 text-xs">
-                                  {lang === 'ta' ? 'அதிகார வரம்புகள் அல்லது தெருக்கள் எதுவும் இல்லை (வெற்று நிலை - Blank State)' : 'No jurisdictional records or streets found (Clean Blank State)'}
-                                </span>
-                                <span className="text-[11px] text-gray-400 max-w-sm">
-                                  {lang === 'ta' ? 'மண்டலம், மாவட்டம், பேரூராட்சி, வார்டு மற்றும் தெருக்களைக் கொண்ட உங்கள் புதிய CSV கோப்பைப் பதிவேற்றவும்.' : 'Please upload your new CSV file containing Zone, District, TP, Ward, and Street.'}
-                                </span>
-                              </div>
+                            <td colSpan={5} className="portal-wt-empty is-center">
+                              {lang === 'ta' ? 'அதிகார வரம்புகள் அல்லது தெருக்கள் எதுவும் இல்லை (வெற்று நிலை - Blank State)' : 'No jurisdictional records or streets found (Clean Blank State)'}
                             </td>
                           </tr>
                         )}
@@ -1491,503 +1482,675 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                 </div>
               );
             })() : (
-              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+              <div className="portal-wt-tree max-h-[520px] overflow-y-auto pr-1">
                 {zones.length === 0 && (
-                  <div className="text-center py-12 px-4 border border-dashed border-gray-300 rounded-2xl bg-gray-50/50 space-y-2">
-                    <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
-                      <Layers className="w-5 h-5" />
-                    </div>
-                    <h4 className="text-xs font-bold text-gray-800">
-                      {lang === 'ta' ? 'அதிகார வரம்புகள் எதுவும் இல்லை (வெற்று நிலை)' : 'No Jurisdictional Data (Clean Blank State)'}
-                    </h4>
-                    <p className="text-[11px] text-gray-500 max-w-md mx-auto">
-                      {lang === 'ta'
-                        ? 'தற்போது மண்டலம், மாவட்டம், பேரூராட்சி, வார்டு/தெரு மாதிரி தரவுகள் எதுவும் இல்லை. மேலே உள்ள "கோப்பைத் தேர்ந்தெடு (CSV)" மூலம் உங்கள் புதிய அதிகாரப்பூர்வ கோப்பைப் பதிவேற்றவும்.'
-                        : 'Currently no zones, districts, town panchayats, or wards/streets exist. Upload your official CSV file above to populate.'}
-                    </p>
-                  </div>
+                  <p className="portal-wt-empty is-center">
+                    {lang === 'ta'
+                      ? 'அதிகார வரம்புகள் எதுவும் இல்லை. மேலே உள்ள CSV மூலம் பதிவேற்றவும் அல்லது மண்டலம் சேர்க்கவும்.'
+                      : 'No jurisdictional data. Upload a CSV above or create a zone to populate this tree.'}
+                  </p>
                 )}
-                {zones.map((zone: any) => {
+                {zones.map((zone: any, zIdx: number) => {
                   const zoneDistricts = districts.filter((d: any) => d.zoneId === zone.id);
+                  const zoneOpen = Boolean(openZones[zone.id]);
+                  const zoneTone = ZONE_TONES[zIdx % ZONE_TONES.length];
                   return (
-                    <div key={zone.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50 space-y-3">
-                      <div className="flex justify-between items-center">
-                        <h5 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
-                          {tObj(zone)} <span className="text-xs font-normal text-gray-400">({lang === 'ta' ? 'மண்டலம்' : 'Zone'})</span>
-                        </h5>
-                        <div className="flex items-center gap-1.5">
+                    <div
+                      key={zone.id}
+                      className={`portal-wt-node${zoneOpen ? ' is-open' : ''}`}
+                      style={{ ['--wt-tone' as string]: zoneTone }}
+                    >
+                      <div className="portal-wt-node-head">
+                        <button
+                          type="button"
+                          className="portal-wt-toggle"
+                          onClick={() => setOpenZones((prev) => ({ ...prev, [zone.id]: !prev[zone.id] }))}
+                          aria-expanded={zoneOpen}
+                        >
+                          <ChevronRight className={`portal-wt-caret${zoneOpen ? ' is-open' : ''}`} />
+                          <div className="portal-wt-copy">
+                            <div className="portal-wt-title">
+                              <span>{tObj(zone)}</span>
+                              <span className="portal-wt-count">
+                                {zoneDistricts.length} {lang === 'ta' ? 'மாவட்டங்கள்' : 'districts'}
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                        <div className="portal-wt-actions">
                           <button
+                            type="button"
                             onClick={() => {
                               setEditingType('zone');
                               setEditingId(zone.id);
                               setEditNameEn(zone.nameEn);
                               setEditNameTa(zone.nameTa);
                             }}
-                            className="p-1 hover:bg-indigo-100 hover:text-indigo-600 text-gray-400 rounded-lg transition"
+                            className="portal-fis-icon-btn"
                             title="Edit Zone"
                           >
-                            <Pencil className="w-3.5 h-3.5" />
+                            <Pencil className="h-3 w-3" />
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleDeleteMasterItem('zones', zone.id)}
-                            className="p-1.5 hover:bg-red-50 hover:text-red-600 text-gray-400 rounded-lg transition"
+                            className="portal-fis-icon-btn is-danger"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="h-3 w-3" />
                           </button>
                         </div>
                       </div>
 
-                      <div className="pl-4 space-y-2 border-l border-indigo-100">
-                        {zoneDistricts.map((dist: any) => {
-                          const distTPs = townPanchayats.filter((tp: any) => tp.districtId === dist.id);
-                          return (
-                            <div key={dist.id} className="bg-white p-3 rounded-lg border border-gray-100 space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                                  {tObj(dist)}
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                                    {lang === 'ta' ? 'மாவட்டம்' : 'Dist'} {dist.code ? `#${dist.code}` : ''}
-                                  </span>
-                                </span>
-                                <div className="flex items-center gap-1">
+                      {zoneOpen && (
+                        <div className="portal-wt-cats">
+                          {zoneDistricts.length === 0 && (
+                            <p className="portal-wt-empty">{lang === 'ta' ? 'மாவட்டங்கள் இல்லை' : 'No districts mapped to this zone yet'}</p>
+                          )}
+                          {zoneDistricts.map((dist: any, dIdx: number) => {
+                            const distTPs = townPanchayats.filter((tp: any) => tp.districtId === dist.id);
+                            const distOpen = Boolean(openDistricts[dist.id]);
+                            const distTone = DISTRICT_TONES[dIdx % DISTRICT_TONES.length];
+                            return (
+                              <div
+                                key={dist.id}
+                                className={`portal-wt-cat${distOpen ? ' is-open' : ''}`}
+                                style={{ ['--wt-tone' as string]: distTone }}
+                              >
+                                <div className="portal-wt-cat-head">
                                   <button
-                                    onClick={() => {
-                                      setEditingType('district');
-                                      setEditingId(dist.id);
-                                      setEditNameEn(dist.nameEn);
-                                      setEditNameTa(dist.nameTa);
-                                      setEditZoneId(dist.zoneId);
-                                      setEditDistrictCode(dist.code || '');
-                                    }}
-                                    className="p-1 hover:text-indigo-600 text-gray-400 rounded transition"
-                                    title="Edit District"
+                                    type="button"
+                                    className="portal-wt-toggle"
+                                    onClick={() => setOpenDistricts((prev) => ({ ...prev, [dist.id]: !prev[dist.id] }))}
+                                    aria-expanded={distOpen}
                                   >
-                                    <Pencil className="w-3 h-3" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteMasterItem('districts', dist.id)}
-                                    className="p-1 hover:text-red-600 text-gray-300 rounded transition"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="pl-4 space-y-2">
-                                {distTPs.map((tp: any) => {
-                                  const tpWards = wardsAndStreets.filter((ws: any) => ws.tpId === tp.id);
-                                  return (
-                                    <div key={tp.id} className="bg-white border border-gray-100 rounded-xl p-2.5 space-y-1.5 shadow-2xs">
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
-                                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                          {tObj(tp)}
-                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                            {lang === 'ta' ? 'பேரூராட்சி' : 'TP'} {tp.code ? `#${tp.code}` : ''}
-                                          </span>
-                                          <span className="text-[10px] font-normal text-gray-400">
-                                            ({tpWards.length} {lang === 'ta' ? 'வார்டு/தெருக்கள்' : 'wards/streets'})
-                                          </span>
+                                    <ChevronRight className={`portal-wt-caret${distOpen ? ' is-open' : ''}`} />
+                                    <div className="portal-wt-copy">
+                                      <div className="portal-wt-title">
+                                        <span>{tObj(dist)}</span>
+                                        {dist.code && <span className="portal-dash-id">#{dist.code}</span>}
+                                        <span className="portal-wt-count">
+                                          {distTPs.length} {lang === 'ta' ? 'பேரூராட்சி' : 'TPs'}
                                         </span>
-                                        <div className="flex items-center gap-1">
-                                          <button
-                                            onClick={() => {
-                                              setEditingType('tp');
-                                              setEditingId(tp.id);
-                                              setEditNameEn(tp.nameEn);
-                                              setEditNameTa(tp.nameTa);
-                                              setEditDistrictId(tp.districtId);
-                                              setEditTpCode(tp.code || '');
-                                            }}
-                                            className="p-1 hover:text-indigo-600 text-gray-400 rounded transition"
-                                            title="Edit Town Panchayat"
-                                          >
-                                            <Pencil className="w-3 h-3" />
-                                          </button>
-                                          <button
-                                            onClick={() => handleDeleteMasterItem('townPanchayats', tp.id)}
-                                            className="p-1 hover:text-red-500 text-gray-400 rounded transition"
-                                            title="Delete Town Panchayat"
-                                          >
-                                            <Trash2 className="w-3 h-3" />
-                                          </button>
-                                        </div>
                                       </div>
-
-                                      {/* Wards & Streets under this TP */}
-                                      {tpWards.length > 0 ? (
-                                        <div className="flex flex-wrap gap-1.5 pt-1 border-t border-gray-50">
-                                          {tpWards.map((ws: any) => (
-                                            <span key={ws.id} className="inline-flex items-center gap-1 bg-indigo-50/70 border border-indigo-100 text-[10px] font-medium text-indigo-800 px-2 py-0.5 rounded-md">
-                                              <span className="font-bold text-indigo-900">{lang === 'ta' ? 'வார்டு' : 'Ward'} {ws.wardNo}:</span>
-                                              <span>{lang === 'ta' ? (ws.streetNameTa || ws.streetNameEn) : (ws.streetNameEn || ws.streetNameTa)}</span>
-                                              <button
-                                                onClick={() => {
-                                                  setEditingType('ward_street');
-                                                  setEditingId(ws.id);
-                                                  setEditNameEn(ws.streetNameEn);
-                                                  setEditNameTa(ws.streetNameTa);
-                                                  setEditWardNo(ws.wardNo);
-                                                  setEditTpId(ws.tpId);
-                                                }}
-                                                className="hover:text-indigo-950 text-indigo-400 transition ml-0.5"
-                                                title="Edit Ward & Street"
-                                              >
-                                                ✎
-                                              </button>
-                                              <button
-                                                onClick={() => handleDeleteMasterItem('wardsAndStreets', ws.id)}
-                                                className="hover:text-red-600 text-indigo-400 transition ml-0.5"
-                                                title="Delete Street"
-                                              >
-                                                ×
-                                              </button>
-                                            </span>
-                                          ))}
-                                        </div>
-                                      ) : (
-                                        <p className="text-[10px] text-gray-400 italic">
-                                          {lang === 'ta' ? 'வார்டு/தெரு சேர்க்கப்படவில்லை' : 'No wards/streets mapped yet'}
-                                        </p>
-                                      )}
                                     </div>
-                                  );
-                                })}
-                                {distTPs.length === 0 && (
-                                  <span className="text-[11px] text-gray-400 italic pl-1">{lang === 'ta' ? 'பேரூராட்சிகள் இல்லை' : 'No town panchayats added yet'}</span>
+                                  </button>
+                                  <div className="portal-wt-actions">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingType('district');
+                                        setEditingId(dist.id);
+                                        setEditNameEn(dist.nameEn);
+                                        setEditNameTa(dist.nameTa);
+                                        setEditZoneId(dist.zoneId);
+                                        setEditDistrictCode(dist.code || '');
+                                      }}
+                                      className="portal-fis-icon-btn"
+                                      title="Edit District"
+                                    >
+                                      <Pencil className="h-3 w-3" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteMasterItem('districts', dist.id)}
+                                      className="portal-fis-icon-btn is-danger"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {distOpen && (
+                                  <div className="portal-wt-fields">
+                                    {distTPs.length === 0 && (
+                                      <p className="portal-wt-empty">{lang === 'ta' ? 'பேரூராட்சிகள் இல்லை' : 'No town panchayats added yet'}</p>
+                                    )}
+                                    {distTPs.map((tp: any) => {
+                                      const tpWards = wardsAndStreets.filter((ws: any) => ws.tpId === tp.id);
+                                      return (
+                                        <div key={tp.id} className="portal-wt-field">
+                                          <div className="portal-wt-field-main">
+                                            <div className="portal-wt-field-name">
+                                              <span>{tObj(tp)}</span>
+                                              {tp.code && <span className="portal-dash-id">#{tp.code}</span>}
+                                              <span className="portal-wt-count">
+                                                {tpWards.length} {lang === 'ta' ? 'தெருக்கள்' : 'streets'}
+                                              </span>
+                                            </div>
+                                            {tpWards.length > 0 ? (
+                                              <div className="portal-wt-chips">
+                                                {tpWards.map((ws: any) => (
+                                                  <span key={ws.id} className="portal-wt-chip">
+                                                    <strong>{lang === 'ta' ? 'வார்டு' : 'Ward'} {ws.wardNo}</strong>
+                                                    <span>{lang === 'ta' ? (ws.streetNameTa || ws.streetNameEn) : (ws.streetNameEn || ws.streetNameTa)}</span>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setEditingType('ward_street');
+                                                        setEditingId(ws.id);
+                                                        setEditNameEn(ws.streetNameEn);
+                                                        setEditNameTa(ws.streetNameTa);
+                                                        setEditWardNo(ws.wardNo);
+                                                        setEditTpId(ws.tpId);
+                                                      }}
+                                                      title="Edit Ward & Street"
+                                                    >
+                                                      <Pencil className="h-2.5 w-2.5" />
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleDeleteMasterItem('wardsAndStreets', ws.id)}
+                                                      title="Delete Street"
+                                                    >
+                                                      <X className="h-2.5 w-2.5" />
+                                                    </button>
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            ) : (
+                                              <p className="portal-wt-meta">{lang === 'ta' ? 'வார்டு/தெரு சேர்க்கப்படவில்லை' : 'No wards/streets mapped yet'}</p>
+                                            )}
+                                          </div>
+                                          <div className="portal-wt-actions">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setEditingType('tp');
+                                                setEditingId(tp.id);
+                                                setEditNameEn(tp.nameEn);
+                                                setEditNameTa(tp.nameTa);
+                                                setEditDistrictId(tp.districtId);
+                                                setEditTpCode(tp.code || '');
+                                              }}
+                                              className="portal-fis-icon-btn"
+                                              title="Edit Town Panchayat"
+                                            >
+                                              <Pencil className="h-3 w-3" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteMasterItem('townPanchayats', tp.id)}
+                                              className="portal-fis-icon-btn is-danger"
+                                              title="Delete Town Panchayat"
+                                            >
+                                              <Trash2 className="h-3 w-3" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
                                 )}
                               </div>
-                            </div>
-                          );
-                        })}
-                        {zoneDistricts.length === 0 && (
-                          <p className="text-xs text-gray-400 italic pl-2">{lang === 'ta' ? 'மாவட்டங்கள் இல்லை' : 'No districts mapped to this zone yet'}</p>
-                        )}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
-                {zones.length === 0 && (
-                  <div className="text-center py-10">
-                    <p className="text-sm text-gray-400 italic">{lang === 'ta' ? 'மண்டலங்கள் எதுவும் இல்லை. புதிய மண்டலத்தை சேர்க்கவும் அல்லது CSV-யை பதிவேற்றவும்.' : 'No zones created yet. Create a zone or upload a CSV above.'}</p>
-                  </div>
-                )}
               </div>
             )}
+            </div>
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Form Side */}
-          <div className="lg:col-span-5 space-y-6">
-            {/* Create Post */}
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-              <h4 className="font-semibold text-gray-800 text-sm border-b border-gray-100 pb-2 flex items-center gap-2">
-                <Briefcase className="w-4 h-4 text-indigo-500" />
-                {lang === 'ta' ? 'பதவி உருவாக்கம்' : 'Create Post Master'}
-              </h4>
-              <form onSubmit={handleAddPost} className="space-y-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-gray-400">{t('postNameEn')}</label>
-                  <input
-                    type="text"
-                    value={postEn}
-                    onChange={(e) => setPostEn(e.target.value)}
-                    placeholder="e.g. Executive Officer"
-                    className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
+        <div className="portal-wt-grid">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Plus className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'பதவி உருவாக்கம்' : 'Create Post Master'}
+                </h3>
+                <p>{lang === 'ta' ? 'பதவி விவரம் மற்றும் துணைப் பதிவேடுகள்' : 'Post details and supporting masters'}</p>
+              </div>
+            </div>
+            <div className="portal-dash-body portal-wt-form">
+              <form onSubmit={handleAddPost} className="flex flex-col gap-3">
+                <div className="portal-wt-section">
+                  <div className="portal-wt-section-title">
+                    <span>{lang === 'ta' ? 'பதவி விவரம்' : 'Post details'}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label>{t('postNameEn')}</label>
+                      <input
+                        type="text"
+                        value={postEn}
+                        onChange={(e) => setPostEn(e.target.value)}
+                        placeholder="e.g. Executive Officer"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label>{t('postNameTa')}</label>
+                      <input
+                        type="text"
+                        value={postTa}
+                        onChange={(e) => setPostTa(e.target.value)}
+                        placeholder="எ.கா. செயல் அலுவலர்"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label>{t('payLevel')}</label>
+                      <select
+                        value={postPayLevelId}
+                        onChange={(e) => setPostPayLevelId(e.target.value)}
+                      >
+                        <option value="">-- Choose Pay Scale --</option>
+                        {payLevels.map((p: any) => (
+                          <option key={p.id} value={p.id}>{tObj(p)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label>{t('nature')}</label>
+                      <select
+                        value={postNatureId}
+                        onChange={(e) => setPostNatureId(e.target.value)}
+                      >
+                        <option value="">-- Choose Nature --</option>
+                        {postNatures.map((n: any) => (
+                          <option key={n.id} value={n.id}>{tObj(n)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label>{t('category')}</label>
+                      <select
+                        value={postCategoryId}
+                        onChange={(e) => setPostCategoryId(e.target.value)}
+                      >
+                        <option value="">-- Choose Category --</option>
+                        {employeeCategories.map((c: any) => (
+                          <option key={c.id} value={c.id}>{tObj(c)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label>{t('group')}</label>
+                      <select
+                        value={postGroupId}
+                        onChange={(e) => setPostGroupId(e.target.value)}
+                      >
+                        <option value="">-- Choose Group --</option>
+                        {employeeGroups.map((g: any) => (
+                          <option key={g.id} value={g.id}>{tObj(g)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-gray-400">{t('postNameTa')}</label>
-                  <input
-                    type="text"
-                    value={postTa}
-                    onChange={(e) => setPostTa(e.target.value)}
-                    placeholder="எ.கா. செயல் அலுவலர்"
-                    className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-gray-400">{t('payLevel')}</label>
-                  <select
-                    value={postPayLevelId}
-                    onChange={(e) => setPostPayLevelId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                  >
-                    <option value="">-- Choose Pay Scale --</option>
-                    {payLevels.map((p: any) => (
-                      <option key={p.id} value={p.id}>{tObj(p)}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-gray-400">{t('nature')}</label>
-                  <select
-                    value={postNatureId}
-                    onChange={(e) => setPostNatureId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                  >
-                    <option value="">-- Choose Nature --</option>
-                    {postNatures.map((n: any) => (
-                      <option key={n.id} value={n.id}>{tObj(n)}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-gray-400">{t('category')}</label>
-                  <select
-                    value={postCategoryId}
-                    onChange={(e) => setPostCategoryId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                  >
-                    <option value="">-- Choose Category --</option>
-                    {employeeCategories.map((c: any) => (
-                      <option key={c.id} value={c.id}>{tObj(c)}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-gray-400">{t('group')}</label>
-                  <select
-                    value={postGroupId}
-                    onChange={(e) => setPostGroupId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                  >
-                    <option value="">-- Choose Group --</option>
-                    {employeeGroups.map((g: any) => (
-                      <option key={g.id} value={g.id}>{tObj(g)}</option>
-                    ))}
-                  </select>
-                </div>
-                <button type="submit" className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition">
+                <button type="submit">
                   {lang === 'ta' ? 'பதவியை சேர்' : 'Add Post'}
                 </button>
               </form>
-            </div>
 
-            {/* Create Pay Level */}
-            <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-              <h4 className="font-semibold text-gray-800 text-sm border-b border-gray-100 pb-2 flex items-center gap-2">
-                <Grid className="w-4 h-4 text-indigo-500" />
-                {lang === 'ta' ? 'சம்பள நிலை உருவாக்கம்' : 'Create Pay Level Master'}
-              </h4>
-              <form onSubmit={handleAddPayLevel} className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[11px] font-semibold text-gray-400">{t('payLevelEn')}</label>
-                    <input
-                      type="text"
-                      value={payLevelEn}
-                      onChange={(e) => setPayLevelEn(e.target.value)}
-                      placeholder="e.g. PB 1"
-                      className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none"
-                      required
-                    />
+              <div className="portal-wt-tree">
+                <div
+                  className={`portal-wt-node${openPostMasterSections.pay ? ' is-open' : ''}`}
+                  style={{ ['--wt-tone' as string]: POST_MASTER_TONES.pay }}
+                >
+                  <div className="portal-wt-node-head">
+                    <button
+                      type="button"
+                      className="portal-wt-toggle"
+                      onClick={() => setOpenPostMasterSections((prev) => ({ ...prev, pay: !prev.pay }))}
+                      aria-expanded={Boolean(openPostMasterSections.pay)}
+                    >
+                      <ChevronRight className={`portal-wt-caret${openPostMasterSections.pay ? ' is-open' : ''}`} />
+                      <div className="portal-wt-copy">
+                        <div className="portal-wt-title">
+                          <span>{lang === 'ta' ? 'சம்பள நிலை உருவாக்கம்' : 'Create Pay Level Master'}</span>
+                          <span className="portal-wt-count">{payLevels.length}</span>
+                        </div>
+                      </div>
+                    </button>
                   </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-gray-400">{t('payLevelTa')}</label>
-                    <input
-                      type="text"
-                      value={payLevelTa}
-                      onChange={(e) => setPayLevelTa(e.target.value)}
-                      placeholder="எ.கா. பிபி 1"
-                      className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none"
-                      required
-                    />
-                  </div>
+                  {openPostMasterSections.pay && (
+                    <div className="portal-wt-fields">
+                      <form onSubmit={handleAddPayLevel} className="flex flex-col gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label>{t('payLevelEn')}</label>
+                            <input
+                              type="text"
+                              value={payLevelEn}
+                              onChange={(e) => setPayLevelEn(e.target.value)}
+                              placeholder="e.g. PB 1"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label>{t('payLevelTa')}</label>
+                            <input
+                              type="text"
+                              value={payLevelTa}
+                              onChange={(e) => setPayLevelTa(e.target.value)}
+                              placeholder="எ.கா. பிபி 1"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label>{t('minPay')}</label>
+                            <input
+                              type="number"
+                              value={minPay}
+                              onChange={(e) => setMinPay(e.target.value)}
+                              placeholder="15700"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label>{t('maxPay')}</label>
+                            <input
+                              type="number"
+                              value={maxPay}
+                              onChange={(e) => setMaxPay(e.target.value)}
+                              placeholder="50000"
+                              required
+                            />
+                          </div>
+                        </div>
+                        <button type="submit">
+                          {lang === 'ta' ? 'சம்பள நிலையை சேர்' : 'Add Pay Level'}
+                        </button>
+                      </form>
+                    </div>
+                  )}
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[11px] font-semibold text-gray-400">{t('minPay')}</label>
-                    <input
-                      type="number"
-                      value={minPay}
-                      onChange={(e) => setMinPay(e.target.value)}
-                      placeholder="15700"
-                      className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none"
-                      required
-                    />
+
+                <div
+                  className={`portal-wt-node${openPostMasterSections.category ? ' is-open' : ''}`}
+                  style={{ ['--wt-tone' as string]: POST_MASTER_TONES.category }}
+                >
+                  <div className="portal-wt-node-head">
+                    <button
+                      type="button"
+                      className="portal-wt-toggle"
+                      onClick={() => setOpenPostMasterSections((prev) => ({ ...prev, category: !prev.category }))}
+                      aria-expanded={Boolean(openPostMasterSections.category)}
+                    >
+                      <ChevronRight className={`portal-wt-caret${openPostMasterSections.category ? ' is-open' : ''}`} />
+                      <div className="portal-wt-copy">
+                        <div className="portal-wt-title">
+                          <span>{lang === 'ta' ? 'ஊழியர் பிரிவு' : 'Employee Category'}</span>
+                          <span className="portal-wt-count">{employeeCategories.length}</span>
+                        </div>
+                      </div>
+                    </button>
                   </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-gray-400">{t('maxPay')}</label>
-                    <input
-                      type="number"
-                      value={maxPay}
-                      onChange={(e) => setMaxPay(e.target.value)}
-                      placeholder="50000"
-                      className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 outline-none"
-                      required
-                    />
-                  </div>
+                  {openPostMasterSections.category && (
+                    <div className="portal-wt-fields">
+                      <form onSubmit={handleAddCategory} className="flex flex-col gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label>{lang === 'ta' ? 'பெயர் (ஆங்கிலம்)' : 'Name (English)'}</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Engineering"
+                              value={categoryEn}
+                              onChange={(e) => setCategoryEn(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label>{lang === 'ta' ? 'பெயர் (தமிழ்)' : 'Name (Tamil)'}</label>
+                            <input
+                              type="text"
+                              placeholder="எ.கா. பொறியியல்"
+                              value={categoryTa}
+                              onChange={(e) => setCategoryTa(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <button type="submit">
+                          {lang === 'ta' ? 'பிரிவைச் சேர்' : 'Add Category'}
+                        </button>
+                      </form>
+                    </div>
+                  )}
                 </div>
-                <button type="submit" className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition">
-                  {lang === 'ta' ? 'சம்பள நிலையை சேர்' : 'Add Pay Level'}
-                </button>
-              </form>
-            </div>
 
-            {/* Other quick masters (Category, Nature, Transfer Reasons) */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Category form */}
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs space-y-2">
-                <span className="text-xs font-bold text-gray-800">{lang === 'ta' ? 'ஊழியர் பிரிவு' : 'Category'}</span>
-                <input
-                  type="text"
-                  placeholder="En (e.g. Engineering)"
-                  value={categoryEn}
-                  onChange={(e) => setCategoryEn(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg p-2 text-xs"
-                />
-                <input
-                  type="text"
-                  placeholder="Ta (எ.கா. பொறியியல்)"
-                  value={categoryTa}
-                  onChange={(e) => setCategoryTa(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg p-2 text-xs"
-                />
-                <button onClick={handleAddCategory} className="w-full py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-[11px] font-semibold transition">
-                  + Add Category
-                </button>
-              </div>
+                <div
+                  className={`portal-wt-node${openPostMasterSections.nature ? ' is-open' : ''}`}
+                  style={{ ['--wt-tone' as string]: POST_MASTER_TONES.nature }}
+                >
+                  <div className="portal-wt-node-head">
+                    <button
+                      type="button"
+                      className="portal-wt-toggle"
+                      onClick={() => setOpenPostMasterSections((prev) => ({ ...prev, nature: !prev.nature }))}
+                      aria-expanded={Boolean(openPostMasterSections.nature)}
+                    >
+                      <ChevronRight className={`portal-wt-caret${openPostMasterSections.nature ? ' is-open' : ''}`} />
+                      <div className="portal-wt-copy">
+                        <div className="portal-wt-title">
+                          <span>{lang === 'ta' ? 'பதவித் தன்மை' : 'Post Nature'}</span>
+                          <span className="portal-wt-count">{postNatures.length}</span>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                  {openPostMasterSections.nature && (
+                    <div className="portal-wt-fields">
+                      <form onSubmit={handleAddNature} className="flex flex-col gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label>{lang === 'ta' ? 'பெயர் (ஆங்கிலம்)' : 'Name (English)'}</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Provincialised"
+                              value={natureEn}
+                              onChange={(e) => setNatureEn(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label>{lang === 'ta' ? 'பெயர் (தமிழ்)' : 'Name (Tamil)'}</label>
+                            <input
+                              type="text"
+                              placeholder="எ.கா. மாநில அளவிலானது"
+                              value={natureTa}
+                              onChange={(e) => setNatureTa(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <button type="submit">
+                          {lang === 'ta' ? 'தன்மையைச் சேர்' : 'Add Nature'}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </div>
 
-              {/* Post Nature form */}
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs space-y-2">
-                <span className="text-xs font-bold text-gray-800">{lang === 'ta' ? 'பதவித் தன்மை' : 'Post Nature'}</span>
-                <input
-                  type="text"
-                  placeholder="En (e.g. Provincialised)"
-                  value={natureEn}
-                  onChange={(e) => setNatureEn(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg p-2 text-xs"
-                />
-                <input
-                  type="text"
-                  placeholder="Ta (எ.கா. மாநில அளவிலானது)"
-                  value={natureTa}
-                  onChange={(e) => setNatureTa(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg p-2 text-xs"
-                />
-                <button onClick={handleAddNature} className="w-full py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-[11px] font-semibold transition">
-                  + Add Nature
-                </button>
-              </div>
-
-              {/* Transfer Reason form */}
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs space-y-2">
-                <span className="text-xs font-bold text-gray-800">{lang === 'ta' ? 'இடமாற்றக் காரணம்' : 'Transfer Reason'}</span>
-                <input
-                  type="text"
-                  placeholder="En (e.g. Spouse Employment)"
-                  value={transferReasonEn}
-                  onChange={(e) => setTransferReasonEn(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg p-2 text-xs"
-                />
-                <input
-                  type="text"
-                  placeholder="Ta (எ.கா. மருத்துவ காரணங்கள்)"
-                  value={transferReasonTa}
-                  onChange={(e) => setTransferReasonTa(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg p-2 text-xs"
-                />
-                <button onClick={handleAddTransferReason} className="w-full py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-[11px] font-semibold transition">
-                  + Add Reason
-                </button>
+                <div
+                  className={`portal-wt-node${openPostMasterSections.reason ? ' is-open' : ''}`}
+                  style={{ ['--wt-tone' as string]: POST_MASTER_TONES.reason }}
+                >
+                  <div className="portal-wt-node-head">
+                    <button
+                      type="button"
+                      className="portal-wt-toggle"
+                      onClick={() => setOpenPostMasterSections((prev) => ({ ...prev, reason: !prev.reason }))}
+                      aria-expanded={Boolean(openPostMasterSections.reason)}
+                    >
+                      <ChevronRight className={`portal-wt-caret${openPostMasterSections.reason ? ' is-open' : ''}`} />
+                      <div className="portal-wt-copy">
+                        <div className="portal-wt-title">
+                          <span>{lang === 'ta' ? 'இடமாற்றக் காரணம்' : 'Transfer Reason'}</span>
+                          <span className="portal-wt-count">{transferReasons.length}</span>
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                  {openPostMasterSections.reason && (
+                    <div className="portal-wt-fields">
+                      <form onSubmit={handleAddTransferReason} className="flex flex-col gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label>{lang === 'ta' ? 'பெயர் (ஆங்கிலம்)' : 'Name (English)'}</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Spouse Employment"
+                              value={transferReasonEn}
+                              onChange={(e) => setTransferReasonEn(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label>{lang === 'ta' ? 'பெயர் (தமிழ்)' : 'Name (Tamil)'}</label>
+                            <input
+                              type="text"
+                              placeholder="எ.கா. மருத்துவ காரணங்கள்"
+                              value={transferReasonTa}
+                              onChange={(e) => setTransferReasonTa(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <button type="submit">
+                          {lang === 'ta' ? 'காரணத்தைச் சேர்' : 'Add Reason'}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
-          {/* List Side */}
-          <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-6">
-            {/* Posts list */}
-            <div className="space-y-3">
-              <h4 className="font-semibold text-gray-800 text-sm flex items-center justify-between border-b border-gray-100 pb-2">
-                <span>{lang === 'ta' ? 'பதவிகள் பட்டியல்' : 'Designatory Posts Registry'}</span>
-                <span className="text-xs text-gray-400 font-normal">({posts.length} {lang === 'ta' ? 'பதவிகள்' : 'posts'})</span>
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-56 overflow-y-auto pr-1">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Briefcase className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'பதவிகள் பட்டியல்' : 'Designatory Posts Registry'}
+                </h3>
+                <p>{posts.length} {lang === 'ta' ? 'பதவிகள்' : 'posts'}</p>
+              </div>
+            </div>
+            <div className="portal-dash-body">
+              <div className="portal-wt-fields">
+                {posts.length === 0 && (
+                  <p className="portal-wt-empty is-center">
+                    {lang === 'ta' ? 'பதவிகள் இல்லை' : 'No posts added yet'}
+                  </p>
+                )}
                 {posts.map((p: any) => {
                   const pay = payLevels.find((pl: any) => pl.id === p.payLevelId);
                   const nat = postNatures.find((n: any) => n.id === p.postNatureId);
                   const cat = employeeCategories.find((c: any) => c.id === p.categoryId);
+                  const grp = employeeGroups.find((g: any) => g.id === p.groupId);
                   return (
-                    <div key={p.id} className="flex flex-col gap-1 p-2.5 bg-indigo-50/50 border border-indigo-100 rounded-xl text-xs relative pr-8">
-                      <div className="font-bold text-indigo-800">{tObj(p)}</div>
-                      <div className="flex flex-col gap-0.5 text-[10px] text-gray-500 mt-1">
-                        {pay && <span className="truncate">🎯 <span className="font-semibold">{t('payLevel')}:</span> {tObj(pay)}</span>}
-                        {nat && <span className="truncate">🌿 <span className="font-semibold">{t('nature')}:</span> {tObj(nat)}</span>}
-                        {cat && <span className="truncate">📁 <span className="font-semibold">{t('category')}:</span> {tObj(cat)}</span>}
-                        {p.groupId && <span className="truncate">👥 <span className="font-semibold">{t('group')}:</span> Group {p.groupId}</span>}
+                    <div key={p.id} className="portal-wt-field">
+                      <div className="portal-wt-field-main">
+                        <div className="portal-wt-field-name">{tObj(p)}</div>
+                        <div className="portal-wt-chips">
+                          {pay && <span className="portal-wt-chip">{tObj(pay)}</span>}
+                          {nat && <span className="portal-wt-chip">{tObj(nat)}</span>}
+                          {cat && <span className="portal-wt-chip">{tObj(cat)}</span>}
+                          {(grp || p.groupId) && (
+                            <span className="portal-wt-chip">{grp ? tObj(grp) : `Group ${p.groupId}`}</span>
+                          )}
+                        </div>
                       </div>
-                      <button 
-                        onClick={() => handleDeleteMasterItem('posts', p.id)} 
-                        className="absolute top-2.5 right-2 text-gray-400 hover:text-red-500 transition text-base font-bold"
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMasterItem('posts', p.id)}
+                        className="portal-fis-icon-btn is-danger"
                       >
-                        ×
+                        <Trash2 className="h-3 w-3" />
                       </button>
                     </div>
                   );
                 })}
               </div>
-            </div>
 
-            {/* Pay scales list */}
-            <div className="space-y-3">
-              <h4 className="font-semibold text-gray-800 text-sm flex items-center justify-between border-b border-gray-100 pb-2">
-                <span>{lang === 'ta' ? 'சம்பள நிலைகள் பட்டியல்' : 'Pay Scale Matrix'}</span>
-                <span className="text-xs text-gray-400 font-normal">({payLevels.length} {lang === 'ta' ? 'நிலைகள்' : 'levels'})</span>
-              </h4>
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {payLevels.map((p: any) => (
-                  <div key={p.id} className="flex justify-between items-center p-2.5 bg-gray-50 border border-gray-100 rounded-lg text-xs">
-                    <span className="font-semibold text-gray-700">{tObj(p)}</span>
-                    <button onClick={() => handleDeleteMasterItem('payLevels', p.id)} className="p-1 hover:text-red-600 text-gray-400 rounded transition">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Employee Categories, Natures & Transfer Reasons lists side-by-side */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-gray-100 pt-4">
-              <div className="space-y-2">
-                <span className="text-xs font-bold text-gray-800 block truncate">{lang === 'ta' ? 'ஊழியர் பிரிவுகள்' : 'Employee Categories'}</span>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                  {employeeCategories.map((c: any) => (
-                    <div key={c.id} className="flex justify-between items-center p-2 bg-gray-50 rounded text-[11px]">
-                      <span className="text-gray-600 truncate">{tObj(c)}</span>
-                      <button onClick={() => handleDeleteMasterItem('employeeCategories', c.id)} className="hover:text-red-600 text-gray-400">×</button>
+              <div className="portal-wt-tree" style={{ marginTop: '0.75rem' }}>
+                {([
+                  {
+                    key: 'pay',
+                    tone: POST_MASTER_TONES.pay,
+                    title: lang === 'ta' ? 'சம்பள நிலை' : 'Pay Scale',
+                    empty: lang === 'ta' ? 'சம்பள நிலை இல்லை' : 'No pay scales yet',
+                    items: payLevels,
+                    collection: 'payLevels',
+                  },
+                  {
+                    key: 'category',
+                    tone: POST_MASTER_TONES.category,
+                    title: lang === 'ta' ? 'ஊழியர் பிரிவுகள்' : 'Employee Categories',
+                    empty: lang === 'ta' ? 'பிரிவுகள் இல்லை' : 'No categories yet',
+                    items: employeeCategories,
+                    collection: 'employeeCategories',
+                  },
+                  {
+                    key: 'nature',
+                    tone: POST_MASTER_TONES.nature,
+                    title: lang === 'ta' ? 'பதவி தன்மைகள்' : 'Post Natures',
+                    empty: lang === 'ta' ? 'தன்மைகள் இல்லை' : 'No natures yet',
+                    items: postNatures,
+                    collection: 'postNatures',
+                  },
+                  {
+                    key: 'reason',
+                    tone: POST_MASTER_TONES.reason,
+                    title: lang === 'ta' ? 'இடமாற்றக் காரணங்கள்' : 'Transfer Reasons',
+                    empty: lang === 'ta' ? 'காரணங்கள் இல்லை' : 'No reasons yet',
+                    items: transferReasons,
+                    collection: 'transferReasons',
+                  },
+                ] as const).map((section) => {
+                  const isOpen = Boolean(openPostMasterLists[section.key]);
+                  return (
+                    <div
+                      key={section.key}
+                      className={`portal-wt-node${isOpen ? ' is-open' : ''}`}
+                      style={{ ['--wt-tone' as string]: section.tone }}
+                    >
+                      <div className="portal-wt-node-head">
+                        <button
+                          type="button"
+                          className="portal-wt-toggle"
+                          onClick={() => setOpenPostMasterLists((prev) => ({ ...prev, [section.key]: !prev[section.key] }))}
+                          aria-expanded={isOpen}
+                        >
+                          <ChevronRight className={`portal-wt-caret${isOpen ? ' is-open' : ''}`} />
+                          <div className="portal-wt-copy">
+                            <div className="portal-wt-title">
+                              <span>{section.title}</span>
+                              <span className="portal-wt-count">{section.items.length}</span>
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+                      {isOpen && (
+                        <div className="portal-wt-fields">
+                          {section.items.length === 0 && (
+                            <p className="portal-wt-empty">{section.empty}</p>
+                          )}
+                          {section.items.map((item: any) => (
+                            <div key={item.id} className="portal-wt-field">
+                              <div className="portal-wt-field-main">
+                                <div className="portal-wt-field-name">{tObj(item)}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteMasterItem(section.collection, item.id)}
+                                className="portal-fis-icon-btn is-danger"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <span className="text-xs font-bold text-gray-800 block truncate">{lang === 'ta' ? 'பதவி தன்மைகள்' : 'Post Natures'}</span>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                  {postNatures.map((n: any) => (
-                    <div key={n.id} className="flex justify-between items-center p-2 bg-gray-50 rounded text-[11px]">
-                      <span className="text-gray-600 truncate">{tObj(n)}</span>
-                      <button onClick={() => handleDeleteMasterItem('postNatures', n.id)} className="hover:text-red-600 text-gray-400">×</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <span className="text-xs font-bold text-gray-800 block truncate">{lang === 'ta' ? 'இடமாற்றக் காரணங்கள்' : 'Transfer Reasons'}</span>
-                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                  {transferReasons.map((r: any) => (
-                    <div key={r.id} className="flex justify-between items-center p-2 bg-gray-50 rounded text-[11px]">
-                      <span className="text-gray-600 truncate">{tObj(r)}</span>
-                      <button onClick={() => handleDeleteMasterItem('transferReasons', r.id)} className="hover:text-red-600 text-gray-400">×</button>
-                    </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1995,48 +2158,48 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
       )}
 
       {editingType && (
-        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="portal-modal-overlay">
           <motion.div
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-2xl shadow-xl border border-slate-100 max-w-md w-full p-6 space-y-4"
+            className="portal-modal max-w-md w-full"
           >
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-800">
-                {lang === 'ta' ? 'விவரங்களை மாற்று' : 'Edit Hierarchy Item'}
-              </h3>
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Pencil className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'விவரங்களை மாற்று' : 'Edit Hierarchy Item'}
+                </h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setEditingType(null)}
-                className="text-slate-400 hover:text-slate-600 text-lg"
+                className="portal-dash-head-action"
               >
-                ×
+                <X className="h-3 w-3" />
               </button>
             </div>
 
+            <div className="portal-dash-body portal-wt-form">
             <form onSubmit={handleSaveEdit} className="space-y-4">
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  {lang === 'ta' ? 'பெயர் (ஆங்கிலம்)' : 'Name (English)'}
-                </label>
+                <label>{lang === 'ta' ? 'பெயர் (ஆங்கிலம்)' : 'Name (English)'}</label>
                 <input
                   type="text"
                   value={editNameEn}
                   onChange={(e) => setEditNameEn(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                  {lang === 'ta' ? 'பெயர் (தமிழ்)' : 'Name (Tamil)'}
-                </label>
+                <label>{lang === 'ta' ? 'பெயர் (தமிழ்)' : 'Name (Tamil)'}</label>
                 <input
                   type="text"
                   value={editNameTa}
                   onChange={(e) => setEditNameTa(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                   required
                 />
               </div>
@@ -2044,13 +2207,10 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
               {editingType === 'district' && (
                 <>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      {lang === 'ta' ? 'மண்டலம்' : 'Zone'}
-                    </label>
+                    <label>{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</label>
                     <select
                       value={editZoneId}
                       onChange={(e) => setEditZoneId(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
                       required
                     >
                       <option value="">{lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும்' : 'Select Zone'}</option>
@@ -2060,16 +2220,13 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      {lang === 'ta' ? 'மாவட்டக் குறியீடு (2 இலக்கம்)' : 'District Code (2-digit)'}
-                    </label>
+                    <label>{lang === 'ta' ? 'மாவட்டக் குறியீடு (2 இலக்கம்)' : 'District Code (2-digit)'}</label>
                     <input
                       type="text"
                       maxLength={2}
                       value={editDistrictCode}
                       onChange={(e) => setEditDistrictCode(e.target.value.replace(/\D/g, ''))}
                       placeholder="01"
-                      className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-mono"
                     />
                   </div>
                 </>
@@ -2078,13 +2235,10 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
               {editingType === 'tp' && (
                 <>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      {lang === 'ta' ? 'மாவட்டம்' : 'District'}
-                    </label>
+                    <label>{lang === 'ta' ? 'மாவட்டம்' : 'District'}</label>
                     <select
                       value={editDistrictId}
                       onChange={(e) => setEditDistrictId(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
                       required
                     >
                       <option value="">{lang === 'ta' ? 'மாவட்டத்தைத் தேர்ந்தெடுக்கவும்' : 'Select District'}</option>
@@ -2094,16 +2248,13 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      {lang === 'ta' ? 'பேரூராட்சிக் குறியீடு (2 இலக்கம்)' : 'Town Panchayat Code (2-digit)'}
-                    </label>
+                    <label>{lang === 'ta' ? 'பேரூராட்சிக் குறியீடு (2 இலக்கம்)' : 'Town Panchayat Code (2-digit)'}</label>
                     <input
                       type="text"
                       maxLength={2}
                       value={editTpCode}
                       onChange={(e) => setEditTpCode(e.target.value.replace(/\D/g, ''))}
                       placeholder="01"
-                      className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-mono"
                     />
                     <span className="text-[10px] text-gray-400 mt-0.5 block">
                       {lang === 'ta' ? 'ஒவ்வொரு மாவட்டத்திலும் 01 முதல் தொடங்கும்' : 'Starts from 01 for each district'}
@@ -2115,13 +2266,10 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
               {editingType === 'ward_street' && (
                 <>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      {lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}
-                    </label>
+                    <label>{lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}</label>
                     <select
                       value={editTpId}
                       onChange={(e) => setEditTpId(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
                       required
                     >
                       <option value="">{lang === 'ta' ? 'பேரூராட்சியைத் தேர்ந்தெடுக்கவும்' : 'Select Town Panchayat'}</option>
@@ -2131,14 +2279,11 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                     </select>
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      {t('wardNo')}
-                    </label>
+                    <label>{t('wardNo')}</label>
                     <input
                       type="text"
                       value={editWardNo}
                       onChange={(e) => setEditWardNo(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                       required
                     />
                   </div>
@@ -2149,18 +2294,16 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                 <button
                   type="button"
                   onClick={() => setEditingType(null)}
-                  className="flex-1 py-3 border border-gray-200 text-slate-600 rounded-xl text-xs font-semibold hover:bg-slate-50 transition"
+                  className="portal-wt-link"
                 >
                   {lang === 'ta' ? 'ரத்துசெய்' : 'Cancel'}
                 </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-sm"
-                >
+                <button type="submit">
                   {lang === 'ta' ? 'சேமி' : 'Save Changes'}
                 </button>
               </div>
             </form>
+            </div>
           </motion.div>
         </div>
       )}

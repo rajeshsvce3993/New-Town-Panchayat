@@ -13,8 +13,8 @@ import {
   CheckCircle,
   ToggleLeft,
   ToggleRight,
-  FileSpreadsheet,
   Download,
+  Upload,
   UploadCloud,
   AlertCircle,
   Edit,
@@ -31,7 +31,9 @@ import {
   RefreshCw,
   Copy,
   Check,
-  LayoutDashboard
+  LayoutDashboard,
+  Plus,
+  ChevronRight
 } from 'lucide-react';
 import { Language, translations } from './translations';
 import { 
@@ -346,6 +348,14 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
   const [officeDistrictId, setOfficeDistrictId] = useState('');
   const [officeTPId, setOfficeTPId] = useState('');
   const [sanctions, setSanctions] = useState<{ [postId: string]: number }>({});
+  const [openOfficeMatrix, setOpenOfficeMatrix] = useState<Record<string, boolean>>({});
+  const [openRoleRows, setOpenRoleRows] = useState<Record<string, boolean>>({});
+  const OFFICE_TONES: Record<string, string> = {
+    DTP: '#1d4ed8',
+    ADTP: '#0f766e',
+    TP: '#c2410c',
+  };
+  const ROLE_TONES = ['#1d4ed8', '#0f766e', '#c2410c', '#7c3aed', '#be185d', '#0369a1'];
   const officeCsvInputRef = useRef<HTMLInputElement>(null);
 
   const t = (key: keyof typeof translations['en']) => {
@@ -809,117 +819,155 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
   };
 
   return (
-    <div id="user-management-container" className="space-y-6">
-      {/* Sub Tabs */}
-      <div className="flex justify-start sm:justify-center overflow-x-auto scrollbar-custom whitespace-nowrap border-b border-gray-100 bg-white px-6 pt-4 rounded-t-2xl shadow-xs">
-        <button
-          onClick={() => { setActiveTab('user_list'); setCsvFeedback(null); }}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'user_list' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          {t('userAccounts')}
-        </button>
-        <button
-          onClick={() => { setActiveTab('create_user'); setCsvFeedback(null); }}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'create_user' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          {t('userCreation')}
-        </button>
-        <button
-          onClick={() => { 
-            setActiveTab('page_access'); 
-            setCsvFeedback(null);
-            if (!selectedRoleForAccess && roles.length > 0) {
-              const defaultR = roles.find((r: any) => r.id === 'ad') || roles[0];
-              setSelectedRoleForAccess(defaultR.id);
-            }
-            if (!selectedUserForAccess && users.length > 0) {
-              setSelectedUserForAccess(users[0].id);
-            }
-          }}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 flex items-center gap-1.5 ${activeTab === 'page_access' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          <Key className="w-4 h-4 text-amber-500" />
-          <span>{lang === 'ta' ? 'பக்க அனுமதி மேலாண்மை' : 'Page Access Control'}</span>
-        </button>
-        <button
-          onClick={() => { setActiveTab('offices'); setCsvFeedback(null); }}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'offices' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          {t('officeCategory')}
-        </button>
-        <button
-          onClick={() => { setActiveTab('roles'); setCsvFeedback(null); }}
-          className={`pb-4 px-6 text-sm font-semibold border-b-2 transition shrink-0 ${activeTab === 'roles' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          {t('roleManagement')}
-        </button>
+    <div id="user-management-container" className="portal-studio portal-page">
+      <div className="portal-fis-hero">
+        <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
+            <Users className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0 leading-tight">
+            <h3 className="text-[14px] font-semibold tracking-tight text-white">
+              {t('userManagement')}
+            </h3>
+            <p className="text-[10px] text-white/70">
+              {lang === 'ta'
+                ? 'பயனர் கணக்குகள், பக்க அனுமதிகள், அலுவலக வகைகள் மற்றும் பங்குகளை நிர்வகிக்கவும்.'
+                : 'Manage user accounts, page access, office categories, and roles.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={downloadUsersTemplate}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 cursor-pointer"
+          >
+            <Download className="h-3 w-3" />
+            {lang === 'ta' ? 'மாதிரி படிவம் (CSV)' : 'Template (CSV)'}
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-md hover:brightness-110 cursor-pointer"
+            style={{ background: 'var(--theme-accent)' }}
+          >
+            <Upload className="h-3 w-3" />
+            {lang === 'ta' ? 'பல்க் பதிவேற்றம்' : 'Bulk CSV Upload'}
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept=".csv"
+            onChange={handleUsersCsvUpload}
+            className="hidden"
+          />
+        </div>
+      </div>
+
+      {csvFeedback && (
+        <div className={`p-3 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+          {csvFeedback.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
+          <p className="text-xs font-medium">{csvFeedback.message}</p>
+        </div>
+      )}
+
+      <div className="portal-dash-toolbar">
+        <div className="portal-dash-pills">
+          <button
+            type="button"
+            onClick={() => { setActiveTab('user_list'); setCsvFeedback(null); }}
+            className={`portal-dash-pill ${activeTab === 'user_list' ? 'is-active' : ''}`}
+          >
+            <Users className="h-3.5 w-3.5" />
+            <span>{t('userAccounts')}</span>
+            <span className="portal-fis-count">{users.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('create_user'); setCsvFeedback(null); }}
+            className={`portal-dash-pill ${activeTab === 'create_user' ? 'is-active' : ''}`}
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            <span>{t('userCreation')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('page_access');
+              setCsvFeedback(null);
+              if (!selectedRoleForAccess && roles.length > 0) {
+                const defaultR = roles.find((r: any) => r.id === 'ad') || roles[0];
+                setSelectedRoleForAccess(defaultR.id);
+              }
+              if (!selectedUserForAccess && users.length > 0) {
+                setSelectedUserForAccess(users[0].id);
+              }
+            }}
+            className={`portal-dash-pill ${activeTab === 'page_access' ? 'is-active' : ''}`}
+          >
+            <Key className="h-3.5 w-3.5" />
+            <span>{lang === 'ta' ? 'பக்க அனுமதி மேலாண்மை' : 'Page Access Control'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('offices'); setCsvFeedback(null); }}
+            className={`portal-dash-pill ${activeTab === 'offices' ? 'is-active' : ''}`}
+          >
+            <Building className="h-3.5 w-3.5" />
+            <span>{t('officeCategory')}</span>
+            <span className="portal-fis-count">{officeCategories.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('roles'); setCsvFeedback(null); }}
+            className={`portal-dash-pill ${activeTab === 'roles' ? 'is-active' : ''}`}
+          >
+            <ShieldAlert className="h-3.5 w-3.5" />
+            <span>{t('roleManagement')}</span>
+            <span className="portal-fis-count">{roles.length}</span>
+          </button>
+        </div>
       </div>
 
       {activeTab === 'user_list' && (
-        <div className="space-y-6">
-          {/* CSV Bulk Option for Users */}
-          <div className="p-5 bg-white rounded-2xl border border-gray-100 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
             <div>
-              <h4 className="font-semibold text-gray-800 text-sm flex items-center gap-2">
-                <FileSpreadsheet className="w-5 h-5 text-indigo-500" />
-                {lang === 'ta' ? 'அலுவலக பயனர் கணக்குகள் மொத்தப் பதிவேற்றம்' : 'Bulk Upload User Accounts'}
-              </h4>
-              <p className="text-xs text-gray-400 mt-1">
-                {lang === 'ta' ? 'பயனர் கணக்கு விபரங்கள் அடங்கிய CSV கோப்பினை மாதிரி வடிவத்தில் பதிவேற்றவும்.' : 'Directly register multiple AD / EO administration logins via CSV matching.'}
+              <h3>
+                <span className="portal-dash-icon">
+                  <Users className="h-3 w-3" />
+                </span>
+                {t('userAccounts')}
+              </h3>
+              <p>
+                {lang === 'ta' ? 'அலுவலக பயனர் கணக்குகள் பட்டியல்' : 'Administrative user accounts'}
               </p>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={downloadUsersTemplate}
-                className="flex items-center gap-2 px-4 py-2 border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-semibold text-gray-600 transition"
-              >
-                <Download className="w-4 h-4 text-indigo-600" />
-                {t('downloadTemplate')}
-              </button>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs"
-              >
-                <UploadCloud className="w-4 h-4" />
-                {t('selectFile')}
-              </button>
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".csv"
-                onChange={handleUsersCsvUpload}
-                className="hidden"
-              />
-            </div>
           </div>
-
-          {csvFeedback && (
-            <div className={`p-4 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
-              {csvFeedback.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
-              <p className="text-xs font-medium">{csvFeedback.message}</p>
-            </div>
-          )}
-
-          {/* Users Table */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
-            <div className="p-5 border-b border-gray-50">
-              <h3 className="font-semibold text-gray-800 text-sm">{t('userAccounts')}</h3>
-            </div>
-            <div className="overflow-x-auto scrollbar-custom w-full">
-              <table className="w-full min-w-[950px] text-left border-collapse">
+          <div className="portal-dash-body">
+            <div className="portal-dash-table">
+              <table>
                 <thead>
-                  <tr className="bg-gray-50/70 border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    <th className="p-4 pl-6">{lang === 'ta' ? 'அலுவலக பயனர்' : 'User Full Name'}</th>
-                    <th className="p-4">{t('usernameLabel')}</th>
-                    <th className="p-4">{t('passwordLabel')}</th>
-                    <th className="p-4">{t('role')}</th>
-                    <th className="p-4">{t('scopeType')}</th>
-                    <th className="p-4">{lang === 'ta' ? 'பக்க அனுமதி' : 'Page Access'}</th>
-                    <th className="p-4">{t('status')}</th>
-                    <th className="p-4 text-right pr-6">{t('actions')}</th>
+                  <tr>
+                    <th>{lang === 'ta' ? 'அலுவலக பயனர்' : 'User Full Name'}</th>
+                    <th>{t('usernameLabel')}</th>
+                    <th>{t('passwordLabel')}</th>
+                    <th>{t('role')}</th>
+                    <th>{t('scopeType')}</th>
+                    <th>{lang === 'ta' ? 'பக்க அனுமதி' : 'Page Access'}</th>
+                    <th>{t('status')}</th>
+                    <th>{t('actions')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-xs text-gray-600">
+                <tbody>
+                  {users.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="portal-wt-empty is-center">
+                        {lang === 'ta' ? 'பயனர்கள் இல்லை' : 'No user accounts yet'}
+                      </td>
+                    </tr>
+                  )}
                   {users.map((user: any) => {
                     const matchedRole = roles.find((r: any) => r.id === user.roleId);
                     const isVisible = !!showPasswords[user.id];
@@ -937,90 +985,91 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                     }
 
                     return (
-                      <tr key={user.id} className="hover:bg-gray-50/50 transition">
-                        <td className="p-4 pl-6 font-semibold text-gray-900">{tObj(user)}</td>
-                        <td className="p-4 font-mono text-gray-500">{user.username}</td>
-                        <td className="p-4 font-mono">
-                          <div className="flex items-center gap-2">
-                            <span>{isVisible ? (displayPasswordForUser(user) || '—') : '••••••••'}</span>
+                      <tr key={user.id}>
+                        <td>
+                          <div className="portal-user-identity">
+                            <strong>{tObj(user)}</strong>
+                            <span className="portal-dash-id">{user.username}</span>
+                          </div>
+                        </td>
+                        <td className="portal-dash-id">{user.username}</td>
+                        <td>
+                          <div className="flex items-center gap-1.5">
+                            <span className="portal-dash-id">{isVisible ? (displayPasswordForUser(user) || '—') : '••••••••'}</span>
                             <button
+                              type="button"
                               onClick={() => togglePasswordVisibility(user.id)}
-                              className="text-gray-400 hover:text-gray-600"
+                              className="portal-fis-icon-btn is-muted"
                             >
-                              {isVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              {isVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                             </button>
                           </div>
                         </td>
-                        <td className="p-4">
-                          <span className="bg-indigo-50 text-indigo-700 font-semibold px-2.5 py-1 rounded-md text-[10px]">
-                            {matchedRole ? tObj(matchedRole) : user.roleId}
-                          </span>
+                        <td>
+                          <span className="portal-wt-chip">{matchedRole ? tObj(matchedRole) : user.roleId}</span>
                         </td>
-                        <td className="p-4 font-medium text-gray-500">{scopeLabel}</td>
-                        <td className="p-4">
+                        <td>
+                          <span className="portal-wt-chip">{scopeLabel}</span>
+                        </td>
+                        <td>
                           <button
+                            type="button"
                             onClick={() => {
                               setSelectedUserForAccess(user.id);
                               setAccessMode('user_wise');
                               setActiveTab('page_access');
                               setPageAccessFeedback(null);
                             }}
-                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border transition cursor-pointer ${
-                              isCustom
-                                ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-                                : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
-                            }`}
+                            className={`portal-dash-status ${isCustom ? 'is-pending' : 'is-progress'}`}
                             title={lang === 'ta' ? 'பக்க அனுமதியை அமை / திருத்து' : 'Configure Page Access'}
                           >
-                            {isCustom ? (
-                              <ShieldAlert className="w-3 h-3 text-amber-600" />
-                            ) : (
-                              <ShieldCheck className="w-3 h-3 text-indigo-600" />
-                            )}
+                            {isCustom ? <ShieldAlert className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
                             <span>
                               {isCustom
-                                ? (lang === 'ta' ? `தனிப்பயன் (${pages.length} பக்கங்கள்)` : `Custom (${pages.length} pgs)`)
-                                : (lang === 'ta' ? `பங்கு (${pages.length} பக்கங்கள்)` : `Role (${pages.length} pgs)`)}
+                                ? (lang === 'ta' ? `தனிப்பயன் (${pages.length})` : `Custom (${pages.length})`)
+                                : (lang === 'ta' ? `பங்கு (${pages.length})` : `Role (${pages.length})`)}
                             </span>
                           </button>
                         </td>
-                        <td className="p-4">
+                        <td>
                           <button
+                            type="button"
                             onClick={() => toggleUserStatus(user.id)}
-                            className={`flex items-center gap-1.5 font-semibold text-[10px] uppercase tracking-wider rounded-full px-2.5 py-1 transition ${
-                              user.status === 'Active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-400'
-                            }`}
+                            className={`portal-dash-status ${user.status === 'Active' ? 'is-resolved' : 'is-pending'}`}
                           >
-                            {user.status === 'Active' ? <ToggleRight className="w-4 h-4 text-emerald-600" /> : <ToggleLeft className="w-4 h-4 text-gray-400" />}
+                            {user.status === 'Active' ? <ToggleRight className="h-3.5 w-3.5" /> : <ToggleLeft className="h-3.5 w-3.5" />}
                             {user.status === 'Active' ? t('activeStatus') : t('inactiveStatus')}
                           </button>
                         </td>
-                        <td className="p-4 text-right pr-6">
-                          <div className="flex justify-end gap-1.5">
+                        <td>
+                          <div className="portal-wt-actions">
                             <button
+                              type="button"
                               onClick={() => {
                                 setSelectedUserForAccess(user.id);
                                 setAccessMode('user_wise');
                                 setActiveTab('page_access');
                                 setPageAccessFeedback(null);
                               }}
-                              className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
+                              className="portal-fis-icon-btn"
                               title={lang === 'ta' ? 'பக்க அனுமதி மேலாண்மை' : 'Manage Page Permissions'}
                             >
-                              <Key className="w-4 h-4" />
+                              <Key className="h-3 w-3" />
                             </button>
                             <button
+                              type="button"
                               onClick={() => handleStartEditUser(user)}
-                              className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                              className="portal-fis-icon-btn"
                               title={lang === 'ta' ? 'திருத்து' : 'Edit'}
                             >
-                              <Edit className="w-4 h-4" />
+                              <Edit className="h-3 w-3" />
                             </button>
                             <button
+                              type="button"
                               onClick={() => handleDeleteUser(user.id)}
-                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                              className="portal-fis-icon-btn is-danger"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="h-3 w-3" />
                             </button>
                           </div>
                         </td>
@@ -1035,68 +1084,68 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
       )}
 
       {activeTab === 'create_user' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-5">
-            <form onSubmit={handleAddUser} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-              <h3 className="font-semibold text-gray-800 text-md flex items-center gap-2 border-b border-gray-50 pb-2">
-                <UserPlus className="w-5 h-5 text-indigo-500" />
-                {lang === 'ta' ? 'புதிய பயனர் கணக்கு' : 'Provision Administrative User'}
-              </h3>
-
-              <div className="space-y-3">
+        <div className="portal-wt-grid">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Plus className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'புதிய பயனர் கணக்கு' : 'Provision Administrative User'}
+                </h3>
+              </div>
+            </div>
+            <div className="portal-dash-body portal-wt-form">
+              <form onSubmit={handleAddUser} className="space-y-3">
                 <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('userFullNameEn')}</label>
+                  <label>{t('userFullNameEn')}</label>
                   <input
                     type="text"
                     value={fullNameEn}
                     onChange={(e) => setFullNameEn(e.target.value)}
                     placeholder="e.g. Anand Kumar K"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none"
                     required
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('userFullNameTa')}</label>
+                  <label>{t('userFullNameTa')}</label>
                   <input
                     type="text"
                     value={fullNameTa}
                     onChange={(e) => setFullNameTa(e.target.value)}
                     placeholder="எ.கா. ஆனந்த் குமார் கே"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none"
                     required
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs font-semibold text-gray-500">{t('usernameLabel')}</label>
+                    <label>{t('usernameLabel')}</label>
                     <input
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder="ad_chengalpet"
-                      className="w-full border border-gray-200 rounded-xl p-3 text-xs mt-1 outline-none"
                       required
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-gray-500">{t('passwordLabel')}</label>
+                    <label>{t('passwordLabel')}</label>
                     <input
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full border border-gray-200 rounded-xl p-3 text-xs mt-1 outline-none"
                       required
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('role')}</label>
+                  <label>{t('role')}</label>
                   <select
                     value={selectedRoleId}
                     onChange={(e) => setSelectedRoleId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white"
                     required
                   >
                     <option value="">-- Choose Role --</option>
@@ -1107,7 +1156,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('scopeType')}</label>
+                  <label>{t('scopeType')}</label>
                   <select
                     value={scopeType}
                     onChange={(e) => {
@@ -1115,7 +1164,6 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                       setScopeType(val);
                       setScopeId(val === 'HOD' ? 'all' : '');
                     }}
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white"
                     required
                   >
                     <option value="HOD">{t('hodScope')}</option>
@@ -1126,11 +1174,10 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
                 {scopeType === 'Zone' && (
                   <div>
-                    <label className="text-xs font-semibold text-gray-500">{t('selectZone')}</label>
+                    <label>{t('selectZone')}</label>
                     <select
                       value={scopeId}
                       onChange={(e) => setScopeId(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white"
                       required
                     >
                       <option value="">-- Choose Zone --</option>
@@ -1143,11 +1190,10 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
                 {scopeType === 'TownPanchayat' && (
                   <div>
-                    <label className="text-xs font-semibold text-gray-500">{t('selectTP')}</label>
+                    <label>{t('selectTP')}</label>
                     <select
                       value={scopeId}
                       onChange={(e) => setScopeId(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white"
                       required
                     >
                       <option value="">-- Choose Town Panchayat --</option>
@@ -1157,28 +1203,46 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                     </select>
                   </div>
                 )}
-              </div>
 
-              <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition mt-2 shadow-xs">
-                {lang === 'ta' ? 'பயனரை உருவாக்கு' : 'Create User Account'}
-              </button>
-            </form>
+                <button type="submit">
+                  {lang === 'ta' ? 'பயனரை உருவாக்கு' : 'Create User Account'}
+                </button>
+              </form>
+            </div>
           </div>
 
-          <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-            <h4 className="font-semibold text-gray-800 text-sm border-b border-gray-50 pb-2">{lang === 'ta' ? 'அதிகார வரம்புகள் வழிகாட்டி' : 'Administrative Jurisdiction Scope Map'}</h4>
-            <div className="space-y-3 text-xs text-gray-500">
-              <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                <span className="font-bold text-gray-800 block truncate">{t('hodScope')} (DTP Director)</span>
-                <span className="mt-1 block leading-relaxed">{lang === 'ta' ? 'முழு மாநிலத்தின் அனைத்து மண்டலங்கள் மற்றும் அனைத்து பேரூராட்சி ஊழியர்களையும் கட்டுப்படுத்தும் முழுமையான அதிகாரம்.' : 'Full administrative access across all Zones, Districts, Town Panchayats, and Modules.'}</span>
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <ShieldCheck className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'அதிகார வரம்புகள் வழிகாட்டி' : 'Administrative Jurisdiction Scope Map'}
+                </h3>
               </div>
-              <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                <span className="font-bold text-gray-800 block truncate">{t('zoneScope')} (Assistant Director)</span>
-                <span className="mt-1 block leading-relaxed">{lang === 'ta' ? 'ஒதுக்கப்பட்ட மண்டலத்தில் உள்ள மாவட்டங்கள் மற்றும் அதற்குரிய பேரூராட்சிகளை கட்டுப்படுத்தும் வரையறுக்கப்பட்ட அதிகாரம்.' : 'Scope locked to the assigned zone. Can create, edit, and audit employees belonging only to Town Panchayats inside this specific zone.'}</span>
+            </div>
+            <div className="portal-dash-body portal-wt-form">
+              <div className="portal-wt-note">
+                <span>
+                  <strong>{t('hodScope')} (DTP Director)</strong>
+                  {' — '}
+                  {lang === 'ta' ? 'முழு மாநிலத்தின் அனைத்து மண்டலங்கள் மற்றும் அனைத்து பேரூராட்சி ஊழியர்களையும் கட்டுப்படுத்தும் முழுமையான அதிகாரம்.' : 'Full administrative access across all Zones, Districts, Town Panchayats, and Modules.'}
+                </span>
               </div>
-              <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                <span className="font-bold text-gray-800 block truncate">{t('tpScope')} (Executive Officer)</span>
-                <span className="mt-1 block leading-relaxed">{lang === 'ta' ? 'அந்தந்த குறிப்பிட்ட பேரூராட்சியை மட்டும் நிர்வகிக்கும் உள்ளூர் அளவிலான அதிகாரம்.' : 'Local municipal scope. Can manage records, details, and dynamic modules strictly for their own Town Panchayat.'}</span>
+              <div className="portal-wt-note">
+                <span>
+                  <strong>{t('zoneScope')} (Assistant Director)</strong>
+                  {' — '}
+                  {lang === 'ta' ? 'ஒதுக்கப்பட்ட மண்டலத்தில் உள்ள மாவட்டங்கள் மற்றும் அதற்குரிய பேரூராட்சிகளை கட்டுப்படுத்தும் வரையறுக்கப்பட்ட அதிகாரம்.' : 'Scope locked to the assigned zone. Can create, edit, and audit employees belonging only to Town Panchayats inside this specific zone.'}
+                </span>
+              </div>
+              <div className="portal-wt-note">
+                <span>
+                  <strong>{t('tpScope')} (Executive Officer)</strong>
+                  {' — '}
+                  {lang === 'ta' ? 'அந்தந்த குறிப்பிட்ட பேரூராட்சியை மட்டும் நிர்வகிக்கும் உள்ளூர் அளவிலான அதிகாரம்.' : 'Local municipal scope. Can manage records, details, and dynamic modules strictly for their own Town Panchayat.'}
+                </span>
               </div>
             </div>
           </div>
@@ -1187,52 +1251,40 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
       {/* Page Access Management Tab (Role-wise & User-wise) */}
       {activeTab === 'page_access' && (
-        <div className="space-y-6">
-          {/* Main header banner */}
-          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
-                <Key className="w-6 h-6" />
-              </div>
+        <div className="space-y-3">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
               <div>
-                <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
-                  {lang === 'ta' ? 'பக்க அனுமதி மேலாண்மை' : 'Page Access Control Management'}
-                  <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                    RBAC & Custom ACL
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Key className="h-3 w-3" />
                   </span>
+                  {lang === 'ta' ? 'பக்க அனுமதி மேலாண்மை' : 'Page Access Control Management'}
                 </h3>
-                <p className="text-xs text-gray-500 mt-1 max-w-2xl leading-relaxed">
-                  {lang === 'ta' 
-                    ? 'பங்கு வாரியாக (Role-Wise) மற்றும் தனிப் பயனர் வாரியாக (User-Wise) பக்க அனுமதிகளை மாற்றியமைக்கவும். அனுமதிகள் இல்லாத பக்கங்கள் மெனு பட்டியலிலும் வராது, நேரடி URL வழியாகவும் அணுக முடியாது.' 
-                    : 'Manage role-wise baseline permissions or individual user-wise custom page overrides. Restricted pages are completely omitted from the menu and blocked from direct navigation.'}
+                <p>
+                  {lang === 'ta'
+                    ? 'பங்கு வாரியாக மற்றும் தனிப் பயனர் வாரியாக பக்க அனுமதிகளை மாற்றியமைக்கவும்.'
+                    : 'Manage role-wise baseline permissions or individual user-wise custom page overrides.'}
                 </p>
               </div>
-            </div>
-
-            {/* Mode Switcher Toggle */}
-            <div className="flex p-1 bg-gray-100 rounded-xl self-start md:self-center border border-gray-200">
-              <button
-                onClick={() => { setAccessMode('role_wise'); setPageAccessFeedback(null); }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  accessMode === 'role_wise'
-                    ? 'bg-white text-indigo-600 shadow-xs'
-                    : 'text-gray-500 hover:text-gray-900'
-                }`}
-              >
-                <ShieldAlert className="w-4 h-4" />
-                <span>{lang === 'ta' ? 'பங்கு வாரியாக (Role-Wise)' : 'Role-Wise Access'}</span>
-              </button>
-              <button
-                onClick={() => { setAccessMode('user_wise'); setPageAccessFeedback(null); }}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  accessMode === 'user_wise'
-                    ? 'bg-white text-indigo-600 shadow-xs'
-                    : 'text-gray-500 hover:text-gray-900'
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                <span>{lang === 'ta' ? 'தனிப் பயனர் வாரியாக (User-Wise)' : 'User-Wise Access'}</span>
-              </button>
+              <div className="portal-dash-pills">
+                <button
+                  type="button"
+                  onClick={() => { setAccessMode('role_wise'); setPageAccessFeedback(null); }}
+                  className={`portal-dash-pill ${accessMode === 'role_wise' ? 'is-active' : ''}`}
+                >
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  <span>{lang === 'ta' ? 'பங்கு வாரியாக' : 'Role-Wise Access'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAccessMode('user_wise'); setPageAccessFeedback(null); }}
+                  className={`portal-dash-pill ${accessMode === 'user_wise' ? 'is-active' : ''}`}
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  <span>{lang === 'ta' ? 'தனிப் பயனர் வாரியாக' : 'User-Wise Access'}</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1247,40 +1299,44 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
           {accessMode === 'role_wise' && (
             <div className="space-y-6">
               {/* Role Selection Row */}
-              <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-3">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
-                  {lang === 'ta' ? '1. பங்கைத் தேர்ந்தெடுக்கவும் (Select Role)' : '1. Select Role to Configure'}
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="portal-dashboard-panel">
+                <div className="portal-dash-head">
+                  <div>
+                    <h3>
+                      <span className="portal-dash-icon">
+                        <ShieldAlert className="h-3 w-3" />
+                      </span>
+                      {lang === 'ta' ? 'பங்கைத் தேர்ந்தெடுக்கவும்' : 'Select Role to Configure'}
+                    </h3>
+                  </div>
+                </div>
+                <div className="portal-dash-body">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                   {roles.map((r: any) => {
                     const isSelected = (selectedRoleForAccess || roles[0]?.id) === r.id;
                     const rPages = getRolePermissions(r.id);
                     const usersInRole = users.filter((u: any) => u.roleId === r.id);
                     return (
                       <button
+                        type="button"
                         key={r.id}
                         onClick={() => { setSelectedRoleForAccess(r.id); setPageAccessFeedback(null); }}
-                        className={`p-4 rounded-xl border text-left transition relative cursor-pointer ${
-                          isSelected
-                            ? 'bg-indigo-50/70 border-indigo-400 ring-2 ring-indigo-200 shadow-xs'
-                            : 'bg-gray-50/60 border-gray-200/80 hover:bg-gray-100/70 hover:border-gray-300'
-                        }`}
+                        className={`portal-pick-card ${isSelected ? 'is-on' : ''}`}
                       >
                         <div className="flex justify-between items-start gap-2">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white border border-gray-200 text-indigo-700 uppercase">
-                            {r.id}
-                          </span>
-                          <span className="text-[10px] font-bold text-gray-500">
-                            {rPages.length} / {ALL_PAGE_IDS.length} {lang === 'ta' ? 'பக்கங்கள்' : 'pages'}
+                          <span className="portal-dash-id">{r.id}</span>
+                          <span className="portal-wt-count">
+                            {rPages.length}/{ALL_PAGE_IDS.length}
                           </span>
                         </div>
-                        <h4 className="font-bold text-gray-900 text-sm mt-2">{tObj(r)}</h4>
-                        <p className="text-[11px] text-gray-500 mt-1">
+                        <h4 className="text-[13px] font-bold text-slate-900">{tObj(r)}</h4>
+                        <p className="text-[11px] text-slate-500">
                           {usersInRole.length} {lang === 'ta' ? 'செயலில் உள்ள பயனர்கள்' : 'active user accounts'}
                         </p>
                       </button>
                     );
                   })}
+                </div>
                 </div>
               </div>
 
@@ -1304,69 +1360,67 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                 });
 
                 return (
-                  <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-6">
-                    {/* Role Header Info */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-gray-100 gap-3">
+                  <div className="portal-dashboard-panel">
+                    <div className="portal-dash-head">
                       <div>
-                        <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-600 text-white uppercase">
-                            {activeRole.id}
+                        <h3>
+                          <span className="portal-dash-icon">
+                            <ShieldCheck className="h-3 w-3" />
                           </span>
-                          <h4 className="font-bold text-gray-900 text-base">{tObj(activeRole)}</h4>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {lang === 'ta' 
-                            ? `இந்தப் பக்க அனுமதிகள் '${tObj(activeRole)}' பங்கில் உள்ள அனைத்து (${usersCount}) பயனர்களுக்கும் தானாகவே பொருந்தும்.` 
+                          {tObj(activeRole)}
+                          <span className="portal-fis-count">{activeRole.id}</span>
+                        </h3>
+                        <p>
+                          {lang === 'ta'
+                            ? `இந்தப் பக்க அனுமதிகள் '${tObj(activeRole)}' பங்கில் உள்ள அனைத்து (${usersCount}) பயனர்களுக்கும் தானாகவே பொருந்தும்.`
                             : `These page permissions will automatically apply to all ${usersCount} users assigned to '${activeRole.nameEn}'.`}
                         </p>
                       </div>
-
-                      <div className="flex items-center gap-2">
+                      <div className="portal-dash-pills">
                         <button
+                          type="button"
                           onClick={() => handleSelectAllRolePages(currentRoleId)}
-                          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          className="portal-dash-pill"
                         >
                           {t('selectAll')}
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleDeselectAllRolePages(currentRoleId)}
-                          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                          className="portal-dash-pill"
                         >
                           {t('deselectAll')}
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleResetRolePages(currentRoleId)}
-                          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                          className="portal-dash-pill"
                         >
-                          <RefreshCw className="w-3 h-3" />
+                          <RefreshCw className="h-3.5 w-3.5" />
                           <span>{lang === 'ta' ? 'இயல்புநிலை' : 'Reset'}</span>
                         </button>
                       </div>
                     </div>
-
-                    {/* Filter and Search Bar */}
+                    <div className="portal-dash-body space-y-3">
                     <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
                       <div className="relative flex-1 max-w-sm">
-                        <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                           type="text"
                           value={pageAccessSearch}
                           onChange={(e) => setPageAccessSearch(e.target.value)}
                           placeholder={lang === 'ta' ? 'பக்கங்களைத் தேடு...' : 'Search pages...'}
-                          className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-xs bg-gray-50/50 outline-none focus:bg-white focus:border-indigo-500"
+                          className="w-full pl-8"
                         />
                       </div>
 
-                      <div className="flex items-center gap-1 overflow-x-auto scrollbar-custom pb-1 sm:pb-0">
+                      <div className="portal-dash-pills flex-wrap">
                         {categories.map((cat: string) => (
                           <button
                             key={cat}
+                            type="button"
                             onClick={() => setPageCategoryFilter(cat)}
-                            className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition cursor-pointer ${
-                              pageCategoryFilter === cat
-                                ? 'bg-indigo-600 text-white shadow-2xs'
-                                : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                            }`}
+                            className={`portal-dash-pill ${pageCategoryFilter === cat ? 'is-active' : ''}`}
                           >
                             {cat === 'ALL' ? (lang === 'ta' ? 'அனைத்தும்' : 'All') : cat}
                           </button>
@@ -1375,7 +1429,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                     </div>
 
                     {/* Page Cards Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
                       {filteredPages.map((page: SystemPage) => {
                         const Icon = page.icon || LayoutDashboard;
                         const isChecked = allowedPages.includes(page.id);
@@ -1384,47 +1438,32 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                           <div
                             key={page.id}
                             onClick={() => handleToggleRolePage(currentRoleId, page.id)}
-                            className={`p-4 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
-                              isChecked
-                                ? 'bg-indigo-50/40 border-indigo-300 ring-1 ring-indigo-200'
-                                : 'bg-gray-50/40 border-gray-200 hover:bg-gray-100/60 opacity-70'
-                            }`}
+                            className={`portal-pick-card ${isChecked ? 'is-on' : 'is-off'}`}
                           >
-                            <div className="space-y-2">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex items-center gap-2.5">
-                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                                    isChecked ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'
-                                  }`}>
-                                    <Icon className="w-4 h-4" />
-                                  </div>
-                                  <div>
-                                    <h5 className="font-bold text-gray-900 text-xs leading-tight">
-                                      {lang === 'ta' ? page.nameTa : page.nameEn}
-                                    </h5>
-                                    <span className="text-[10px] text-gray-400 font-mono">{page.id}</span>
-                                  </div>
-                                </div>
-
-                                <div className="shrink-0 mt-0.5">
-                                  {isChecked ? (
-                                    <CheckSquare className="w-5 h-5 text-indigo-600" />
-                                  ) : (
-                                    <Square className="w-5 h-5 text-gray-300" />
-                                  )}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="portal-pick-icon">
+                                  <Icon className="h-3.5 w-3.5" />
+                                </span>
+                                <div className="min-w-0">
+                                  <h5 className="text-xs font-bold leading-tight text-slate-900">
+                                    {lang === 'ta' ? page.nameTa : page.nameEn}
+                                  </h5>
+                                  <span className="portal-dash-id">{page.id}</span>
                                 </div>
                               </div>
-
-                              <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-2">
-                                {lang === 'ta' ? page.descriptionTa : page.descriptionEn}
-                              </p>
+                              {isChecked ? (
+                                <CheckSquare className="h-4 w-4 shrink-0" style={{ color: 'var(--theme-accent)' }} />
+                              ) : (
+                                <Square className="h-4 w-4 shrink-0 text-slate-300" />
+                              )}
                             </div>
-
-                            <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[10px]">
-                              <span className="text-gray-400 font-medium">
-                                {lang === 'ta' ? page.categoryTa : page.categoryEn}
-                              </span>
-                              <span className={`font-bold ${isChecked ? 'text-indigo-600' : 'text-gray-400'}`}>
+                            <p className="line-clamp-2 text-[11px] text-slate-500">
+                              {lang === 'ta' ? page.descriptionTa : page.descriptionEn}
+                            </p>
+                            <div className="flex items-center justify-between border-t border-slate-100 pt-1.5 text-[10px]">
+                              <span className="text-slate-400">{lang === 'ta' ? page.categoryTa : page.categoryEn}</span>
+                              <span className="font-bold" style={isChecked ? { color: 'var(--theme-accent)' } : undefined}>
                                 {isChecked ? (lang === 'ta' ? 'அனுமதிக்கப்பட்டது' : 'Enabled') : (lang === 'ta' ? 'மறுக்கப்பட்டது' : 'Disabled')}
                               </span>
                             </div>
@@ -1433,8 +1472,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                       })}
                     </div>
 
-                    {/* Footer Save Action */}
-                    <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
                       <div className="text-xs text-gray-500 flex items-center gap-2">
                         <CheckCircle className="w-4 h-4 text-emerald-500" />
                         <span>
@@ -1445,13 +1483,16 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                       </div>
 
                       <button
+                        type="button"
                         onClick={() => handleSaveRolePermissions(currentRoleId)}
                         disabled={savingPageAccess}
-                        className="w-full sm:w-auto px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-1.5 text-[11px] font-semibold text-white shadow-md hover:brightness-110 cursor-pointer disabled:opacity-50"
+                        style={{ background: 'var(--theme-accent)' }}
                       >
-                        <ShieldCheck className="w-4 h-4" />
+                        <ShieldCheck className="h-3.5 w-3.5" />
                         <span>{savingPageAccess ? 'Saving...' : (lang === 'ta' ? 'பங்கு அனுமதியைச் சேமி' : 'Save Role Permissions')}</span>
                       </button>
+                    </div>
                     </div>
                   </div>
                 );
@@ -1461,22 +1502,28 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
           {/* MODE 2: USER-WISE ACCESS */}
           {accessMode === 'user_wise' && (
-            <div className="space-y-6">
-              {/* User Selection & Search Bar */}
-              <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">
-                  {lang === 'ta' ? '1. பயனரைத் தேர்ந்தெடுக்கவும் (Select User)' : '1. Select User for Custom Access'}
-                </span>
-
+            <div className="space-y-3">
+              <div className="portal-dashboard-panel">
+                <div className="portal-dash-head">
+                  <div>
+                    <h3>
+                      <span className="portal-dash-icon">
+                        <Users className="h-3 w-3" />
+                      </span>
+                      {lang === 'ta' ? 'பயனரைத் தேர்ந்தெடுக்கவும்' : 'Select User for Custom Access'}
+                    </h3>
+                  </div>
+                </div>
+                <div className="portal-dash-body portal-wt-form">
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                   <div className="md:col-span-5 relative">
-                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="text"
                       value={pageAccessSearch}
                       onChange={(e) => setPageAccessSearch(e.target.value)}
                       placeholder={lang === 'ta' ? 'பயனர் பெயர் அல்லது ஐடி தேடுக...' : 'Search user by name or username...'}
-                      className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-xs bg-gray-50/50 outline-none focus:bg-white focus:border-indigo-500"
+                      className="pl-8"
                     />
                   </div>
 
@@ -1484,7 +1531,6 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                     <select
                       value={selectedUserForAccess || users[0]?.id || ''}
                       onChange={(e) => { setSelectedUserForAccess(e.target.value); setPageAccessFeedback(null); }}
-                      className="w-full p-2.5 border border-gray-200 rounded-xl text-xs bg-white font-medium text-gray-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                     >
                       {users
                         .filter((u: any) => {
@@ -1505,6 +1551,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                         })}
                     </select>
                   </div>
+                </div>
                 </div>
               </div>
 
@@ -1529,55 +1576,40 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                 });
 
                 return (
-                  <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-6">
-                    {/* User Profile Header */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between pb-5 border-b border-gray-100 gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold text-base shadow-sm shrink-0">
-                          {(activeUser.nameEn || activeUser.username || 'U').slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-gray-900 text-sm sm:text-base">{tObj(activeUser)}</h4>
-                            <span className="font-mono text-xs text-gray-400">({activeUser.username})</span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                            <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold">
-                              {matchedRole ? tObj(matchedRole) : activeUser.roleId}
-                            </span>
-                            <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-[10px] font-medium">
-                              Scope: {activeUser.scopeType} ({activeUser.scopeId})
-                            </span>
-                          </div>
-                        </div>
+                  <div className="portal-dashboard-panel">
+                    <div className="portal-dash-head">
+                      <div>
+                        <h3>
+                          <span className="portal-dash-icon">
+                            <Key className="h-3 w-3" />
+                          </span>
+                          {tObj(activeUser)}
+                          <span className="portal-fis-count">{activeUser.username}</span>
+                        </h3>
+                        <p>
+                          {matchedRole ? tObj(matchedRole) : activeUser.roleId} · Scope: {activeUser.scopeType} ({activeUser.scopeId})
+                        </p>
                       </div>
-
-                      {/* Access Mode Toggle (Inherit from Role VS Custom Override) */}
-                      <div className="flex p-1 bg-gray-100 rounded-xl border border-gray-200">
+                      <div className="portal-dash-pills">
                         <button
+                          type="button"
                           onClick={() => handleSetUserCustomMode(activeUser.id, false)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                            !isCustom
-                              ? 'bg-white text-indigo-700 shadow-xs'
-                              : 'text-gray-500 hover:text-gray-800'
-                          }`}
+                          className={`portal-dash-pill ${!isCustom ? 'is-active' : ''}`}
                         >
-                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <ShieldCheck className="h-3.5 w-3.5" />
                           <span>{lang === 'ta' ? 'பங்கின் அனுமதிப்படி' : 'Inherit from Role'}</span>
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleSetUserCustomMode(activeUser.id, true)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                            isCustom
-                              ? 'bg-white text-amber-700 shadow-xs'
-                              : 'text-gray-500 hover:text-gray-800'
-                          }`}
+                          className={`portal-dash-pill ${isCustom ? 'is-active' : ''}`}
                         >
-                          <Key className="w-3.5 h-3.5 text-amber-600" />
-                          <span>{lang === 'ta' ? 'பிரத்யேக அனுமதி (Custom)' : 'Custom Permissions'}</span>
+                          <Key className="h-3.5 w-3.5" />
+                          <span>{lang === 'ta' ? 'பிரத்யேக அனுமதி' : 'Custom Permissions'}</span>
                         </button>
                       </div>
                     </div>
+                    <div className="portal-dash-body space-y-3">
 
                     {/* Mode Notice Banner */}
                     {!isCustom ? (
@@ -1599,8 +1631,10 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                         </div>
 
                         <button
+                          type="button"
                           onClick={() => handleSetUserCustomMode(activeUser.id, true)}
-                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition self-start sm:self-center shrink-0 cursor-pointer"
+                          className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-md hover:brightness-110 cursor-pointer self-start sm:self-center shrink-0"
+                          style={{ background: 'var(--theme-accent)' }}
                         >
                           {lang === 'ta' ? 'பிரத்யேக அனுமதியை அமை' : 'Enable Custom Override'}
                         </button>
@@ -1644,31 +1678,30 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                     {/* Toolbar for selecting pages if custom or viewing */}
                     {isCustom && (
                       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between pt-2">
-                        <div className="flex items-center gap-2">
+                        <div className="portal-dash-pills">
                           <button
+                            type="button"
                             onClick={() => handleSelectAllUserPages(activeUser.id)}
-                            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                            className="portal-dash-pill"
                           >
                             {t('selectAll')}
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleDeselectAllUserPages(activeUser.id)}
-                            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                            className="portal-dash-pill"
                           >
                             {t('deselectAll')}
                           </button>
                         </div>
 
-                        <div className="flex items-center gap-1 overflow-x-auto scrollbar-custom pb-1 sm:pb-0">
+                        <div className="portal-dash-pills flex-wrap">
                           {categories.map((cat: string) => (
                             <button
                               key={cat}
+                              type="button"
                               onClick={() => setPageCategoryFilter(cat)}
-                              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold whitespace-nowrap transition cursor-pointer ${
-                                pageCategoryFilter === cat
-                                  ? 'bg-indigo-600 text-white shadow-2xs'
-                                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                              }`}
+                              className={`portal-dash-pill ${pageCategoryFilter === cat ? 'is-active' : ''}`}
                             >
                               {cat === 'ALL' ? (lang === 'ta' ? 'அனைத்தும்' : 'All') : cat}
                             </button>
@@ -1678,7 +1711,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                     )}
 
                     {/* Pages Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
                       {filteredPages.map((page: SystemPage) => {
                         const Icon = page.icon || LayoutDashboard;
                         const isChecked = pages.includes(page.id);
@@ -1691,53 +1724,32 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                                 handleToggleUserPage(activeUser.id, page.id);
                               }
                             }}
-                            className={`p-4 rounded-xl border text-left transition flex flex-col justify-between ${
-                              !isCustom ? 'cursor-default' : 'cursor-pointer'
-                            } ${
-                              isChecked
-                                ? isCustom
-                                  ? 'bg-amber-50/40 border-amber-300 ring-1 ring-amber-200'
-                                  : 'bg-indigo-50/40 border-indigo-200'
-                                : 'bg-gray-50/40 border-gray-200 opacity-60'
-                            }`}
+                            className={`portal-pick-card ${isChecked ? (isCustom ? 'is-custom' : 'is-on') : 'is-off'} ${!isCustom ? 'cursor-default' : ''}`}
                           >
-                            <div className="space-y-2">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex items-center gap-2.5">
-                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                                    isChecked 
-                                      ? (isCustom ? 'bg-amber-600 text-white' : 'bg-indigo-600 text-white')
-                                      : 'bg-gray-200 text-gray-500'
-                                  }`}>
-                                    <Icon className="w-4 h-4" />
-                                  </div>
-                                  <div>
-                                    <h5 className="font-bold text-gray-900 text-xs leading-tight">
-                                      {lang === 'ta' ? page.nameTa : page.nameEn}
-                                    </h5>
-                                    <span className="text-[10px] text-gray-400 font-mono">{page.id}</span>
-                                  </div>
-                                </div>
-
-                                <div className="shrink-0 mt-0.5">
-                                  {isChecked ? (
-                                    <CheckSquare className={`w-5 h-5 ${isCustom ? 'text-amber-600' : 'text-indigo-600'}`} />
-                                  ) : (
-                                    <Square className="w-5 h-5 text-gray-300" />
-                                  )}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="portal-pick-icon">
+                                  <Icon className="h-3.5 w-3.5" />
+                                </span>
+                                <div className="min-w-0">
+                                  <h5 className="text-xs font-bold leading-tight text-slate-900">
+                                    {lang === 'ta' ? page.nameTa : page.nameEn}
+                                  </h5>
+                                  <span className="portal-dash-id">{page.id}</span>
                                 </div>
                               </div>
-
-                              <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-2">
-                                {lang === 'ta' ? page.descriptionTa : page.descriptionEn}
-                              </p>
+                              {isChecked ? (
+                                <CheckSquare className="h-4 w-4 shrink-0" style={{ color: isCustom ? '#d97706' : 'var(--theme-accent)' }} />
+                              ) : (
+                                <Square className="h-4 w-4 shrink-0 text-slate-300" />
+                              )}
                             </div>
-
-                            <div className="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-[10px]">
-                              <span className="text-gray-400 font-medium">
-                                {lang === 'ta' ? page.categoryTa : page.categoryEn}
-                              </span>
-                              <span className={`font-bold ${isChecked ? (isCustom ? 'text-amber-600' : 'text-indigo-600') : 'text-gray-400'}`}>
+                            <p className="line-clamp-2 text-[11px] text-slate-500">
+                              {lang === 'ta' ? page.descriptionTa : page.descriptionEn}
+                            </p>
+                            <div className="flex items-center justify-between border-t border-slate-100 pt-1.5 text-[10px]">
+                              <span className="text-slate-400">{lang === 'ta' ? page.categoryTa : page.categoryEn}</span>
+                              <span className="font-bold" style={isChecked ? { color: isCustom ? '#d97706' : 'var(--theme-accent)' } : undefined}>
                                 {isChecked ? (lang === 'ta' ? 'அனுமதிக்கப்பட்டது' : 'Enabled') : (lang === 'ta' ? 'மறுக்கப்பட்டது' : 'Disabled')}
                               </span>
                             </div>
@@ -1746,8 +1758,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                       })}
                     </div>
 
-                    {/* Footer Save Action */}
-                    <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
                       <div className="text-xs text-gray-500 flex items-center gap-2">
                         <CheckCircle className="w-4 h-4 text-emerald-500" />
                         <span>
@@ -1758,13 +1769,16 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                       </div>
 
                       <button
+                        type="button"
                         onClick={() => handleSaveUserPermissions(activeUser.id)}
                         disabled={savingPageAccess}
-                        className="w-full sm:w-auto px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-1.5 text-[11px] font-semibold text-white shadow-md hover:brightness-110 cursor-pointer disabled:opacity-50"
+                        style={{ background: 'var(--theme-accent)' }}
                       >
-                        <ShieldCheck className="w-4 h-4" />
+                        <ShieldCheck className="h-3.5 w-3.5" />
                         <span>{savingPageAccess ? 'Saving...' : (lang === 'ta' ? 'பயனர் அனுமதியைச் சேமி' : 'Save User Permissions')}</span>
                       </button>
+                    </div>
                     </div>
                   </div>
                 );
@@ -1775,17 +1789,24 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
       )}
 
       {activeTab === 'offices' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-5">
-            <form onSubmit={handleAddOfficeCategory} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-              <h3 className="font-semibold text-gray-800 text-md flex items-center gap-2 border-b border-gray-50 pb-2">
-                <Building className="w-5 h-5 text-indigo-500" />
-                {lang === 'ta' ? 'அலுவலக வகை மற்றும் பணியிட வரம்பு' : 'Office Post Sanctions Limit'}
-              </h3>
+        <div className="portal-wt-grid">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Plus className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'அலுவலக வகை மற்றும் பணியிட வரம்பு' : 'Office Post Sanctions Limit'}
+                </h3>
+              </div>
+            </div>
+            <div className="portal-dash-body portal-wt-form">
+            <form onSubmit={handleAddOfficeCategory} className="space-y-3">
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('officeType')}</label>
+                  <label>{t('officeType')}</label>
                   <select
                     value={officeType}
                     onChange={(e) => {
@@ -1794,7 +1815,6 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                       setOfficeDistrictId('');
                       setOfficeTPId('');
                     }}
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white font-medium text-gray-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                   >
                     <option value="DTP">DTP (Directorate)</option>
                     <option value="ADTP">ADTP (Assistant Director Office)</option>
@@ -1805,11 +1825,10 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                 {officeType === 'ADTP' && (
                   <div className="space-y-3 pt-1">
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும்' : 'Select Zone'}</label>
+                      <label>{lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும்' : 'Select Zone'}</label>
                       <select
                         value={officeZoneId}
                         onChange={(e) => setOfficeZoneId(e.target.value)}
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white font-medium text-gray-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                         required
                       >
                         <option value="">-- {lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடு' : 'Choose Zone'} --</option>
@@ -1824,7 +1843,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                 {officeType === 'TP' && (
                   <div className="space-y-3 pt-1">
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும்' : 'Select Zone'}</label>
+                      <label>{lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும்' : 'Select Zone'}</label>
                       <select
                         value={officeZoneId}
                         onChange={(e) => {
@@ -1832,7 +1851,6 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                           setOfficeDistrictId('');
                           setOfficeTPId('');
                         }}
-                        className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white font-medium text-gray-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                         required
                       >
                         <option value="">-- {lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடு' : 'Choose Zone'} --</option>
@@ -1844,14 +1862,13 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
                     {officeZoneId && (
                       <div>
-                        <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'மாவட்டத்தைத் தேர்ந்தெடுக்கவும்' : 'Select District'}</label>
+                        <label>{lang === 'ta' ? 'மாவட்டத்தைத் தேர்ந்தெடுக்கவும்' : 'Select District'}</label>
                         <select
                           value={officeDistrictId}
                           onChange={(e) => {
                             setOfficeDistrictId(e.target.value);
                             setOfficeTPId('');
                           }}
-                          className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white font-medium text-gray-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                           required
                         >
                           <option value="">-- {lang === 'ta' ? 'மாவட்டத்தைத் தேர்ந்தெடு' : 'Choose District'} --</option>
@@ -1864,11 +1881,10 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
                     {officeDistrictId && (
                       <div>
-                        <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'பேரூராட்சியைத் தேர்ந்தெடுக்கவும்' : 'Select Town Panchayat'}</label>
+                        <label>{lang === 'ta' ? 'பேரூராட்சியைத் தேர்ந்தெடுக்கவும்' : 'Select Town Panchayat'}</label>
                         <select
                           value={officeTPId}
                           onChange={(e) => setOfficeTPId(e.target.value)}
-                          className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white font-medium text-gray-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                           required
                         >
                           <option value="">-- {lang === 'ta' ? 'பேரூராட்சியைத் தேர்ந்தெடு' : 'Choose Town Panchayat'} --</option>
@@ -1882,10 +1898,12 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                 )}
 
                 {currentOfficeDetails.isValid && (
-                  <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-1">
-                    <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">{lang === 'ta' ? 'தானாக உருவான பெயர்' : 'Auto-Generated Name'}</span>
-                    <p className="text-sm font-bold text-indigo-900">{currentOfficeDetails.nameEn}</p>
-                    <p className="text-xs text-indigo-700 font-medium">{currentOfficeDetails.nameTa}</p>
+                  <div className="portal-wt-note">
+                    <span>
+                      <strong>{lang === 'ta' ? 'தானாக உருவான பெயர்' : 'Auto-Generated Name'}</strong>
+                      {' — '}
+                      {currentOfficeDetails.nameEn} / {currentOfficeDetails.nameTa}
+                    </span>
                   </div>
                 )}
 
@@ -1901,18 +1919,24 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                 )}
 
                 {currentOfficeDetails.isValid && !isDuplicateOffice && (
-                  <div className="space-y-2 pt-2 border-t border-gray-50">
-                    <span className="text-xs font-bold text-gray-800 block">{t('postSanctions')}</span>
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1 scrollbar-custom">
+                  <div className="portal-wt-section">
+                    <div className="portal-wt-section-title">{t('postSanctions')}</div>
+                    <div className="portal-wt-fields portal-sanction-list">
+                      {posts.length === 0 && (
+                        <p className="portal-wt-empty">{lang === 'ta' ? 'பதவிகள் இல்லை' : 'No posts to sanction yet'}</p>
+                      )}
                       {posts.map((p: any) => (
-                        <div key={p.id} className="flex justify-between items-center text-xs p-1 hover:bg-gray-50 rounded transition">
-                          <span className="text-gray-600 font-medium">{tObj(p)}</span>
+                        <div key={p.id} className="portal-wt-field">
+                          <div className="portal-wt-field-main">
+                            <div className="portal-wt-field-name">{tObj(p)}</div>
+                          </div>
                           <input
                             type="number"
                             min="0"
                             value={sanctions[p.id] || 0}
                             onChange={(e) => handleUpdateSanction(p.id, parseInt(e.target.value) || 0)}
-                            className="w-20 border border-gray-200 rounded-lg p-1.5 text-center font-bold text-indigo-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                            className="portal-sanction-input"
+                            aria-label={tObj(p)}
                           />
                         </div>
                       ))}
@@ -1921,203 +1945,321 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                 )}
               </div>
 
-              <button 
+              <button
                 type="submit"
                 disabled={!currentOfficeDetails.isValid || isDuplicateOffice}
-                className={`w-full py-3 text-white rounded-xl text-xs font-semibold transition mt-2 shadow-xs ${(!currentOfficeDetails.isValid || isDuplicateOffice) ? 'bg-gray-300 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
               >
                 {lang === 'ta' ? 'அலுவலகத்தை உருவாக்கு' : 'Add Office Configuration'}
               </button>
             </form>
+            </div>
           </div>
 
-          <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-            {/* Sleek CSV Control Panel */}
-            <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h5 className="font-bold text-gray-800 text-xs flex items-center gap-1.5">
-                    <FileSpreadsheet className="w-4 h-4 text-indigo-500" />
-                    {lang === 'ta' ? 'மொத்தமாக பணியிட வரம்பு பதிவேற்றம் (CSV)' : 'Bulk Sanctions Upload via CSV'}
-                  </h5>
-                  <p className="text-[10px] text-gray-500 mt-0.5">
-                    {lang === 'ta' 
-                      ? 'மாதிரி படிவத்தை பதிவிறக்கி, விவரங்களை பூர்த்தி செய்து பதிவேற்றவும்.' 
-                      : 'Download the model template with current posts, fill it, and upload.'}
-                  </p>
-                </div>
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Building className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'பணியிட வரம்பு நிலைகள்' : 'Sanctioned Post Configurations Matrix'}
+                </h3>
+                <p>{officeCategories.length} {lang === 'ta' ? 'அலுவலகங்கள்' : 'offices'}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
                 <button
                   type="button"
                   onClick={handleDownloadOfficeTemplate}
-                  className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 self-start sm:self-center"
+                  className="portal-dash-head-action"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  {lang === 'ta' ? 'மாதிரி படிவம்' : 'Model Template'}
+                  <Download className="h-3 w-3" />
+                  <span>{lang === 'ta' ? 'மாதிரி படிவம்' : 'Template'}</span>
                 </button>
-              </div>
-
-              <div className="border-t border-slate-200/60 pt-2.5 flex items-center gap-3">
-                <label className="cursor-pointer px-4 py-2 bg-white border border-gray-200 hover:border-indigo-300 hover:text-indigo-600 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs">
-                  <UploadCloud className="w-4 h-4 text-gray-400 group-hover:text-indigo-600" />
-                  <span>{lang === 'ta' ? 'CSV கோப்பைத் தேர்ந்தெடு' : 'Select Office CSV'}</span>
-                  <input
-                    type="file"
-                    ref={officeCsvInputRef}
-                    accept=".csv"
-                    onChange={handleOfficeCsvUpload}
-                    className="hidden"
-                  />
-                </label>
-                <span className="text-[10px] text-gray-400 font-mono">Accepts .csv files</span>
+                <button
+                  type="button"
+                  onClick={() => officeCsvInputRef.current?.click()}
+                  className="portal-dash-head-action"
+                >
+                  <UploadCloud className="h-3 w-3" />
+                  <span>{lang === 'ta' ? 'CSV' : 'Office CSV'}</span>
+                </button>
+                <input
+                  type="file"
+                  ref={officeCsvInputRef}
+                  accept=".csv"
+                  onChange={handleOfficeCsvUpload}
+                  className="hidden"
+                />
               </div>
             </div>
-
-            {csvFeedback && (
-              <div className={`p-4 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
-                {csvFeedback.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
-                <p className="text-xs font-medium leading-relaxed">{csvFeedback.message}</p>
-              </div>
-            )}
-
-            <h4 className="font-semibold text-gray-800 text-sm border-b border-gray-50 pb-2">{lang === 'ta' ? 'பணியிட வரம்பு நிலைகள்' : 'Sanctioned Post Configurations Matrix'}</h4>
-            <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1 scrollbar-custom">
-              {officeCategories.map((oc: any) => (
-                <div key={oc.id} className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-2 text-xs hover:border-indigo-100 transition">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-gray-800 block text-sm">{tObj(oc)} <span className="text-xs font-mono text-gray-400">({oc.type})</span></span>
-                    <button
-                      onClick={() => onSaveCollection('officeCategories', officeCategories.filter((x: any) => x.id !== oc.id))}
-                      className="text-gray-300 hover:text-red-500 text-lg font-bold leading-none"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-gray-500">
-                    {Object.keys(oc.sanctions || {}).map((postId) => {
+            <div className="portal-dash-body">
+              {officeCategories.length === 0 && (
+                <p className="portal-wt-empty is-center">
+                  {lang === 'ta' ? 'அலுவலக அமைப்புகள் இல்லை' : 'No office configurations yet'}
+                </p>
+              )}
+              <div className="portal-wt-tree">
+                {officeCategories.map((oc: any) => {
+                  const isOpen = Boolean(openOfficeMatrix[oc.id]);
+                  const tone = OFFICE_TONES[oc.type] || OFFICE_TONES.DTP;
+                  const sanctionEntries = Object.keys(oc.sanctions || {})
+                    .map((postId) => {
                       const pst = posts.find((p: any) => p.id === postId);
                       const count = oc.sanctions[postId];
                       if (!count) return null;
-                      return (
-                        <div key={postId} className="bg-white px-2 py-1.5 rounded border border-gray-100 flex justify-between">
-                          <span className="truncate max-w-[70%]">{pst ? tObj(pst) : postId}</span>
-                          <span className="font-bold text-indigo-600 font-mono">{count}</span>
+                      return { postId, label: pst ? tObj(pst) : postId, count };
+                    })
+                    .filter(Boolean) as { postId: string; label: string; count: number }[];
+                  return (
+                    <div
+                      key={oc.id}
+                      className={`portal-wt-node${isOpen ? ' is-open' : ''}`}
+                      style={{ ['--wt-tone' as string]: tone }}
+                    >
+                      <div className="portal-wt-node-head">
+                        <button
+                          type="button"
+                          className="portal-wt-toggle"
+                          onClick={() => setOpenOfficeMatrix((prev) => ({ ...prev, [oc.id]: !prev[oc.id] }))}
+                          aria-expanded={isOpen}
+                        >
+                          <ChevronRight className={`portal-wt-caret${isOpen ? ' is-open' : ''}`} />
+                          <div className="portal-wt-copy">
+                            <div className="portal-wt-title">
+                              <span>{tObj(oc)}</span>
+                              <span className="portal-wt-count">{oc.type}</span>
+                              <span className="portal-wt-count">{sanctionEntries.length}</span>
+                            </div>
+                          </div>
+                        </button>
+                        <div className="portal-wt-actions">
+                          <button
+                            type="button"
+                            onClick={() => onSaveCollection('officeCategories', officeCategories.filter((x: any) => x.id !== oc.id))}
+                            className="portal-fis-icon-btn is-danger"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+                      </div>
+                      {isOpen && (
+                        <div className="portal-wt-fields">
+                          {sanctionEntries.length === 0 && (
+                            <p className="portal-wt-empty">{lang === 'ta' ? 'பணியிட வரம்பு இல்லை' : 'No sanctioned posts'}</p>
+                          )}
+                          {sanctionEntries.map((entry) => (
+                            <div key={entry.postId} className="portal-wt-field">
+                              <div className="portal-wt-field-main">
+                                <div className="portal-wt-field-name">{entry.label}</div>
+                              </div>
+                              <span className="portal-wt-count">{entry.count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {activeTab === 'roles' && (
-        <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-6">
-          <div className="flex justify-between items-center border-b border-gray-50 pb-3">
-            <h3 className="font-semibold text-gray-800 text-md flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-indigo-500" />
-              {t('roleManagement')}
-            </h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {roles.map((role: any) => (
-              <div key={role.id} className="p-5 border border-gray-100 rounded-2xl bg-gray-50/50 space-y-3">
-                <span className="bg-indigo-600 text-white font-bold px-2.5 py-1 rounded text-[10px] uppercase tracking-wider inline-block">
-                  {role.id}
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>
+                <span className="portal-dash-icon">
+                  <ShieldAlert className="h-3 w-3" />
                 </span>
-                <h4 className="font-bold text-gray-950 text-sm">{tObj(role)}</h4>
-                
-                <div className="space-y-1.5 border-t border-gray-100 pt-3">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">{t('assignPermissions')}</span>
-                  <div className="space-y-1 text-xs text-gray-500">
-                    {role.permissions?.map((p: string, idx: number) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
-                        <span>{p === 'all' ? (lang === 'ta' ? 'அனைத்து அனுமதிகளும்' : 'Super Admin Permissions') : p}</span>
+                {t('roleManagement')}
+              </h3>
+              <p>
+                {lang === 'ta'
+                  ? `${roles.length} பங்குகள் · அணுகல் வரம்பு மற்றும் பக்க அனுமதி`
+                  : `${roles.length} roles · access scope and page permissions`}
+              </p>
+            </div>
+          </div>
+          <div className="portal-dash-body">
+            {roles.length === 0 && (
+              <p className="portal-wt-empty is-center">
+                {lang === 'ta' ? 'பங்குகள் இல்லை' : 'No roles configured yet'}
+              </p>
+            )}
+            <div className="portal-wt-tree">
+              {roles.map((role: any, roleIdx: number) => {
+                const isOpen = Boolean(openRoleRows[role.id]);
+                const tone = ROLE_TONES[roleIdx % ROLE_TONES.length];
+                const assignedUsers = users.filter((u: any) => u.roleId === role.id).length;
+                const pageIds = getRolePermissions(role.id);
+                const scopeFlags: string[] = Array.isArray(role.permissions) ? role.permissions : [];
+                const permissionLabel = (p: string) => {
+                  if (p === 'all') return lang === 'ta' ? 'அனைத்து அனுமதிகளும்' : 'Super Admin';
+                  if (p === 'zone_control') return lang === 'ta' ? 'மண்டல கட்டுப்பாடு' : 'Zone control';
+                  if (p === 'tp_control') return lang === 'ta' ? 'பேரூராட்சி கட்டுப்பாடு' : 'Town Panchayat control';
+                  return p.replace(/_/g, ' ');
+                };
+                return (
+                  <div
+                    key={role.id}
+                    className={`portal-wt-node${isOpen ? ' is-open' : ''}`}
+                    style={{ ['--wt-tone' as string]: tone }}
+                  >
+                    <div className="portal-wt-node-head">
+                      <button
+                        type="button"
+                        className="portal-wt-toggle"
+                        onClick={() => setOpenRoleRows((prev) => ({ ...prev, [role.id]: !prev[role.id] }))}
+                        aria-expanded={isOpen}
+                      >
+                        <ChevronRight className={`portal-wt-caret${isOpen ? ' is-open' : ''}`} />
+                        <div className="portal-wt-copy">
+                          <div className="portal-wt-title">
+                            <span>{tObj(role)}</span>
+                            <span className="portal-wt-count">{role.id}</span>
+                            <span className="portal-wt-count">
+                              {assignedUsers} {lang === 'ta' ? 'பயனர்' : 'users'}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                      <div className="portal-wt-actions">
+                        <button
+                          type="button"
+                          className="portal-fis-icon-btn"
+                          title={lang === 'ta' ? 'பக்க அனுமதி மேலாண்மை' : 'Manage page access'}
+                          onClick={() => {
+                            setSelectedRoleForAccess(role.id);
+                            setAccessMode('role_wise');
+                            setActiveTab('page_access');
+                            setPageAccessFeedback(null);
+                          }}
+                        >
+                          <Key className="h-3 w-3" />
+                        </button>
                       </div>
-                    ))}
+                    </div>
+                    {isOpen && (
+                      <div className="portal-wt-fields">
+                        <div className="portal-wt-field">
+                          <div className="portal-wt-field-main">
+                            <div className="portal-wt-field-name">{t('assignPermissions')}</div>
+                            <div className="portal-wt-chips">
+                              {scopeFlags.length === 0 && (
+                                <span className="portal-wt-meta">
+                                  {lang === 'ta' ? 'அணுகல் வரம்பு இல்லை' : 'No access scope flags'}
+                                </span>
+                              )}
+                              {scopeFlags.map((p: string) => (
+                                <span key={p} className="portal-wt-chip">{permissionLabel(p)}</span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="portal-wt-field">
+                          <div className="portal-wt-field-main">
+                            <div className="portal-wt-field-name">
+                              <span>{lang === 'ta' ? 'பக்க அனுமதி' : 'Page access'}</span>
+                              <span className="portal-wt-count">{pageIds.length}</span>
+                            </div>
+                            <div className="portal-wt-chips">
+                              {pageIds.length === 0 && (
+                                <span className="portal-wt-meta">
+                                  {lang === 'ta' ? 'பக்கங்கள் இல்லை' : 'No pages enabled'}
+                                </span>
+                              )}
+                              {pageIds.map((pageId: string) => {
+                                const page = SYSTEM_PAGES.find((x) => x.id === pageId);
+                                return (
+                                  <span key={pageId} className="portal-wt-chip">
+                                    {page ? (lang === 'ta' ? page.nameTa : page.nameEn) : pageId}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
 
       {/* Edit User Modal */}
       {editingUser && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="portal-modal-overlay">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-gray-100 max-h-[90vh] flex flex-col"
+            className="portal-modal w-full max-w-md"
           >
-            <div className="bg-indigo-950 p-5 text-white flex justify-between items-center">
-              <h3 className="font-bold text-sm flex items-center gap-2">
-                <Edit className="w-5 h-5 text-indigo-400" />
+            <div className="portal-modal-head">
+              <h3 className="flex items-center gap-2">
+                <span className="portal-dash-icon"><Edit className="h-3.5 w-3.5" /></span>
                 {lang === 'ta' ? 'பயனர் விபரங்களை திருத்துக' : 'Edit User Details'}
               </h3>
               <button 
                 type="button"
                 onClick={() => setEditingUser(null)} 
-                className="p-1 hover:bg-white/10 rounded-full transition cursor-pointer"
+                className="portal-modal-close"
+                aria-label="Close"
               >
-                <X className="w-5 h-5 text-white" />
+                <X className="w-4 h-4" />
               </button>
             </div>
             
-            <form onSubmit={handleUpdateUserSubmit} className="p-6 overflow-y-auto space-y-4">
+            <form onSubmit={handleUpdateUserSubmit} className="portal-modal-body portal-wt-form">
               <div>
-                <label className="text-xs font-semibold text-gray-500">{t('userFullNameEn')}</label>
+                <label>{t('userFullNameEn')}</label>
                 <input
                   type="text"
                   value={editFullNameEn}
                   onChange={(e) => setEditFullNameEn(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-800 font-medium"
                   required
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500">{t('userFullNameTa')}</label>
+                <label>{t('userFullNameTa')}</label>
                 <input
                   type="text"
                   value={editFullNameTa}
                   onChange={(e) => setEditFullNameTa(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-800 font-medium"
                   required
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('usernameLabel')}</label>
+                  <label>{t('usernameLabel')}</label>
                   <input
                     type="text"
                     value={editUsername}
                     onChange={(e) => setEditUsername(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl p-3 text-xs mt-1 outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-800 font-mono"
                     required
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('passwordLabel')}</label>
+                  <label>{t('passwordLabel')}</label>
                   <input
                     type="text"
                     value={editPassword}
                     onChange={(e) => setEditPassword(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl p-3 text-xs mt-1 outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-800 font-mono"
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-gray-500">{t('role')}</label>
+                <label>{t('role')}</label>
                 <select
                   value={editRoleId}
                   onChange={(e) => setEditRoleId(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white focus:ring-1 focus:ring-indigo-500 text-gray-800 font-medium"
                   required
                 >
                   <option value="">-- Choose Role --</option>
@@ -2128,7 +2270,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-gray-500">{t('scopeType')}</label>
+                <label>{t('scopeType')}</label>
                 <select
                   value={editScopeType}
                   onChange={(e) => {
@@ -2136,7 +2278,6 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                     setEditScopeType(val);
                     setEditScopeId(val === 'HOD' ? 'all' : '');
                   }}
-                  className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white focus:ring-1 focus:ring-indigo-500 text-gray-800 font-medium"
                   required
                 >
                   <option value="HOD">{t('hodScope')}</option>
@@ -2147,11 +2288,10 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
               {editScopeType === 'Zone' && (
                 <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('selectZone')}</label>
+                  <label>{t('selectZone')}</label>
                   <select
                     value={editScopeId}
                     onChange={(e) => setEditScopeId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white focus:ring-1 focus:ring-indigo-500 text-gray-800 font-medium"
                     required
                   >
                     <option value="">-- Choose Zone --</option>
@@ -2164,11 +2304,10 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
               {editScopeType === 'TownPanchayat' && (
                 <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('selectTP')}</label>
+                  <label>{t('selectTP')}</label>
                   <select
                     value={editScopeId}
                     onChange={(e) => setEditScopeId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 outline-none bg-white focus:ring-1 focus:ring-indigo-500 text-gray-800 font-medium"
                     required
                   >
                     <option value="">-- Choose Town Panchayat --</option>
@@ -2180,17 +2319,14 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
               )}
 
               <div className="flex gap-2 pt-2">
-                <button 
-                  type="button" 
-                  onClick={() => setEditingUser(null)} 
-                  className="flex-1 py-3 border border-gray-200 text-gray-600 rounded-xl text-xs font-semibold hover:bg-gray-50 transition cursor-pointer"
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="portal-wt-link"
                 >
                   {lang === 'ta' ? 'ரத்துசெய்' : 'Cancel'}
                 </button>
-                <button 
-                  type="submit" 
-                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow-xs cursor-pointer"
-                >
+                <button type="submit">
                   {lang === 'ta' ? 'சேமி' : 'Save Changes'}
                 </button>
               </div>

@@ -310,6 +310,8 @@ export default function PendingIssuesView({
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Slideshow States
+  const [openSchemaCats, setOpenSchemaCats] = useState<Record<string, boolean>>({});
+  const SCHEMA_TONES = ['#1d4ed8', '#7c3aed', '#0f766e', '#c2410c'];
   const [isSlideViewActive, setIsSlideViewActive] = useState<boolean>(false);
   const [activeSlideIndex, setActiveSlideIndex] = useState<number>(0);
   const [slideActivePreviewFile, setSlideActivePreviewFile] = useState<any | null>(null);
@@ -1240,8 +1242,8 @@ export default function PendingIssuesView({
   };
 
   const renderSortIcon = (field: string) => {
-    if (sortField !== field) return <span className="ml-1 text-gray-300">↕</span>;
-    return sortOrder === 'asc' ? <span className="ml-1 text-indigo-600">↑</span> : <span className="ml-1 text-indigo-600">↓</span>;
+    if (sortField !== field) return <span className="portal-dash-sort">↕</span>;
+    return <span className="portal-dash-sort">{sortOrder === 'asc' ? '↑' : '↓'}</span>;
   };
 
   const downloadExcel = (tableType: 'abstract' | 'detailed') => {
@@ -1549,47 +1551,52 @@ export default function PendingIssuesView({
   });
 
   return (
-    <div id="pending-issues-monitoring-module" className="space-y-6">
+    <div id="pending-issues-monitoring-module" className="portal-studio portal-page">
       
       {/* Title block */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
-            <AlertTriangle className="w-6 h-6 animate-pulse" style={{ color: currentTheme.accentColor }} />
-            {t('Pending Issues Monitoring & Resolution', 'பிரச்சனைகள் கண்காணிப்பு தளம்')}
-          </h2>
-          <p className="text-gray-500 text-xs mt-1.5 font-medium">
-            {t('Monitor, configure dynamic fields, submit, and resolve Town Panchayat category issues.', 'மண்டல மற்றும் இயக்கக அலுவலர்கள் கண்காணித்து தீர்வு காணும் தளம்.')}
-          </p>
+      <div className="portal-fis-hero">
+        <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
+            <AlertTriangle className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0 leading-tight">
+            <h3 className="text-[14px] font-semibold tracking-tight text-white">
+              {t('Pending Issues Monitoring & Resolution', 'பிரச்சனைகள் கண்காணிப்பு தளம்')}
+            </h3>
+            <p className="text-[10px] text-white/70">
+              {t('Monitor, configure dynamic fields, submit, and resolve Town Panchayat category issues.', 'மண்டல மற்றும் இயக்கக அலுவலர்கள் கண்காணித்து தீர்வு காணும் தளம்.')}
+            </p>
+          </div>
         </div>
-        
-        {/* Toggle tabs */}
-        <div className="flex gap-1.5 p-1 bg-gray-50 border border-gray-100 rounded-xl text-xs font-semibold">
+      </div>
+
+      <div className="portal-dash-toolbar">
+        <div className="portal-dash-pills">
           <button
+            type="button"
             onClick={() => setActiveSubTab('directory')}
-            style={activeSubTab === 'directory' ? { color: currentTheme.accentColor } : {}}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition-all ${activeSubTab === 'directory' ? 'bg-white shadow-xs' : 'text-gray-500 hover:text-gray-900'}`}
+            className={`portal-dash-pill ${activeSubTab === 'directory' ? 'is-active' : ''}`}
           >
-            <FileText className="w-4 h-4" />
+            <FileText className="h-3.5 w-3.5" />
             <span>{t('Issues Report', 'பிரச்சனைகள் அறிக்கை')}</span>
           </button>
           {isTPUser && (
             <button
+              type="button"
               onClick={() => setActiveSubTab('create')}
-              style={activeSubTab === 'create' ? { color: currentTheme.accentColor } : {}}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition-all ${activeSubTab === 'create' ? 'bg-white shadow-xs' : 'text-gray-500 hover:text-gray-900'}`}
+              className={`portal-dash-pill ${activeSubTab === 'create' ? 'is-active' : ''}`}
             >
-              <PlusCircle className="w-4 h-4" />
+              <PlusCircle className="h-3.5 w-3.5" />
               <span>{t('New Issues', 'புதிய பிரச்சனைகள்')}</span>
             </button>
           )}
           {isAdmin && (
             <button
+              type="button"
               onClick={() => setActiveSubTab('schema')}
-              style={activeSubTab === 'schema' ? { color: currentTheme.accentColor } : {}}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg transition-all ${activeSubTab === 'schema' ? 'bg-white shadow-xs' : 'text-gray-500 hover:text-gray-900'}`}
+              className={`portal-dash-pill ${activeSubTab === 'schema' ? 'is-active' : ''}`}
             >
-              <Sliders className="w-4 h-4" />
+              <Sliders className="h-3.5 w-3.5" />
               <span>{t('Configure Fields', 'புலங்கள் கட்டமைப்பு')}</span>
             </button>
           )}
@@ -1613,27 +1620,31 @@ export default function PendingIssuesView({
 
       {/* SUB-TAB 2: ISSUES DIRECTORY / REPORT */}
       {activeSubTab === 'directory' && (
-        <div className="space-y-6">
+        <div className="space-y-3">
           
-          {/* Issues Monitoring Abstract Register Section */}
-          <div id="abstract-register-section" className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-6">
-            <div>
-              <h3 className="text-md font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-indigo-600" />
-                {lang === 'ta' ? 'பிரச்சினைகள் கண்காணிப்பு அட்டவணை' : 'Issues Monitoring Abstract Register'}
-              </h3>
-              <p className="text-xs text-gray-400 mt-1">
-                {lang === 'ta' 
-                  ? 'மண்டலம், மாவட்டம், பேரூராட்சி மற்றும் நிலைகளின் அடிப்படையில் வடிகட்டக்கூடிய சுருக்க அறிக்கை' 
-                  : 'Interactive abstract ledger with real-time dynamic charts updating according to active filter subsets.'}
-              </p>
+          <div id="abstract-register-section" className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <AlertTriangle className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'பிரச்சினைகள் கண்காணிப்பு அட்டவணை' : 'Issues Monitoring Abstract Register'}
+                </h3>
+                <p>
+                  {lang === 'ta' 
+                    ? 'மண்டலம், மாவட்டம், பேரூராட்சி மற்றும் நிலை வாரியாக வடிகட்டி பார்க்கவும்.' 
+                    : 'Filter by zone, district, town panchayat, category, and status.'}
+                </p>
+              </div>
             </div>
+            <div className="portal-dash-body portal-dash-register">
 
             {/* Dynamic Filters Bar */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
+            <div className="portal-dash-fields">
               {/* Zone Filter */}
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                <label>
                   {lang === 'ta' ? 'மண்டலம்' : 'Zone'}
                 </label>
                 <select
@@ -1644,7 +1655,6 @@ export default function PendingIssuesView({
                     setFilterTPId('');
                   }}
                   disabled={isZoneUser || isTPUser}
-                  className="w-full text-xs p-2.5 rounded-xl border border-gray-200 outline-none bg-white font-medium disabled:opacity-60"
                 >
                   <option value="">{lang === 'ta' ? 'அனைத்து மண்டலங்கள்' : 'All Zones'}</option>
                   {allowedZones.map((z: any) => (
@@ -1655,7 +1665,7 @@ export default function PendingIssuesView({
 
               {/* District Filter */}
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                <label>
                   {lang === 'ta' ? 'மாவட்டம்' : 'District'}
                 </label>
                 <select
@@ -1665,7 +1675,6 @@ export default function PendingIssuesView({
                     setFilterTPId('');
                   }}
                   disabled={isTPUser}
-                  className="w-full text-xs p-2.5 rounded-xl border border-gray-200 outline-none bg-white font-medium disabled:opacity-60"
                 >
                   <option value="">{lang === 'ta' ? 'அனைத்து மாவட்டங்கள்' : 'All Districts'}</option>
                   {availableDistricts.map((d: any) => (
@@ -1676,14 +1685,13 @@ export default function PendingIssuesView({
 
               {/* Town Panchayat Filter */}
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                <label>
                   {lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}
                 </label>
                 <select
                   value={filterTPId}
                   onChange={(e) => setFilterTPId(e.target.value)}
                   disabled={isTPUser}
-                  className="w-full text-xs p-2.5 rounded-xl border border-gray-200 outline-none bg-white font-medium disabled:opacity-60"
                 >
                   <option value="">{lang === 'ta' ? 'அனைத்து பேரூராட்சிகள்' : 'All Town Panchayats'}</option>
                   {availableTPs.map((tp: any) => (
@@ -1694,8 +1702,8 @@ export default function PendingIssuesView({
 
               {/* Category Filter */}
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
-                  {lang === 'ta' ? 'பிரிவு (Category)' : 'Category'}
+                <label>
+                  {lang === 'ta' ? 'பிரிவு' : 'Category'}
                 </label>
                 <select
                   value={filterCategory}
@@ -1703,7 +1711,6 @@ export default function PendingIssuesView({
                     setFilterCategory(e.target.value);
                     setFilterSubcategory('');
                   }}
-                  className="w-full text-xs p-2.5 rounded-xl border border-gray-200 outline-none bg-white font-medium"
                 >
                   <option value="">{lang === 'ta' ? 'அனைத்து பிரிவுகள்' : 'All Categories'}</option>
                   {Object.keys(CATEGORIES_MAP).map((catId) => (
@@ -1716,13 +1723,12 @@ export default function PendingIssuesView({
 
               {/* Stage / Status Filter */}
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
-                  {lang === 'ta' ? 'நிலை (Stage)' : 'Stage / Status'}
+                <label>
+                  {lang === 'ta' ? 'நிலை' : 'Stage / Status'}
                 </label>
                 <select
                   value={filterStage}
                   onChange={(e) => setFilterStage(e.target.value)}
-                  className="w-full text-xs p-2.5 rounded-xl border border-gray-200 outline-none bg-white font-medium"
                 >
                   <option value="">{lang === 'ta' ? 'அனைத்து நிலைகள்' : 'All Stages'}</option>
                   <option value="Pending">{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</option>
@@ -1732,11 +1738,9 @@ export default function PendingIssuesView({
               </div>
             </div>
 
-            {/* Abstract Table */}
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-2 rounded-2xl border border-gray-100">
-                {/* View Mode Toggles */}
-                <div className="flex items-center gap-1 bg-slate-50 p-1.5 rounded-xl border border-slate-100 shrink-0">
+            <div className="flex flex-col gap-2">
+              <div className="portal-dash-toolbar">
+                <div className="portal-dash-pills">
                   {permissibleModes.includes('category') && (
                     <button
                       type="button"
@@ -1746,11 +1750,7 @@ export default function PendingIssuesView({
                         setSelectedAbstractSubcategory('');
                         setSelectedAbstractStatus('');
                       }}
-                      className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        abstractViewMode === 'category'
-                          ? 'bg-white text-indigo-700 shadow-xs'
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
+                      className={`portal-dash-pill ${abstractViewMode === 'category' ? 'is-active' : ''}`}
                     >
                       {lang === 'ta' ? 'வகை வாரியாக' : 'Category Wise'}
                     </button>
@@ -1764,11 +1764,7 @@ export default function PendingIssuesView({
                         setSelectedAbstractSubcategory('');
                         setSelectedAbstractStatus('');
                       }}
-                      className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        abstractViewMode === 'zone'
-                          ? 'bg-white text-indigo-700 shadow-xs'
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
+                      className={`portal-dash-pill ${abstractViewMode === 'zone' ? 'is-active' : ''}`}
                     >
                       {lang === 'ta' ? 'மண்டல வாரியாக' : 'Zone Wise'}
                     </button>
@@ -1782,291 +1778,281 @@ export default function PendingIssuesView({
                         setSelectedAbstractSubcategory('');
                         setSelectedAbstractStatus('');
                       }}
-                      className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        abstractViewMode === 'district'
-                          ? 'bg-white text-indigo-700 shadow-xs'
-                          : 'text-slate-500 hover:text-slate-800'
-                      }`}
+                      className={`portal-dash-pill ${abstractViewMode === 'district' ? 'is-active' : ''}`}
                     >
                       {lang === 'ta' ? 'மாவட்ட வாரியாக' : 'District Wise'}
                     </button>
                   )}
                 </div>
-
-                {/* Abstract download button */}
                 <button
                   type="button"
                   onClick={() => downloadExcel('abstract')}
-                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gray-50 border border-gray-100 hover:bg-gray-100 text-slate-700 text-xs font-extrabold transition cursor-pointer"
+                  className="portal-fis-chip portal-fis-chip-excel"
                 >
-                  <FileText className="w-4 h-4 text-indigo-600" />
-                  <span>{lang === 'ta' ? 'சுருக்கப் பட்டியல் பதிவிறக்கம் (Excel)' : 'Download Abstract Excel'}</span>
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>{lang === 'ta' ? 'எக்செல்' : 'Excel'}</span>
                 </button>
               </div>
 
-              {/* Table rendering based on abstract mode */}
-              <div className="overflow-x-auto rounded-2xl border border-gray-150">
-                <table className="w-full text-center text-xs border-collapse">
+              <div className="portal-dash-table overflow-x-auto">
+                <table className="w-full text-center">
                   {abstractViewMode === 'category' && (
                     <>
                       <thead>
-                        <tr className="bg-slate-50 font-bold text-slate-600 border-b border-gray-150 text-[10px] uppercase tracking-wider">
-                          <th className="p-3 text-left border-r border-gray-150">{lang === 'ta' ? 'பிரிவு' : 'Category'}</th>
-                          <th className="p-3 text-left border-r border-gray-150">{lang === 'ta' ? 'துணைப் பிரிவு' : 'Subcategory'}</th>
-                          <th className="p-3 border-r border-gray-150">{lang === 'ta' ? 'மொத்தப் பிரச்சினைகள்' : 'Total Issues'}</th>
-                          <th className="p-3 border-r border-gray-150 text-amber-700">{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</th>
-                          <th className="p-3 border-r border-gray-150 text-indigo-700">{lang === 'ta' ? 'செயல்பாட்டில் (In Progress)' : 'In Progress'}</th>
-                          <th className="p-3 border-r border-gray-150 text-emerald-700">{lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved'}</th>
+                        <tr>
+                          <th className="text-left">{lang === 'ta' ? 'பிரிவு' : 'Category'}</th>
+                          <th className="text-left">{lang === 'ta' ? 'துணைப் பிரிவு' : 'Subcategory'}</th>
+                          <th>{lang === 'ta' ? 'மொத்தப் பிரச்சினைகள்' : 'Total Issues'}</th>
+                          <th>{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</th>
+                          <th>{lang === 'ta' ? 'செயல்பாட்டில் (In Progress)' : 'In Progress'}</th>
+                          <th>{lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved'}</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-150 font-medium text-slate-700">
-                        {(() => {
-                          const abstractCategories = filterCategory
-                            ? CATEGORIES.filter((cat: any) => cat.id === filterCategory)
-                            : CATEGORIES;
+                      {(() => {
+                        const abstractCategories = filterCategory
+                          ? CATEGORIES.filter((cat: any) => cat.id === filterCategory)
+                          : CATEGORIES;
 
-                          let catTotal = 0;
-                          let catPending = 0;
-                          let catInProgress = 0;
-                          let catResolved = 0;
+                        let catTotal = 0;
+                        let catPending = 0;
+                        let catInProgress = 0;
+                        let catResolved = 0;
 
-                          const rows = abstractCategories.flatMap((cat: any) => {
-                            return (cat.subcategories || []).map((sub: any) => {
-                              const matches = reportBaseIssues.filter((i: any) => i.category === cat.id && i.subcategory === sub.id);
-                              const total = matches.length;
-                              const pending = matches.filter((i: any) => i.status === 'Pending').length;
-                              const inProgress = matches.filter((i: any) => i.status === 'In Progress' || i.status === 'Active').length;
-                              const resolved = matches.filter((i: any) => i.status === 'Resolved' || i.status === 'Closed').length;
+                        const rows = abstractCategories.flatMap((cat: any) => {
+                          return (cat.subcategories || []).map((sub: any) => {
+                            const matches = reportBaseIssues.filter((i: any) => i.category === cat.id && i.subcategory === sub.id);
+                            const total = matches.length;
+                            const pending = matches.filter((i: any) => i.status === 'Pending').length;
+                            const inProgress = matches.filter((i: any) => i.status === 'In Progress' || i.status === 'Active').length;
+                            const resolved = matches.filter((i: any) => i.status === 'Resolved' || i.status === 'Closed').length;
 
-                              catTotal += total;
-                              catPending += pending;
-                              catInProgress += inProgress;
-                              catResolved += resolved;
+                            catTotal += total;
+                            catPending += pending;
+                            catInProgress += inProgress;
+                            catResolved += resolved;
 
-                              const isSelected = selectedAbstractCategory === cat.id && selectedAbstractSubcategory === sub.id;
+                            const isSelected = selectedAbstractCategory === cat.id && selectedAbstractSubcategory === sub.id;
 
-                              return (
-                                <tr 
-                                  key={`${cat.id}-${sub.id}`} 
-                                  className={`hover:bg-slate-50/40 transition cursor-pointer ${isSelected ? 'bg-indigo-50/70 font-bold' : ''}`}
-                                  onClick={() => {
-                                    if (isSelected) {
-                                      setSelectedAbstractCategory('');
-                                      setSelectedAbstractSubcategory('');
-                                    } else {
-                                      setSelectedAbstractCategory(cat.id);
-                                      setSelectedAbstractSubcategory(sub.id);
-                                    }
-                                  }}
-                                >
-                                  <td className="p-3 text-left font-bold border-r border-gray-150 bg-slate-50/20">{t(cat.nameEn, cat.nameTa)}</td>
-                                  <td className="p-3 text-left border-r border-gray-150">{t(sub.nameEn, sub.nameTa)}</td>
-                                  <td className="p-3 border-r border-gray-150 font-bold">{total}</td>
-                                  <td className="p-3 border-r border-gray-150 font-bold text-amber-600">{pending}</td>
-                                  <td className="p-3 border-r border-gray-150 font-bold text-indigo-600">{inProgress}</td>
-                                  <td className="p-3 border-r border-gray-150 font-bold text-emerald-600">{resolved}</td>
-                                </tr>
-                              );
-                            });
-                          });
-
-                          return (
-                            <>
-                              {rows}
-                              <tr className="bg-slate-100 font-extrabold text-slate-950 border-t-2 border-gray-300">
-                                <td className="p-3 text-left font-black border-r border-gray-150" colSpan={2}>
-                                  {lang === 'ta' ? 'மொத்தம்' : 'Total'}
-                                </td>
-                                <td className="p-3 border-r border-gray-150 font-black">{catTotal}</td>
-                                <td className="p-3 border-r border-gray-150 font-black text-amber-800">{catPending}</td>
-                                <td className="p-3 border-r border-gray-150 font-black text-indigo-800">{catInProgress}</td>
-                                <td className="p-3 border-r border-gray-150 font-black text-emerald-800">{catResolved}</td>
+                            return (
+                              <tr
+                                key={`${cat.id}-${sub.id}`}
+                                className={`cursor-pointer ${isSelected ? 'is-selected' : ''}`}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedAbstractCategory('');
+                                    setSelectedAbstractSubcategory('');
+                                  } else {
+                                    setSelectedAbstractCategory(cat.id);
+                                    setSelectedAbstractSubcategory(sub.id);
+                                  }
+                                }}
+                              >
+                                <td className="text-left font-bold">{t(cat.nameEn, cat.nameTa)}</td>
+                                <td className="text-left">{t(sub.nameEn, sub.nameTa)}</td>
+                                <td className="portal-dash-num">{total}</td>
+                                <td className="portal-dash-num is-pending">{pending}</td>
+                                <td className="portal-dash-num is-progress">{inProgress}</td>
+                                <td className="portal-dash-num is-resolved">{resolved}</td>
                               </tr>
-                            </>
-                          );
-                        })()}
-                      </tbody>
+                            );
+                          });
+                        });
+
+                        return (
+                          <>
+                            <tbody>{rows}</tbody>
+                            <tfoot>
+                              <tr>
+                                <td colSpan={2} className="text-right">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
+                                <td className="portal-dash-num">{catTotal}</td>
+                                <td className="portal-dash-num is-pending">{catPending}</td>
+                                <td className="portal-dash-num is-progress">{catInProgress}</td>
+                                <td className="portal-dash-num is-resolved">{catResolved}</td>
+                              </tr>
+                            </tfoot>
+                          </>
+                        );
+                      })()}
                     </>
                   )}
 
                   {abstractViewMode === 'zone' && (
                     <>
                       <thead>
-                        <tr className="bg-slate-50 font-bold text-slate-600 border-b border-gray-150 text-[10px] uppercase tracking-wider">
-                          <th className="p-3 text-left border-r border-gray-150">{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</th>
-                          <th className="p-3 border-r border-gray-150">{lang === 'ta' ? 'மொத்தப் பிரச்சினைகள்' : 'Total Issues'}</th>
-                          <th className="p-3 border-r border-gray-150 text-amber-700">{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</th>
-                          <th className="p-3 border-r border-gray-150 text-indigo-700">{lang === 'ta' ? 'செயல்பாட்டில் (In Progress)' : 'In Progress'}</th>
-                          <th className="p-3 border-r border-gray-150 text-emerald-700">{lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved'}</th>
+                        <tr>
+                          <th className="text-left">{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</th>
+                          <th>{lang === 'ta' ? 'மொத்தப் பிரச்சினைகள்' : 'Total Issues'}</th>
+                          <th>{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</th>
+                          <th>{lang === 'ta' ? 'செயல்பாட்டில் (In Progress)' : 'In Progress'}</th>
+                          <th>{lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved'}</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-150 font-medium text-slate-700">
-                        {(() => {
-                          let zoneTotal = 0;
-                          let zonePending = 0;
-                          let zoneInProgress = 0;
-                          let zoneResolved = 0;
+                      {(() => {
+                        let zoneTotal = 0;
+                        let zonePending = 0;
+                        let zoneInProgress = 0;
+                        let zoneResolved = 0;
 
-                          const rows = zones.map((zone: any) => {
-                            const zoneTPs = townPanchayats.filter((tp: any) => getTPZoneId(tp) === zone.id);
-                            const tpIds = zoneTPs.map((tp: any) => tp.id);
-                            const zoneIssues = reportBaseIssues.filter((i: any) => tpIds.includes(i.townPanchayatId));
-                            const total = zoneIssues.length;
-                            const pending = zoneIssues.filter((i: any) => i.status === 'Pending').length;
-                            const inProgress = zoneIssues.filter((i: any) => i.status === 'In Progress' || i.status === 'Active').length;
-                            const resolved = zoneIssues.filter((i: any) => i.status === 'Resolved' || i.status === 'Closed').length;
+                        const rows = zones.map((zone: any) => {
+                          const zoneTPs = townPanchayats.filter((tp: any) => getTPZoneId(tp) === zone.id);
+                          const tpIds = zoneTPs.map((tp: any) => tp.id);
+                          const zoneIssues = reportBaseIssues.filter((i: any) => tpIds.includes(i.townPanchayatId));
+                          const total = zoneIssues.length;
+                          const pending = zoneIssues.filter((i: any) => i.status === 'Pending').length;
+                          const inProgress = zoneIssues.filter((i: any) => i.status === 'In Progress' || i.status === 'Active').length;
+                          const resolved = zoneIssues.filter((i: any) => i.status === 'Resolved' || i.status === 'Closed').length;
 
-                            zoneTotal += total;
-                            zonePending += pending;
-                            zoneInProgress += inProgress;
-                            zoneResolved += resolved;
+                          zoneTotal += total;
+                          zonePending += pending;
+                          zoneInProgress += inProgress;
+                          zoneResolved += resolved;
 
-                            const isSelected = filterZoneId === zone.id;
-
-                            return (
-                              <tr 
-                                key={zone.id} 
-                                className={`hover:bg-slate-50/40 transition cursor-pointer ${isSelected ? 'bg-indigo-50/70 font-bold' : ''}`}
-                                onClick={() => {
-                                  if (isSelected) {
-                                    setFilterZoneId('');
-                                  } else {
-                                    setFilterZoneId(zone.id);
-                                    setFilterDistrictId('');
-                                    setFilterTPId('');
-                                  }
-                                }}
-                              >
-                                <td className="p-3 text-left font-bold border-r border-gray-150 bg-slate-50/20">{tObj(zone)}</td>
-                                <td className="p-3 font-bold border-r border-gray-150">{total}</td>
-                                <td className="p-3 border-r border-gray-150 font-bold text-amber-600">{pending}</td>
-                                <td className="p-3 border-r border-gray-150 font-bold text-indigo-600">{inProgress}</td>
-                                <td className="p-3 border-r border-gray-150 font-bold text-emerald-600">{resolved}</td>
-                              </tr>
-                            );
-                          });
+                          const isSelected = filterZoneId === zone.id;
 
                           return (
-                            <>
-                              {rows}
-                              <tr className="bg-slate-100 font-extrabold text-slate-950 border-t-2 border-gray-300">
-                                <td className="p-3 text-left font-black border-r border-gray-150">
-                                  {lang === 'ta' ? 'மொத்தம்' : 'Total'}
-                                </td>
-                                <td className="p-3 font-black border-r border-gray-150">{zoneTotal}</td>
-                                <td className="p-3 border-r border-gray-150 font-black text-amber-800">{zonePending}</td>
-                                <td className="p-3 border-r border-gray-150 font-black text-indigo-800">{zoneInProgress}</td>
-                                <td className="p-3 border-r border-gray-150 font-black text-emerald-800">{zoneResolved}</td>
-                              </tr>
-                            </>
+                            <tr
+                              key={zone.id}
+                              className={`cursor-pointer ${isSelected ? 'is-selected' : ''}`}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setFilterZoneId('');
+                                } else {
+                                  setFilterZoneId(zone.id);
+                                  setFilterDistrictId('');
+                                  setFilterTPId('');
+                                }
+                              }}
+                            >
+                              <td className="text-left font-bold">{tObj(zone)}</td>
+                              <td className="portal-dash-num">{total}</td>
+                              <td className="portal-dash-num is-pending">{pending}</td>
+                              <td className="portal-dash-num is-progress">{inProgress}</td>
+                              <td className="portal-dash-num is-resolved">{resolved}</td>
+                            </tr>
                           );
-                        })()}
-                      </tbody>
+                        });
+
+                        return (
+                          <>
+                            <tbody>{rows}</tbody>
+                            <tfoot>
+                              <tr>
+                                <td className="text-right">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
+                                <td className="portal-dash-num">{zoneTotal}</td>
+                                <td className="portal-dash-num is-pending">{zonePending}</td>
+                                <td className="portal-dash-num is-progress">{zoneInProgress}</td>
+                                <td className="portal-dash-num is-resolved">{zoneResolved}</td>
+                              </tr>
+                            </tfoot>
+                          </>
+                        );
+                      })()}
                     </>
                   )}
 
                   {abstractViewMode === 'district' && (
                     <>
                       <thead>
-                        <tr className="bg-slate-50 font-bold text-slate-600 border-b border-gray-150 text-[10px] uppercase tracking-wider">
-                          <th className="p-3 text-left border-r border-gray-150">{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</th>
-                          <th className="p-3 text-left border-r border-gray-150">{lang === 'ta' ? 'மாவட்டம்' : 'District'}</th>
-                          <th className="p-3 border-r border-gray-150">{lang === 'ta' ? 'மொத்தப் பிரச்சினைகள்' : 'Total Issues'}</th>
-                          <th className="p-3 border-r border-gray-150 text-amber-700">{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</th>
-                          <th className="p-3 border-r border-gray-150 text-indigo-700">{lang === 'ta' ? 'செயல்பாட்டில் (In Progress)' : 'In Progress'}</th>
-                          <th className="p-3 border-r border-gray-150 text-emerald-700">{lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved'}</th>
+                        <tr>
+                          <th className="text-left">{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</th>
+                          <th className="text-left">{lang === 'ta' ? 'மாவட்டம்' : 'District'}</th>
+                          <th>{lang === 'ta' ? 'மொத்தப் பிரச்சினைகள்' : 'Total Issues'}</th>
+                          <th>{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</th>
+                          <th>{lang === 'ta' ? 'செயல்பாட்டில் (In Progress)' : 'In Progress'}</th>
+                          <th>{lang === 'ta' ? 'தீர்க்கப்பட்டவை (Resolved)' : 'Resolved'}</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-150 font-medium text-slate-700">
-                        {(() => {
-                          let distTotal = 0;
-                          let distPending = 0;
-                          let distInProgress = 0;
-                          let distResolved = 0;
+                      {(() => {
+                        let distTotal = 0;
+                        let distPending = 0;
+                        let distInProgress = 0;
+                        let distResolved = 0;
 
-                          const rows = districts.map((district: any) => {
-                            const distTPs = townPanchayats.filter((tp: any) => tp.districtId === district.id);
-                            const tpIds = distTPs.map((tp: any) => tp.id);
-                            const districtIssues = reportBaseIssues.filter((i: any) => tpIds.includes(i.townPanchayatId));
-                            const total = districtIssues.length;
-                            const pending = districtIssues.filter((i: any) => i.status === 'Pending').length;
-                            const inProgress = districtIssues.filter((i: any) => i.status === 'In Progress' || i.status === 'Active').length;
-                            const resolved = districtIssues.filter((i: any) => i.status === 'Resolved' || i.status === 'Closed').length;
+                        const rows = districts.map((district: any) => {
+                          const distTPs = townPanchayats.filter((tp: any) => tp.districtId === district.id);
+                          const tpIds = distTPs.map((tp: any) => tp.id);
+                          const districtIssues = reportBaseIssues.filter((i: any) => tpIds.includes(i.townPanchayatId));
+                          const total = districtIssues.length;
+                          const pending = districtIssues.filter((i: any) => i.status === 'Pending').length;
+                          const inProgress = districtIssues.filter((i: any) => i.status === 'In Progress' || i.status === 'Active').length;
+                          const resolved = districtIssues.filter((i: any) => i.status === 'Resolved' || i.status === 'Closed').length;
 
-                            distTotal += total;
-                            distPending += pending;
-                            distInProgress += inProgress;
-                            distResolved += resolved;
+                          distTotal += total;
+                          distPending += pending;
+                          distInProgress += inProgress;
+                          distResolved += resolved;
 
-                            const isSelected = filterDistrictId === district.id;
-
-                            return (
-                              <tr 
-                                key={district.id} 
-                                className={`hover:bg-slate-50/40 transition cursor-pointer ${isSelected ? 'bg-indigo-50/70 font-bold' : ''}`}
-                                onClick={() => {
-                                  if (isSelected) {
-                                    setFilterDistrictId('');
-                                  } else {
-                                    setFilterDistrictId(district.id);
-                                    setFilterTPId('');
-                                  }
-                                }}
-                              >
-                                <td className="p-3 text-left border-r border-gray-150 bg-slate-50/20">{getZoneName(district.zoneId)}</td>
-                                <td className="p-3 text-left font-bold border-r border-gray-150">{tObj(district)}</td>
-                                <td className="p-3 font-bold border-r border-gray-150">{total}</td>
-                                <td className="p-3 border-r border-gray-150 font-bold text-amber-600">{pending}</td>
-                                <td className="p-3 border-r border-gray-150 font-bold text-indigo-600">{inProgress}</td>
-                                <td className="p-3 border-r border-gray-150 font-bold text-emerald-600">{resolved}</td>
-                              </tr>
-                            );
-                          });
+                          const isSelected = filterDistrictId === district.id;
 
                           return (
-                            <>
-                              {rows}
-                              <tr className="bg-slate-100 font-extrabold text-slate-950 border-t-2 border-gray-300">
-                                <td className="p-3 text-left font-black border-r border-gray-150 bg-slate-100" colSpan={2}>
-                                  {lang === 'ta' ? 'மொத்தம்' : 'Total'}
-                                </td>
-                                <td className="p-3 font-black border-r border-gray-150">{distTotal}</td>
-                                <td className="p-3 border-r border-gray-150 font-black text-amber-800">{distPending}</td>
-                                <td className="p-3 border-r border-gray-150 font-black text-indigo-800">{distInProgress}</td>
-                                <td className="p-3 border-r border-gray-150 font-black text-emerald-800">{distResolved}</td>
-                              </tr>
-                            </>
+                            <tr
+                              key={district.id}
+                              className={`cursor-pointer ${isSelected ? 'is-selected' : ''}`}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setFilterDistrictId('');
+                                } else {
+                                  setFilterDistrictId(district.id);
+                                  setFilterTPId('');
+                                }
+                              }}
+                            >
+                              <td className="text-left">{getZoneName(district.zoneId)}</td>
+                              <td className="text-left font-bold">{tObj(district)}</td>
+                              <td className="portal-dash-num">{total}</td>
+                              <td className="portal-dash-num is-pending">{pending}</td>
+                              <td className="portal-dash-num is-progress">{inProgress}</td>
+                              <td className="portal-dash-num is-resolved">{resolved}</td>
+                            </tr>
                           );
-                        })()}
-                      </tbody>
+                        });
+
+                        return (
+                          <>
+                            <tbody>{rows}</tbody>
+                            <tfoot>
+                              <tr>
+                                <td colSpan={2} className="text-right">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
+                                <td className="portal-dash-num">{distTotal}</td>
+                                <td className="portal-dash-num is-pending">{distPending}</td>
+                                <td className="portal-dash-num is-progress">{distInProgress}</td>
+                                <td className="portal-dash-num is-resolved">{distResolved}</td>
+                              </tr>
+                            </tfoot>
+                          </>
+                        );
+                      })()}
                     </>
                   )}
                 </table>
               </div>
             </div>
+            </div>
           </div>
 
           {/* Abstract Selection Reset Feedback Bar */}
           {(selectedAbstractCategory || selectedAbstractSubcategory || selectedAbstractStatus) && (
-            <div className="flex flex-wrap justify-between items-center gap-3 bg-fuchsia-50 p-4 rounded-xl border border-fuchsia-100 text-xs animate-in slide-in-from-top-2 duration-150">
-              <span className="font-semibold text-fuchsia-800 flex flex-wrap items-center gap-2">
-                <span>{lang === 'ta' ? 'அட்டவணை வடிகட்டப்பட்டது: ' : 'Detailed View Filtered By: '}</span>
+            <div className="portal-dash-toolbar">
+              <div className="portal-dash-pills flex-wrap">
+                <span className="portal-dash-pill is-active">
+                  {lang === 'ta' ? 'வடிகட்டப்பட்டது' : 'Filtered'}
+                </span>
                 {selectedAbstractCategory && (
-                  <span className="bg-white px-2 py-1 rounded-md border border-fuchsia-200">
-                    {lang === 'ta' ? 'வகை' : 'Category'}: <strong className="text-fuchsia-900 font-extrabold">{CATEGORIES_MAP[selectedAbstractCategory]?.[lang] || selectedAbstractCategory}</strong>
+                  <span className="portal-dash-pill">
+                    {lang === 'ta' ? 'வகை' : 'Category'}: {CATEGORIES_MAP[selectedAbstractCategory]?.[lang] || selectedAbstractCategory}
                   </span>
                 )}
                 {selectedAbstractSubcategory && (
-                  <span className="bg-white px-2 py-1 rounded-md border border-fuchsia-200">
-                    {lang === 'ta' ? 'துணைப் பிரிவு' : 'Subcategory'}: <strong className="text-fuchsia-900 font-extrabold">{selectedAbstractSubcategory}</strong>
+                  <span className="portal-dash-pill">
+                    {lang === 'ta' ? 'துணைப் பிரிவு' : 'Subcategory'}: {selectedAbstractSubcategory}
                   </span>
                 )}
                 {selectedAbstractStatus && (
-                  <span className="bg-white px-2 py-1 rounded-md border border-fuchsia-200">
-                    {lang === 'ta' ? 'நிலை' : 'Stage'}: <strong className="text-fuchsia-900 font-extrabold">{selectedAbstractStatus}</strong>
+                  <span className="portal-dash-pill">
+                    {lang === 'ta' ? 'நிலை' : 'Stage'}: {selectedAbstractStatus}
                   </span>
                 )}
-              </span>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -2074,37 +2060,27 @@ export default function PendingIssuesView({
                   setSelectedAbstractSubcategory('');
                   setSelectedAbstractStatus('');
                 }}
-                className="text-[11px] font-bold text-fuchsia-700 bg-white hover:bg-fuchsia-100 px-3 py-1.5 rounded-lg border border-fuchsia-200 transition cursor-pointer"
+                className="portal-dash-pill"
               >
                 {lang === 'ta' ? 'அனைத்தையும் காட்டு' : 'Clear Cell Selection'}
               </button>
             </div>
           )}
 
-          {/* Search Bar / Fast filter */}
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xs flex flex-col sm:flex-row items-center gap-4">
-            <div className="relative flex-1 w-full">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder={lang === 'ta' ? 'மனு எண், துணை வகை அல்லது பொருள் கொண்டு தேடுக...' : 'Search by Issue ID, subcategory, or subject keywords...'}
-                className="w-full text-xs font-medium p-3.5 pl-11 border border-gray-200 bg-gray-50/50 rounded-xl outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute left-4 top-4" />
-            </div>
-          </div>
-
-          {/* Detailed Issues Ledger Section */}
-          <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
               <div>
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <span>{lang === 'ta' ? 'விவரமானப் பிரச்சினைகள் பட்டியல்' : 'Detailed Issues Ledger'}</span>
-                  <span className="text-xs text-gray-400 font-normal">({lang === 'ta' ? 'காண்பிக்கப்படும் வரிசைகள்' : 'Showing rows'}: {sortedIssues.length})</span>
-                </h4>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <FileText className="h-3 w-3" />
+                  </span>
+                  {lang === 'ta' ? 'விவரமானப் பிரச்சினைகள் பட்டியல்' : 'Detailed Issues Ledger'}
+                </h3>
+                <p>
+                  {lang === 'ta' ? 'காண்பிக்கப்படும் வரிசைகள்' : 'Showing rows'}: {sortedIssues.length}
+                </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => {
@@ -2118,78 +2094,76 @@ export default function PendingIssuesView({
                       alert(lang === 'ta' ? 'காண்பிக்க பிரச்சினைகள் எதுவும் இல்லை!' : 'No issues to display in slide view!');
                     }
                   }}
-                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer select-none"
+                  className="portal-dash-head-action"
                 >
-                  <MonitorPlay className="w-4 h-4 text-indigo-200" />
+                  <MonitorPlay className="h-3 w-3" />
                   <span>{lang === 'ta' ? 'விளக்க காட்சி' : 'Slide View'}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => downloadExcel('detailed')}
-                  className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer select-none"
+                  className="portal-dash-head-action"
                 >
-                  <FileText className="w-4 h-4" />
-                  <span>{lang === 'ta' ? 'விவரமானப் பட்டியல் பதிவிறக்கம் (Excel)' : 'Download Detailed Excel'}</span>
+                  <FileText className="h-3 w-3" />
+                  <span>{lang === 'ta' ? 'எக்செல்' : 'Excel'}</span>
                 </button>
               </div>
             </div>
+            <div className="portal-dash-body space-y-3">
+            <div className="portal-fis-search-bar">
+              <div className="portal-fis-search">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder={lang === 'ta' ? 'தேடு (மனு எண், பொருள்)' : 'Search (ID, Street, Subject)'}
+                  />
+                </div>
+              </div>
+            </div>
 
-            <div className="overflow-x-auto rounded-2xl border border-gray-100">
-              <table className="w-full text-left text-xs border-collapse">
+            <div className="portal-dash-table">
+              <table>
                 <thead>
-                  <tr className="bg-slate-50 font-bold text-slate-600 border-b border-gray-150 text-[10px] uppercase tracking-wider select-none">
-                    <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('issueId')}>
-                      <div className="flex items-center">
-                        {lang === 'ta' ? 'விண்ணப்ப எண்' : 'Issue ID'}
-                        {renderSortIcon('issueId')}
-                      </div>
+                  <tr>
+                    <th onClick={() => handleSort('issueId')}>
+                      {lang === 'ta' ? 'விண்ணப்ப எண்' : 'Issue ID'}
+                      {renderSortIcon('issueId')}
                     </th>
-                    <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('zone')}>
-                      <div className="flex items-center">
-                        {lang === 'ta' ? 'மண்டலம்' : 'Zone'}
-                        {renderSortIcon('zone')}
-                      </div>
+                    <th onClick={() => handleSort('zone')}>
+                      {lang === 'ta' ? 'மண்டலம்' : 'Zone'}
+                      {renderSortIcon('zone')}
                     </th>
-                    <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('district')}>
-                      <div className="flex items-center">
-                        {lang === 'ta' ? 'மாவட்டம்' : 'District'}
-                        {renderSortIcon('district')}
-                      </div>
+                    <th onClick={() => handleSort('district')}>
+                      {lang === 'ta' ? 'மாவட்டம்' : 'District'}
+                      {renderSortIcon('district')}
                     </th>
-                    <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('townPanchayatId')}>
-                      <div className="flex items-center">
-                        {lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}
-                        {renderSortIcon('townPanchayatId')}
-                      </div>
+                    <th onClick={() => handleSort('townPanchayatId')}>
+                      {lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}
+                      {renderSortIcon('townPanchayatId')}
                     </th>
-                    <th className="p-3 cursor-pointer hover:bg-slate-100 transition min-w-[320px] max-w-[450px]" onClick={() => handleSort('subject')}>
-                      <div className="flex items-center">
-                        {lang === 'ta' ? 'பொருள் (Subject)' : 'Subject'}
-                        {renderSortIcon('subject')}
-                      </div>
+                    <th onClick={() => handleSort('subject')}>
+                      {lang === 'ta' ? 'பொருள்' : 'Subject'}
+                      {renderSortIcon('subject')}
                     </th>
-                    <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('category')}>
-                      <div className="flex items-center">
-                        {lang === 'ta' ? 'வகை / உட்பிரிவு' : 'Category / Subcategory'}
-                        {renderSortIcon('category')}
-                      </div>
+                    <th onClick={() => handleSort('category')}>
+                      {lang === 'ta' ? 'வகை / உட்பிரிவு' : 'Category / Subcategory'}
+                      {renderSortIcon('category')}
                     </th>
-                    <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('lastUpdated')}>
-                      <div className="flex items-center">
-                        {lang === 'ta' ? 'கடைசியாக புதுப்பிக்கப்பட்டது' : 'Last Updated'}
-                        {renderSortIcon('lastUpdated')}
-                      </div>
+                    <th onClick={() => handleSort('lastUpdated')}>
+                      {lang === 'ta' ? 'கடைசி புதுப்பிப்பு' : 'Last Updated'}
+                      {renderSortIcon('lastUpdated')}
                     </th>
-                    <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort('status')}>
-                      <div className="flex items-center">
-                        {lang === 'ta' ? 'நிலை (Stage)' : 'Stage / Status'}
-                        {renderSortIcon('status')}
-                      </div>
+                    <th onClick={() => handleSort('status')}>
+                      {lang === 'ta' ? 'நிலை' : 'Stage'}
+                      {renderSortIcon('status')}
                     </th>
-                    <th className="p-3 text-right">{lang === 'ta' ? 'செயல்கள்' : 'Actions'}</th>
+                    <th>{lang === 'ta' ? 'செயல்கள்' : 'Actions'}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 font-medium text-slate-700">
+                <tbody>
                   {sortedIssues.map((issue: any) => {
                     const catName = CATEGORIES_MAP[issue.category]?.[lang] || issue.category;
                     const lastUpdateDateStr = issue.updatedAt || issue.createdAt;
@@ -2203,33 +2177,28 @@ export default function PendingIssuesView({
                         : 'Pending';
 
                     return (
-                      <tr 
-                        key={issue.id} 
-                        className="hover:bg-indigo-50/20 transition-colors"
-                      >
-                        <td className="p-3 font-mono font-bold text-indigo-700">{issue.issueId}</td>
-                        <td className="p-3">{getZoneNameByTP(issue.townPanchayatId)}</td>
-                        <td className="p-3">{getDistrictNameByTP(issue.townPanchayatId)}</td>
-                        <td className="p-3 font-bold text-slate-800">{getTPName(issue.townPanchayatId)}</td>
-                        <td className="p-3 min-w-[320px] max-w-[450px] text-slate-800 font-extrabold whitespace-normal break-words leading-relaxed" title={issue.subject || '-'}>
-                          {issue.subject || '-'}
+                      <tr key={issue.id}>
+                        <td className="portal-dash-id">{issue.issueId}</td>
+                        <td>{getZoneNameByTP(issue.townPanchayatId)}</td>
+                        <td>{getDistrictNameByTP(issue.townPanchayatId)}</td>
+                        <td>{getTPName(issue.townPanchayatId)}</td>
+                        <td title={issue.subject || '-'}>{issue.subject || '-'}</td>
+                        <td>
+                          {catName}
+                          <span className="text-slate-400"> / {getSubcategoryName(issue.category, issue.subcategory, lang)}</span>
                         </td>
-                        <td className="p-3">
-                          <span className="font-bold text-slate-800">{catName}</span>
-                          <span className="text-gray-400 font-semibold"> / {getSubcategoryName(issue.category, issue.subcategory, lang)}</span>
-                        </td>
-                        <td className="p-3 font-mono text-gray-500">
+                        <td>
                           {lastUpdateDateStr ? new Date(lastUpdateDateStr).toLocaleDateString(lang === 'ta' ? 'ta-IN' : 'en-US', {
                             month: 'short',
                             day: 'numeric',
                             year: 'numeric'
                           }) : '-'}
                         </td>
-                        <td className="p-3">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${
-                            displayStatus === 'Pending' ? 'bg-amber-50 text-amber-800 border-amber-200' :
-                            displayStatus === 'In Progress' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                            'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        <td>
+                          <span className={`portal-dash-status ${
+                            displayStatus === 'Pending' ? 'is-pending' :
+                            displayStatus === 'In Progress' ? 'is-progress' :
+                            'is-resolved'
                           }`}>
                             {lang === 'ta'
                               ? (displayStatus === 'Pending' ? 'நிலுவை' : displayStatus === 'In Progress' ? 'நடவடிக்கை' : 'முடிக்கப்பட்டது')
@@ -2237,28 +2206,30 @@ export default function PendingIssuesView({
                             }
                           </span>
                         </td>
-                        <td className="p-3 text-right">
-                          <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                        <td>
+                          <div className="portal-wt-actions justify-end" onClick={(e) => e.stopPropagation()}>
                             <button
+                              type="button"
                               onClick={() => {
                                 setSelectedIssue(issue);
                                 setUpdateStatus(issue.status === 'Closed' ? 'Closed' : 'Active');
                                 setUpdateNotes('');
                                 setUpdateAttachment(null);
                               }}
-                              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl transition font-bold text-xs flex items-center gap-1 cursor-pointer"
+                              className="portal-dash-pill"
                               title={t('View Details & Updates', 'விவரங்கள் மற்றும் நடவடிக்கை பதிவு')}
                             >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>{t('Details & Updates', 'விவரம் & பதிவு')}</span>
+                              <Eye className="h-3 w-3" />
+                              <span>{t('Details', 'விவரம்')}</span>
                             </button>
                             {(isAdmin || (isTPUser && issue.status !== 'Closed')) && (
                               <button
+                                type="button"
                                 onClick={() => handleDeleteIssue(issue.id)}
-                                className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition cursor-pointer"
+                                className="portal-fis-icon-btn is-danger"
                                 title={t('Delete Issue', 'நீக்குக')}
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="h-3 w-3" />
                               </button>
                             )}
                           </div>
@@ -2268,7 +2239,7 @@ export default function PendingIssuesView({
                   })}
                   {sortedIssues.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="p-8 text-center text-gray-400 font-semibold italic bg-white">
+                      <td colSpan={9} className="portal-wt-empty is-center">
                         {lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட வடிகட்டிகளில் பிரச்சினைகள் எதுவும் இல்லை.' : 'No issues match the selected filter criteria.'}
                       </td>
                     </tr>
@@ -2276,29 +2247,34 @@ export default function PendingIssuesView({
                 </tbody>
               </table>
             </div>
+            </div>
           </div>
         </div>
       )}
 
       {/* SUB-TAB 3: CREATE NEW ISSUE (TP Users only) */}
       {activeSubTab === 'create' && isTPUser && (
-        <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-xs space-y-8 w-full">
-          <div className="border-b border-gray-100 pb-5">
-            <h3 className="text-xl font-bold text-slate-900 tracking-tight">{t('Submit New Issue', 'புதிய பிரச்சனை சமர்ப்பிப்பு')}</h3>
-            <p className="text-gray-400 text-xs mt-1">
-              {t('Select category, choose subcategory, fill out the dynamic fields, and upload supporting documents.', 'சரியான வகை மற்றும் உட்பிரிவை தேர்ந்தெடுத்து, கேட்கப்பட்ட விவரங்களை உள்ளிடவும்.')}
-            </p>
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>
+                <span className="portal-dash-icon">
+                  <PlusCircle className="h-3 w-3" />
+                </span>
+                {t('Submit New Issue', 'புதிய பிரச்சனை சமர்ப்பிப்பு')}
+              </h3>
+              <p>
+                {t('Select category, choose subcategory, fill out the dynamic fields, and upload supporting documents.', 'சரியான வகை மற்றும் உட்பிரிவை தேர்ந்தெடுத்து, கேட்கப்பட்ட விவரங்களை உள்ளிடவும்.')}
+              </p>
+            </div>
           </div>
-
-          <form onSubmit={handleIssueSubmit} className="space-y-8">
-            
-            {/* Category selection - Tab Design */}
-            <div className="space-y-3">
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">{t('Select Category', 'பிரச்சினை வகை')}</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="portal-dash-body portal-wt-form">
+          <form onSubmit={handleIssueSubmit} className="space-y-3">
+            <div>
+              <label>{t('Select Category', 'பிரச்சினை வகை')}</label>
+              <div className="portal-dash-pills flex-wrap">
                 {CATEGORIES.map((cat: any) => {
                   const isActive = formCategory === cat.id;
-                  
                   let IconComponent = HelpCircle;
                   if (cat.id === 'works') IconComponent = Building;
                   else if (cat.id === 'establishment') IconComponent = Users;
@@ -2310,35 +2286,23 @@ export default function PendingIssuesView({
                       type="button"
                       onClick={() => {
                         setFormCategory(cat.id);
-                        // Automatically set first subcategory
                         const subcat = cat.subcategories[0]?.id || '';
                         setFormSubcategory(subcat);
                         setDynamicFormValues({});
                       }}
-                      style={isActive ? {
-                        borderColor: currentTheme.accentColor,
-                        backgroundColor: `${currentTheme.accentColor}0e`,
-                        color: currentTheme.accentColor,
-                        boxShadow: `0 0 0 1px ${currentTheme.accentColor}`
-                      } : {}}
-                      className={`flex items-center gap-3 p-3.5 px-4 rounded-xl border text-left transition-all duration-200 cursor-pointer ${
-                        isActive 
-                          ? 'shadow-2xs font-bold' 
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50/50 bg-white text-slate-700'
-                      }`}
+                      className={`portal-dash-pill ${isActive ? 'is-active' : ''}`}
                     >
-                      <IconComponent className="w-4 h-4 shrink-0" style={{ color: isActive ? currentTheme.accentColor : '#9ca3af' }} />
-                      <span className="font-extrabold text-xs tracking-tight truncate">{t(cat.nameEn, cat.nameTa)}</span>
+                      <IconComponent className="h-3.5 w-3.5" />
+                      <span>{t(cat.nameEn, cat.nameTa)}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Subcategory selection - Card Selection Design (No dropdowns) */}
-            <div className="space-y-3 border-t border-gray-100 pt-6">
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">{t('Select Subcategory', 'உட்பிரிவு (துணை வகை)')}</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label>{t('Select Subcategory', 'உட்பிரிவு (துணை வகை)')}</label>
+              <div className="portal-dash-pills flex-wrap">
                 {CATEGORIES.find((c: any) => c.id === formCategory)?.subcategories.map((sub: any) => {
                   const isSelected = formSubcategory === sub.id;
                   const countForSub = schemaFields.filter((f: any) => f.category === formCategory && f.subcategory === sub.id).length;
@@ -2348,50 +2312,24 @@ export default function PendingIssuesView({
                       key={sub.id}
                       type="button"
                       onClick={() => setFormSubcategory(sub.id)}
-                      style={isSelected ? {
-                        borderColor: currentTheme.accentColor,
-                        backgroundColor: `${currentTheme.accentColor}0b`,
-                        boxShadow: `0 0 0 1px ${currentTheme.accentColor}`
-                      } : {}}
-                      className={`p-4 rounded-xl border text-left transition-all duration-150 flex items-center justify-between cursor-pointer group ${
-                        isSelected
-                          ? 'shadow-xs'
-                          : 'border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50/30'
-                      }`}
+                      className={`portal-dash-pill ${isSelected ? 'is-active' : ''}`}
                     >
-                      <div className="pr-2 space-y-1">
-                        <p className="text-xs font-bold text-slate-800">{t(sub.nameEn, sub.nameTa)}</p>
-                        {countForSub > 0 && (
-                          <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ color: currentTheme.accentColor, backgroundColor: `${currentTheme.accentColor}0e` }}>
-                            {countForSub} {t('extra fields', 'கூடுதல் புலங்கள்')}
-                          </span>
-                        )}
-                      </div>
-                      <div className="w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all" style={isSelected ? {
-                        borderColor: currentTheme.accentColor,
-                        backgroundColor: currentTheme.accentColor,
-                        color: '#ffffff'
-                      } : {
-                        borderColor: '#d1d5db',
-                        backgroundColor: '#ffffff'
-                      }}>
-                        {isSelected && <span className="text-[9px] font-black">✓</span>}
-                      </div>
+                      <span>{t(sub.nameEn, sub.nameTa)}</span>
+                      {countForSub > 0 && <span className="portal-fis-count">{countForSub}</span>}
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Default Fields: Subject and Issue Details */}
-            <div className="space-y-4 border-t border-gray-100 pt-6">
-              <h4 className="text-xs font-extrabold text-indigo-700 uppercase tracking-wider">
+            <div className="space-y-3">
+              <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 {t('Issue Overview (Default Fields)', 'பிரச்சினையின் சுருக்கம் (இயல்புநிலை புலங்கள்)')}
               </h4>
-              <div className="grid grid-cols-1 gap-4">
-                <div className="space-y-1.5 bg-slate-50/30 p-4 rounded-xl border border-slate-100/50">
-                  <label className="text-xs font-bold text-slate-700 block">
-                    {t('Subject', 'பொருள்')} <span className="text-rose-500 font-extrabold">*</span>
+              <div className="space-y-3">
+                <div>
+                  <label>
+                    {t('Subject', 'பொருள்')} <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -2399,12 +2337,11 @@ export default function PendingIssuesView({
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
                     placeholder={t('Enter short subject of the issue', 'பிரச்சினையின் குறுகிய பொருளை உள்ளிடவும்')}
-                    className="w-full text-xs font-semibold p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
                   />
                 </div>
-                <div className="space-y-1.5 bg-slate-50/30 p-4 rounded-xl border border-slate-100/50">
-                  <label className="text-xs font-bold text-slate-700 block">
-                    {t('Issue Details', 'பிரச்சினையின் விவரங்கள்')} <span className="text-rose-500 font-extrabold">*</span>
+                <div>
+                  <label>
+                    {t('Issue Details', 'பிரச்சினையின் விவரங்கள்')} <span className="text-rose-500">*</span>
                   </label>
                   <textarea
                     required
@@ -2412,22 +2349,21 @@ export default function PendingIssuesView({
                     value={issueDetails}
                     onChange={(e) => setIssueDetails(e.target.value)}
                     placeholder={t('Provide detailed description of the issue', 'பிரச்சினையின் முழுமையான விவரங்களை வழங்கவும்')}
-                    className="w-full text-xs font-semibold p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
                   />
                 </div>
-                <div className="space-y-1.5 bg-slate-50/30 p-4 rounded-xl border border-slate-100/50">
-                  <label className="text-xs font-bold text-slate-700 block flex items-center justify-between">
+                <div>
+                  <label className="flex items-center justify-between">
                     <span>
-                      {t('Supporting Documents / Files', 'ஆவணங்கள் / கோப்புகளைப் பதிவேற்றவும்')} <span className="text-gray-400 font-normal">({t('PDF, Images, DOCX, Excel', 'PDF, படங்கள், DOCX, எக்செல்')})</span>
+                      {t('Supporting Documents / Files', 'ஆவணங்கள் / கோப்புகளைப் பதிவேற்றவும்')}
                     </span>
                     {isUploadingFormFiles && (
-                      <span className="text-[10px] text-indigo-600 font-extrabold animate-pulse">{t('Uploading...', 'பதிவேற்றுகிறது...')}</span>
+                      <span className="text-[10px] font-bold animate-pulse" style={{ color: 'var(--theme-accent)' }}>{t('Uploading...', 'பதிவேற்றுகிறது...')}</span>
                     )}
                   </label>
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center gap-3">
-                      <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold rounded-xl hover:bg-indigo-100 transition">
-                        <Upload className="w-4 h-4 text-indigo-600" />
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <label className="portal-dash-pill cursor-pointer">
+                        <Upload className="h-3.5 w-3.5" />
                         <span>{t('Upload Files', 'கோப்புகளைப் பதிவேற்று')}</span>
                         <input
                           type="file"
@@ -2466,29 +2402,28 @@ export default function PendingIssuesView({
               </div>
             </div>
 
-            {/* Dynamic Fields Section */}
-            <div className="space-y-6 border-t border-dashed border-gray-100 pt-6">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-extrabold text-indigo-700 uppercase tracking-wider">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                   {t('Category Specific Details', 'வகை மற்றும் துணை வகை சார்ந்த விவரங்கள்')}
                 </h4>
-                <span className="text-[10px] text-gray-400 font-bold">
+                <span className="text-[10px] text-slate-400 font-semibold">
                   {t(CATEGORIES.find((c: any) => c.id === formCategory)?.nameEn || '', CATEGORIES.find((c: any) => c.id === formCategory)?.nameTa || '')} ➔ {getSubcategoryName(formCategory, formSubcategory, lang)}
                 </span>
               </div>
               
               {schemaFields.filter((f: any) => f.category === formCategory && (!f.subcategory || f.subcategory === formSubcategory)).length === 0 ? (
-                <div className="p-8 bg-slate-50 rounded-2xl border border-slate-100 text-center text-xs font-semibold text-gray-400">
+                <p className="portal-wt-empty is-center">
                   {t('No dynamic fields configured for this selection yet. Admin can define fields under Configure Fields tab.', 'இந்த உட்பிரிவுக்கு இதுவரை புலங்கள் எதுவும் கட்டமைக்கப்படவில்லை. நிர்வாகி புலங்கள் கட்டமைப்பு பிரிவில் புதிய புலங்களை உருவாக்கலாம்.')}
-                </div>
+                </p>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {schemaFields.filter((f: any) => f.category === formCategory && (!f.subcategory || f.subcategory === formSubcategory)).map((field: any) => {
                     const isReq = field.validations?.required;
                     return (
-                      <div key={field.id} className="space-y-1.5 bg-slate-50/30 p-4 rounded-xl border border-slate-100/50">
-                        <label className="text-xs font-bold text-slate-700 block">
-                          {t(field.nameEn, field.nameTa)} {isReq && <span className="text-rose-500 font-extrabold">*</span>}
+                      <div key={field.id}>
+                        <label>
+                          {t(field.nameEn, field.nameTa)} {isReq && <span className="text-rose-500">*</span>}
                         </label>
 
                         {/* TEXT INPUT */}
@@ -2499,11 +2434,9 @@ export default function PendingIssuesView({
                             placeholder={field.validations?.maxLength ? t(`Max ${field.validations.maxLength} characters`, `அதிகபட்சம் ${field.validations.maxLength} எழுத்துக்கள்`) : ''}
                             value={dynamicFormValues[field.id] || ''}
                             onChange={(e) => setDynamicFormValues((prev: any) => ({ ...prev, [field.id]: e.target.value }))}
-                            className="w-full text-xs font-semibold p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
                           />
                         )}
 
-                        {/* NUMBER INPUT */}
                         {field.type === 'number' && (
                           <input
                             type="number"
@@ -2511,17 +2444,14 @@ export default function PendingIssuesView({
                             max={field.validations?.max}
                             value={dynamicFormValues[field.id] || ''}
                             onChange={(e) => setDynamicFormValues((prev: any) => ({ ...prev, [field.id]: e.target.value }))}
-                            className="w-full text-xs font-semibold p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500"
                           />
                         )}
 
-                        {/* DATE INPUT */}
                         {field.type === 'date' && (
                           <input
                             type="date"
                             value={dynamicFormValues[field.id] || ''}
                             onChange={(e) => setDynamicFormValues((prev: any) => ({ ...prev, [field.id]: e.target.value }))}
-                            className="w-full text-xs font-semibold p-3.5 border border-slate-200 bg-white rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 font-mono"
                           />
                         )}
 
@@ -2581,35 +2511,33 @@ export default function PendingIssuesView({
               )}
             </div>
 
-            {/* Form actions */}
-            <div className="flex justify-end pt-5 border-t border-dashed border-gray-100">
-              <button
-                type="submit"
-                disabled={submittingIssue}
-                className="px-8 py-4 bg-gradient-to-r from-indigo-700 via-fuchsia-600 to-pink-500 text-white text-xs font-bold uppercase tracking-wider rounded-xl hover:shadow-lg hover:shadow-fuchsia-500/20 hover:scale-[1.01] transition-all duration-200 flex items-center gap-2 cursor-pointer"
-              >
-                {submittingIssue ? t('Submitting...', 'சமர்ப்பிக்கிறது...') : t('Submit Issue', 'பிரச்சனையைச் சமர்ப்பி')}
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
+            <button type="submit" disabled={submittingIssue}>
+              {submittingIssue ? t('Submitting...', 'சமர்ப்பிக்கிறது...') : t('Submit Issue', 'பிரச்சனையைச் சமர்ப்பி')}
+            </button>
 
           </form>
+          </div>
         </div>
       )}
 
       {/* SUB-TAB 4: CONFIGURE FIELDS (Admins only) */}
       {activeSubTab === 'schema' && isAdmin && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Left panel: Add Field Form */}
-          <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-5">
-            <div>
-              <h3 className="text-md font-bold text-slate-900 tracking-tight">{t('Create Dynamic Field', 'புதிய புலம் உருவாக்குதல்')}</h3>
-              <p className="text-gray-400 text-[11px] mt-1">
-                {t('Define custom parameters, validations, and constraints per issue category.', 'சிக்கல் வகைகளின் அடிப்படையில் புலங்களையும் அதன் விதிகளையும் உருவாக்கலாம்.')}
-              </p>
+        <div className="portal-wt-grid">
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <Sliders className="h-3 w-3" />
+                  </span>
+                  {t('Create Dynamic Field', 'புதிய புலம் உருவாக்குதல்')}
+                </h3>
+                <p>
+                  {t('Define custom parameters, validations, and constraints per issue category.', 'சிக்கல் வகைகளின் அடிப்படையில் புலங்களையும் அதன் விதிகளையும் உருவாக்கலாம்.')}
+                </p>
+              </div>
             </div>
-
+            <div className="portal-dash-body portal-wt-form">
             <form onSubmit={handleAddField} className="space-y-4">
               
               <div className="space-y-1">
@@ -2756,118 +2684,148 @@ export default function PendingIssuesView({
                 </div>
               )}
 
-              <button
-                type="submit"
-                className="w-full py-3 bg-gradient-to-r from-indigo-700 via-fuchsia-600 to-pink-500 text-white text-xs font-bold uppercase tracking-wider rounded-xl hover:shadow-lg hover:shadow-fuchsia-500/20 transition-all duration-200"
-              >
+              <button type="submit">
                 {t('Add Dynamic Field', 'புலம் சேர்')}
               </button>
 
             </form>
+            </div>
           </div>
 
-          {/* Right panel: Active Fields Table */}
-          <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-            <h3 className="text-md font-bold text-slate-900 tracking-tight">{t('Configured Dynamic Fields', 'அமைக்கப்பட்ட புலங்களின் பட்டியல்')}</h3>
-            
-            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-              {CATEGORIES.map((cat: any) => {
+          <div className="portal-dashboard-panel">
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <FileText className="h-3 w-3" />
+                  </span>
+                  {t('Configured Dynamic Fields', 'அமைக்கப்பட்ட புலங்களின் பட்டியல்')}
+                </h3>
+              </div>
+            </div>
+            <div className="portal-dash-body">
+            <div className="portal-wt-tree">
+              {CATEGORIES.map((cat: any, catIdx: number) => {
                 const fieldsForCat = schemaFields.filter((f: any) => f.category === cat.id);
+                const catOpen = Boolean(openSchemaCats[cat.id]);
+                const catTone = SCHEMA_TONES[catIdx % SCHEMA_TONES.length];
                 return (
-                  <div key={cat.id} className="border border-slate-100 rounded-xl p-4 space-y-2.5">
-                    <h4 className="text-xs font-extrabold text-fuchsia-700 uppercase tracking-wide border-b border-gray-50 pb-2 flex items-center justify-between">
-                      <span>{t(cat.nameEn, cat.nameTa)}</span>
-                      <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full">{fieldsForCat.length} {t('Fields', 'புலங்கள்')}</span>
-                    </h4>
+                  <div
+                    key={cat.id}
+                    className={`portal-wt-node${catOpen ? ' is-open' : ''}`}
+                    style={{ ['--wt-tone' as string]: catTone }}
+                  >
+                    <div className="portal-wt-node-head">
+                      <button
+                        type="button"
+                        className="portal-wt-toggle"
+                        onClick={() => setOpenSchemaCats((prev) => ({ ...prev, [cat.id]: !prev[cat.id] }))}
+                        aria-expanded={catOpen}
+                      >
+                        <ChevronRight className={`portal-wt-caret${catOpen ? ' is-open' : ''}`} />
+                        <div className="portal-wt-copy">
+                          <div className="portal-wt-title">
+                            <span>{t(cat.nameEn, cat.nameTa)}</span>
+                            <span className="portal-wt-count">{fieldsForCat.length} {t('Fields', 'புலங்கள்')}</span>
+                          </div>
+                        </div>
+                      </button>
+                    </div>
 
-                    {fieldsForCat.length === 0 ? (
-                      <p className="text-[10px] text-gray-400 font-semibold italic text-center py-2">
-                        {t('No dynamic fields created yet.', 'உருவாக்கப்பட்ட புலங்கள் ஏதுமில்லை.')}
-                      </p>
-                    ) : (
-                      <div className="divide-y divide-slate-50">
-                        {fieldsForCat.map((field: any) => (
-                          <div key={field.id} className="py-2.5 flex items-center justify-between text-xs">
-                            <div>
-                              <p className="font-bold text-slate-800">{t(field.nameEn, field.nameTa)}</p>
-                              <div className="flex flex-wrap gap-1.5 text-[10px] text-gray-400 font-semibold mt-1">
-                                <span className="bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded uppercase text-slate-600">{field.type}</span>
-                                {field.subcategory && (
-                                  <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded uppercase font-bold">
-                                    {t(
-                                      CATEGORIES.find((c: any) => c.id === field.category)?.subcategories.find((s: any) => s.id === field.subcategory)?.nameEn || field.subcategory,
-                                      CATEGORIES.find((c: any) => c.id === field.category)?.subcategories.find((s: any) => s.id === field.subcategory)?.nameTa || field.subcategory
-                                    )}
-                                  </span>
-                                )}
-                                {field.validations?.required && <span className="text-rose-500 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded font-bold">{t('Required', 'கட்டாயம்')}</span>}
-                                {field.type === 'text' && field.validations?.maxLength && <span>Limit: {field.validations.maxLength}</span>}
-                                {field.type === 'number' && <span>Range: {field.validations.min} - {field.validations.max}</span>}
-                                {field.type === 'file' && <span>Limit: {field.validations.maxSizeMB}MB ({field.validations.fileTypes?.join(', ')})</span>}
+                    {catOpen && (
+                      fieldsForCat.length === 0 ? (
+                        <p className="portal-wt-empty">{t('No dynamic fields created yet.', 'உருவாக்கப்பட்ட புலங்கள் ஏதுமில்லை.')}</p>
+                      ) : (
+                        <div className="portal-wt-fields">
+                          {fieldsForCat.map((field: any) => (
+                            <div key={field.id} className="portal-wt-field">
+                              <div className="portal-wt-field-main">
+                                <div className="portal-wt-field-name">
+                                  <span>{t(field.nameEn, field.nameTa)}</span>
+                                </div>
+                                <div className="portal-wt-flags">
+                                  <span className="portal-dash-status is-progress">{field.type}</span>
+                                  {field.subcategory && (
+                                    <span className="portal-dash-status is-pending">
+                                      {t(
+                                        CATEGORIES.find((c: any) => c.id === field.category)?.subcategories.find((s: any) => s.id === field.subcategory)?.nameEn || field.subcategory,
+                                        CATEGORIES.find((c: any) => c.id === field.category)?.subcategories.find((s: any) => s.id === field.subcategory)?.nameTa || field.subcategory
+                                      )}
+                                    </span>
+                                  )}
+                                  {field.validations?.required && (
+                                    <span className="portal-dash-status is-pending">{t('Required', 'கட்டாயம்')}</span>
+                                  )}
+                                  {field.type === 'text' && field.validations?.maxLength && (
+                                    <span className="portal-dash-status is-progress">Limit: {field.validations.maxLength}</span>
+                                  )}
+                                  {field.type === 'number' && (
+                                    <span className="portal-dash-status is-progress">Range: {field.validations.min} - {field.validations.max}</span>
+                                  )}
+                                  {field.type === 'file' && (
+                                    <span className="portal-dash-status is-progress">Limit: {field.validations.maxSizeMB}MB</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="portal-wt-actions">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteField(field.id)}
+                                  className="portal-fis-icon-btn is-danger"
+                                  title={t('Delete Field', 'நீக்கு')}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
                               </div>
                             </div>
-                            <button
-                              onClick={() => handleDeleteField(field.id)}
-                              className="p-1.5 hover:bg-rose-50 text-rose-500 rounded-lg transition"
-                              title={t('Delete Field', 'நீக்கு')}
-                            >
-                              <Trash2 className="w-4.5 h-4.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      )
                     )}
                   </div>
                 );
               })}
             </div>
+            </div>
           </div>
-
         </div>
       )}
 
       {/* DETAIL VIEW / AUDIT LOG & STATUS UPDATE MODAL */}
       {selectedIssue && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="portal-modal-overlay">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className={`w-full ${activePreviewFile ? 'max-w-6xl' : 'max-w-3xl'} bg-white rounded-3xl overflow-hidden shadow-2xl border border-gray-100 max-h-[92vh] flex flex-col transition-all duration-300`}
+            className={`portal-modal w-full ${activePreviewFile ? 'max-w-6xl' : 'max-w-3xl'}`}
           >
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 p-6 text-white flex justify-between items-start">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono font-bold bg-white/20 px-3 py-1 rounded-full text-white">
-                    {selectedIssue.issueId}
+            <div className="portal-dash-head">
+              <div>
+                <h3>
+                  <span className="portal-dash-icon">
+                    <FileText className="h-3 w-3" />
                   </span>
-                  {selectedIssue.status === 'Closed' ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/30 text-emerald-300 border border-emerald-400/40">
-                      <CheckCircle className="w-3.5 h-3.5" />
-                      {t('Closed', 'முடிக்கப்பட்டது')}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-500/30 text-amber-300 border border-amber-400/40">
-                      <Clock className="w-3.5 h-3.5" />
-                      {t('Active (In Progress)', 'செயலில் (நடவடிக்கையில்)')}
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-base font-bold">
-                  {t(CATEGORIES.find((c: any) => c.id === selectedIssue.category)?.nameEn || selectedIssue.category, CATEGORIES.find((c: any) => c.id === selectedIssue.category)?.nameTa || selectedIssue.category)}
-                  <span className="text-white/70 font-semibold"> / {getSubcategoryName(selectedIssue.category, selectedIssue.subcategory, lang)}</span>
+                  {selectedIssue.issueId}
                 </h3>
+                <p>
+                  {t(CATEGORIES.find((c: any) => c.id === selectedIssue.category)?.nameEn || selectedIssue.category, CATEGORIES.find((c: any) => c.id === selectedIssue.category)?.nameTa || selectedIssue.category)}
+                  {' / '}
+                  {getSubcategoryName(selectedIssue.category, selectedIssue.subcategory, lang)}
+                  {' · '}
+                  {selectedIssue.status === 'Closed' ? t('Closed', 'முடிக்கப்பட்டது') : t('Active (In Progress)', 'செயலில் (நடவடிக்கையில்)')}
+                </p>
               </div>
               <button 
+                type="button"
                 onClick={() => {
                   setSelectedIssue(null);
                   setActivePreviewFile(null);
                   setUpdateNotes('');
                   setUpdateAttachment(null);
                 }} 
-                className="p-1.5 bg-white/10 hover:bg-white/20 rounded-full transition cursor-pointer"
+                className="portal-fis-icon-btn"
               >
-                <X className="w-5 h-5" />
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
 
@@ -3316,11 +3274,11 @@ export default function PendingIssuesView({
 
       {/* SUCCESS SUBMISSION POPUP MODAL */}
       {showSubmitPopup && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="portal-modal-overlay">
           <motion.div
             initial={{ opacity: 0, scale: 0.92, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-gray-100 p-8 text-center space-y-6"
+            className="portal-modal w-full max-w-md p-8 text-center space-y-6"
           >
             <div className="mx-auto w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center border border-emerald-100 shadow-sm">
               <CheckCircle className="w-9 h-9 text-emerald-600" />

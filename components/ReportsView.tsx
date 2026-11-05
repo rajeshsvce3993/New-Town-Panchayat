@@ -526,7 +526,7 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
 
   if (reportType === 'pendingIssues') {
     return (
-      <div id="reports-view-container" className="space-y-6 print:p-0">
+      <div id="reports-view-container" className="portal-studio portal-page print:p-0">
         {/* Report Type Selector Tabs */}
         {!isEmployeeMgmtDisabled && (
           <div className="flex bg-slate-100 p-1 rounded-xl max-w-md print:hidden">
@@ -785,7 +785,7 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
   }
 
   return (
-    <div id="reports-view-container" className="space-y-6 print:p-0">
+    <div id="reports-view-container" className="portal-studio portal-page print:p-0">
       {/* Report Type Selector Tabs */}
       {!isEmployeeMgmtDisabled && (
         <div className="flex bg-slate-100 p-1 rounded-xl max-w-md print:hidden">

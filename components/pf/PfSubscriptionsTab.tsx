@@ -400,70 +400,33 @@ export default function PfSubscriptionsTab({
   };
 
   return (
-    <div className="space-y-6">
-      {/* View Toggle subtabs */}
-      <div className="flex border-b border-slate-100 bg-white p-2 rounded-2xl shadow-xs gap-2">
-        <button
-          type="button"
-          onClick={() => setSubTab('create')}
-          className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
-            subTab === 'create'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
-              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-          }`}
-        >
-          {lang === 'ta' ? 'புதிய சந்தா பதிவேற்றம்' : 'Post New Subscriptions'}
-        </button>
-        <button
-          type="button"
-          onClick={() => setSubTab('view')}
-          className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
-            subTab === 'view'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
-              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-          }`}
-        >
-          {lang === 'ta' ? 'பதிவேற்றப்பட்ட சந்தாக்கள் காண்க/திருத்துக' : 'View & Edit Uploaded Subscriptions'}
-        </button>
+    <div className="space-y-3">
+      <div className="portal-dash-toolbar">
+        <div className="portal-dash-pills">
+          <button
+            type="button"
+            onClick={() => setSubTab('create')}
+            className={`portal-dash-pill ${subTab === 'create' ? 'is-active' : ''}`}
+          >
+            {lang === 'ta' ? 'புதிய சந்தா பதிவேற்றம்' : 'Post New Subscriptions'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubTab('view')}
+            className={`portal-dash-pill ${subTab === 'view' ? 'is-active' : ''}`}
+          >
+            {lang === 'ta' ? 'பதிவேற்றப்பட்ட சந்தாக்கள் காண்க/திருத்துக' : 'View & Edit Uploaded Subscriptions'}
+          </button>
+        </div>
       </div>
 
       {subTab === 'create' && (
-        <div className="space-y-6">
-      {/* Step Progress bar */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-6">
-        <div className="flex justify-between items-center max-w-2xl mx-auto">
-          <div className="flex flex-col items-center space-y-1 relative">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-              wizardStep >= 1 ? 'bg-indigo-600 text-white animate-pulse' : 'bg-slate-100 text-slate-400'
-            }`}>
-              1
-            </div>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Challan Details</span>
-          </div>
-          <div className="flex-1 h-[2px] bg-slate-100 mx-4 relative">
-            <div className="h-full bg-indigo-600 transition-all duration-350" style={{ width: wizardStep >= 2 ? '100%' : '0%' }}></div>
-          </div>
-
-          <div className="flex flex-col items-center space-y-1">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-              wizardStep >= 2 ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'
-            }`}>
-              2
-            </div>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Salary Month</span>
-          </div>
-          <div className="flex-1 h-[2px] bg-slate-100 mx-4 relative">
-            <div className="h-full bg-indigo-600 transition-all duration-350" style={{ width: wizardStep >= 3 ? '100%' : '0%' }}></div>
-          </div>
-
-          <div className="flex flex-col items-center space-y-1">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-              wizardStep >= 3 ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'
-            }`}>
-              3
-            </div>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Breakup Ledger</span>
-          </div>
+        <div className="space-y-3">
+      <div className="portal-dash-toolbar">
+        <div className="portal-dash-pills">
+          <span className={`portal-dash-pill ${wizardStep === 1 ? 'is-active' : ''}`}>1. {lang === 'ta' ? 'சலான்' : 'Challan'}</span>
+          <span className={`portal-dash-pill ${wizardStep === 2 ? 'is-active' : ''}`}>2. {lang === 'ta' ? 'சம்பள மாதம்' : 'Salary month'}</span>
+          <span className={`portal-dash-pill ${wizardStep === 3 ? 'is-active' : ''}`}>3. {lang === 'ta' ? 'பிரிப்பு' : 'Breakup'}</span>
         </div>
       </div>
 
@@ -481,56 +444,50 @@ export default function PfSubscriptionsTab({
         </div>
       )}
 
-      {/* STEP 1: CHALLAN DETAILS */}
       {wizardStep === 1 && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 max-w-xl mx-auto space-y-5">
-          <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider border-b border-slate-50 pb-2">
-            {lang === 'ta' ? 'சலான் விவரங்களை உள்ளிடவும்' : 'Step 1: Enter Challan Specifications'}
-          </h2>
-
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Challan Number</label>
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>{lang === 'ta' ? 'சலான் விவரங்களை உள்ளிடவும்' : 'Step 1: Challan details'}</h3>
+            </div>
+          </div>
+          <div className="portal-dash-body portal-wt-form">
+            <div>
+              <label>Challan Number</label>
               <input
                 type="text"
                 required
                 placeholder="e.g. CHN-2026/894"
                 value={challanNo}
                 onChange={(e) => setChallanNo(e.target.value)}
-                className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none font-mono font-bold text-slate-800"
               />
             </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Challan Date</label>
+            <div>
+              <label>Challan Date</label>
               <input
                 type="date"
                 required
                 value={challanDate}
                 onChange={(e) => setChallanDate(e.target.value)}
-                className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none font-mono"
               />
             </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Challan Amount (₹)</label>
+            <div>
+              <label>Challan Amount (₹)</label>
               <input
                 type="number"
                 required
                 placeholder="e.g. 12000"
                 value={challanAmount}
                 onChange={(e) => setChallanAmount(e.target.value)}
-                className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none font-mono font-black text-slate-800"
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                {lang === 'ta' ? 'சலான் கோப்பு இணைப்பு (அதிகபட்சம் 2MB)' : 'Challan File Attachment (PDF, JPG/PNG - Max 2MB)'}
+            <div>
+              <label>
+                {lang === 'ta' ? 'சலான் கோப்பு இணைப்பு (அதிகபட்சம் 2MB)' : 'Challan file (PDF, JPG/PNG — max 2MB)'}
               </label>
               {challanUploadError && <p className="text-[10px] text-rose-600 font-bold mb-1">{challanUploadError}</p>}
-              
-              <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:bg-slate-50/50 transition relative">
+              <div className="portal-file-pick" style={{ position: 'relative' }}>
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
@@ -540,134 +497,87 @@ export default function PfSubscriptionsTab({
                   }}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
-                {isUploading ? (
-                  <div className="space-y-2">
-                    <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mx-auto" />
-                    <p className="text-xs font-bold text-slate-600">{lang === 'ta' ? 'பதிவேற்றப்படுகிறது...' : 'Uploading...'}</p>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <Upload className="w-8 h-8 text-slate-400 mx-auto" />
-                    <p className="text-xs font-bold text-slate-600">
-                      {challanAttachmentName ? challanAttachmentName : (lang === 'ta' ? 'சலான் பதிவேற்ற கிளிக் செய்யவும்' : 'Drag & Drop Challan file or browse')}
-                    </p>
-                    {challanAttachmentUrl && (
-                      <span className="inline-block bg-emerald-50 text-emerald-700 text-[9px] px-2.5 py-0.5 rounded-full font-bold">
-                        Uploaded Successfully
-                      </span>
-                    )}
-                  </div>
-                )}
+                {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                <span>{challanAttachmentName || (lang === 'ta' ? 'கோப்பைத் தேர்வு' : 'Choose file')}</span>
+                {challanAttachmentUrl && <span className="portal-dash-status is-resolved">Uploaded</span>}
               </div>
             </div>
 
             <button
-              type="button"
+              type="submit"
               onClick={handleNextStep1}
               disabled={!challanNo || !challanDate || !challanAmount || !challanAttachmentUrl || isUploading}
-              className={`w-full py-3.5 rounded-2xl text-xs font-bold uppercase tracking-wider shadow flex items-center justify-center gap-2 transition-all ${
-                challanNo && challanDate && challanAmount && challanAttachmentUrl && !isUploading
-                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer font-bold'
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              }`}
             >
-              <span>{lang === 'ta' ? 'அடுத்த கட்டம்' : 'Next Step'}</span>
-              <ArrowRight className="w-4 h-4" />
+              {lang === 'ta' ? 'அடுத்த கட்டம்' : 'Next Step'}
             </button>
           </div>
         </div>
       )}
 
-      {/* STEP 2: DEDUCTED SALARY MONTH PERIOD */}
       {wizardStep === 2 && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 max-w-xl mx-auto space-y-6">
-          <div>
-            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider border-b border-slate-50 pb-2">
-              {lang === 'ta' ? 'சம்பளம் பிடிக்கப்பட்ட காலம்' : 'Step 2: Choose Salary Deduction Period'}
-            </h2>
-            <p className="text-xs text-slate-500 mt-1">Select salary months linked with this challan deposit sheet.</p>
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>{lang === 'ta' ? 'சம்பளம் பிடிக்கப்பட்ட காலம்' : 'Step 2: Salary deduction period'}</h3>
+              <p>Select salary months linked with this challan.</p>
+            </div>
           </div>
-
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Salary Month From</label>
+          <div className="portal-dash-body portal-wt-form">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label>Salary Month From</label>
                 <input
                   type="month"
                   required
                   value={challanFromMonth}
                   onChange={(e) => setChallanFromMonth(e.target.value)}
-                  className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none font-mono"
                 />
               </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Salary Month To (Optional)</label>
+              <div>
+                <label>Salary Month To (Optional)</label>
                 <input
                   type="month"
                   value={challanToMonth}
                   onChange={(e) => setChallanToMonth(e.target.value)}
-                  className="w-full border border-slate-200 rounded-2xl p-3 text-sm focus:ring-2 focus:ring-indigo-100 outline-none font-mono"
                 />
-                <span className="text-[9px] text-slate-400">*Leave empty to post as single month.</span>
+                <p className="portal-switch-hint">Leave empty to post as a single month.</p>
               </div>
             </div>
-
-            {/* Selected months summary indicator card */}
-            <div className="bg-indigo-50/50 border border-indigo-100 p-4 rounded-2xl">
-              <span className="text-[9px] font-bold text-indigo-700 uppercase tracking-wider">Computed Months for Postings</span>
-              <div className="flex flex-wrap gap-1.5 mt-2">
+            <div className="portal-wt-section">
+              <div className="portal-wt-section-title">Computed months</div>
+              <div className="portal-wt-chips">
                 {selectedMonthsList.map((m, idx) => (
-                  <span key={idx} className="bg-white border border-indigo-100 text-indigo-800 font-mono font-bold text-[10px] px-2.5 py-1 rounded-lg">
-                    {m}
-                  </span>
+                  <span key={idx} className="portal-wt-chip">{m}</span>
                 ))}
               </div>
-              <p className="text-[10px] text-slate-500 mt-2 font-semibold">
-                Subscriptions will be registered for {selectedMonthsList.length} month(s) in individual databases.
+              <p className="portal-switch-hint" style={{ marginTop: '0.35rem' }}>
+                Subscriptions will be registered for {selectedMonthsList.length} month(s).
               </p>
             </div>
-
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setWizardStep(1)}
-                className="px-4 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-2xl flex items-center gap-1.5 transition-all"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Back</span>
+              <button type="button" onClick={() => setWizardStep(1)} className="portal-wt-link">
+                Back
               </button>
-              <button
-                type="button"
-                onClick={handleNextStep2}
-                className="flex-1 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-wider rounded-2xl flex items-center justify-center gap-1.5 shadow"
-              >
-                <span>Next</span>
-                <ArrowRight className="w-4 h-4" />
+              <button type="submit" onClick={handleNextStep2}>
+                Next
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* STEP 3: EMPLOYEE BREAKUPS CONTRIBUTION */}
       {wizardStep === 3 && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 space-y-6 max-w-4xl mx-auto">
-          <div>
-            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider border-b border-slate-50 pb-2">
-              {lang === 'ta' ? 'ஊழியர் சந்தா விவரங்கள்' : 'Step 3: Employee-wise Contribution breakups'}
-            </h2>
-            <p className="text-xs text-slate-500 mt-1 font-medium">
-              Choose an employee to add contribution breakup values. Either Subscription or PF Loan Recovery value must be filled.
-            </p>
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>{lang === 'ta' ? 'ஊழியர் சந்தா விவரங்கள்' : 'Step 3: Employee-wise contribution breakups'}</h3>
+              <p>Choose employees and enter subscription or PF loan recovery amounts.</p>
+            </div>
           </div>
-
-          {/* Selection Dropdown section */}
-          <div className="flex flex-col sm:flex-row items-end gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-            <div className="flex-1 w-full">
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                {lang === 'ta' ? 'ஊழியரைத் தேர்ந்தெடுக்கவும்' : 'Select Employee'}
-              </label>
+          <div className="portal-dash-body portal-wt-form">
+          <div className="portal-dash-fields" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto' }}>
+            <div>
+              <label>{lang === 'ta' ? 'ஊழியரைத் தேர்ந்தெடுக்கவும்' : 'Select Employee'}</label>
               <select
                 onChange={(e) => {
                   const empId = e.target.value;
@@ -680,9 +590,8 @@ export default function PfSubscriptionsTab({
                       }));
                     }
                   }
-                  e.target.value = ""; // Reset dropdown
+                  e.target.value = "";
                 }}
-                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs focus:ring-1 focus:ring-indigo-300 outline-none font-medium"
                 defaultValue=""
               >
                 <option value="" disabled>
@@ -698,29 +607,32 @@ export default function PfSubscriptionsTab({
                 }
               </select>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                const remaining = activeEmployees
-                  .map((e: any) => e.employeeId)
-                  .filter((id: string) => !selectedBreakupEmployeeIds.includes(id));
-                if (remaining.length > 0) {
-                  setSelectedBreakupEmployeeIds(prev => [...prev, ...remaining]);
-                  setChallanBreakups(prev => {
-                    const updated = { ...prev };
-                    remaining.forEach((id: string) => {
-                      if (!updated[id]) {
-                        updated[id] = { subscriptionAmount: 0, pfLoanRecoveryAmount: 0 };
-                      }
+            <div>
+              <label>&nbsp;</label>
+              <button
+                type="button"
+                className="portal-dash-head-action"
+                onClick={() => {
+                  const remaining = activeEmployees
+                    .map((e: any) => e.employeeId)
+                    .filter((id: string) => !selectedBreakupEmployeeIds.includes(id));
+                  if (remaining.length > 0) {
+                    setSelectedBreakupEmployeeIds(prev => [...prev, ...remaining]);
+                    setChallanBreakups(prev => {
+                      const updated = { ...prev };
+                      remaining.forEach((id: string) => {
+                        if (!updated[id]) {
+                          updated[id] = { subscriptionAmount: 0, pfLoanRecoveryAmount: 0 };
+                        }
+                      });
+                      return updated;
                     });
-                    return updated;
-                  });
-                }
-              }}
-              className="px-4 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all shrink-0 w-full sm:w-auto"
-            >
-              {lang === 'ta' ? 'அனைத்து ஊழியர்களையும் சேர்க்கவும்' : 'Add All Active Employees'}
-            </button>
+                  }
+                }}
+              >
+                {lang === 'ta' ? 'அனைத்து ஊழியர்களையும் சேர்க்கவும்' : 'Add All Active Employees'}
+              </button>
+            </div>
           </div>
 
           {/* Breakup Tally warning/success check */}
@@ -744,56 +656,50 @@ export default function PfSubscriptionsTab({
           </div>
 
           {selectedBreakupEmployeeIds.length === 0 ? (
-            <div className="text-center py-12 border border-dashed border-slate-200 rounded-3xl bg-slate-50/50 space-y-2">
-              <p className="text-sm font-bold text-slate-600">No Employees Selected</p>
-              <p className="text-xs text-slate-400">Please select an employee from the dropdown above to start entering contribution breakups.</p>
-            </div>
+            <p className="portal-wt-note">No employees selected. Choose an employee above to enter contribution breakups.</p>
           ) : (
-            /* Grid ledger inputs table */
-            <div className="overflow-x-auto rounded-2xl border border-slate-100 max-h-[400px] overflow-y-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead className="sticky top-0 bg-slate-50 font-bold text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-100 z-10 shadow-xs">
+            <div className="portal-dash-table overflow-x-auto" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              <table>
+                <thead>
                   <tr>
-                    <th className="p-4">Employee</th>
-                    <th className="p-4">Subscription Amt (₹)</th>
-                    <th className="p-4">PF Loan Recovery (₹)</th>
-                    <th className="p-4 text-right">Individual Total</th>
-                    <th className="p-4 text-center w-16">Action</th>
+                    <th>Employee</th>
+                    <th>Subscription Amt (₹)</th>
+                    <th>PF Loan Recovery (₹)</th>
+                    <th>Individual Total</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody>
                   {selectedBreakupEmployeeIds.map((empId) => {
                     const b = challanBreakups[empId];
                     const totalIndiv = (b?.subscriptionAmount || 0) + (b?.pfLoanRecoveryAmount || 0);
 
                     return (
-                      <tr key={empId} className="hover:bg-slate-50/50">
-                        <td className="p-4">
-                          <p className="font-bold text-slate-800">{getEmpName(empId)}</p>
-                          <span className="text-[10px] text-slate-400 font-mono">{empId}</span>
+                      <tr key={empId}>
+                        <td>
+                          <div className="portal-user-identity">
+                            <strong>{getEmpName(empId)}</strong>
+                            <span className="portal-dash-id">{empId}</span>
+                          </div>
                         </td>
-                        <td className="p-4">
+                        <td>
                           <input
                             type="number"
                             placeholder="0"
                             value={b?.subscriptionAmount || ''}
                             onChange={(e) => handleBreakupChange(empId, 'subscriptionAmount', e.target.value)}
-                            className="border border-slate-200 bg-white rounded-xl px-3 py-1.5 text-xs focus:ring-1 focus:ring-indigo-300 outline-none w-32 font-mono text-slate-800 font-bold"
                           />
                         </td>
-                        <td className="p-4">
+                        <td>
                           <input
                             type="number"
                             placeholder="0"
                             value={b?.pfLoanRecoveryAmount || ''}
                             onChange={(e) => handleBreakupChange(empId, 'pfLoanRecoveryAmount', e.target.value)}
-                            className="border border-slate-200 bg-white rounded-xl px-3 py-1.5 text-xs focus:ring-1 focus:ring-indigo-300 outline-none w-32 font-mono text-slate-800 font-bold"
                           />
                         </td>
-                        <td className="p-4 text-right font-bold text-indigo-700 font-mono text-sm">
-                          ₹ {totalIndiv.toLocaleString('en-IN')}
-                        </td>
-                        <td className="p-4 text-center">
+                        <td className="portal-dash-num">₹ {totalIndiv.toLocaleString('en-IN')}</td>
+                        <td>
                           <button
                             type="button"
                             onClick={() => {
@@ -804,10 +710,10 @@ export default function PfSubscriptionsTab({
                                 return updated;
                               });
                             }}
-                            className="p-2 hover:bg-rose-50 text-rose-500 rounded-xl transition"
+                            className="portal-fis-icon-btn is-danger"
                             title="Remove employee"
                           >
-                            <Trash2 className="w-4 h-4 mx-auto" />
+                            <Trash2 className="h-3 w-3" />
                           </button>
                         </td>
                       </tr>
@@ -818,29 +724,18 @@ export default function PfSubscriptionsTab({
             </div>
           )}
 
-          {/* Wizard Nav buttons */}
-          <div className="flex gap-2 justify-between border-t border-slate-100 pt-4">
-            <button
-              type="button"
-              onClick={() => setWizardStep(2)}
-              className="px-4 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-2xl flex items-center gap-1.5 transition-all"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back</span>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setWizardStep(2)} className="portal-wt-link">
+              Back
             </button>
             <button
-              type="button"
+              type="submit"
               onClick={handleSaveChallanAndSubscriptions}
               disabled={!isChallanTotalTallied}
-              className={`px-6 py-3.5 rounded-2xl text-xs font-bold uppercase tracking-wider shadow flex items-center gap-2 transition-all ${
-                isChallanTotalTallied
-                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer font-bold'
-                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              }`}
             >
-              <CheckCircle className="w-4 h-4" />
-              <span>Save & Post Subscriptions</span>
+              Save & Post Subscriptions
             </button>
+          </div>
           </div>
         </div>
       )}
@@ -848,34 +743,27 @@ export default function PfSubscriptionsTab({
       )}
 
       {subTab === 'view' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-3xl border border-slate-200 p-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-                  {lang === 'ta' ? 'பதிவேற்றப்பட்ட சலான் & சந்தாக்கள் பட்டியல்' : 'Uploaded Challans & Subscriptions Registry'}
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  {lang === 'ta' ? 'பதிவேற்றப்பட்ட அனைத்து சலான் விவரங்கள் மற்றும் ஊழியர்களின் மாதாந்திர சந்தாக்களை பார்வையிடலாம் அல்லது திருத்தலாம்.' : 'Browse, view breakups, or edit uploaded challans and associated monthly postings.'}
-                </p>
-              </div>
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>{lang === 'ta' ? 'பதிவேற்றப்பட்ட சலான் & சந்தாக்கள் பட்டியல்' : 'Uploaded Challans & Subscriptions Registry'}</h3>
+              <p>{lang === 'ta' ? 'பதிவேற்றப்பட்ட அனைத்து சலான் விவரங்கள் மற்றும் ஊழியர்களின் மாதாந்திர சந்தாக்களை பார்வையிடலாம் அல்லது திருத்தலாம்.' : 'Browse, view breakups, or edit uploaded challans and associated monthly postings.'}</p>
             </div>
           </div>
-
-          <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden">
-            <div className="overflow-x-auto scrollbar-custom w-full">
-              <table className="w-full min-w-[850px] text-left border-collapse text-xs">
+          <div className="portal-dash-body">
+          <div className="portal-dash-table overflow-x-auto">
+              <table>
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="p-4 pl-6">Challan No / Date</th>
-                    <th className="p-4">Salary Period</th>
-                    <th className="p-4">Challan Amount (₹)</th>
-                    <th className="p-4">Breakups Match</th>
-                    <th className="p-4">Attachment</th>
-                    <th className="p-4 pr-6 text-right">Actions</th>
+                  <tr>
+                    <th>Challan No / Date</th>
+                    <th>Salary Period</th>
+                    <th>Challan Amount (₹)</th>
+                    <th>Breakups Match</th>
+                    <th>Attachment</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-600">
+                <tbody>
                   {pfChallans.map((ch) => {
                     const totalBreakups = Array.isArray(ch.breakups) 
                       ? ch.breakups.reduce((sum: number, b: any) => sum + (b.subscriptionAmount || 0) + (b.pfLoanRecoveryAmount || 0), 0) 
@@ -883,66 +771,41 @@ export default function PfSubscriptionsTab({
                     const matches = Math.abs(totalBreakups - ch.challanAmount) < 0.1;
 
                     return (
-                      <tr key={ch.id} className="hover:bg-slate-50/50 transition">
-                        <td className="p-4 pl-6">
-                          <p className="font-bold text-slate-800 font-mono">{ch.challanNo}</p>
-                          <span className="text-[10px] text-slate-400 font-mono">{ch.challanDate}</span>
+                      <tr key={ch.id}>
+                        <td>
+                          <div className="portal-user-identity">
+                            <strong>{ch.challanNo}</strong>
+                            <span className="portal-dash-id">{ch.challanDate}</span>
+                          </div>
                         </td>
-                        <td className="p-4 font-mono font-semibold text-slate-700">
+                        <td>
                           {ch.fromMonth} {ch.toMonth && ch.toMonth !== ch.fromMonth ? `to ${ch.toMonth}` : ''}
                         </td>
-                        <td className="p-4 font-black text-slate-900 font-mono text-sm">
-                          ₹ {ch.challanAmount.toLocaleString('en-IN')}
-                        </td>
-                        <td className="p-4">
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[9px] ${
-                            matches 
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' 
-                              : 'bg-rose-50 text-rose-700 border border-rose-150'
-                          }`}>
+                        <td className="portal-dash-num">₹ {ch.challanAmount.toLocaleString('en-IN')}</td>
+                        <td>
+                          <span className={`portal-dash-status ${matches ? 'is-resolved' : 'is-pending'}`}>
                             {matches ? 'Tallied' : 'Mismatched'}
                           </span>
                         </td>
-                        <td className="p-4">
+                        <td>
                           {ch.attachmentUrl ? (
-                            <a
-                              href={ch.attachmentUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-indigo-600 hover:underline font-bold text-[10px] flex items-center gap-1"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                              <span className="max-w-[120px] truncate">{ch.attachmentName || 'View File'}</span>
+                            <a href={ch.attachmentUrl} target="_blank" rel="noreferrer" className="portal-wt-link">
+                              {ch.attachmentName || 'View File'}
                             </a>
                           ) : (
-                            <span className="text-slate-400 font-medium">None</span>
+                            <span className="portal-wt-meta">None</span>
                           )}
                         </td>
-                        <td className="p-4 pr-6 text-right">
-                          <div className="flex justify-end gap-1.5 items-center">
-                            <button
-                              type="button"
-                              onClick={() => setViewingChallan(ch)}
-                              className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-700 rounded-lg transition"
-                              title="View Breakups"
-                            >
-                              <Eye className="w-4 h-4" />
+                        <td>
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={() => setViewingChallan(ch)} className="portal-fis-icon-btn" title="View Breakups">
+                              <Eye className="h-3 w-3" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleEditChallanClick(ch)}
-                              className="p-1.5 hover:bg-indigo-50 text-indigo-500 hover:text-indigo-600 rounded-lg transition"
-                              title="Edit Entries"
-                            >
-                              <Edit className="w-4 h-4" />
+                            <button type="button" onClick={() => handleEditChallanClick(ch)} className="portal-fis-icon-btn" title="Edit Entries">
+                              <Edit className="h-3 w-3" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteChallan(ch.id)}
-                              className="p-1.5 hover:bg-rose-50 text-rose-500 hover:text-rose-600 rounded-lg transition"
-                              title="Delete Challan"
-                            >
-                              <Trash2 className="w-4 h-4" />
+                            <button type="button" onClick={() => handleDeleteChallan(ch.id)} className="portal-fis-icon-btn is-danger" title="Delete Challan">
+                              <Trash2 className="h-3 w-3" />
                             </button>
                           </div>
                         </td>
@@ -963,56 +826,44 @@ export default function PfSubscriptionsTab({
         </div>
       )}
 
-      {/* VIEW BREAKUPS MODAL */}
       {viewingChallan && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-3xl border border-slate-150 max-w-2xl w-full shadow-2xl p-6 space-y-6 max-h-[90vh] overflow-y-auto scrollbar-custom">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-base leading-tight">
-                    {lang === 'ta' ? 'சலான் பங்களிப்பு முறிவு விவரம்' : 'Challan Contribution Breakup'}
-                  </h3>
-                  <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider font-mono mt-0.5">
-                    {viewingChallan.challanNo}
-                  </p>
-                </div>
+        <div className="portal-modal-overlay is-top">
+          <div className="portal-modal max-w-2xl w-full overflow-y-auto">
+            <div className="portal-dash-head">
+              <div>
+                <h3>{lang === 'ta' ? 'சலான் பங்களிப்பு முறிவு விவரம்' : 'Challan Contribution Breakup'}</h3>
+                <p>{viewingChallan.challanNo}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setViewingChallan(null)}
-                className="text-slate-400 hover:text-slate-600 transition"
-              >
-                <X className="w-5 h-5" />
+              <button type="button" onClick={() => setViewingChallan(null)} className="portal-dash-head-action">
+                <X className="h-3 w-3" />
+                {lang === 'ta' ? 'மூடு' : 'Close'}
               </button>
             </div>
+            <div className="portal-dash-body">
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
-              <div className="p-3 bg-slate-50 rounded-2xl">
-                <span className="text-slate-400 block mb-0.5">Challan Date</span>
-                <span className="font-bold text-slate-800 font-mono">{viewingChallan.challanDate}</span>
+            <div className="portal-dash-fields" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', marginBottom: '0.75rem' }}>
+              <div>
+                <label>Challan Date</label>
+                <p className="portal-dash-id">{viewingChallan.challanDate}</p>
               </div>
-              <div className="p-3 bg-slate-50 rounded-2xl">
-                <span className="text-slate-400 block mb-0.5">Salary Period</span>
-                <span className="font-bold text-slate-800 font-mono">{viewingChallan.fromMonth} {viewingChallan.toMonth && viewingChallan.toMonth !== viewingChallan.fromMonth ? `to ${viewingChallan.toMonth}` : ''}</span>
+              <div>
+                <label>Salary Period</label>
+                <p className="portal-dash-id">{viewingChallan.fromMonth} {viewingChallan.toMonth && viewingChallan.toMonth !== viewingChallan.fromMonth ? `to ${viewingChallan.toMonth}` : ''}</p>
               </div>
-              <div className="p-3 bg-slate-50 rounded-2xl col-span-2 sm:col-span-1">
-                <span className="text-slate-400 block mb-0.5">Challan Amount</span>
-                <span className="font-black text-indigo-700 font-mono text-sm">₹ {viewingChallan.challanAmount.toLocaleString('en-IN')}</span>
+              <div>
+                <label>Challan Amount</label>
+                <p className="portal-dash-num">₹ {viewingChallan.challanAmount.toLocaleString('en-IN')}</p>
               </div>
             </div>
 
-            <div className="overflow-x-auto rounded-2xl border border-slate-100">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead className="bg-slate-50 font-bold text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-100">
+            <div className="portal-dash-table overflow-x-auto">
+              <table>
+                <thead>
                   <tr>
-                    <th className="p-3">Employee</th>
-                    <th className="p-3">Subscription Amount</th>
-                    <th className="p-3">PF Loan Recovery</th>
-                    <th className="p-3 text-right">Total Contribution</th>
+                    <th>Employee</th>
+                    <th>Subscription Amount</th>
+                    <th>PF Loan Recovery</th>
+                    <th>Total Contribution</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1030,107 +881,49 @@ export default function PfSubscriptionsTab({
                 </tbody>
               </table>
             </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setViewingChallan(null)}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition shadow"
-              >
-                {lang === 'ta' ? 'மூடு' : 'Close'}
-              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* EDIT CHALLAN & SUBSCRIPTIONS MODAL */}
       {editingChallan && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-3xl border border-slate-150 max-w-3xl w-full shadow-2xl p-6 space-y-5 max-h-[95vh] overflow-y-auto scrollbar-custom">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
-                  <Edit className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 text-base leading-tight">
-                    {lang === 'ta' ? 'சலான் & சந்தாக்கள் திருத்துதல்' : 'Edit Challan & Monthly Subscriptions'}
-                  </h3>
-                  <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mt-0.5">
-                    {lang === 'ta' ? 'விவரங்களை திருத்தவும்' : 'Update parameters and contributor breakups'}
-                  </p>
-                </div>
+        <div className="portal-modal-overlay is-top">
+          <div className="portal-modal max-w-3xl w-full overflow-y-auto">
+            <div className="portal-dash-head">
+              <div>
+                <h3>{lang === 'ta' ? 'சலான் & சந்தாக்கள் திருத்துதல்' : 'Edit Challan & Monthly Subscriptions'}</h3>
+                <p>{lang === 'ta' ? 'விவரங்களை திருத்தவும்' : 'Update parameters and contributor breakups'}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setEditingChallan(null)}
-                className="text-slate-400 hover:text-slate-600 transition"
-              >
-                <X className="w-5 h-5" />
+              <button type="button" onClick={() => setEditingChallan(null)} className="portal-dash-head-action">
+                <X className="h-3 w-3" />
+                {lang === 'ta' ? 'ரத்து' : 'Cancel'}
               </button>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Challan No</label>
-                <input
-                  type="text"
-                  required
-                  value={editChallanNo}
-                  onChange={(e) => setEditChallanNo(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl p-2.5 text-xs outline-none font-mono font-bold text-slate-800"
-                />
+            <div className="portal-dash-body portal-wt-form">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label>Challan No</label>
+                <input type="text" required value={editChallanNo} onChange={(e) => setEditChallanNo(e.target.value)} />
               </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Challan Date</label>
-                <input
-                  type="date"
-                  required
-                  value={editChallanDate}
-                  onChange={(e) => setEditChallanDate(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl p-2.5 text-xs outline-none font-mono font-bold text-slate-800"
-                />
+              <div>
+                <label>Challan Date</label>
+                <input type="date" required value={editChallanDate} onChange={(e) => setEditChallanDate(e.target.value)} />
               </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Challan Amount (₹)</label>
-                <input
-                  type="number"
-                  required
-                  value={editChallanAmount}
-                  onChange={(e) => setEditChallanAmount(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl p-2.5 text-xs outline-none font-mono font-bold text-slate-800"
-                />
+              <div>
+                <label>Challan Amount (₹)</label>
+                <input type="number" required value={editChallanAmount} onChange={(e) => setEditChallanAmount(e.target.value)} />
               </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Salary From</label>
-                <input
-                  type="month"
-                  required
-                  value={editChallanFromMonth}
-                  onChange={(e) => setEditChallanFromMonth(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl p-2.5 text-xs outline-none font-mono text-slate-800"
-                />
+              <div>
+                <label>Salary From</label>
+                <input type="month" required value={editChallanFromMonth} onChange={(e) => setEditChallanFromMonth(e.target.value)} />
               </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Salary To (Optional)</label>
-                <input
-                  type="month"
-                  value={editChallanToMonth}
-                  onChange={(e) => setEditChallanToMonth(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl p-2.5 text-xs outline-none font-mono text-slate-800"
-                />
+              <div>
+                <label>Salary To (Optional)</label>
+                <input type="month" value={editChallanToMonth} onChange={(e) => setEditChallanToMonth(e.target.value)} />
               </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Attachment</label>
-                <label className="flex items-center justify-center gap-2 border border-dashed border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-semibold text-indigo-600 cursor-pointer p-2.5 transition">
-                  <Upload className="w-4 h-4" />
-                  {isUploading ? (lang === 'ta' ? 'பதிவேற்றப்படுகிறது...' : 'Uploading...') : (editChallanAttachmentName ? 'Change File' : 'Upload File')}
+              <div>
+                <label>Attachment</label>
+                <div className="portal-file-pick">
                   <input
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png"
@@ -1140,11 +933,16 @@ export default function PfSubscriptionsTab({
                     }}
                     disabled={isUploading}
                     className="hidden"
+                    id="edit-challan-file-input"
                   />
-                </label>
-                {editChallanAttachmentName && (
-                  <p className="text-[9px] text-slate-400 font-medium truncate mt-1">Attached: {editChallanAttachmentName}</p>
-                )}
+                  <label htmlFor="edit-challan-file-input" className="portal-wt-link inline-flex items-center gap-1.5 cursor-pointer">
+                    {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                    <span>{isUploading ? (lang === 'ta' ? 'பதிவேற்றப்படுகிறது...' : 'Uploading...') : (editChallanAttachmentName ? 'Change File' : 'Upload File')}</span>
+                  </label>
+                  {editChallanAttachmentName && (
+                    <span className="truncate font-mono text-[11px] text-slate-500">{editChallanAttachmentName}</span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1208,15 +1006,15 @@ export default function PfSubscriptionsTab({
                 );
               })()}
 
-              <div className="overflow-x-auto rounded-2xl border border-slate-100 max-h-[250px] overflow-y-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="sticky top-0 bg-slate-50 font-bold text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-100 z-10 shadow-xs">
+              <div className="portal-dash-table overflow-x-auto" style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                <table>
+                  <thead>
                     <tr>
-                      <th className="p-3">Employee</th>
-                      <th className="p-3">Subscription Amount (₹)</th>
-                      <th className="p-3">PF Loan Recovery (₹)</th>
-                      <th className="p-3 text-right">Total</th>
-                      <th className="p-3 text-center w-12">Action</th>
+                      <th>Employee</th>
+                      <th>Subscription Amount (₹)</th>
+                      <th>PF Loan Recovery (₹)</th>
+                      <th>Total</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1276,22 +1074,14 @@ export default function PfSubscriptionsTab({
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
-              <button
-                type="button"
-                onClick={() => setEditingChallan(null)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition"
-              >
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setEditingChallan(null)} className="portal-wt-link">
                 {lang === 'ta' ? 'ரத்து செய்' : 'Cancel'}
               </button>
-              <button
-                type="button"
-                onClick={handleSaveEditedChallan}
-                disabled={isUploading}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow transition"
-              >
+              <button type="submit" onClick={handleSaveEditedChallan} disabled={isUploading}>
                 {lang === 'ta' ? 'சேமி' : 'Save Updates'}
               </button>
+            </div>
             </div>
           </div>
         </div>

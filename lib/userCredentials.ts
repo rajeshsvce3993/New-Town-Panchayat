@@ -24,6 +24,13 @@ export function mergeUserRecordPreservingPassword(incoming: any, previous: any |
     merged.password = pass;
     merged.passwordHash = pass;
   }
+  if (
+    previous &&
+    incoming?.customPagePermissions === undefined &&
+    previous.customPagePermissions !== undefined
+  ) {
+    merged.customPagePermissions = previous.customPagePermissions;
+  }
   return merged;
 }
 

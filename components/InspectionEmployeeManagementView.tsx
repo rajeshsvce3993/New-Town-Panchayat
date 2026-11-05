@@ -30,7 +30,8 @@ import {
   UserCheck,
   ShieldAlert,
   RefreshCw,
-  Calendar
+  Calendar,
+  ChevronRight
 } from 'lucide-react';
 import {
   applyUserPasswordFields,
@@ -94,6 +95,11 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
   const [activeTab, setActiveTab] = useState<'employees' | 'roles' | 'designations' | 'sessions' | 'server_logs'>('employees');
   const [employeeViewMode, setEmployeeViewMode] = useState<'tree' | 'table'>('tree');
   const [mobileTab, setMobileTab] = useState<'list' | 'form'>('list');
+  const [openZones, setOpenZones] = useState<Record<string, boolean>>({});
+  const [openDistricts, setOpenDistricts] = useState<Record<string, boolean>>({});
+  const [openTps, setOpenTps] = useState<Record<string, boolean>>({});
+  const [openRoles, setOpenRoles] = useState<Record<string, boolean>>({});
+  const [openDesigs, setOpenDesigs] = useState<Record<string, boolean>>({});
   const [serverLogsText, setServerLogsText] = useState<string>('');
   const [isLoadingServerLogs, setIsLoadingServerLogs] = useState<boolean>(false);
   const [serverLogSearch, setServerLogSearch] = useState<string>('');
@@ -342,6 +348,11 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     if (!obj) return '';
     return lang === 'ta' ? (obj.nameTa || obj.nameEn) : (obj.nameEn || obj.nameTa);
   };
+
+  const ZONE_TONES = ['#1d4ed8', '#7c3aed', '#c2410c', '#0f766e', '#be185d', '#0369a1', '#b45309', '#4f46e5'];
+  const DISTRICT_TONES = ['#0d9488', '#2563eb', '#d97706', '#db2777', '#059669', '#7c3aed', '#ea580c', '#0284c7'];
+  const TP_TONES = ['#0369a1', '#b45309', '#4f46e5', '#0f766e', '#be185d', '#1d4ed8', '#c2410c', '#7c3aed'];
+  const ROLE_TONES = ['#1d4ed8', '#7c3aed', '#0f766e', '#c2410c', '#be185d', '#0369a1'];
 
   // Deduplicated unique districts and town panchayats to prevent duplicates in UI
   const uniqueDistricts = React.useMemo(() => {
@@ -997,35 +1008,41 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
   };
 
   return (
-    <div id="inspection-employee-management-container" className="space-y-6">
+    <div id="inspection-employee-management-container" className="portal-studio portal-page">
       {/* Top Banner & Notices */}
-      <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <Users className="w-6 h-6 text-indigo-600" />
+      <div className="portal-fis-hero">
+        <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
+            <Users className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0 leading-tight">
+            <h3 className="text-[14px] font-semibold tracking-tight text-white">
               {t('inspectionEmployeeManagement')}
             </h3>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-[10px] text-white/70">
               {t('temporaryStaffNotice')}
             </p>
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
             <button
+              type="button"
               onClick={downloadInspectionEmployeeTemplate}
-              className="flex items-center gap-2 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl border border-indigo-200 transition shadow-2xs"
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
-              {lang === 'ta' ? 'மாதிரி மாதிரி படிவம் பதிவிறக்கு (CSV)' : 'Model Template (CSV)'}
+              <Download className="h-3 w-3" />
+              {lang === 'ta' ? 'மாதிரி படிவம் (CSV)' : 'Template (CSV)'}
             </button>
 
             <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition shadow-2xs"
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-md hover:brightness-110 cursor-pointer"
+              style={{ background: 'var(--theme-accent)' }}
             >
-              <Upload className="w-3.5 h-3.5" />
-              {lang === 'ta' ? 'பல்க் பதிவேற்றம் (Bulk Upload)' : 'Bulk CSV Upload'}
+              <Upload className="h-3 w-3" />
+              {lang === 'ta' ? 'பல்க் பதிவேற்றம்' : 'Bulk CSV Upload'}
             </button>
 
             <input
@@ -1036,253 +1053,255 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
               className="hidden"
             />
           </div>
-        </div>
+      </div>
 
-        {/* Notice alert */}
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-amber-800 text-xs">
+        <div className="portal-dash-toolbar">
+          <div className="flex items-center gap-2 text-[11px] text-slate-600">
           <Info className="w-4 h-4 text-amber-600 shrink-0" />
           <span>
             {lang === 'ta' 
               ? 'கள ஆய்வு பணியாளர்கள் (Animators, DBC Workers, Water Supply Workers) திட்ட அடிப்படையிலான தற்காலிக ஊழியர்கள். இவர்களின் நிர்வாகம் நிரந்தர துறை ஊழியர்களிலிருந்து பிரிக்கப்பட்டுள்ளது.' 
               : 'Inspection Field Staff (Animators, DBC Workers, Water Supply Workers) are contract/temporary workers scoped strictly to inspection tasks.'}
           </span>
+          </div>
         </div>
 
         {csvFeedback && (
-          <div className={`p-4 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
+          <div className={`p-3 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
             {csvFeedback.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
             <p className="text-xs font-medium">{csvFeedback.message}</p>
           </div>
         )}
+
+      <div className="portal-dash-toolbar">
+        <div className="portal-dash-pills">
+          <button
+            type="button"
+            onClick={() => setActiveTab('employees')}
+            className={`portal-dash-pill ${activeTab === 'employees' ? 'is-active' : ''}`}
+          >
+            <Users className="h-3.5 w-3.5" />
+            <span>{t('inspectionUsers')}</span>
+            <span className="portal-fis-count">{inspectionUsers.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('roles')}
+            className={`portal-dash-pill ${activeTab === 'roles' ? 'is-active' : ''}`}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span>{t('inspectionRoles')}</span>
+            <span className="portal-fis-count">{inspectionRoles.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('designations')}
+            className={`portal-dash-pill ${activeTab === 'designations' ? 'is-active' : ''}`}
+          >
+            <Briefcase className="h-3.5 w-3.5" />
+            <span>{t('inspectionDesignations')}</span>
+            <span className="portal-fis-count">{inspectionDesignations.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('sessions')}
+            className={`portal-dash-pill ${activeTab === 'sessions' ? 'is-active' : ''}`}
+          >
+            <ClipboardList className="h-3.5 w-3.5" />
+            <span>{lang === 'ta' ? 'அமர்வுகள்' : 'Sessions'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('server_logs');
+              fetchServerLogs();
+            }}
+            className={`portal-dash-pill ${activeTab === 'server_logs' ? 'is-active' : ''}`}
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            <span>{lang === 'ta' ? 'சேவையக பதிவு' : 'Server Log'}</span>
+          </button>
+        </div>
       </div>
 
-      {/* Navigation Sub-Tabs */}
-      <div className="flex border-b border-gray-100 bg-white px-3 sm:px-6 pt-3 sm:pt-4 rounded-t-2xl shadow-xs gap-1.5 sm:gap-2 overflow-x-auto whitespace-nowrap scrollbar-none">
-        <button
-          onClick={() => setActiveTab('employees')}
-          className={`pb-3 sm:pb-4 px-3 sm:px-6 text-xs sm:text-sm font-semibold border-b-2 transition flex items-center gap-2 shrink-0 ${activeTab === 'employees' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          <Users className="w-4 h-4" />
-          {t('inspectionUsers')} ({inspectionUsers.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('roles')}
-          className={`pb-3 sm:pb-4 px-3 sm:px-6 text-xs sm:text-sm font-semibold border-b-2 transition flex items-center gap-2 shrink-0 ${activeTab === 'roles' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          <ShieldCheck className="w-4 h-4" />
-          {t('inspectionRoles')} ({inspectionRoles.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('designations')}
-          className={`pb-3 sm:pb-4 px-3 sm:px-6 text-xs sm:text-sm font-semibold border-b-2 transition flex items-center gap-2 shrink-0 ${activeTab === 'designations' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          <Briefcase className="w-4 h-4" />
-          {t('inspectionDesignations')} ({inspectionDesignations.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('sessions')}
-          className={`pb-3 sm:pb-4 px-3 sm:px-6 text-xs sm:text-sm font-semibold border-b-2 transition flex items-center gap-2 shrink-0 ${activeTab === 'sessions' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          <ClipboardList className="w-4 h-4" />
-          {lang === 'ta' ? 'பயனர் செயல்பாடுகள் & அமர்வு' : 'User Sessions & Activities'}
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab('server_logs');
-            fetchServerLogs();
-          }}
-          className={`pb-3 sm:pb-4 px-3 sm:px-6 text-xs sm:text-sm font-semibold border-b-2 transition flex items-center gap-2 shrink-0 ${activeTab === 'server_logs' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          <FileSpreadsheet className="w-4 h-4" />
-          {lang === 'ta' ? 'சேவையக பதிவு (Notepad Log)' : 'Server Process Log (Notepad)'}
-        </button>
-      </div>
-
-      {/* Mobile Tab Switcher for Employees Tab */}
       {activeTab === 'employees' && (
-        <div className="flex lg:hidden bg-slate-100 p-1 rounded-xl">
-          <button
-            type="button"
-            onClick={() => setMobileTab('list')}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${
-              mobileTab === 'list' 
-                ? 'bg-white text-indigo-700 shadow-xs' 
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            👥 {lang === 'ta' ? 'பணியாளர்கள் பட்டியல்' : 'Staff List'} ({filteredUsers.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setMobileTab('form')}
-            className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${
-              mobileTab === 'form' 
-                ? 'bg-white text-indigo-700 shadow-xs' 
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            {editingUserId 
-              ? `✏️ ${lang === 'ta' ? 'திருத்துதல்' : 'Edit User'}` 
-              : `➕ ${lang === 'ta' ? 'புதிய பணியாளர் சேர்க்க' : 'Add User'}`}
-          </button>
+        <div className="portal-dash-toolbar lg:hidden">
+          <div className="portal-dash-pills">
+            <button
+              type="button"
+              onClick={() => setMobileTab('list')}
+              className={`portal-dash-pill ${mobileTab === 'list' ? 'is-active' : ''}`}
+            >
+              <Users className="h-3.5 w-3.5" />
+              <span>{lang === 'ta' ? 'பட்டியல்' : 'Staff List'}</span>
+              <span className="portal-fis-count">{filteredUsers.length}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileTab('form')}
+              className={`portal-dash-pill ${mobileTab === 'form' ? 'is-active' : ''}`}
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              <span>
+                {editingUserId
+                  ? (lang === 'ta' ? 'திருத்துதல்' : 'Edit User')
+                  : (lang === 'ta' ? 'சேர்க்க' : 'Add User')}
+              </span>
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Main Grid Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Form Side */}
-        <div className={`lg:col-span-5 bg-white p-4 sm:p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4 ${activeTab === 'employees' && mobileTab !== 'form' ? 'hidden lg:block' : 'block'}`}>
+      <div className="portal-wt-grid">
+        <div className={`portal-dashboard-panel ${activeTab === 'employees' && mobileTab !== 'form' ? 'hidden lg:block' : 'block'}`}>
+          <div className="portal-dash-head">
+            <div>
+              <h3>
+                <span className="portal-dash-icon">
+                  <Plus className="h-3 w-3" />
+                </span>
+                {activeTab === 'employees'
+                  ? (editingUserId
+                      ? (lang === 'ta' ? 'ஆய்வுப் பணியாளரை திருத்துக' : 'Edit Inspection User')
+                      : t('addInspectionUser'))
+                  : activeTab === 'roles'
+                    ? t('addInspectionRole')
+                    : activeTab === 'designations'
+                      ? t('addInspectionDesignation')
+                      : activeTab === 'sessions'
+                        ? (lang === 'ta' ? 'நேரடி அமர்வு கண்காணிப்பு' : 'Live Session Tracker')
+                        : (lang === 'ta' ? 'சேவையக பதிவு' : 'Server Log File')}
+              </h3>
+            </div>
+            {activeTab === 'employees' && editingUserId && (
+              <button type="button" onClick={resetUserForm} className="portal-dash-head-action">
+                <X className="h-3 w-3" />
+                {lang === 'ta' ? 'ரத்து' : 'Cancel'}
+              </button>
+            )}
+          </div>
+          <div className="portal-dash-body portal-wt-form">
           {activeTab === 'roles' && (
-            <form onSubmit={handleAddRole} className="space-y-4">
-              <h4 className="font-semibold text-gray-900 text-sm border-b border-gray-100 pb-2">
-                {t('addInspectionRole')}
-              </h4>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'பொறுப்பு குறியீடு' : 'Role Identifier Code'}</label>
-                  <input
-                    type="text"
-                    value={roleCode}
-                    onChange={(e) => setRoleCode(e.target.value)}
-                    placeholder="e.g. single_tp, multi_tp, zonal, field_worker"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'பொறுப்பு பெயர் (ஆங்கிலம்)' : 'Role Name (English)'}</label>
-                  <input
-                    type="text"
-                    value={roleNameEn}
-                    onChange={(e) => setRoleNameEn(e.target.value)}
-                    placeholder="e.g. Field Workers (Ward Level)"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'பொறுப்பு பெயர் (தமிழ்)' : 'Role Name (Tamil)'}</label>
-                  <input
-                    type="text"
-                    value={roleNameTa}
-                    onChange={(e) => setRoleNameTa(e.target.value)}
-                    placeholder="எ.கா. வார்டு களப்பணியாளர்கள்"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'அதிகார வரம்பு / வகை' : 'Operational Scope'}</label>
-                  <select
-                    value={roleScope}
-                    onChange={(e) => setRoleScope(e.target.value as any)}
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
-                  >
-                    <option value="single_tp">{t('roleSingleTp')}</option>
-                    <option value="multi_tp">{t('roleMultiTp')}</option>
-                    <option value="zonal">{t('roleZonal')}</option>
-                    <option value="field_worker">{t('roleFieldWorker')}</option>
-                  </select>
-                </div>
+            <form onSubmit={handleAddRole} className="space-y-3">
+              <div>
+                <label>{lang === 'ta' ? 'பொறுப்பு குறியீடு' : 'Role Identifier Code'}</label>
+                <input
+                  type="text"
+                  value={roleCode}
+                  onChange={(e) => setRoleCode(e.target.value)}
+                  placeholder="e.g. single_tp, multi_tp, zonal, field_worker"
+                />
               </div>
-              <button
-                type="submit"
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2 shadow-xs"
-              >
-                <Plus className="w-4 h-4" />
+              <div>
+                <label>{lang === 'ta' ? 'பொறுப்பு பெயர் (ஆங்கிலம்)' : 'Role Name (English)'}</label>
+                <input
+                  type="text"
+                  value={roleNameEn}
+                  onChange={(e) => setRoleNameEn(e.target.value)}
+                  placeholder="e.g. Field Workers (Ward Level)"
+                  required
+                />
+              </div>
+              <div>
+                <label>{lang === 'ta' ? 'பொறுப்பு பெயர் (தமிழ்)' : 'Role Name (Tamil)'}</label>
+                <input
+                  type="text"
+                  value={roleNameTa}
+                  onChange={(e) => setRoleNameTa(e.target.value)}
+                  placeholder="எ.கா. வார்டு களப்பணியாளர்கள்"
+                  required
+                />
+              </div>
+              <div>
+                <label>{lang === 'ta' ? 'அதிகார வரம்பு / வகை' : 'Operational Scope'}</label>
+                <select
+                  value={roleScope}
+                  onChange={(e) => setRoleScope(e.target.value as any)}
+                >
+                  <option value="single_tp">{t('roleSingleTp')}</option>
+                  <option value="multi_tp">{t('roleMultiTp')}</option>
+                  <option value="zonal">{t('roleZonal')}</option>
+                  <option value="field_worker">{t('roleFieldWorker')}</option>
+                </select>
+              </div>
+              <button type="submit">
                 {t('addInspectionRole')}
               </button>
             </form>
           )}
 
           {activeTab === 'designations' && (
-            <form onSubmit={handleAddDesignation} className="space-y-4">
-              <h4 className="font-semibold text-gray-900 text-sm border-b border-gray-100 pb-2">
-                {t('addInspectionDesignation')}
-              </h4>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('selectInspectionRole')}</label>
-                  <select
-                    value={desigRoleId}
-                    onChange={(e) => setDesigRoleId(e.target.value)}
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
-                    required
-                  >
-                    <option value="">-- Choose Role --</option>
-                    {inspectionRoles.map((r: any) => (
-                      <option key={r.id} value={r.id}>{tObj(r)}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'பதவி பெயர் (ஆங்கிலம்)' : 'Designation Name (English)'}</label>
-                  <input
-                    type="text"
-                    value={desigNameEn}
-                    onChange={(e) => setDesigNameEn(e.target.value)}
-                    placeholder="e.g. Animators, DBC Workers, Water Supply Workers"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{lang === 'ta' ? 'பதவி பெயர் (தமிழ்)' : 'Designation Name (Tamil)'}</label>
-                  <input
-                    type="text"
-                    value={desigNameTa}
-                    onChange={(e) => setDesigNameTa(e.target.value)}
-                    placeholder="எ.கா. அனிமேட்டர்கள், டெங்கு கொசு ஒழிப்பு பணியாளர்கள்"
-                    className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-500">{t('selectInspectionSubjects')}</label>
-                  <div className="grid grid-cols-1 gap-1.5 mt-1 max-h-32 overflow-y-auto border border-gray-200 rounded-xl p-2 bg-gray-50">
-                    {inspectionSubjects.map((s: any) => {
-                      const checked = desigSubjectIds.includes(s.id);
-                      return (
-                        <label key={s.id} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-white text-xs cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setDesigSubjectIds([...desigSubjectIds, s.id]);
-                              } else {
-                                setDesigSubjectIds(desigSubjectIds.filter(id => id !== s.id));
-                              }
-                            }}
-                            className="w-4 h-4 text-indigo-600 rounded"
-                          />
-                          <span className="font-medium text-gray-700">{tObj(s)}</span>
-                        </label>
-                      );
-                    })}
-                    {inspectionSubjects.length === 0 && (
-                      <p className="text-[11px] text-gray-400 italic">No inspection subjects available yet.</p>
-                    )}
-                  </div>
+            <form onSubmit={handleAddDesignation} className="space-y-3">
+              <div>
+                <label>{t('selectInspectionRole')}</label>
+                <select
+                  value={desigRoleId}
+                  onChange={(e) => setDesigRoleId(e.target.value)}
+                  required
+                >
+                  <option value="">-- Choose Role --</option>
+                  {inspectionRoles.map((r: any) => (
+                    <option key={r.id} value={r.id}>{tObj(r)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label>{lang === 'ta' ? 'பதவி பெயர் (ஆங்கிலம்)' : 'Designation Name (English)'}</label>
+                <input
+                  type="text"
+                  value={desigNameEn}
+                  onChange={(e) => setDesigNameEn(e.target.value)}
+                  placeholder="e.g. Animators, DBC Workers, Water Supply Workers"
+                  required
+                />
+              </div>
+              <div>
+                <label>{lang === 'ta' ? 'பதவி பெயர் (தமிழ்)' : 'Designation Name (Tamil)'}</label>
+                <input
+                  type="text"
+                  value={desigNameTa}
+                  onChange={(e) => setDesigNameTa(e.target.value)}
+                  placeholder="எ.கா. அனிமேட்டர்கள், டெங்கு கொசு ஒழிப்பு பணியாளர்கள்"
+                  required
+                />
+              </div>
+              <div>
+                <label>{t('selectInspectionSubjects')}</label>
+                <div className="portal-wt-checkgrid" style={{ gridTemplateColumns: '1fr' }}>
+                  {inspectionSubjects.map((s: any) => {
+                    const checked = desigSubjectIds.includes(s.id);
+                    return (
+                      <label key={s.id}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setDesigSubjectIds([...desigSubjectIds, s.id]);
+                            } else {
+                              setDesigSubjectIds(desigSubjectIds.filter(id => id !== s.id));
+                            }
+                          }}
+                        />
+                        <span>{tObj(s)}</span>
+                      </label>
+                    );
+                  })}
+                  {inspectionSubjects.length === 0 && (
+                    <p className="portal-wt-empty">{lang === 'ta' ? 'பிரிவுகள் இல்லை' : 'No inspection subjects available yet.'}</p>
+                  )}
                 </div>
               </div>
-              <button
-                type="submit"
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center gap-2 shadow-xs"
-              >
-                <Plus className="w-4 h-4" />
+              <button type="submit">
                 {t('addInspectionDesignation')}
               </button>
             </form>
           )}
 
           {activeTab === 'sessions' && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div>
-                <h4 className="font-bold text-gray-900 text-sm border-b border-gray-100 pb-2">
-                  {lang === 'ta' ? 'அலைபேசி நேரடி கண்காணிப்பு' : 'Live Mobile Session Tracker'}
-                </h4>
-                <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                <p className="text-xs text-gray-500 leading-relaxed">
                   {lang === 'ta' 
                     ? 'பேரூராட்சி ஆய்வு ஊழியர்களின் நடப்பு அமர்வுகள் மற்றும் உள்நுழைவு/வெளியேறு நேரங்களை இங்கே கண்காணிக்கலாம்.' 
                     : 'Monitor current active sessions, last active heartbeat, and login/logout times of your field inspection officers here.'}
@@ -1290,32 +1309,34 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
               </div>
 
               {/* Stats Card */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl text-center">
-                  <span className="text-[10px] text-emerald-600 font-bold block mb-1">
-                    {lang === 'ta' ? 'நேரடி பயனர்கள்' : 'Live Users'}
-                  </span>
-                  <span className="text-2xl font-black text-emerald-700">
-                    {state.userSessions?.filter((s: any) => s.status === 'Active').length || 0}
-                  </span>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="portal-wt-node" style={{ ['--wt-tone' as string]: '#059669' }}>
+                  <div className="portal-wt-node-head">
+                    <div className="portal-wt-title">
+                      <span>{lang === 'ta' ? 'நேரடி பயனர்கள்' : 'Live Users'}</span>
+                      <span className="portal-wt-count">{state.userSessions?.filter((s: any) => s.status === 'Active').length || 0}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl text-center">
-                  <span className="text-[10px] text-slate-500 font-bold block mb-1">
-                    {lang === 'ta' ? 'மொத்த அமர்வுகள்' : 'Total Logs'}
-                  </span>
-                  <span className="text-2xl font-black text-slate-700">
-                    {state.userSessions?.length || 0}
-                  </span>
+                <div className="portal-wt-node" style={{ ['--wt-tone' as string]: '#0369a1' }}>
+                  <div className="portal-wt-node-head">
+                    <div className="portal-wt-title">
+                      <span>{lang === 'ta' ? 'மொத்த அமர்வுகள்' : 'Total Logs'}</span>
+                      <span className="portal-wt-count">{state.userSessions?.length || 0}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Security Tips */}
-              <div className="bg-indigo-50/50 border border-indigo-100/60 p-4 rounded-xl space-y-2 text-xs text-indigo-950">
-                <h5 className="font-bold flex items-center gap-1.5 text-indigo-700">
-                  <Info className="w-3.5 h-3.5 text-indigo-600" />
-                  {lang === 'ta' ? 'பாதுகாப்பு கட்டுப்பாடுகள்' : 'Security Admin Controls:'}
-                </h5>
-                <ul className="list-disc list-inside space-y-1 text-[10px] leading-relaxed text-indigo-900">
+              <div className="portal-wt-node" style={{ ['--wt-tone' as string]: '#7c3aed' }}>
+                <div className="portal-wt-node-head">
+                  <div className="portal-wt-title">
+                    <Info className="h-3.5 w-3.5" />
+                    <span>{lang === 'ta' ? 'பாதுகாப்பு கட்டுப்பாடுகள்' : 'Security Admin Controls'}</span>
+                  </div>
+                </div>
+                <div className="portal-wt-fields">
+                <ul className="list-disc list-inside space-y-1 text-[10px] leading-relaxed text-slate-600 px-1">
                   <li>
                     {lang === 'ta'
                       ? 'வெளியேற்று (Force Logout) பொத்தானை அழுத்தினால் அந்த ஊழியர் உடனடியாக செயலியில் இருந்து வெளியேற்றப்படுவார்.'
@@ -1332,95 +1353,61 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                       : 'Users inactive for over 1 hour or when the day ends will be automatically logged out by the app.'}
                   </li>
                 </ul>
+                </div>
               </div>
             </div>
           )}
 
           {activeTab === 'server_logs' && (
-            <div className="space-y-5">
-              <div>
-                <h4 className="font-bold text-gray-900 text-sm border-b border-gray-100 pb-2 flex items-center gap-2">
-                  <FileSpreadsheet className="w-4 h-4 text-indigo-600" />
-                  {lang === 'ta' ? 'சேவையக பதிவுக் கோப்பு (Server Log File)' : 'Server Log File Info'}
-                </h4>
-                <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-                  {lang === 'ta'
-                    ? 'சேவையகத்தின் அனைத்து நிகழ்வுகளும் (உள்நுழைவு, வெளியேற்றம், பணி பதிவுகள், முதன்மை மாற்றங்கள்) நேரடியாக server_process.log கோப்பில் எழுதப்படுகின்றன.'
-                    : 'All server process events (logins, logouts, work entries, master updates, sync) are written in real-time to server_process.log.'}
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500 leading-relaxed">
+                {lang === 'ta'
+                  ? 'சேவையகத்தின் அனைத்து நிகழ்வுகளும் (உள்நுழைவு, வெளியேற்றம், பணி பதிவுகள், முதன்மை மாற்றங்கள்) நேரடியாக server_process.log கோப்பில் எழுதப்படுகின்றன.'
+                  : 'All server process events (logins, logouts, work entries, master updates, sync) are written in real-time to server_process.log.'}
+              </p>
+
+              <div className="portal-wt-section">
+                <div className="portal-wt-section-title">
+                  <span>server_process.log</span>
+                  <span className="portal-wt-count">{lang === 'ta' ? 'நேரடி' : 'Live'}</span>
+                </div>
+                <p className="portal-wt-sub" style={{ marginLeft: 0 }}>
+                  Path: logs/server_process.log · UTF-8 · IST
                 </p>
               </div>
 
-              {/* Notepad File Spec Card */}
-              <div className="bg-slate-900 text-white rounded-xl p-4 space-y-2.5 font-mono text-xs shadow-sm border border-slate-800">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="text-amber-400 font-bold flex items-center gap-1.5">
-                    📝 server_process.log
-                  </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    Active / Live
-                  </span>
-                </div>
-                <div className="text-[11px] text-slate-300 space-y-1">
-                  <div><span className="text-slate-500">Path:</span> logs/server_process.log</div>
-                  <div><span className="text-slate-500">Format:</span> UTF-8 Plain Text (Notepad compatible)</div>
-                  <div><span className="text-slate-500">Timezone:</span> Indian Standard Time (IST)</div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="space-y-2">
-                <a
-                  href="/api/logs/server-process?download=true"
-                  download="server_process.log"
-                  className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
+              <a
+                href="/api/logs/server-process?download=true"
+                download="server_process.log"
+              >
+                {lang === 'ta' ? 'Notepad-ல் திறக்க பதிவிறக்கு (.log)' : 'Download for Notepad (.log)'}
+              </a>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={fetchServerLogs}
+                  disabled={isLoadingServerLogs}
+                  className="portal-dash-pill flex-1 justify-center"
                 >
-                  <Download className="w-4 h-4" />
-                  {lang === 'ta' ? 'Notepad-ல் திறக்க பதிவிறக்கு (.log)' : 'Download for Notepad (.log)'}
-                </a>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={fetchServerLogs}
-                    disabled={isLoadingServerLogs}
-                    className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingServerLogs ? 'animate-spin' : ''}`} />
-                    {lang === 'ta' ? 'புதுப்பி (Refresh)' : 'Refresh Log'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleClearServerLogs}
-                    className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    {lang === 'ta' ? 'அழி' : 'Clear'}
-                  </button>
-                </div>
+                  <RefreshCw className={`h-3.5 w-3.5 ${isLoadingServerLogs ? 'animate-spin' : ''}`} />
+                  {lang === 'ta' ? 'புதுப்பி' : 'Refresh'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearServerLogs}
+                  className="portal-fis-icon-btn is-danger"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
               </div>
 
-              {/* Server Machine Notepad Instructions */}
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs space-y-2 text-amber-900">
-                <h5 className="font-bold flex items-center gap-1.5 text-amber-800">
-                  <Info className="w-4 h-4 text-amber-600 shrink-0" />
-                  {lang === 'ta' ? 'சேவையக கணினியில் Notepad-ல் பார்ப்பது எப்படி:' : 'How to view via Notepad on Server Machine:'}
-                </h5>
-                <ol className="list-decimal list-inside space-y-1 text-[11px] leading-relaxed text-amber-950">
-                  <li>
-                    {lang === 'ta'
-                      ? 'விண்டோஸ் சேவையகத்தில் Win + R அழுத்தி Run திறக்கவும்.'
-                      : 'On Windows server machine, press Win + R to open Run dialog.'}
-                  </li>
-                  <li>
-                    <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-[10px]">notepad logs\server_process.log</code>
-                  </li>
-                  <li>
-                    {lang === 'ta'
-                      ? 'அல்லது File Explorer வழியே logs அடைவுக்கு சென்று Notepad அல்லது Notepad++ மூலம் நேரடியாக பார்க்கலாம்.'
-                      : 'Or navigate to project logs folder and double-click to open in Notepad or Notepad++.'}
-                  </li>
-                </ol>
+              <div className="portal-wt-note">
+                <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>
+                  {lang === 'ta'
+                    ? 'விண்டோஸ் சேவையகத்தில் Win + R அழுத்தி notepad logs\\server_process.log எனத் திறக்கவும்.'
+                    : 'On the Windows server, press Win + R and open notepad logs\\server_process.log.'}
+                </span>
               </div>
             </div>
           )}
@@ -1450,53 +1437,18 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
             ).sort((a: any, b: any) => Number(a) - Number(b));
 
             return (
-              <form onSubmit={handleAddOrUpdateUser} className="space-y-4">
-                {/* Form Header */}
-                <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-                  <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                    {editingUserId ? (
-                      <>
-                        <Pencil className="w-4 h-4 text-amber-600" />
-                        <span className="text-amber-800">
-                          {lang === 'ta' ? 'ஆய்வுப் பணியாளரை திருத்துக' : 'Edit Inspection User'}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <UserPlus className="w-4 h-4 text-indigo-600" />
-                        <span>{t('addInspectionUser')}</span>
-                      </>
-                    )}
-                  </h4>
-
-                  {editingUserId && (
-                    <button
-                      type="button"
-                      onClick={resetUserForm}
-                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center gap-1 transition"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      {lang === 'ta' ? 'ரத்து' : 'Cancel'}
-                    </button>
-                  )}
-                </div>
-
+              <form onSubmit={handleAddOrUpdateUser} className="space-y-3">
                 <div className="space-y-3">
-                  {/* USERNAME & PASSWORD CREDENTIALS */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
-                        <Key className="w-3.5 h-3.5 text-indigo-600" />
-                        {lang === 'ta' ? 'மொபைல் உள்நுழைவு விபரங்கள் *' : 'Mobile Login Credentials *'}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        {lang === 'ta' ? 'பயனர் அடையாள எண் & கடவுச்சொல்' : 'User ID & Password'}
+                  <div className="portal-wt-section">
+                    <div className="portal-wt-section-title">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Key className="h-3 w-3" />
+                        {lang === 'ta' ? 'மொபைல் உள்நுழைவு விபரங்கள்' : 'Mobile Login Credentials'}
                       </span>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                        <label>
                           {lang === 'ta' ? 'பயனர்பெயர் (User ID) *' : 'User ID / Username *'}
                         </label>
                         <input
@@ -1504,13 +1456,11 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           value={userUsername}
                           onChange={(e) => setUserUsername(e.target.value.replace(/\s+/g, '_').toLowerCase())}
                           placeholder="e.g. insp_kavitha_01"
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                           required
                         />
                       </div>
-
                       <div>
-                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                        <label>
                           {lang === 'ta' ? 'கடவுச்சொல் (Password) *' : 'Password *'}
                         </label>
                         <div className="relative">
@@ -1519,15 +1469,14 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                             value={userPassword}
                             onChange={(e) => setUserPassword(e.target.value)}
                             placeholder="••••••••"
-                            className="w-full border border-slate-200 rounded-lg pl-3 pr-8 py-2 text-xs bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                             required
                           />
                           <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600"
+                            className="portal-wt-link absolute right-2 top-1.5"
                           >
-                            {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                           </button>
                         </div>
                       </div>
@@ -1535,56 +1484,50 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                   </div>
 
                   {/* FULL NAME */}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('userFullNameEn')} *</label>
+                      <label>{t('userFullNameEn')} *</label>
                       <input
                         type="text"
                         value={userNameEn}
                         onChange={(e) => setUserNameEn(e.target.value)}
                         placeholder="e.g. Kavitha R"
-                        className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                         required
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('userFullNameTa')} *</label>
+                      <label>{t('userFullNameTa')} *</label>
                       <input
                         type="text"
                         value={userNameTa}
                         onChange={(e) => setUserNameTa(e.target.value)}
                         placeholder="எ.கா. கவிதா ரா"
-                        className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                         required
                       />
                     </div>
                   </div>
 
-                  {/* MOBILE NUMBER */}
                   <div>
-                    <label className="text-xs font-semibold text-gray-500">{t('fieldTypeMobile')} *</label>
+                    <label>{t('fieldTypeMobile')} *</label>
                     <input
                       type="tel"
                       maxLength={10}
                       value={userMobile}
                       onChange={(e) => setUserMobile(e.target.value.replace(/\D/g, ''))}
                       placeholder="9876543210 (10 digits)"
-                      className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none font-mono"
                       required
                     />
                   </div>
 
-                  {/* ROLE & DESIGNATION */}
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('selectInspectionRole')} *</label>
+                      <label>{t('selectInspectionRole')} *</label>
                       <select
                         value={userRoleId}
                         onChange={(e) => {
                           setUserRoleId(e.target.value);
                           setUserDesigId('');
                         }}
-                        className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white font-medium"
                         required
                       >
                         <option value="">-- Role --</option>
@@ -1595,13 +1538,11 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                         ))}
                       </select>
                     </div>
-
                     <div>
-                      <label className="text-xs font-semibold text-gray-500">{t('selectInspectionDesignation')} *</label>
+                      <label>{t('selectInspectionDesignation')} *</label>
                       <select
                         value={userDesigId}
                         onChange={(e) => setUserDesigId(e.target.value)}
-                        className="w-full border border-gray-200 rounded-xl p-2.5 text-xs mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white font-medium"
                         required
                       >
                         <option value="">-- Designation --</option>
@@ -1615,14 +1556,14 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                   </div>
 
                   {/* JURISDICTIONAL DROPDOWNS BASED ON ROLE SCOPE */}
-                  <div className="bg-indigo-50/40 border border-indigo-100 rounded-xl p-3 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-indigo-950 flex items-center gap-1.5 uppercase tracking-wider">
-                        <MapPin className="w-3.5 h-3.5 text-indigo-600" />
-                        {lang === 'ta' ? 'அதிகார வரம்பு தேர்வு (Jurisdiction)' : 'Jurisdiction Configuration'}
+                  <div className="portal-wt-section space-y-2.5">
+                    <div className="portal-wt-section-title">
+                      <span className="inline-flex items-center gap-1.5">
+                        <MapPin className="h-3 w-3" />
+                        {lang === 'ta' ? 'அதிகார வரம்பு தேர்வு' : 'Jurisdiction Configuration'}
                       </span>
                       {currentRole && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white text-indigo-700 border border-indigo-200">
+                        <span className="portal-wt-count">
                           {scopeType === 'zonal' ? (lang === 'ta' ? 'மண்டலப் பணி' : 'Zonal') :
                            scopeType === 'single_tp' ? (lang === 'ta' ? 'ஒற்றை பேரூராட்சி' : 'Single TP') :
                            scopeType === 'multi_tp' ? (lang === 'ta' ? 'பல பேரூராட்சிகள்' : 'Multi-TP') :
@@ -1641,13 +1582,12 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                       // 1. ZONAL: Show Zone dropdown only
                       <div className="space-y-2">
                         <div>
-                          <label className="text-xs font-semibold text-gray-700 block mb-1">
+                          <label>
                             {lang === 'ta' ? 'மண்டலத்தை தேர்ந்தெடுக்கவும் *' : 'Select Zone *'}
                           </label>
                           <select
                             value={userZoneId}
                             onChange={(e) => setUserZoneId(e.target.value)}
-                            className="w-full border border-gray-200 rounded-xl p-2.5 text-xs bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                             required
                           >
                             <option value="">{lang === 'ta' ? '-- மண்டலம் தேர்வு --' : '-- Select Zone --'}</option>
@@ -1657,7 +1597,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           </select>
                         </div>
 
-                        <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 flex items-start gap-2">
+                        <div className="portal-wt-note">
                           <Info className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                           <span>
                             {lang === 'ta'
@@ -1670,7 +1610,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                       // 2. SINGLE TP: Select Zone -> Select District -> Select TP
                       <div className="space-y-2.5">
                         <div>
-                          <label className="text-xs font-semibold text-gray-700 block mb-1">
+                          <label>
                             {lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும் *' : 'Select Zone *'}
                           </label>
                           <select
@@ -1680,7 +1620,6 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                               setUserDistrictId('');
                               setUserTpId('');
                             }}
-                            className="w-full border border-gray-200 rounded-xl p-2.5 text-xs bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                             required
                           >
                             <option value="">{lang === 'ta' ? '-- மண்டலம் தேர்வு --' : '-- Select Zone --'}</option>
@@ -1692,7 +1631,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
 
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="text-xs font-semibold text-gray-700 block mb-1">
+                            <label>
                               {lang === 'ta' ? 'மாவட்டம் தேர்வு *' : 'Select District *'}
                             </label>
                             <select
@@ -1701,7 +1640,6 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                 setUserDistrictId(e.target.value);
                                 setUserTpId('');
                               }}
-                              className="w-full border border-gray-200 rounded-xl p-2.5 text-xs bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                               required
                               disabled={!userZoneId}
                             >
@@ -1715,13 +1653,12 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           </div>
 
                           <div>
-                            <label className="text-xs font-semibold text-gray-700 block mb-1">
+                            <label>
                               {lang === 'ta' ? 'பேரூராட்சி தேர்வு *' : 'Select Town Panchayat *'}
                             </label>
                             <select
                               value={userTpId}
                               onChange={(e) => setUserTpId(e.target.value)}
-                              className="w-full border border-gray-200 rounded-xl p-2.5 text-xs bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                               required
                               disabled={!userDistrictId}
                             >
@@ -1735,7 +1672,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           </div>
                         </div>
 
-                        <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-[11px] text-blue-800 flex items-start gap-2">
+                        <div className="portal-wt-note">
                           <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
                           <span>
                             {lang === 'ta'
@@ -1748,7 +1685,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                       // 3. MULTIPLE TP: Select Zone -> Select District -> Select Multiple TPs
                       <div className="space-y-2.5">
                         <div>
-                          <label className="text-xs font-semibold text-gray-700 block mb-1">
+                          <label>
                             {lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும் *' : 'Select Zone *'}
                           </label>
                           <select
@@ -1758,7 +1695,6 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                               setUserDistrictId('');
                               setUserSelectedTpIds([]);
                             }}
-                            className="w-full border border-gray-200 rounded-xl p-2.5 text-xs bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                             required
                           >
                             <option value="">{lang === 'ta' ? '-- மண்டலம் தேர்வு --' : '-- Select Zone --'}</option>
@@ -1769,7 +1705,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                         </div>
 
                         <div>
-                          <label className="text-xs font-semibold text-gray-700 block mb-1">
+                          <label>
                             {lang === 'ta' ? 'மாவட்டம் தேர்வு *' : 'Select District *'}
                           </label>
                           <select
@@ -1778,7 +1714,6 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                               setUserDistrictId(e.target.value);
                               setUserSelectedTpIds([]);
                             }}
-                            className="w-full border border-gray-200 rounded-xl p-2.5 text-xs bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                             required
                             disabled={!userZoneId}
                           >
@@ -1792,19 +1727,19 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                         </div>
 
                         <div>
-                          <label className="text-xs font-semibold text-gray-700 flex items-center justify-between mb-1">
-                            <span>{lang === 'ta' ? 'பல பேரூராட்சிகளைத் தேர்வு செய்க *' : 'Select Multiple Town Panchayats *'}</span>
-                            <span className="text-[10px] text-indigo-600 font-bold">
-                              ({userSelectedTpIds.length} {lang === 'ta' ? 'தேர்வு' : 'selected'})
+                          <label>
+                            {lang === 'ta' ? 'பல பேரூராட்சிகளைத் தேர்வு செய்க *' : 'Select Multiple Town Panchayats *'}
+                            <span className="portal-wt-count ml-1">
+                              {userSelectedTpIds.length} {lang === 'ta' ? 'தேர்வு' : 'selected'}
                             </span>
                           </label>
-                          <div className="border border-gray-200 rounded-xl p-2 bg-white max-h-36 overflow-y-auto space-y-1">
+                          <div className="portal-wt-checkgrid" style={{ gridTemplateColumns: '1fr' }}>
                             {uniqueTownPanchayats
                               .filter((tp: any) => !userDistrictId || tp.districtId === userDistrictId || userSelectedTpIds.includes(tp.id))
                               .map((tp: any) => {
                                 const isChecked = userSelectedTpIds.includes(tp.id);
                                 return (
-                                  <label key={tp.id} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs">
+                                  <label key={tp.id}>
                                     <input
                                       type="checkbox"
                                       checked={isChecked}
@@ -1815,22 +1750,21 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                           setUserSelectedTpIds(userSelectedTpIds.filter(id => id !== tp.id));
                                         }
                                       }}
-                                      className="w-4 h-4 text-indigo-600 rounded"
                                     />
-                                    <span className="font-medium text-slate-800">{tObj(tp)} {tp.code ? `[Code: ${tp.code}]` : ''}</span>
+                                    <span>{tObj(tp)} {tp.code ? `[Code: ${tp.code}]` : ''}</span>
                                   </label>
                                 );
                               })}
                             {uniqueTownPanchayats.filter((tp: any) => !userDistrictId || tp.districtId === userDistrictId || userSelectedTpIds.includes(tp.id)).length === 0 && (
-                              <p className="text-[11px] text-gray-400 italic p-1">
+                              <p className="portal-wt-empty">
                                 {lang === 'ta' ? 'பேரூராட்சிகள் காணப்படவில்லை. மாவட்டத்தை தேர்ந்தெடுக்கவும்.' : 'No town panchayats found. Please select a district.'}
                               </p>
                             )}
                           </div>
                         </div>
 
-                        <div className="p-2.5 rounded-lg bg-indigo-50 border border-indigo-200 text-[11px] text-indigo-800 flex items-start gap-2">
-                          <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                        <div className="portal-wt-note">
+                          <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                           <span>
                             {lang === 'ta'
                               ? 'பல பேரூராட்சிகள்: தேர்வு செய்யப்பட்ட பேரூராட்சிகளின் அனைத்து வார்டுகளிலும் பணிகள் பதிவு செய்யலாம்.'
@@ -1842,7 +1776,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                       // 4. WARD FIELD WORKER: Select Zone -> Select District -> Select TP -> Select Multiple Wards
                       <div className="space-y-2.5">
                         <div>
-                          <label className="text-xs font-semibold text-gray-700 block mb-1">
+                          <label>
                             {lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும் *' : 'Select Zone *'}
                           </label>
                           <select
@@ -1853,7 +1787,6 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                               setUserTpId('');
                               setUserSelectedWards([]);
                             }}
-                            className="w-full border border-gray-200 rounded-xl p-2.5 text-xs bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                             required
                           >
                             <option value="">{lang === 'ta' ? '-- மண்டலம் தேர்வு --' : '-- Select Zone --'}</option>
@@ -1865,7 +1798,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
 
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="text-xs font-semibold text-gray-700 block mb-1">
+                            <label>
                               {lang === 'ta' ? 'மாவட்டம் தேர்வு *' : 'Select District *'}
                             </label>
                             <select
@@ -1875,7 +1808,6 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                 setUserTpId('');
                                 setUserSelectedWards([]);
                               }}
-                              className="w-full border border-gray-200 rounded-xl p-2.5 text-xs bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                               required
                               disabled={!userZoneId}
                             >
@@ -1889,7 +1821,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           </div>
 
                           <div>
-                            <label className="text-xs font-semibold text-gray-700 block mb-1">
+                            <label>
                               {lang === 'ta' ? 'பேரூராட்சி தேர்வு *' : 'Select Town Panchayat *'}
                             </label>
                             <select
@@ -1898,7 +1830,6 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                 setUserTpId(e.target.value);
                                 setUserSelectedWards([]);
                               }}
-                              className="w-full border border-gray-200 rounded-xl p-2.5 text-xs bg-white focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none"
                               required
                               disabled={!userDistrictId}
                             >
@@ -1914,23 +1845,22 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
 
                         {/* Multiple Wards Selector */}
                         <div>
-                          <label className="text-xs font-semibold text-gray-700 flex items-center justify-between mb-1">
-                            <span>{lang === 'ta' ? 'ஒதுக்கப்பட்ட வார்டுகளை தேர்வு செய்க *' : 'Select Assigned Wards *'}</span>
-                            <span className="text-[10px] text-amber-700 font-bold">
-                              ({userSelectedWards.length} {lang === 'ta' ? 'வார்டுகள்' : 'wards'})
+                          <label>
+                            {lang === 'ta' ? 'ஒதுக்கப்பட்ட வார்டுகளை தேர்வு செய்க *' : 'Select Assigned Wards *'}
+                            <span className="portal-wt-count ml-1">
+                              {userSelectedWards.length} {lang === 'ta' ? 'வார்டுகள்' : 'wards'}
                             </span>
                           </label>
 
-                          {/* Only show created wards for selected town panchayat */}
                           {knownWardsForTp.length === 0 ? (
-                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-xs mb-2">
+                            <p className="portal-wt-note">
                               {userTpId 
                                 ? (lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட பேரூராட்சியில் வார்டுகள் எதுவும் உருவாக்கப்படவில்லை. வார்டு மற்றும் தெரு மாஸ்டர் மேலாண்மை பிரிவில் வார்டுகளை உருவாக்கவும்.' : 'No wards have been created yet for this Town Panchayat. Please create wards in Ward & Street Master Management.')
                                 : (lang === 'ta' ? 'முதலில் பேரூராட்சியை தேர்வு செய்யவும்.' : 'Please select a Town Panchayat first.')}
-                            </div>
+                            </p>
                           ) : (
                             <div className="space-y-2">
-                              <div className="flex flex-wrap gap-1.5 p-2 bg-white border border-gray-200 rounded-lg max-h-36 overflow-y-auto">
+                              <div className="portal-dash-pills flex-wrap">
                                 {knownWardsForTp.map((wardNum: string) => {
                                   const isAssigned = userSelectedWards.includes(wardNum);
                                   return (
@@ -1944,11 +1874,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                           setUserSelectedWards([...userSelectedWards, wardNum]);
                                         }
                                       }}
-                                      className={`px-3 py-1.5 text-xs rounded-md font-bold border transition ${
-                                        isAssigned 
-                                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                                      }`}
+                                      className={`portal-dash-pill ${isAssigned ? 'is-active' : ''}`}
                                     >
                                       {lang === 'ta' ? `வார்டு ${wardNum}` : `Ward ${wardNum}`}
                                     </button>
@@ -1961,14 +1887,14 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                   <button
                                     type="button"
                                     onClick={() => setUserSelectedWards(knownWardsForTp)}
-                                    className="text-indigo-600 font-semibold hover:underline"
+                                    className="portal-wt-link"
                                   >
                                     {lang === 'ta' ? 'அனைத்தையும் தேர்வு செய்' : 'Select All'}
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => setUserSelectedWards([])}
-                                    className="text-slate-500 hover:underline"
+                                    className="portal-wt-link"
                                   >
                                     {lang === 'ta' ? 'அனைத்தையும் நீக்கு' : 'Clear'}
                                   </button>
@@ -1978,7 +1904,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           )}
                         </div>
 
-                        <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
+                        <div className="portal-wt-note">
                           <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                           <span>
                             {lang === 'ta'
@@ -1993,12 +1919,12 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                   {/* Assigned Inspection Subjects */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-semibold text-gray-500">{t('selectInspectionSubjects')}</label>
+                      <label>{t('selectInspectionSubjects')}</label>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => setUserSubjectIds(inspectionSubjects.map((s: any) => s.id))}
-                          className="text-[10px] text-indigo-600 hover:underline font-semibold"
+                          className="portal-wt-link"
                         >
                           {lang === 'ta' ? 'அனைத்தும்' : 'Select All'}
                         </button>
@@ -2006,17 +1932,17 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                         <button
                           type="button"
                           onClick={() => setUserSubjectIds([])}
-                          className="text-[10px] text-gray-500 hover:underline"
+                          className="portal-wt-link"
                         >
                           {lang === 'ta' ? 'நீக்கு' : 'Clear'}
                         </button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-1.5 border border-gray-200 rounded-xl p-2 bg-gray-50 max-h-28 overflow-y-auto">
+                    <div className="portal-wt-checkgrid">
                       {inspectionSubjects.map((s: any) => {
                         const checked = userSubjectIds.includes(s.id);
                         return (
-                          <label key={s.id} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                          <label key={s.id}>
                             <input
                               type="checkbox"
                               checked={checked}
@@ -2027,7 +1953,6 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                   setUserSubjectIds(userSubjectIds.filter(id => id !== s.id));
                                 }
                               }}
-                              className="w-3.5 h-3.5 text-indigo-600 rounded"
                             />
                             <span className="truncate">{tObj(s)}</span>
                           </label>
@@ -2046,7 +1971,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                     return (
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <label className="text-xs font-semibold text-gray-500">
+                          <label>
                             {lang === 'ta' ? 'ஒதுக்கப்பட்ட ஆய்வு பிரிவுகள் (Categories)' : 'Assigned Inspection Categories'}
                             {userCategoryIds.length > 0 && ` (${userCategoryIds.length})`}
                           </label>
@@ -2054,7 +1979,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                             <button
                               type="button"
                               onClick={() => setUserCategoryIds(relevantCats.map((c: any) => c.id))}
-                              className="text-[10px] text-indigo-600 hover:underline font-semibold"
+                              className="portal-wt-link"
                             >
                               {lang === 'ta' ? 'அனைத்தும்' : 'Select All'}
                             </button>
@@ -2062,22 +1987,22 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                             <button
                               type="button"
                               onClick={() => setUserCategoryIds([])}
-                              className="text-[10px] text-gray-500 hover:underline"
+                              className="portal-wt-link"
                             >
                               {lang === 'ta' ? 'நீக்கு' : 'Clear'}
                             </button>
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-1.5 border border-gray-200 rounded-xl p-2 bg-gray-50 max-h-28 overflow-y-auto">
+                        <div className="portal-wt-checkgrid">
                           {relevantCats.length === 0 ? (
-                            <div className="col-span-2 text-[11px] text-gray-400 py-1 text-center">
+                            <p className="portal-wt-empty col-span-2">
                               {lang === 'ta' ? 'பிரிவுகள் எதுவும் இல்லை' : 'No categories available for selected subjects'}
-                            </div>
+                            </p>
                           ) : (
                             relevantCats.map((c: any) => {
                               const checked = userCategoryIds.includes(c.id);
                               return (
-                                <label key={c.id} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                                <label key={c.id}>
                                   <input
                                     type="checkbox"
                                     checked={checked}
@@ -2088,7 +2013,6 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                         setUserCategoryIds(userCategoryIds.filter(id => id !== c.id));
                                       }
                                     }}
-                                    className="w-3.5 h-3.5 text-indigo-600 rounded"
                                   />
                                   <span className="truncate">{tObj(c)}</span>
                                 </label>
@@ -2101,135 +2025,184 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                   })()}
                 </div>
 
-                <button
-                  type="submit"
-                  className={`w-full py-3 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs ${
-                    editingUserId 
-                      ? 'bg-amber-600 hover:bg-amber-700' 
-                      : 'bg-indigo-600 hover:bg-indigo-700'
-                  }`}
-                >
-                  {editingUserId ? (
-                    <>
-                      <Check className="w-4 h-4" />
-                      {lang === 'ta' ? 'பயனர் விபரங்களை புதுப்பிக்கவும்' : 'Update Inspection User'}
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="w-4 h-4" />
-                      {t('addInspectionUser')}
-                    </>
-                  )}
+                <button type="submit">
+                  {editingUserId
+                    ? (lang === 'ta' ? 'பயனர் விபரங்களை புதுப்பிக்கவும்' : 'Update Inspection User')
+                    : t('addInspectionUser')}
                 </button>
               </form>
             );
           })()}
+          </div>
         </div>
 
-        {/* Right Overview and Listings */}
-        <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-gray-100 shadow-xs space-y-4">
-          {activeTab === 'employees' && (
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
-                <div className="space-y-1">
-                  <h4 className="font-semibold text-gray-800 text-md flex items-center gap-2">
-                    <Users className="w-5 h-5 text-indigo-500" />
-                    {t('inspectionEmployees')} ({filteredUsers.length})
-                  </h4>
-                  <p className="text-xs text-gray-400">
-                    {lang === 'ta' ? 'கள ஆய்வு ஊழியர்களின் படிநிலை & பட்டியல் விபரங்கள்' : 'Inspection Employee Hierarchy & Assignments'}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Tree/Table Selector */}
-                  <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
-                    <button
-                      type="button"
-                      onClick={() => setEmployeeViewMode('tree')}
-                      className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${employeeViewMode === 'tree' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                    >
-                      {lang === 'ta' ? 'படிநிலை வடிவம்' : 'Tree View'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEmployeeViewMode('table')}
-                      className={`px-3 py-1 text-xs font-semibold rounded-lg transition ${employeeViewMode === 'table' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                    >
-                      {lang === 'ta' ? 'அட்டவணை வடிவம்' : 'Table View'}
-                    </button>
-                  </div>
-
-                  {/* Excel Export with Passwords */}
+        <div className="portal-dashboard-panel">
+          <div className="portal-dash-head">
+            <div>
+              <h3>
+                <span className="portal-dash-icon">
+                  <Users className="h-3 w-3" />
+                </span>
+                {activeTab === 'employees'
+                  ? t('inspectionEmployees')
+                  : activeTab === 'roles'
+                    ? t('inspectionRoles')
+                    : activeTab === 'designations'
+                      ? t('inspectionDesignations')
+                      : activeTab === 'sessions'
+                        ? (lang === 'ta' ? 'பயனர் அமர்வுகள்' : 'User Sessions')
+                        : (lang === 'ta' ? 'நேரடி பதிவு' : 'Live Log')}
+              </h3>
+              {activeTab === 'employees' && (
+                <p>
+                  {lang === 'ta' ? 'கள ஆய்வு ஊழியர்களின் படிநிலை & பட்டியல் விபரங்கள்' : 'Inspection employee hierarchy and assignments'}
+                </p>
+              )}
+            </div>
+            {activeTab === 'employees' && (
+              <div className="flex shrink-0 items-center gap-1.5">
+                <div className="portal-dash-pills">
                   <button
                     type="button"
-                    onClick={handleExportEmployeesExcel}
-                    className="flex items-center gap-1.5 px-3 py-1.5 border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 font-semibold text-xs rounded-xl transition cursor-pointer shadow-3xs"
-                    title={lang === 'ta' ? 'பணியாளர் பட்டியலை கடவுச்சொல்லுடன் எக்செல் வடிவில் பதிவிறக்கு' : 'Download Inspection Employees List with Passwords as Excel'}
+                    onClick={() => setEmployeeViewMode('tree')}
+                    className={`portal-dash-pill ${employeeViewMode === 'tree' ? 'is-active' : ''}`}
                   >
-                    <FileSpreadsheet className="w-4 h-4" />
-                    <span>{lang === 'ta' ? 'கடவுச்சொல்லுடன் எக்செல்' : 'Excel (With Passwords)'}</span>
+                    {lang === 'ta' ? 'படிநிலை' : 'Tree'}
                   </button>
-
-                  {/* Search query */}
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2" />
-                    <input
-                      type="text"
-                      value={userSearchQuery}
-                      onChange={(e) => setUserSearchQuery(e.target.value)}
-                      placeholder={lang === 'ta' ? 'பெயர்...' : 'Search...'}
-                      className="pl-8 pr-2 py-1 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none w-36"
-                    />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEmployeeViewMode('table')}
+                    className={`portal-dash-pill ${employeeViewMode === 'table' ? 'is-active' : ''}`}
+                  >
+                    {lang === 'ta' ? 'அட்டவணை' : 'Table'}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleExportEmployeesExcel}
+                  className="portal-dash-head-action"
+                  title={lang === 'ta' ? 'பணியாளர் பட்டியலை கடவுச்சொல்லுடன் எக்செல் வடிவில் பதிவிறக்கு' : 'Download Inspection Employees List with Passwords as Excel'}
+                >
+                  <FileSpreadsheet className="h-3 w-3" />
+                  <span>{lang === 'ta' ? 'எக்செல்' : 'Excel'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="portal-dash-body">
+          {activeTab === 'employees' && (
+            <div className="space-y-3">
+              <div className="portal-fis-search">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    placeholder={lang === 'ta' ? 'பெயர், பயனர்பெயர்...' : 'Search (name, username)'}
+                  />
                 </div>
               </div>
-
-              <div className="space-y-3 max-h-[585px] overflow-y-auto pr-1">
+              <div>
                 {employeeViewMode === 'tree' ? (
-                  /* Collapsible/Grouped Hierarchical Tree View of Employees */
-                  <div className="space-y-4">
-                    {zones.map((zone: any) => {
+                  <div className="portal-wt-tree">
+                    {zones.map((zone: any, zIdx: number) => {
                       const zoneDists = districts.filter((d: any) => d.zoneId === zone.id);
                       const zoneUsers = filteredUsers.filter((u: any) => u.zoneId === zone.id);
-                      if (zoneUsers.length === 0) return null; // Only show zones with active employees
+                      if (zoneUsers.length === 0) return null;
+                      const zoneOpen = Boolean(openZones[zone.id]);
+                      const zoneTone = ZONE_TONES[zIdx % ZONE_TONES.length];
 
                       return (
-                        <div key={zone.id} className="border border-slate-100 bg-slate-50/50 rounded-xl p-3 space-y-3">
-                          <div className="flex items-center gap-2 bg-slate-100 p-2 rounded-lg">
-                            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                            <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wide">
-                              {tObj(zone)} {lang === 'ta' ? 'மண்டலம்' : 'Zone'} ({zoneUsers.length})
-                            </span>
+                        <div
+                          key={zone.id}
+                          className={`portal-wt-node${zoneOpen ? ' is-open' : ''}`}
+                          style={{ ['--wt-tone' as string]: zoneTone }}
+                        >
+                          <div className="portal-wt-node-head">
+                            <button
+                              type="button"
+                              className="portal-wt-toggle"
+                              onClick={() => setOpenZones((prev) => ({ ...prev, [zone.id]: !prev[zone.id] }))}
+                              aria-expanded={zoneOpen}
+                            >
+                              <ChevronRight className={`portal-wt-caret${zoneOpen ? ' is-open' : ''}`} />
+                              <div className="portal-wt-copy">
+                                <div className="portal-wt-title">
+                                  <span>{tObj(zone)} {lang === 'ta' ? 'மண்டலம்' : 'Zone'}</span>
+                                  <span className="portal-wt-count">{zoneUsers.length}</span>
+                                </div>
+                              </div>
+                            </button>
                           </div>
 
-                          <div className="pl-3 space-y-3">
-                            {zoneDists.map((dist: any) => {
+                          {zoneOpen && (
+                          <div className="portal-wt-cats">
+                            {zoneDists.map((dist: any, dIdx: number) => {
                               const distTps = townPanchayats.filter((tp: any) => tp.districtId === dist.id);
                               const distUsers = zoneUsers.filter((u: any) => u.districtId === dist.id);
                               if (distUsers.length === 0) return null;
+                              const distOpen = Boolean(openDistricts[dist.id]);
+                              const distTone = DISTRICT_TONES[dIdx % DISTRICT_TONES.length];
 
                               return (
-                                <div key={dist.id} className="border-l-2 border-indigo-100 pl-3 space-y-2">
-                                  <div className="text-[11px] font-bold text-indigo-700 bg-indigo-50/50 p-1.5 rounded">
-                                    {tObj(dist)} {lang === 'ta' ? 'மாவட்டம்' : 'District'} ({distUsers.length})
+                                <div
+                                  key={dist.id}
+                                  className={`portal-wt-cat${distOpen ? ' is-open' : ''}`}
+                                  style={{ ['--wt-tone' as string]: distTone }}
+                                >
+                                  <div className="portal-wt-cat-head">
+                                    <button
+                                      type="button"
+                                      className="portal-wt-toggle"
+                                      onClick={() => setOpenDistricts((prev) => ({ ...prev, [dist.id]: !prev[dist.id] }))}
+                                      aria-expanded={distOpen}
+                                    >
+                                      <ChevronRight className={`portal-wt-caret${distOpen ? ' is-open' : ''}`} />
+                                      <div className="portal-wt-copy">
+                                        <div className="portal-wt-title">
+                                          <span>{tObj(dist)} {lang === 'ta' ? 'மாவட்டம்' : 'District'}</span>
+                                          <span className="portal-wt-count">{distUsers.length}</span>
+                                        </div>
+                                      </div>
+                                    </button>
                                   </div>
 
-                                  <div className="pl-2 space-y-2">
-                                    {distTps.map((tp: any) => {
+                                  {distOpen && (
+                                  <div className="portal-wt-cats">
+                                    {distTps.map((tp: any, tIdx: number) => {
                                       const tpUsers = distUsers.filter((u: any) => 
                                         (u.townPanchayatIds || u.selectedTpIds || (u.tpId ? [u.tpId] : []))?.includes(tp.id)
                                       );
                                       if (tpUsers.length === 0) return null;
+                                      const tpOpen = Boolean(openTps[tp.id]);
+                                      const tpTone = TP_TONES[tIdx % TP_TONES.length];
 
                                       return (
-                                        <div key={tp.id} className="bg-white border border-gray-100 rounded-lg p-2.5 space-y-2 shadow-2xs">
-                                          <div className="text-[10px] font-bold text-emerald-800 bg-emerald-50/50 px-2 py-1 rounded-sm flex items-center gap-1.5">
-                                            <Building2 className="w-3.5 h-3.5 text-emerald-600" />
-                                            {tObj(tp)} ({tpUsers.length} {lang === 'ta' ? 'பணியாளர்கள்' : 'employees'})
+                                        <div
+                                          key={tp.id}
+                                          className={`portal-wt-cat${tpOpen ? ' is-open' : ''}`}
+                                          style={{ ['--wt-tone' as string]: tpTone }}
+                                        >
+                                          <div className="portal-wt-cat-head">
+                                            <button
+                                              type="button"
+                                              className="portal-wt-toggle"
+                                              onClick={() => setOpenTps((prev) => ({ ...prev, [tp.id]: !prev[tp.id] }))}
+                                              aria-expanded={tpOpen}
+                                            >
+                                              <ChevronRight className={`portal-wt-caret${tpOpen ? ' is-open' : ''}`} />
+                                              <div className="portal-wt-copy">
+                                                <div className="portal-wt-title">
+                                                  <span>{tObj(tp)}</span>
+                                                  <span className="portal-wt-count">{tpUsers.length}</span>
+                                                </div>
+                                              </div>
+                                            </button>
                                           </div>
 
-                                          <div className="space-y-1.5 pl-2">
+                                          {tpOpen && (
+                                          <div className="portal-wt-fields">
                                             {tpUsers.map((user: any) => {
                                               const roleObj = inspectionRoles.find((r: any) => r.id === user.roleId);
                                               const desigObj = inspectionDesignations.find((d: any) => d.id === user.designationId);
@@ -2238,75 +2211,77 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                               const isBeingEdited = editingUserId === user.id;
 
                                               return (
-                                                <div 
-                                                  key={user.id} 
-                                                  className={`flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded-lg border text-xs gap-2 transition ${
-                                                    isBeingEdited 
-                                                      ? 'border-amber-300 bg-amber-50' 
-                                                      : 'border-slate-50 bg-slate-50/50 hover:bg-slate-50'
-                                                  }`}
+                                                <div
+                                                  key={user.id}
+                                                  className={`portal-wt-field${isBeingEdited ? ' is-editing' : ''}`}
                                                 >
-                                                  <div className="space-y-1">
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                      <span className="font-bold text-gray-950">{tObj(user)}</span>
-                                                      <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-mono">
-                                                        @{user.username}
-                                                      </span>
+                                                  <div className="portal-wt-field-main">
+                                                    <div className="portal-wt-field-name">
+                                                      <span>{tObj(user)}</span>
                                                     </div>
-                                                    <div className="text-[10px] text-gray-500 space-y-0.5">
-                                                      <div>{lang === 'ta' ? 'பதவி' : 'Desig'}: <span className="font-semibold text-gray-700">{desigObj ? tObj(desigObj) : '—'}</span> ({roleObj ? tObj(roleObj) : '—'})</div>
-                                                      <div>{lang === 'ta' ? 'கைபேசி' : 'Mobile'}: <span className="font-medium text-indigo-700">{user.mobile}</span></div>
+                                                    <p className="portal-wt-sub">@{user.username}</p>
+                                                    <div className="portal-wt-flags">
+                                                      <span className="portal-dash-status is-progress">
+                                                        {desigObj ? tObj(desigObj) : '—'} · {roleObj ? tObj(roleObj) : '—'}
+                                                      </span>
+                                                      {user.mobile && (
+                                                        <span className="portal-dash-status is-pending">{user.mobile}</span>
+                                                      )}
                                                       {userWards?.length > 0 && (
-                                                        <div className="text-indigo-800 font-bold">
-                                                          {lang === 'ta' ? 'ஒதுக்கப்பட்ட வார்டுகள்' : 'Assigned Wards'}: {userWards.join(', ')}
-                                                        </div>
+                                                        <span className="portal-dash-status is-progress">
+                                                          {lang === 'ta' ? 'வார்டுகள்' : 'Wards'}: {userWards.join(', ')}
+                                                        </span>
                                                       )}
                                                       {subjs.length > 0 && (
-                                                        <div className="text-purple-700">
-                                                          {lang === 'ta' ? 'பிரிவுகள்' : 'Subjects'}: {subjs.map(s => tObj(s)).join(', ')}
-                                                        </div>
+                                                        <span className="portal-dash-status is-pending">
+                                                          {subjs.map((s: any) => tObj(s)).join(', ')}
+                                                        </span>
                                                       )}
                                                     </div>
                                                   </div>
-
-                                                  <div className="flex items-center gap-1.5 self-end sm:self-center">
+                                                  <div className="portal-wt-actions">
                                                     <button
+                                                      type="button"
                                                       onClick={() => startEditUser(user)}
-                                                      className="p-1 hover:text-amber-700 hover:bg-amber-100 text-amber-600 rounded transition"
+                                                      className="portal-fis-icon-btn"
                                                       title="Edit"
                                                     >
-                                                      <Pencil className="w-3.5 h-3.5" />
+                                                      <Pencil className="h-3 w-3" />
                                                     </button>
                                                     <button
+                                                      type="button"
                                                       onClick={() => handleDeleteUser(user.id)}
-                                                      className="p-1 hover:text-red-600 hover:bg-red-50 text-gray-400 rounded transition"
+                                                      className="portal-fis-icon-btn is-danger"
                                                       title="Delete"
                                                     >
-                                                      <Trash2 className="w-3.5 h-3.5" />
+                                                      <Trash2 className="h-3 w-3" />
                                                     </button>
                                                   </div>
                                                 </div>
                                               );
                                             })}
                                           </div>
+                                          )}
                                         </div>
                                       );
                                     })}
                                   </div>
+                                  )}
                                 </div>
                               );
                             })}
                           </div>
+                          )}
                         </div>
                       );
                     })}
                   </div>
                 ) : (
                   /* Standard Modern Table view of employees */
-                  <div className="overflow-x-auto border border-gray-100 rounded-xl bg-white">
-                    <table className="w-full text-left border-collapse text-xs">
+                  <div className="portal-dash-table">
+                    <table>
                       <thead>
-                        <tr className="bg-slate-100 text-gray-700 font-bold border-b border-gray-200">
+                        <tr>
                           <th className="p-3">{lang === 'ta' ? 'வ.எண்' : 'S.No'}</th>
                           <th className="p-3">{lang === 'ta' ? 'பெயர் / பயனர் பெயர்' : 'Name / Username'}</th>
                           <th className="p-3">{lang === 'ta' ? 'கைபேசி' : 'Contact'}</th>
@@ -2375,20 +2350,22 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                 </div>
                               </td>
                               <td className="p-3 text-right">
-                                <div className="flex items-center justify-end gap-1.5">
+                                <div className="portal-wt-actions justify-end">
                                   <button
+                                    type="button"
                                     onClick={() => startEditUser(user)}
-                                    className="p-1 hover:text-amber-700 hover:bg-amber-100 text-amber-600 rounded transition"
+                                    className="portal-fis-icon-btn"
                                     title="Edit"
                                   >
-                                    <Pencil className="w-3.5 h-3.5" />
+                                    <Pencil className="h-3 w-3" />
                                   </button>
                                   <button
+                                    type="button"
                                     onClick={() => handleDeleteUser(user.id)}
-                                    className="p-1 hover:text-red-600 hover:bg-red-50 text-gray-400 rounded transition"
+                                    className="portal-fis-icon-btn is-danger"
                                     title="Delete"
                                   >
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <Trash2 className="h-3 w-3" />
                                   </button>
                                 </div>
                               </td>
@@ -2415,102 +2392,134 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
           )}
 
           {activeTab === 'roles' && (
-            <div className="space-y-4">
-              <h4 className="font-semibold text-gray-800 text-md flex items-center gap-2 border-b border-gray-100 pb-3">
-                <ShieldCheck className="w-5 h-5 text-indigo-500" />
-                {t('inspectionRoles')} ({inspectionRoles.length})
-              </h4>
-
-              <div className="space-y-3 max-h-[550px] overflow-y-auto pr-1">
-                {inspectionRoles.map((role: any) => {
+            <div className="portal-wt-tree">
+                {inspectionRoles.map((role: any, rIdx: number) => {
                   const roleUsers = inspectionUsers.filter((u: any) => u.roleId === role.id);
                   const desigs = inspectionDesignations.filter((d: any) => d.roleId === role.id);
+                  const roleOpen = Boolean(openRoles[role.id]);
+                  const roleTone = ROLE_TONES[rIdx % ROLE_TONES.length];
 
                   return (
-                    <div key={role.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50/70 space-y-2 shadow-2xs">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h5 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
-                            {tObj(role)}
-                            <span className="text-[10px] font-normal px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full border border-indigo-100">
-                              {role.scope}
-                            </span>
-                          </h5>
-                          <p className="text-[11px] text-gray-500 pl-4 mt-0.5">
-                            {desigs.length} {lang === 'ta' ? 'பதவிகள்' : 'designations'} • {roleUsers.length} {lang === 'ta' ? 'பயனர்கள்' : 'active users'}
-                          </p>
-                        </div>
+                    <div
+                      key={role.id}
+                      className={`portal-wt-node${roleOpen ? ' is-open' : ''}`}
+                      style={{ ['--wt-tone' as string]: roleTone }}
+                    >
+                      <div className="portal-wt-node-head">
                         <button
-                          onClick={() => handleDeleteRole(role.id)}
-                          className="p-1 hover:text-red-600 text-gray-400 rounded transition"
-                          title="Delete Role"
+                          type="button"
+                          className="portal-wt-toggle"
+                          onClick={() => setOpenRoles((prev) => ({ ...prev, [role.id]: !prev[role.id] }))}
+                          aria-expanded={roleOpen}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <ChevronRight className={`portal-wt-caret${roleOpen ? ' is-open' : ''}`} />
+                          <div className="portal-wt-copy">
+                            <div className="portal-wt-title">
+                              <span>{tObj(role)}</span>
+                              <span className="portal-wt-count">{role.scope}</span>
+                              <span className="portal-wt-count">{desigs.length} {lang === 'ta' ? 'பதவிகள்' : 'desigs'}</span>
+                              <span className="portal-wt-count">{roleUsers.length} {lang === 'ta' ? 'பயனர்கள்' : 'users'}</span>
+                            </div>
+                          </div>
                         </button>
-                      </div>
-
-                      <div className="pl-4 flex flex-wrap gap-1.5 pt-1">
-                        {desigs.map((d: any) => (
-                          <span key={d.id} className="bg-white border border-gray-200 text-[10px] font-medium text-gray-700 px-2 py-0.5 rounded-md">
-                            {tObj(d)}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'designations' && (
-            <div className="space-y-4">
-              <h4 className="font-semibold text-gray-800 text-md flex items-center gap-2 border-b border-gray-100 pb-3">
-                <Briefcase className="w-5 h-5 text-indigo-500" />
-                {t('inspectionDesignations')} ({inspectionDesignations.length})
-              </h4>
-
-              <div className="space-y-3 max-h-[550px] overflow-y-auto pr-1">
-                {inspectionDesignations.map((desig: any) => {
-                  const roleObj = inspectionRoles.find((r: any) => r.id === desig.roleId);
-                  const desigUsers = inspectionUsers.filter((u: any) => u.designationId === desig.id);
-                  const subjs = inspectionSubjects.filter((s: any) => desig.applicableSubjectIds?.includes(s.id));
-
-                  return (
-                    <div key={desig.id} className="border border-gray-100 rounded-xl p-4 bg-gray-50/70 space-y-2 shadow-2xs">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h5 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
-                            {tObj(desig)}
-                          </h5>
-                          <p className="text-[11px] text-gray-500 pl-4 mt-0.5">
-                            {lang === 'ta' ? 'பொறுப்பு' : 'Under Role'}: <span className="font-semibold">{roleObj ? tObj(roleObj) : '—'}</span> • {desigUsers.length} {lang === 'ta' ? 'பணியாளர்கள்' : 'users'}
-                          </p>
+                        <div className="portal-wt-actions">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRole(role.id)}
+                            className="portal-fis-icon-btn is-danger"
+                            title="Delete Role"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
                         </div>
-                        <button
-                          onClick={() => handleDeleteDesignation(desig.id)}
-                          className="p-1 hover:text-red-600 text-gray-400 rounded transition"
-                          title="Delete Designation"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
                       </div>
 
-                      {subjs.length > 0 && (
-                        <div className="pl-4 flex flex-wrap gap-1.5 pt-1">
-                          {subjs.map((s: any) => (
-                            <span key={s.id} className="bg-purple-50 border border-purple-100 text-[10px] font-medium text-purple-700 px-2 py-0.5 rounded-md">
-                              {tObj(s)}
-                            </span>
-                          ))}
-                        </div>
+                      {roleOpen && (
+                        desigs.length > 0 ? (
+                          <div className="portal-wt-fields">
+                            {desigs.map((d: any) => (
+                              <div key={d.id} className="portal-wt-field">
+                                <div className="portal-wt-field-main">
+                                  <div className="portal-wt-field-name">
+                                    <span>{tObj(d)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="portal-wt-empty">{lang === 'ta' ? 'பதவிகள் இல்லை' : 'No designations under this role.'}</p>
+                        )
                       )}
                     </div>
                   );
                 })}
-              </div>
+            </div>
+          )}
+
+          {activeTab === 'designations' && (
+            <div className="portal-wt-tree">
+                {inspectionDesignations.map((desig: any, dIdx: number) => {
+                  const roleObj = inspectionRoles.find((r: any) => r.id === desig.roleId);
+                  const desigUsers = inspectionUsers.filter((u: any) => u.designationId === desig.id);
+                  const subjs = inspectionSubjects.filter((s: any) => desig.applicableSubjectIds?.includes(s.id));
+                  const desigOpen = Boolean(openDesigs[desig.id]);
+                  const desigTone = DISTRICT_TONES[dIdx % DISTRICT_TONES.length];
+
+                  return (
+                    <div
+                      key={desig.id}
+                      className={`portal-wt-node${desigOpen ? ' is-open' : ''}`}
+                      style={{ ['--wt-tone' as string]: desigTone }}
+                    >
+                      <div className="portal-wt-node-head">
+                        <button
+                          type="button"
+                          className="portal-wt-toggle"
+                          onClick={() => setOpenDesigs((prev) => ({ ...prev, [desig.id]: !prev[desig.id] }))}
+                          aria-expanded={desigOpen}
+                        >
+                          <ChevronRight className={`portal-wt-caret${desigOpen ? ' is-open' : ''}`} />
+                          <div className="portal-wt-copy">
+                            <div className="portal-wt-title">
+                              <span>{tObj(desig)}</span>
+                              <span className="portal-wt-count">{roleObj ? tObj(roleObj) : '—'}</span>
+                              <span className="portal-wt-count">{desigUsers.length} {lang === 'ta' ? 'பயனர்கள்' : 'users'}</span>
+                            </div>
+                          </div>
+                        </button>
+                        <div className="portal-wt-actions">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDesignation(desig.id)}
+                            className="portal-fis-icon-btn is-danger"
+                            title="Delete Designation"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {desigOpen && (
+                        subjs.length > 0 ? (
+                          <div className="portal-wt-fields">
+                            {subjs.map((s: any) => (
+                              <div key={s.id} className="portal-wt-field">
+                                <div className="portal-wt-field-main">
+                                  <div className="portal-wt-field-name">
+                                    <span>{tObj(s)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="portal-wt-empty">{lang === 'ta' ? 'ஒதுக்கப்பட்ட பிரிவுகள் இல்லை' : 'No assigned subjects.'}</p>
+                        )
+                      )}
+                    </div>
+                  );
+                })}
             </div>
           )}
 
@@ -3013,95 +3022,67 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
             };
 
             return (
-              <div className="space-y-6">
-                {/* Dashboard Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-100 pb-4">
-                  <div>
-                    <h4 className="font-bold text-gray-800 text-lg flex items-center gap-2">
-                      <ClipboardList className="w-5.5 h-5.5 text-indigo-600" />
-                      {lang === 'ta' ? 'பயனர் செயல்பாட்டுப் பதிவு' : 'User Activity & Login Log'}
-                    </h4>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {lang === 'ta' ? 'மொபைல் மற்றும் இணையதளப் பயனர்களின் தற்போதைய ஆன்லைன்/ஆஃப்லைன் செயல்பாட்டு விவரங்கள்.' : 'Real-time online/offline monitoring and audit trails for all mobile & web users.'}
-                    </p>
+              <div className="space-y-3">
+                <div className="portal-dash-toolbar">
+                  <div className="portal-dash-pills">
+                    <span className="portal-dash-pill is-active">
+                      {lang === 'ta' ? 'மொத்தம்' : 'Total'} <span className="portal-fis-count">{totalCount}</span>
+                    </span>
+                    <span className="portal-dash-pill">
+                      {lang === 'ta' ? 'ஆன்லைன்' : 'Online'} <span className="portal-fis-count">{onlineCount}</span>
+                    </span>
+                    <span className="portal-dash-pill">
+                      {lang === 'ta' ? 'ஆஃப்லைன்' : 'Offline'} <span className="portal-fis-count">{offlineCount}</span>
+                    </span>
                   </div>
-                  
-                  {/* Export Buttons */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <button
+                      type="button"
                       onClick={handleExportExcel}
-                      className="px-3.5 py-2 text-xs font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                      className="portal-dash-pill"
                     >
-                      <FileSpreadsheet className="w-4 h-4" />
-                      {lang === 'ta' ? 'Excel பதிவிறக்கு' : 'Download Excel'}
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                      <span>{lang === 'ta' ? 'எக்செல்' : 'Excel'}</span>
                     </button>
                     <button
+                      type="button"
                       onClick={handleExportPDF}
-                      className="px-3.5 py-2 text-xs font-bold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                      className="portal-dash-pill"
                     >
-                      <Download className="w-4 h-4" />
-                      {lang === 'ta' ? 'PDF பதிவிறக்கு' : 'Download PDF'}
+                      <Download className="h-3.5 w-3.5" />
+                      <span>PDF</span>
                     </button>
-                  </div>
-                </div>
-
-                {/* KPI Metrics Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex items-center justify-between shadow-2xs">
-                    <div>
-                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'மொத்தப் பயனர்கள்' : 'Total Registered Users'}</span>
-                      <h3 className="text-2xl font-black text-slate-800 mt-0.5">{totalCount}</h3>
-                    </div>
-                    <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold">@</div>
-                  </div>
-                  <div className="bg-emerald-50/40 border border-emerald-100 rounded-xl p-4 flex items-center justify-between shadow-2xs">
-                    <div>
-                      <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">{lang === 'ta' ? 'ஆன்லைனில் உள்ளவர்கள்' : 'Currently Online'}</span>
-                      <h3 className="text-2xl font-black text-emerald-700 mt-0.5">{onlineCount}</h3>
-                    </div>
-                    <div className="w-10 h-10 rounded-full bg-emerald-100/60 text-emerald-600 flex items-center justify-center relative">
-                      <span className="absolute w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span>
-                      <span className="w-2.5 h-2.5 bg-emerald-600 rounded-full"></span>
-                    </div>
-                  </div>
-                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex items-center justify-between shadow-2xs">
-                    <div>
-                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'ஆஃப்லைனில் உள்ளவர்கள்' : 'Offline Users'}</span>
-                      <h3 className="text-2xl font-black text-slate-700 mt-0.5">{offlineCount}</h3>
-                    </div>
-                    <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">●</div>
                   </div>
                 </div>
 
                 {/* Bulk Status & Session Action Card */}
-                <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-5 text-white shadow-md border border-indigo-900 space-y-4">
+                <div className="portal-dashboard-panel p-3 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
-                      <h5 className="font-bold text-sm flex items-center gap-2 text-indigo-200">
-                        <ShieldAlert className="w-4 h-4 text-amber-400" />
+                      <h5 className="font-bold text-sm flex items-center gap-2 text-slate-800">
+                        <ShieldAlert className="w-4 h-4 text-amber-500" />
                         {lang === 'ta' ? 'பயனர் ஒட்டுமொத்த கட்டுப்பாட்டு மேலாண்மை (Bulk Session & Deactivation Control)' : 'Bulk User Session & Deactivation Control'}
                       </h5>
-                      <p className="text-[11px] text-indigo-300 mt-0.5">
+                      <p className="text-[11px] text-slate-500 mt-0.5">
                         {lang === 'ta' ? 'பதவி, பொறுப்பு, மற்றும் பேரூராட்சி வாரியாக பயனர்களை தேர்வு செய்து ஒரே கிளிக்கில் முடக்கி உடனடியாக வெளியேற்றலாம்.' : 'Bulk disable and force logout by selecting role, designation, and town panchayat.'}
                       </p>
                     </div>
 
                     {bulkActionMessage && (
-                      <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${bulkActionMessage.type === 'success' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}`}>
+                      <div className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${bulkActionMessage.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
                         {bulkActionMessage.text}
                       </div>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="portal-dash-fields">
                     <div>
-                      <label className="block text-[10px] font-bold text-indigo-300 uppercase mb-1">
+                      <label>
                         {lang === 'ta' ? '1. பொறுப்பு தேர்வு செய்க (Role)' : '1. Select Role'}
                       </label>
                       <select
                         value={bulkRole}
                         onChange={(e) => setBulkRole(e.target.value)}
-                        className="w-full text-xs font-medium px-3 py-2 bg-slate-800 text-white rounded-xl border border-indigo-800 focus:outline-none"
                       >
                         <option value="all">{lang === 'ta' ? 'அனைத்து பொறுப்புகள் (All Roles)' : 'All Roles'}</option>
                         {inspectionRoles.map((r: any) => (
@@ -3111,13 +3092,12 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold text-indigo-300 uppercase mb-1">
+                      <label>
                         {lang === 'ta' ? '2. பதவி தேர்வு செய்க (Designation)' : '2. Select Designation'}
                       </label>
                       <select
                         value={bulkDesig}
                         onChange={(e) => setBulkDesig(e.target.value)}
-                        className="w-full text-xs font-medium px-3 py-2 bg-slate-800 text-white rounded-xl border border-indigo-800 focus:outline-none"
                       >
                         <option value="all">{lang === 'ta' ? 'அனைத்து பதவிகள் (All Designations)' : 'All Designations'}</option>
                         {inspectionDesignations.map((d: any) => (
@@ -3127,13 +3107,12 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold text-indigo-300 uppercase mb-1">
+                      <label>
                         {lang === 'ta' ? '3. பேரூராட்சி தேர்வு செய்க (Town Panchayat)' : '3. Select Town Panchayat'}
                       </label>
                       <select
                         value={bulkTp}
                         onChange={(e) => setBulkTp(e.target.value)}
-                        className="w-full text-xs font-medium px-3 py-2 bg-slate-800 text-white rounded-xl border border-indigo-800 focus:outline-none"
                       >
                         <option value="all">{lang === 'ta' ? 'அனைத்து பேரூராட்சிகள் (All TPs)' : 'All Town Panchayats'}</option>
                         {uniqueTownPanchayats.map((tp: any) => (
@@ -3143,7 +3122,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-indigo-900/60">
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
                     <button
                       disabled={isBulkOperating}
                       onClick={() => handleBulkAction('disable_and_logout')}
@@ -3173,8 +3152,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                   </div>
                 </div>
 
-                {/* Filter Panels Row */}
-                <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-3xs grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3.5">
+                <div className="portal-dash-fields">
                   {/* Date Selection */}
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 flex items-center justify-between">
@@ -3271,11 +3249,9 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                   </div>
                 </div>
 
-                {/* Activity List Container */}
-                <div className="border border-slate-100 rounded-xl overflow-hidden bg-white shadow-2xs">
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-left text-xs text-slate-700">
-                      <thead className="bg-slate-50 font-bold text-slate-500 uppercase tracking-wider text-[10px] border-b border-slate-100">
+                <div className="portal-dash-table">
+                    <table>
+                      <thead>
                         <tr>
                           <th className="py-3 px-4">{lang === 'ta' ? 'பயனர் பெயர்' : 'User Name'}</th>
                           <th className="py-3 px-4">{lang === 'ta' ? 'பதவி & பொறுப்பு' : 'Designation & Role'}</th>
@@ -3405,7 +3381,6 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                         )}
                       </tbody>
                     </table>
-                  </div>
                 </div>
               </div>
             );
@@ -3420,54 +3395,43 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
             });
 
             return (
-              <div className="space-y-4">
-                {/* Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
-                  <div>
-                    <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                      <FileSpreadsheet className="w-4 h-4 text-indigo-600" />
-                      {lang === 'ta' ? 'சேவையக செயல்முறை நேரடிப் பதிவு (Live Notepad Viewer)' : 'Live Server Process Log (Notepad Style)'}
-                    </h4>
-                    <p className="text-[11px] text-gray-500 mt-0.5">
-                      {lang === 'ta'
-                        ? 'உள்நுழைவு, பணி பதிவுகள், முதன்மை மாற்றங்கள் மற்றும் வரிசை நிகழ்வுகள் உண்மையான நேரத்தில் சேமிக்கப்படுகின்றன.'
-                        : 'Real-time audit log of user logins, work entries, master updates, and queue events.'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500 font-mono">
+              <div className="space-y-3">
+                <div className="portal-dash-toolbar">
+                  <div className="portal-dash-pills">
+                    <span className="portal-dash-pill is-active">
                       {filteredLines.length} / {rawLines.length} {lang === 'ta' ? 'வரிகள்' : 'lines'}
                     </span>
-                    <button
-                      type="button"
-                      onClick={fetchServerLogs}
-                      disabled={isLoadingServerLogs}
-                      className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-gray-100 rounded-lg transition cursor-pointer"
-                      title="Refresh"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${isLoadingServerLogs ? 'animate-spin text-indigo-600' : ''}`} />
-                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchServerLogs}
+                    disabled={isLoadingServerLogs}
+                    className="portal-dash-pill"
+                    title="Refresh"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${isLoadingServerLogs ? 'animate-spin' : ''}`} />
+                    <span>{lang === 'ta' ? 'புதுப்பி' : 'Refresh'}</span>
+                  </button>
+                </div>
+
+                <div className="portal-fis-search">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder={lang === 'ta' ? 'பதிவில் தேடு (பயனர், பணி ID, ஊர்)...' : 'Search in log (username, work ID, TP)'}
+                      value={serverLogSearch}
+                      onChange={(e) => setServerLogSearch(e.target.value)}
+                    />
                   </div>
                 </div>
 
-                {/* Filters */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  <div className="sm:col-span-2 relative">
-                    <Search className="absolute w-3.5 h-3.5 text-gray-400 left-3 top-2.5" />
-                    <input
-                      type="text"
-                      placeholder={lang === 'ta' ? 'பதிவில் தேடு (பயனர், பணி ID, ஊர்)...' : 'Search in log (username, work ID, TP)...'}
-                      value={serverLogSearch}
-                      onChange={(e) => setServerLogSearch(e.target.value)}
-                      className="w-full text-xs font-mono pl-9 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:outline-hidden focus:border-indigo-500"
-                    />
-                  </div>
-
+                <div className="portal-dash-fields">
                   <div>
+                    <label>{lang === 'ta' ? 'பிரிவு' : 'Category'}</label>
                     <select
                       value={serverLogCategory}
                       onChange={(e) => setServerLogCategory(e.target.value)}
-                      className="w-full text-xs font-semibold px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:outline-hidden focus:border-indigo-500"
                     >
                       <option value="all">{lang === 'ta' ? 'அனைத்து பிரிவுகள் (All Categories)' : 'All Categories'}</option>
                       <option value="LOGIN">LOGIN</option>
@@ -3538,6 +3502,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
               </div>
             );
           })()}
+          </div>
         </div>
       </div>
     </div>
