@@ -595,7 +595,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
   };
 
   return (
-    <div id="inspection-module-management-container" className="portal-studio portal-page">
+    <div id="inspection-module-management-container" className="portal-studio">
       {/* Top Banner & Bulk Upload Controls */}
       <div className="portal-fis-hero">
         <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
@@ -614,7 +614,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
           </div>
         </div>
 
-          <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          <div className="relative z-[1] flex shrink-0 items-center justify-end gap-1.5">
             <button
               type="button"
               onClick={downloadInspectionCSVTemplate}
@@ -644,6 +644,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
           </div>
       </div>
 
+      <div className="portal-fis-body portal-page">
         {csvFeedback && (
           <div className={`p-3 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
             {csvFeedback.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
@@ -1842,6 +1843,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

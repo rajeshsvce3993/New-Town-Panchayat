@@ -326,7 +326,7 @@ export default function NotificationApkManagementView({ state, lang, onSaveColle
   };
 
   return (
-    <div className="portal-studio portal-page">
+    <div className="portal-studio">
       <div className="portal-fis-hero">
         <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
           <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
@@ -345,6 +345,7 @@ export default function NotificationApkManagementView({ state, lang, onSaveColle
         </div>
       </div>
 
+      <div className="portal-fis-body portal-page">
       <div className="portal-dash-toolbar">
         <div className="portal-dash-pills">
           <button
@@ -776,6 +777,7 @@ export default function NotificationApkManagementView({ state, lang, onSaveColle
             </div>
           </div>
       )}
+      </div>
     </div>
   );
 }

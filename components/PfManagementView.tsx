@@ -2201,7 +2201,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
     }
 
     return (
-      <div className="portal-studio portal-page">
+      <div className="portal-studio">
         <div className="portal-fis-hero">
           <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
             <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
@@ -2251,6 +2251,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
           </div>
         </div>
 
+        <div className="portal-fis-body portal-page">
         <div className="portal-dashboard-panel">
           <div className="portal-dash-head">
             <div>
@@ -2485,12 +2486,13 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
             <p className="font-mono text-gray-400">Ledger Code Hash Check: DTPPF_{employeeSlipId}_2026</p>
           </div>
         </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="portal-studio portal-page">
+    <div className="portal-studio">
       <div className="portal-fis-hero">
         <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
           <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
@@ -2509,6 +2511,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
         </div>
       </div>
 
+      <div className="portal-fis-body portal-page">
       {(currentUser?.roleId === 'ad' || currentUser?.roleId === 'admin' || currentUser?.roleId === 'zonal' || currentUser?.scopeType === 'HOD' || currentUser?.scopeType === 'Zone') && (
         <div className="portal-dashboard-panel">
           <div className="portal-dash-head">
@@ -2710,6 +2713,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
           lang={lang}
         />
       )}
+      </div>
       </div>
     </div>
   );

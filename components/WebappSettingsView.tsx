@@ -147,7 +147,7 @@ export default function WebappSettingsView({ state, lang, currentUser, onSaveSet
   };
 
   return (
-    <div id="webapp-settings-container" className="portal-studio portal-page">
+    <div id="webapp-settings-container" className="portal-studio">
       <div className="portal-fis-hero">
         <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
           <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
@@ -160,6 +160,7 @@ export default function WebappSettingsView({ state, lang, currentUser, onSaveSet
         </div>
       </div>
 
+      <div className="portal-fis-body portal-page">
       <form onSubmit={handleFormSubmit} className="grid grid-cols-1 gap-3 lg:grid-cols-12">
         <div className="space-y-3 lg:col-span-8">
           <div className="portal-dashboard-panel">
@@ -540,6 +541,7 @@ export default function WebappSettingsView({ state, lang, currentUser, onSaveSet
           </div>
         </div>
       </form>
+      </div>
     </div>
   );
 }

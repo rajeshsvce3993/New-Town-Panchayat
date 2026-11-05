@@ -665,7 +665,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
   };
 
   return (
-    <div id="master-management-container" className="portal-studio portal-page">
+    <div id="master-management-container" className="portal-studio">
       <div className="portal-fis-hero">
         <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
           <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
@@ -736,6 +736,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
         </div>
       </div>
 
+      <div className="portal-fis-body portal-page">
       {showTemplateGuide && activeTab === 'hierarchy' && (
         <div className="portal-dashboard-panel">
           <div className="portal-dash-head">
@@ -2307,6 +2308,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
           </motion.div>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -43,6 +43,14 @@ import {
   onPortalBootstrapFresh,
   peekPortalBootstrapCache,
 } from '@/lib/portalBootstrapClient';
+import {
+  UI_SCALE_KEY,
+  UI_SCALE_MANUAL_KEY,
+  applyUiScale,
+  nextUiScale,
+  resolveUiScale,
+  type UiScale,
+} from '@/lib/uiScale';
 
 function hydratePortalStateFromBootstrap(base: any, data: any) {
   const merged = { ...base, ...data };
@@ -142,7 +150,8 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
 
   const [customColors, setCustomColors] = useState<CustomThemeColors>(defaultCustomThemeColors);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [uiScale, setUiScale] = useState(100);
+  const [uiScale, setUiScale] = useState<UiScale>(90);
+  const [uiScaleReady, setUiScaleReady] = useState(false);
 
   const handleSetCustomColors = (newColors: CustomThemeColors) => {
     setCustomColors(newColors);
@@ -160,14 +169,29 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
   };
 
   useEffect(() => {
-    const saved = Number(localStorage.getItem('tp-ui-scale') || '100');
-    if (saved === 90 || saved === 100 || saved === 110) setUiScale(saved);
+    const next = resolveUiScale();
+    setUiScale(next);
+    applyUiScale(next);
+    setUiScaleReady(true);
   }, []);
 
   useEffect(() => {
-    document.documentElement.style.fontSize = `${(16 * uiScale) / 100}px`;
-    localStorage.setItem('tp-ui-scale', String(uiScale));
-  }, [uiScale]);
+    if (!uiScaleReady) return;
+    applyUiScale(uiScale);
+    localStorage.setItem(UI_SCALE_KEY, String(uiScale));
+  }, [uiScale, uiScaleReady]);
+
+  useEffect(() => {
+    if (!uiScaleReady) return;
+    if (localStorage.getItem(UI_SCALE_MANUAL_KEY) === '1') return;
+    const syncAutoScale = () => {
+      const next = resolveUiScale();
+      setUiScale(next);
+      applyUiScale(next);
+    };
+    window.addEventListener('resize', syncAutoScale);
+    return () => window.removeEventListener('resize', syncAutoScale);
+  }, [uiScaleReady]);
 
   useEffect(() => {
     if (!userMenuOpen) return;
@@ -831,7 +855,10 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
   const settingsNavItem = activeMenuItems.find((item) => item.id === 'webappSettings');
   const notifCount = Array.isArray(state.notifications) ? state.notifications.length : 0;
   const userInitials = userDisplayName.slice(0, 2).toUpperCase();
-  const cycleUiScale = () => setUiScale((value) => (value === 100 ? 110 : value === 110 ? 90 : 100));
+  const cycleUiScale = () => {
+    localStorage.setItem(UI_SCALE_MANUAL_KEY, '1');
+    setUiScale((value) => nextUiScale(value));
+  };
   const shellBgClass = theme === 'custom' ? '' : currentTheme.mainBg || 'bg-[#f5f7fa]';
   const shellBgStyle = theme === 'custom' ? { backgroundColor: customColors.appBgColor } : undefined;
 
@@ -1108,7 +1135,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
         </AnimatePresence>
 
         <main
-          className={`relative mx-auto w-full min-w-0 max-w-[1680px] flex-1 overflow-x-hidden px-2 py-3 sm:px-3 lg:px-3 ${
+          className={`relative mx-auto w-full min-w-0 max-w-[1680px] flex-1 overflow-x-hidden px-2 pt-5 pb-3 sm:px-3 lg:px-3 ${
             activeTab === 'dashboard' && !isDark ? 'bg-transparent' : ''
           }`}
         >

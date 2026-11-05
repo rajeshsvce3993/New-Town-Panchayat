@@ -1008,7 +1008,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
   };
 
   return (
-    <div id="inspection-employee-management-container" className="portal-studio portal-page">
+    <div id="inspection-employee-management-container" className="portal-studio">
       {/* Top Banner & Notices */}
       <div className="portal-fis-hero">
         <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
@@ -1055,6 +1055,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
           </div>
       </div>
 
+      <div className="portal-fis-body portal-page">
         <div className="portal-dash-toolbar">
           <div className="flex items-center gap-2 text-[11px] text-slate-600">
           <Info className="w-4 h-4 text-amber-600 shrink-0" />
@@ -3504,6 +3505,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
           })()}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

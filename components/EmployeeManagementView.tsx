@@ -814,7 +814,7 @@ export default function EmployeeManagementView({
     const applicableFields = emp ? getApplicableFields(emp.postId) : [];
 
     return (
-      <div id="employee-management-container" className="portal-studio portal-page">
+      <div id="employee-management-container" className="portal-studio">
         <div className="portal-fis-hero">
           <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
             <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20 overflow-hidden">
@@ -855,6 +855,7 @@ export default function EmployeeManagementView({
           </div>
         </div>
 
+        <div className="portal-fis-body portal-page">
         {emp ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div className="space-y-3">
@@ -1068,12 +1069,13 @@ export default function EmployeeManagementView({
             </div>
           </div>
         )}
+        </div>
       </div>
     );
   }
 
   return (
-    <div id="employee-management-container" className="portal-studio portal-page">
+    <div id="employee-management-container" className="portal-studio">
       <div className="portal-fis-hero">
         <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
           <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
@@ -1092,6 +1094,7 @@ export default function EmployeeManagementView({
         </div>
       </div>
 
+      <div className="portal-fis-body portal-page">
       <div className="portal-dash-toolbar">
         <div className="portal-dash-pills">
           <button
@@ -2238,6 +2241,7 @@ export default function EmployeeManagementView({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

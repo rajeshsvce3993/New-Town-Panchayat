@@ -510,7 +510,7 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
   const employeeProfileReady = Boolean(searchActive && selectedId && applicant);
 
   return (
-    <div className="portal-studio portal-page">
+    <div className="portal-studio">
       <div className="portal-fis-hero">
         <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
           <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
@@ -529,6 +529,7 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
         </div>
       </div>
 
+      <div className="portal-fis-body portal-page">
       {message && (
         <div
           role="alert"
@@ -1133,6 +1134,7 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

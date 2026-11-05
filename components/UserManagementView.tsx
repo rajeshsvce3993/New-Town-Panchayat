@@ -819,7 +819,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
   };
 
   return (
-    <div id="user-management-container" className="portal-studio portal-page">
+    <div id="user-management-container" className="portal-studio">
       <div className="portal-fis-hero">
         <div className="relative z-[1] flex min-w-0 items-center gap-2.5">
           <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/15 text-white ring-1 ring-white/20">
@@ -865,6 +865,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
         </div>
       </div>
 
+      <div className="portal-fis-body portal-page">
       {csvFeedback && (
         <div className={`p-3 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
           {csvFeedback.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
@@ -2334,6 +2335,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
           </motion.div>
         </div>
       )}
+      </div>
     </div>
   );
 }

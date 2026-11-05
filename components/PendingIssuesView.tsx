@@ -1551,7 +1551,7 @@ export default function PendingIssuesView({
   });
 
   return (
-    <div id="pending-issues-monitoring-module" className="portal-studio portal-page">
+    <div id="pending-issues-monitoring-module" className="portal-studio">
       
       {/* Title block */}
       <div className="portal-fis-hero">
@@ -1570,6 +1570,7 @@ export default function PendingIssuesView({
         </div>
       </div>
 
+      <div className="portal-fis-body portal-page">
       <div className="portal-dash-toolbar">
         <div className="portal-dash-pills">
           <button
@@ -3747,6 +3748,7 @@ export default function PendingIssuesView({
         );
       })()}
 
+      </div>
     </div>
   );
 }
