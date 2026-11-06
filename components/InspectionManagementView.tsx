@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from './ThemeSelect';
 
 import React, { useState, useRef } from 'react';
 import { motion } from 'motion/react';
@@ -752,7 +753,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-semibold text-gray-500">{t('inspectionSubjects')}</label>
-                  <select
+                  <ThemeSelect
                     value={selectedSubjectId}
                     onChange={(e) => setSelectedSubjectId(e.target.value)}
                     className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
@@ -762,7 +763,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                     {inspectionSubjects.map((s: any) => (
                       <option key={s.id} value={s.id}>{tObj(s)}</option>
                     ))}
-                  </select>
+                  </ThemeSelect>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-500">{t('categoryNameEn')}</label>
@@ -802,7 +803,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
               <div className="space-y-3">
                 <div>
                   <label className="text-xs font-semibold text-gray-500">{t('inspectionSubjects')}</label>
-                  <select
+                  <ThemeSelect
                     value={fieldSubjectId}
                     onChange={(e) => {
                       setFieldSubjectId(e.target.value);
@@ -815,12 +816,12 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                     {inspectionSubjects.map((s: any) => (
                       <option key={s.id} value={s.id}>{tObj(s)}</option>
                     ))}
-                  </select>
+                  </ThemeSelect>
                 </div>
 
                 <div>
                   <label className="text-xs font-semibold text-gray-500">{t('inspectionCategories')}</label>
-                  <select
+                  <ThemeSelect
                     value={fieldCategoryId}
                     onChange={(e) => setFieldCategoryId(e.target.value)}
                     className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
@@ -832,7 +833,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                       .map((c: any) => (
                         <option key={c.id} value={c.id}>{tObj(c)}</option>
                       ))}
-                  </select>
+                  </ThemeSelect>
                 </div>
 
                 <div>
@@ -861,7 +862,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
 
                 <div>
                   <label className="text-xs font-semibold text-gray-500">{t('fieldType')}</label>
-                  <select
+                  <ThemeSelect
                     value={fieldType}
                     onChange={(e) => setFieldType(e.target.value)}
                     className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
@@ -874,7 +875,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                     <option value="camera">{t('fieldTypeCamera')}</option>
                     <option value="file">{t('fieldTypeFile')}</option>
                     <option value="date">{t('fieldTypeDate')}</option>
-                  </select>
+                  </ThemeSelect>
                 </div>
 
                 {fieldType === 'dropdown' && (
@@ -928,27 +929,27 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
                         <label className="text-[11px] font-semibold text-amber-800">{lang === 'ta' ? 'செயல்முறை வகை' : 'Action Type'}</label>
-                        <select
+                        <ThemeSelect
                           value={conditionalAction}
                           onChange={(e: any) => setConditionalAction(e.target.value)}
                           className="w-full border border-amber-300 rounded-lg p-2 text-xs mt-1 bg-white outline-none font-medium"
                         >
                           <option value="none">{lang === 'ta' ? 'எதுவுமில்லை (சாதாரண புலம்)' : 'None (Normal Field)'}</option>
                           <option value="skip_to_camera">{lang === 'ta' ? 'கேமரா மட்டும் இயக்கு (Skip to Camera)' : 'Skip to Camera Only'}</option>
-                        </select>
+                        </ThemeSelect>
                       </div>
                       {conditionalAction !== 'none' && (
                         <div>
                           <label className="text-[11px] font-semibold text-amber-800">{lang === 'ta' ? 'இயக்கும் மதிப்பு' : 'Trigger Value'}</label>
                           {fieldType === 'yes_no' ? (
-                            <select
+                            <ThemeSelect
                               value={conditionalTriggerValue}
                               onChange={(e) => setConditionalTriggerValue(e.target.value)}
                               className="w-full border border-amber-300 rounded-lg p-2 text-xs mt-1 bg-white outline-none font-medium"
                             >
                               <option value="Yes">Yes / ஆம்</option>
                               <option value="No">No / இல்லை</option>
-                            </select>
+                            </ThemeSelect>
                           ) : (
                             <input
                               type="text"
@@ -989,7 +990,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                     <div className="space-y-2 pt-1 border-t border-slate-200">
                       <div>
                         <label className="text-[11px] font-semibold text-gray-600">{lang === 'ta' ? 'சார்ந்திருக்கும் தாய் புலம் (Parent Field)' : 'Parent Field in Category'}</label>
-                        <select
+                        <ThemeSelect
                           value={dependsOnFieldId}
                           onChange={(e) => setDependsOnFieldId(e.target.value)}
                           className="w-full border border-gray-300 rounded-lg p-2 text-xs mt-1 bg-white outline-none font-medium"
@@ -1003,20 +1004,20 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                                 {tObj(f)} ({getFieldTypeLabel(fieldTypeOf(f))})
                               </option>
                             ))}
-                        </select>
+                        </ThemeSelect>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="text-[11px] font-semibold text-gray-600">{lang === 'ta' ? 'நிபந்தனை' : 'Condition'}</label>
-                          <select
+                          <ThemeSelect
                             value={conditionType}
                             onChange={(e: any) => setConditionType(e.target.value)}
                             className="w-full border border-gray-300 rounded-lg p-2 text-xs mt-1 bg-white outline-none font-medium"
                           >
                             <option value="show_if">{lang === 'ta' ? 'மதிப்பு சமமாக இருந்தால் காட்டு (Show if =)' : 'Show if equals'}</option>
                             <option value="hide_if">{lang === 'ta' ? 'மதிப்பு சமமாக இருந்தால் மறை (Hide if =)' : 'Hide if equals'}</option>
-                          </select>
+                          </ThemeSelect>
                         </div>
                         <div>
                           <label className="text-[11px] font-semibold text-gray-600">{lang === 'ta' ? 'இயக்கும் மதிப்பு' : 'Trigger Value'}</label>
@@ -1559,7 +1560,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
             <form onSubmit={handleSaveEditCategory} className="mt-4 space-y-4">
               <div>
                 <label className="text-xs font-semibold text-gray-600">{t('inspectionSubjects')}</label>
-                <select
+                <ThemeSelect
                   value={editingCategory.subjectId || ''}
                   onChange={(e) => setEditingCategory({ ...editingCategory, subjectId: e.target.value })}
                   className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
@@ -1568,7 +1569,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                   {inspectionSubjects.map((s: any) => (
                     <option key={s.id} value={s.id}>{tObj(s)}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-600">{t('categoryNameEn')}</label>
@@ -1627,7 +1628,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
             <form onSubmit={handleSaveEditField} className="mt-4 space-y-4">
               <div>
                 <label className="text-xs font-semibold text-gray-600">{t('inspectionCategories')}</label>
-                <select
+                <ThemeSelect
                   value={editingField.categoryId || ''}
                   onChange={(e) => setEditingField({ ...editingField, categoryId: e.target.value })}
                   className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
@@ -1636,7 +1637,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                   {inspectionCategories.map((c: any) => (
                     <option key={c.id} value={c.id}>{tObj(c)}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -1662,7 +1663,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-600">{t('fieldType')}</label>
-                <select
+                <ThemeSelect
                   value={editingField.type || 'text'}
                   onChange={(e) => setEditingField({ ...editingField, type: e.target.value })}
                   className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
@@ -1675,7 +1676,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                   <option value="camera">{t('fieldTypeCamera')}</option>
                   <option value="file">{t('fieldTypeFile')}</option>
                   <option value="date">{t('fieldTypeDate')}</option>
-                </select>
+                </ThemeSelect>
               </div>
               {editingField.type === 'dropdown' && (
                 <div>
@@ -1720,27 +1721,27 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                       <label className="text-[11px] font-semibold text-amber-800">{lang === 'ta' ? 'செயல்முறை வகை' : 'Action Type'}</label>
-                      <select
+                      <ThemeSelect
                         value={editingField.conditionalAction || 'none'}
                         onChange={(e) => setEditingField({ ...editingField, conditionalAction: e.target.value })}
                         className="w-full border border-amber-300 rounded-lg p-2 text-xs mt-1 bg-white outline-none font-medium"
                       >
                         <option value="none">{lang === 'ta' ? 'எதுவுமில்லை' : 'None'}</option>
                         <option value="skip_to_camera">{lang === 'ta' ? 'கேமரா மட்டும் இயக்கு (Skip to Camera)' : 'Skip to Camera Only'}</option>
-                      </select>
+                      </ThemeSelect>
                     </div>
                     {editingField.conditionalAction && editingField.conditionalAction !== 'none' && (
                       <div>
                         <label className="text-[11px] font-semibold text-amber-800">{lang === 'ta' ? 'இயக்கும் மதிப்பு' : 'Trigger Value'}</label>
                         {editingField.type === 'yes_no' ? (
-                          <select
+                          <ThemeSelect
                             value={editingField.conditionalTriggerValue || 'Yes'}
                             onChange={(e) => setEditingField({ ...editingField, conditionalTriggerValue: e.target.value })}
                             className="w-full border border-amber-300 rounded-lg p-2 text-xs mt-1 bg-white outline-none font-medium"
                           >
                             <option value="Yes">Yes / ஆம்</option>
                             <option value="No">No / இல்லை</option>
-                          </select>
+                          </ThemeSelect>
                         ) : (
                           <input
                             type="text"
@@ -1781,7 +1782,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                   <div className="space-y-2 pt-1 border-t border-slate-200">
                     <div>
                       <label className="text-[11px] font-semibold text-gray-600">{lang === 'ta' ? 'சார்ந்திருக்கும் தாய் புலம்' : 'Parent Field in Category'}</label>
-                      <select
+                      <ThemeSelect
                         value={editingField.dependsOnFieldId || ''}
                         onChange={(e) => setEditingField({ ...editingField, dependsOnFieldId: e.target.value })}
                         className="w-full border border-gray-300 rounded-lg p-2 text-xs mt-1 bg-white outline-none font-medium"
@@ -1794,20 +1795,20 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                               {tObj(f)} ({getFieldTypeLabel(fieldTypeOf(f))})
                             </option>
                           ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[11px] font-semibold text-gray-600">{lang === 'ta' ? 'நிபந்தனை' : 'Condition'}</label>
-                        <select
+                        <ThemeSelect
                           value={editingField.conditionType || 'show_if'}
                           onChange={(e) => setEditingField({ ...editingField, conditionType: e.target.value })}
                           className="w-full border border-gray-300 rounded-lg p-2 text-xs mt-1 bg-white outline-none font-medium"
                         >
                           <option value="show_if">{lang === 'ta' ? 'மதிப்பு சமமாக இருந்தால் காட்டு' : 'Show if equals'}</option>
                           <option value="hide_if">{lang === 'ta' ? 'மதிப்பு சமமாக இருந்தால் மறை' : 'Hide if equals'}</option>
-                        </select>
+                        </ThemeSelect>
                       </div>
                       <div>
                         <label className="text-[11px] font-semibold text-gray-600">{lang === 'ta' ? 'இயக்கும் மதிப்பு' : 'Trigger Value'}</label>

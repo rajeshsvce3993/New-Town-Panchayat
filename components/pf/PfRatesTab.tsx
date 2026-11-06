@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { repeatingAutotableHeader } from '@/lib/inspectionReportExport';
 import * as XLSX from 'xlsx';
 import { 
   TrendingUp, 
@@ -237,7 +238,7 @@ export default function PfRatesTab({
   };
 
   const handleLoadOfficialRates = async () => {
-    if (window.confirm(lang === 'ta' ? 'அரசாணைப்படி அதிகாரப்பூர்வ வட்டி விகிதங்களை (1970-71 முதல் 86 பதிவுகள்) புதுப்பிக்கவா?' : 'Reset to official Tamil Nadu Government GPF & CPS Interest Rates (86 periods from FY 1970-71 to 2026-27)?')) {
+    if (window.confirm(lang === 'ta' ? 'அரசாணைப்படி அதிகாரப்பூர்வ வட்டி விகிதங்களை (1970-71 முதல் 86 பதிவுகள்) புதுப்பிக்கவா?' : 'Reset to official GPF & CPS Interest Rates (86 periods from FY 1970-71 to 2026-27)?')) {
       await onSaveCollection('pfInterestRates', OFFICIAL_PF_INTEREST_RATES);
     }
   };
@@ -263,7 +264,7 @@ export default function PfRatesTab({
   const handleExportRatesPdf = () => {
     const doc = new jsPDF({ orientation: 'landscape' });
     doc.setFontSize(13);
-    doc.text('Tamil Nadu Government Employees - GPF & CPS Rates of Interest (1970-71 onwards)', 14, 15);
+    doc.text('GPF & CPS Rates of Interest (1970-71 onwards)', 14, 15);
     doc.setFontSize(9);
     doc.text(`Total Period Records: ${pfInterestRates.length} | Generated: ${new Date().toLocaleDateString()}`, 14, 21);
 
@@ -279,6 +280,7 @@ export default function PfRatesTab({
     ]);
 
     autoTable(doc, {
+      ...repeatingAutotableHeader(doc, 'GPF & CPS Rates of Interest (1970-71 onwards)', 'en', true),
       head: [['S.No', 'Financial Year / Period', 'From Date', 'To Date', 'Rate (%)', 'Authority G.O. (Finance Dept)', 'Authority G.O. (CPS)']],
       body: tableData,
       startY: 25,
@@ -503,7 +505,7 @@ export default function PfRatesTab({
               <span className="portal-dash-icon">
                 <Calendar className="h-3 w-3" />
               </span>
-              {lang === 'ta' ? 'தமிழ்நாடு அரசு GPF & CPS வட்டி விகிதங்கள் (1970-71 முதல்)' : 'Tamil Nadu GPF & CPS Interest Rates (FY 1970-71 Onwards)'}
+              {lang === 'ta' ? 'GPF & CPS வட்டி விகிதங்கள் (1970-71 முதல்)' : 'GPF & CPS Interest Rates (FY 1970-71 Onwards)'}
             </h3>
             <p>
               {lang === 'ta'

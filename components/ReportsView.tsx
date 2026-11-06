@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from './ThemeSelect';
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import React, { useState } from 'react';
@@ -625,7 +626,7 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
 
             <div>
               <label className="font-semibold text-gray-400 block mb-1">Category</label>
-              <select
+              <ThemeSelect
                 value={filterIssueCategory}
                 onChange={(e) => setFilterIssueCategory(e.target.value)}
                 className="w-full border border-gray-200 rounded-xl p-2.5 outline-none bg-white font-medium text-gray-700"
@@ -634,12 +635,12 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
                 {CATEGORIES.map((c: any) => (
                   <option key={c.id} value={c.id}>{lang === 'ta' ? c.nameTa : c.nameEn}</option>
                 ))}
-              </select>
+              </ThemeSelect>
             </div>
 
             <div>
               <label className="font-semibold text-gray-400 block mb-1">Town Panchayat</label>
-              <select
+              <ThemeSelect
                 value={filterIssueTP}
                 disabled={!!userTpId}
                 onChange={(e) => {
@@ -666,12 +667,12 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
                 }).map((tp: any) => (
                   <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
                 ))}
-              </select>
+              </ThemeSelect>
             </div>
 
             <div>
               <label className="font-semibold text-gray-400 block mb-1">Status</label>
-              <select
+              <ThemeSelect
                 value={filterIssueStatus}
                 onChange={(e) => setFilterIssueStatus(e.target.value)}
                 className="w-full border border-gray-200 rounded-xl p-2.5 outline-none bg-white font-medium text-gray-700"
@@ -680,7 +681,7 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
                 <option value="Pending">Pending</option>
                 <option value="In Progress">In Progress</option>
                 <option value="Resolved">Resolved</option>
-              </select>
+              </ThemeSelect>
             </div>
           </div>
 
@@ -824,7 +825,7 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
             <label className="text-xs font-bold text-gray-500 shrink-0">
               {lang === 'ta' ? 'அலுவலகம்:' : 'Office / Station:'}
             </label>
-            <select
+            <ThemeSelect
               value={dashboardOfficeId}
               onChange={(e) => setDashboardOfficeId(e.target.value)}
               className="border border-gray-200 hover:border-indigo-300 rounded-xl px-3 py-2 text-xs font-semibold bg-white outline-none text-indigo-950 focus:ring-1 focus:ring-indigo-500 transition min-w-[200px] shadow-2xs"
@@ -835,7 +836,7 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
                   {tObj(oc)} ({oc.type})
                 </option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
         </div>
 
@@ -1065,7 +1066,7 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
           {/* Zone filter */}
           <div>
             <label className="font-semibold text-gray-400 block mb-1">{t('zone')}</label>
-            <select
+            <ThemeSelect
               value={filterZone}
               disabled={!!userZoneId}
               onChange={(e) => {
@@ -1082,13 +1083,13 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
               {zones.filter((z: any) => !userZoneId || z.id === userZoneId || String(z.nameEn || '').toLowerCase() === String(userZoneId).toLowerCase()).map((z: any) => (
                 <option key={z.id} value={z.id}>{tObj(z)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* District filter */}
           <div>
             <label className="font-semibold text-gray-400 block mb-1">{t('district')}</label>
-            <select
+            <ThemeSelect
               value={filterDistrict}
               disabled={!!userDistrictId}
               onChange={(e) => {
@@ -1109,13 +1110,13 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
               }).map((d: any) => (
                 <option key={d.id} value={d.id}>{tObj(d)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* TP Filter */}
           <div>
             <label className="font-semibold text-gray-400 block mb-1">{t('townPanchayat')}</label>
-            <select
+            <ThemeSelect
               value={filterTP}
               disabled={!!userTpId}
               onChange={(e) => {
@@ -1140,13 +1141,13 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
               }).map((tp: any) => (
                 <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Post Type / Title Filter */}
           <div>
             <label className="font-semibold text-gray-400 block mb-1">{lang === 'ta' ? 'பதவி வகை' : 'Post Type / Title'}</label>
-            <select
+            <ThemeSelect
               value={filterPost}
               onChange={(e) => setFilterPost(e.target.value)}
               className="w-full border border-gray-200 rounded-xl p-2.5 outline-none bg-white font-medium text-gray-700"
@@ -1155,13 +1156,13 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
               {posts.map((p: any) => (
                 <option key={p.id} value={p.id}>{tObj(p)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Group Filter */}
           <div>
             <label className="font-semibold text-gray-400 block mb-1">{t('group')}</label>
-            <select
+            <ThemeSelect
               value={filterGroup}
               onChange={(e) => setFilterGroup(e.target.value)}
               className="w-full border border-gray-200 rounded-xl p-2.5 outline-none bg-white font-medium"
@@ -1170,13 +1171,13 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
               {employeeGroups.map((g: any) => (
                 <option key={g.id} value={g.id}>{tObj(g)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Category Filter */}
           <div>
             <label className="font-semibold text-gray-400 block mb-1">{t('category')}</label>
-            <select
+            <ThemeSelect
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
               className="w-full border border-gray-200 rounded-xl p-2.5 outline-none bg-white font-medium"
@@ -1185,13 +1186,13 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
               {employeeCategories.map((c: any) => (
                 <option key={c.id} value={c.id}>{tObj(c)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Nature filter */}
           <div>
             <label className="font-semibold text-gray-400 block mb-1">{t('nature')}</label>
-            <select
+            <ThemeSelect
               value={filterNature}
               onChange={(e) => setFilterNature(e.target.value)}
               className="w-full border border-gray-200 rounded-xl p-2.5 outline-none bg-white font-medium"
@@ -1200,13 +1201,13 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
               {postNatures.map((n: any) => (
                 <option key={n.id} value={n.id}>{tObj(n)}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </div>
 
           {/* Status filter */}
           <div>
             <label className="font-semibold text-gray-400 block mb-1">{t('status')}</label>
-            <select
+            <ThemeSelect
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
               className="w-full border border-gray-200 rounded-xl p-2.5 outline-none bg-white font-medium"
@@ -1214,7 +1215,7 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
               <option value="">{t('all')}</option>
               <option value="Active">{t('activeStatus')}</option>
               <option value="Inactive">{t('inactiveStatus')}</option>
-            </select>
+            </ThemeSelect>
           </div>
         </div>
 

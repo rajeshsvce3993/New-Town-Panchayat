@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from '../ThemeSelect';
 
 import React, { useState, useMemo } from 'react';
 import { 
@@ -342,7 +343,7 @@ export default function PfWithdrawalsTab({
             <form onSubmit={handleAddWithdrawal} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'சந்தாதாரர்' : 'Choose Subscriber'}</label>
-                <select
+                <ThemeSelect
                   required
                   value={withdrawEmpId}
                   onChange={(e) => setWithdrawEmpId(e.target.value)}
@@ -354,7 +355,7 @@ export default function PfWithdrawalsTab({
                       {e.employeeId} - {getEmpName(e.employeeId)}
                     </option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
 
               <div className="space-y-1">
@@ -508,7 +509,7 @@ export default function PfWithdrawalsTab({
             <form onSubmit={handleSaveSettlement} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'ஊழியர்' : 'Choose Employee'}</label>
-                <select
+                <ThemeSelect
                   required
                   value={settleEmpId}
                   onChange={(e) => {
@@ -529,12 +530,12 @@ export default function PfWithdrawalsTab({
                       {e.employeeId} - {getEmpName(e.employeeId)}
                     </option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{lang === 'ta' ? 'தீர்வு வகை' : 'Settlement Type'}</label>
-                <select
+                <ThemeSelect
                   required
                   value={settleType}
                   onChange={(e) => setSettleType(e.target.value)}
@@ -544,7 +545,7 @@ export default function PfWithdrawalsTab({
                   <option value="Resignation">{lang === 'ta' ? 'விலகல்' : 'Resignation'}</option>
                   <option value="Death">{lang === 'ta' ? 'மரணம்' : 'Death'}</option>
                   <option value="VRS">{lang === 'ta' ? 'விருப்ப ஓய்வு' : 'VRS'}</option>
-                </select>
+                </ThemeSelect>
               </div>
 
               <div className="space-y-1">
@@ -830,7 +831,7 @@ export default function PfWithdrawalsTab({
                     <label className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                       {lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat Scope'}
                     </label>
-                    <select
+                    <ThemeSelect
                       value={activeIrTownPanchayatId}
                       onChange={(e) => {
                         setActiveIrTownPanchayatId(e.target.value);
@@ -845,7 +846,7 @@ export default function PfWithdrawalsTab({
                           {lang === 'ta' ? tp.nameTa : tp.nameEn}
                         </option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
 
                   <div>

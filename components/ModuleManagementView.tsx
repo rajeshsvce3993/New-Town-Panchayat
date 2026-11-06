@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from './ThemeSelect';
 
 import React, { useState, useRef } from 'react';
 import { motion } from 'motion/react';
@@ -743,7 +744,7 @@ export default function ModuleManagementView({ state, lang, onSaveCollection }: 
             <form onSubmit={handleAddField} className="space-y-3">
               <div>
                 <label>{t('selectModule')}</label>
-                <select
+                <ThemeSelect
                   value={selectedModuleId}
                   onChange={(e) => setSelectedModuleId(e.target.value)}
                   required
@@ -752,7 +753,7 @@ export default function ModuleManagementView({ state, lang, onSaveCollection }: 
                   {modules.map((m: any) => (
                     <option key={m.id} value={m.id}>{tObj(m)}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
 
               <div>
@@ -779,7 +780,7 @@ export default function ModuleManagementView({ state, lang, onSaveCollection }: 
 
               <div>
                 <label>{t('fieldType')}</label>
-                <select
+                <ThemeSelect
                   value={fieldType}
                   onChange={(e) => setFieldType(e.target.value as any)}
                 >
@@ -788,7 +789,7 @@ export default function ModuleManagementView({ state, lang, onSaveCollection }: 
                   <option value="date">Date (தேதி)</option>
                   <option value="select">Dropdown Select (பட்டியல்)</option>
                   <option value="file">File Upload (கோப்புப் பதிவேற்றம்)</option>
-                </select>
+                </ThemeSelect>
               </div>
 
               <div className="portal-wt-section">
@@ -821,14 +822,14 @@ export default function ModuleManagementView({ state, lang, onSaveCollection }: 
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label>Allowed Formats</label>
-                      <select
+                      <ThemeSelect
                         value={fileAllowedTypes}
                         onChange={(e) => setFileAllowedTypes(e.target.value as any)}
                       >
                         <option value="both">PDF & Images</option>
                         <option value="pdf">PDF Only</option>
                         <option value="image">Images Only</option>
-                      </select>
+                      </ThemeSelect>
                     </div>
                     <div>
                       <label>Max File Size (MB)</label>

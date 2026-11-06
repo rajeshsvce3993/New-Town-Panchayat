@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from './ThemeSelect';
 
 import React, { useState, useRef } from 'react';
 import { jsPDF } from 'jspdf';
@@ -42,6 +43,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
   const [hierarchyTpFilter, setHierarchyTpFilter] = useState('all');
   const [openZones, setOpenZones] = useState<Record<string, boolean>>({});
   const [openDistricts, setOpenDistricts] = useState<Record<string, boolean>>({});
+  const [openTps, setOpenTps] = useState<Record<string, boolean>>({});
   const [openPostMasterSections, setOpenPostMasterSections] = useState<Record<string, boolean>>({});
   const [openPostMasterLists, setOpenPostMasterLists] = useState<Record<string, boolean>>({});
   const POST_MASTER_TONES: Record<string, string> = {
@@ -116,6 +118,21 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
   const tObj = (obj: any) => {
     if (!obj) return '';
     return lang === 'ta' ? (obj.nameTa || obj.nameEn) : (obj.nameEn || obj.nameTa);
+  };
+
+  const groupStreetsByWard = (items: any[]) => {
+    const map = new Map<string, any[]>();
+    items.forEach((ws: any) => {
+      const key = String(ws.wardNo ?? '');
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(ws);
+    });
+    return [...map.entries()].sort((a, b) => {
+      const na = parseInt(String(a[0]).replace(/\D/g, ''), 10);
+      const nb = parseInt(String(b[0]).replace(/\D/g, ''), 10);
+      if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+      return String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true });
+    });
   };
 
   const {
@@ -348,25 +365,6 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
     setEditWardNo('');
     setEditDistrictCode('');
     setEditTpCode('');
-  };
-
-  // Clear all mock / jurisdictional data to start completely blank
-  const handleClearAllJurisdictions = async () => {
-    const confirmMsg = lang === 'ta'
-      ? 'அனைத்து மண்டலம், மாவட்டம், பேரூராட்சி மற்றும் வார்டு/தெரு தரவுகளையும் முழுமையாக நீக்க விரும்புகிறீர்களா? (Clear Blank State)'
-      : 'Are you sure you want to clear all zones, districts, town panchayats, and wards/streets to start fresh with a blank state?';
-    if (!window.confirm(confirmMsg)) return;
-
-    await onSaveCollection('zones', []);
-    await onSaveCollection('districts', []);
-    await onSaveCollection('townPanchayats', []);
-    await onSaveCollection('wardsAndStreets', []);
-    setCsvFeedback({
-      type: 'success',
-      message: lang === 'ta'
-        ? 'அனைத்து அதிகார வரம்புகளும் அழிக்கப்பட்டன (வெற்று நிலை - Blank State). இப்போது உங்கள் புதிய CSV கோப்பைப் பதிவேற்றலாம்.'
-        : 'All jurisdictions cleared successfully. Clean blank state ready for your CSV upload.'
-    });
   };
 
   // CSV Template Generation with BOTH languages for all 5 levels (Zone, District, TP, Ward, Street)
@@ -714,18 +712,6 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
             {lang === 'ta' ? 'பல்க் பதிவேற்றம்' : 'Bulk CSV Upload'}
           </button>
 
-          {activeTab === 'hierarchy' && (
-            <button
-              type="button"
-              onClick={handleClearAllJurisdictions}
-              className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 cursor-pointer"
-              title={lang === 'ta' ? 'அனைத்து மாதிரி மண்டலம், மாவட்டம், பேரூராட்சி, வார்டு தெருக்களையும் அழித்து புதிய வெற்று நிலைக்கு மாற்றவும்' : 'Clear all mock zones, districts, TPs, and wards for clean blank state'}
-            >
-              <Trash2 className="h-3 w-3" />
-              {lang === 'ta' ? 'அனைத்தையும் அழி (Clear Blank)' : 'Clear Blank State'}
-            </button>
-          )}
-
           <input
             type="file"
             ref={fileInputRef}
@@ -955,7 +941,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                   <div className="space-y-3">
                     <div>
                       <label>{t('selectZone')}</label>
-                      <select
+                      <ThemeSelect
                         value={selectedZoneId}
                         onChange={(e) => setSelectedZoneId(e.target.value)}
                         required
@@ -964,7 +950,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                         {zones.map((z: any) => (
                           <option key={z.id} value={z.id}>{tObj(z)}</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
                     <div>
                       <label>{t('districtNameEn')}</label>
@@ -1012,7 +998,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                   <div className="space-y-3">
                     <div>
                       <label>{t('selectDistrict')}</label>
-                      <select
+                      <ThemeSelect
                         value={selectedDistrictId}
                         onChange={(e) => {
                           const distId = e.target.value;
@@ -1028,7 +1014,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                             <option key={d.id} value={d.id}>{tObj(d)} {d.code ? `[Code: ${d.code}]` : ''} ({zone ? tObj(zone) : ''})</option>
                           );
                         })}
-                      </select>
+                      </ThemeSelect>
                     </div>
                     <div>
                       <label>{t('tpNameEn')}</label>
@@ -1078,7 +1064,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                   <div className="space-y-3">
                     <div>
                       <label>{lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}</label>
-                      <select
+                      <ThemeSelect
                         value={wardStreetTpId}
                         onChange={(e) => setWardStreetTpId(e.target.value)}
                         required
@@ -1090,7 +1076,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                             <option key={tp.id} value={tp.id}>{tObj(tp)} {dist ? `(${tObj(dist)})` : ''}</option>
                           );
                         })}
-                      </select>
+                      </ThemeSelect>
                     </div>
                     <div>
                       <label>{t('wardNo')}</label>
@@ -1162,7 +1148,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                 </button>
               </div>
             </div>
-            <div className="portal-dash-body">
+            <div className="portal-dash-body is-jurisdictions">
             {hierarchyViewMode === 'table' ? (() => {
               // Construct Flat Hierarchy List
               const flatHierarchy: any[] = [];
@@ -1290,19 +1276,28 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                 document.body.removeChild(link);
               };
 
-              const handleExportPDF = () => {
+                const handleExportPDF = () => {
                 const doc = new jsPDF('l', 'mm', 'a4');
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(13);
-                doc.setTextColor(79, 70, 229);
-                doc.text(lang === 'ta' ? 'அதிகார வரம்பு படிநிலை அறிக்கை (Jurisdictional Hierarchy Report)' : 'Jurisdictional Hierarchy Report', 14, 15);
-                
-                doc.setFont('helvetica', 'normal');
-                doc.setFontSize(9);
-                doc.setTextColor(71, 85, 105);
-                doc.text(`Generated on: ${new Date().toLocaleString()} • Total Items: ${filteredHierarchy.length}`, 14, 21);
+                const reportTitle = lang === 'ta' ? 'அதிகார வரம்பு படிநிலை அறிக்கை (Jurisdictional Hierarchy Report)' : 'Jurisdictional Hierarchy Report';
+                const drawPageHeader = () => {
+                  doc.setFont('helvetica', 'bold');
+                  doc.setFontSize(8);
+                  doc.setTextColor(2, 132, 199);
+                  doc.text(lang === 'ta' ? 'பேரூராட்சிகள் இயக்ககம்' : 'Directorate of Town Panchayats', 14, 8);
+                  doc.setFontSize(13);
+                  doc.setTextColor(79, 70, 229);
+                  doc.text(reportTitle, 14, 14);
+                  doc.setFont('helvetica', 'normal');
+                  doc.setFontSize(9);
+                  doc.setTextColor(71, 85, 105);
+                  doc.text(`Generated on: ${new Date().toLocaleString()} • Total Items: ${filteredHierarchy.length}`, 14, 19);
+                  doc.setFontSize(8);
+                  doc.setTextColor(148, 163, 184);
+                  doc.text(`${lang === 'ta' ? 'பக்கம்' : 'Page'} ${doc.getNumberOfPages()}`, 283, 8, { align: 'right' });
+                };
+                drawPageHeader();
 
-                const startY = 28;
+                const startY = 24;
                 doc.setFillColor(241, 245, 249);
                 doc.rect(14, startY, 269, 8, 'F');
                 
@@ -1326,7 +1321,8 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                 filteredHierarchy.forEach((item) => {
                   if (currentY > 185) {
                     doc.addPage();
-                    currentY = 20;
+                    drawPageHeader();
+                    currentY = 24;
                     doc.setFillColor(241, 245, 249);
                     doc.rect(14, currentY, 269, 8, 'F');
                     doc.setFont('helvetica', 'bold');
@@ -1338,6 +1334,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                     doc.text('Ward No', 185, currentY + 5.5);
                     doc.text('Street Name', 205, currentY + 5.5);
                     doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(8);
                     currentY += 8;
                   }
                   
@@ -1363,7 +1360,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                   {/* Search and Filters */}
                   <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
                     <div>
-                      <select
+                      <ThemeSelect
                         value={hierarchyZoneFilter}
                         onChange={(e) => setHierarchyZoneFilter(e.target.value)}
                         className="w-full border border-gray-200 rounded-lg p-2 bg-white text-gray-700 font-semibold"
@@ -1372,11 +1369,11 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                         {zones.map((z: any) => (
                           <option key={z.id} value={z.id}>{tObj(z)}</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
 
                     <div>
-                      <select
+                      <ThemeSelect
                         value={hierarchyDistrictFilter}
                         onChange={(e) => setHierarchyDistrictFilter(e.target.value)}
                         className="w-full border border-gray-200 rounded-lg p-2 bg-white text-gray-700 font-semibold"
@@ -1385,11 +1382,11 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                         {districts.map((d: any) => (
                           <option key={d.id} value={d.id}>{tObj(d)}</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
 
                     <div>
-                      <select
+                      <ThemeSelect
                         value={hierarchyTpFilter}
                         onChange={(e) => setHierarchyTpFilter(e.target.value)}
                         className="w-full border border-gray-200 rounded-lg p-2 bg-white text-gray-700 font-semibold"
@@ -1398,7 +1395,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                         {townPanchayats.map((tp: any) => (
                           <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
 
                     <div className="relative">
@@ -1483,7 +1480,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                 </div>
               );
             })() : (
-              <div className="portal-wt-tree max-h-[520px] overflow-y-auto pr-1">
+              <div className="portal-wt-tree is-scroll">
                 {zones.length === 0 && (
                   <p className="portal-wt-empty is-center">
                     {lang === 'ta'
@@ -1608,75 +1605,104 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                                     )}
                                     {distTPs.map((tp: any) => {
                                       const tpWards = wardsAndStreets.filter((ws: any) => ws.tpId === tp.id);
+                                      const tpOpen = Boolean(openTps[tp.id]);
                                       return (
-                                        <div key={tp.id} className="portal-wt-field">
-                                          <div className="portal-wt-field-main">
-                                            <div className="portal-wt-field-name">
-                                              <span>{tObj(tp)}</span>
-                                              {tp.code && <span className="portal-dash-id">#{tp.code}</span>}
-                                              <span className="portal-wt-count">
-                                                {tpWards.length} {lang === 'ta' ? 'தெருக்கள்' : 'streets'}
-                                              </span>
-                                            </div>
-                                            {tpWards.length > 0 ? (
-                                              <div className="portal-wt-chips">
-                                                {tpWards.map((ws: any) => (
-                                                  <span key={ws.id} className="portal-wt-chip">
-                                                    <strong>{lang === 'ta' ? 'வார்டு' : 'Ward'} {ws.wardNo}</strong>
-                                                    <span>{lang === 'ta' ? (ws.streetNameTa || ws.streetNameEn) : (ws.streetNameEn || ws.streetNameTa)}</span>
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => {
-                                                        setEditingType('ward_street');
-                                                        setEditingId(ws.id);
-                                                        setEditNameEn(ws.streetNameEn);
-                                                        setEditNameTa(ws.streetNameTa);
-                                                        setEditWardNo(ws.wardNo);
-                                                        setEditTpId(ws.tpId);
-                                                      }}
-                                                      title="Edit Ward & Street"
-                                                    >
-                                                      <Pencil className="h-2.5 w-2.5" />
-                                                    </button>
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => handleDeleteMasterItem('wardsAndStreets', ws.id)}
-                                                      title="Delete Street"
-                                                    >
-                                                      <X className="h-2.5 w-2.5" />
-                                                    </button>
+                                        <div key={tp.id} className={`portal-wt-cat${tpOpen ? ' is-open' : ''}`}>
+                                          <div className="portal-wt-cat-head">
+                                            <button
+                                              type="button"
+                                              className="portal-wt-toggle"
+                                              onClick={() => setOpenTps((prev) => ({ ...prev, [tp.id]: !prev[tp.id] }))}
+                                              aria-expanded={tpOpen}
+                                            >
+                                              <ChevronRight className={`portal-wt-caret${tpOpen ? ' is-open' : ''}`} />
+                                              <div className="portal-wt-copy">
+                                                <div className="portal-wt-title">
+                                                  <span>{tObj(tp)}</span>
+                                                  {tp.code && <span className="portal-dash-id">#{tp.code}</span>}
+                                                  <span className="portal-wt-count">
+                                                    {tpWards.length} {lang === 'ta' ? 'தெருக்கள்' : 'streets'}
                                                   </span>
-                                                ))}
+                                                </div>
                                               </div>
-                                            ) : (
-                                              <p className="portal-wt-meta">{lang === 'ta' ? 'வார்டு/தெரு சேர்க்கப்படவில்லை' : 'No wards/streets mapped yet'}</p>
-                                            )}
-                                          </div>
-                                          <div className="portal-wt-actions">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setEditingType('tp');
-                                                setEditingId(tp.id);
-                                                setEditNameEn(tp.nameEn);
-                                                setEditNameTa(tp.nameTa);
-                                                setEditDistrictId(tp.districtId);
-                                                setEditTpCode(tp.code || '');
-                                              }}
-                                              className="portal-fis-icon-btn"
-                                              title="Edit Town Panchayat"
-                                            >
-                                              <Pencil className="h-3 w-3" />
                                             </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => handleDeleteMasterItem('townPanchayats', tp.id)}
-                                              className="portal-fis-icon-btn is-danger"
-                                              title="Delete Town Panchayat"
-                                            >
-                                              <Trash2 className="h-3 w-3" />
-                                            </button>
+                                            <div className="portal-wt-actions">
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setEditingType('tp');
+                                                  setEditingId(tp.id);
+                                                  setEditNameEn(tp.nameEn);
+                                                  setEditNameTa(tp.nameTa);
+                                                  setEditDistrictId(tp.districtId);
+                                                  setEditTpCode(tp.code || '');
+                                                }}
+                                                className="portal-fis-icon-btn"
+                                                title="Edit Town Panchayat"
+                                              >
+                                                <Pencil className="h-3 w-3" />
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleDeleteMasterItem('townPanchayats', tp.id)}
+                                                className="portal-fis-icon-btn is-danger"
+                                                title="Delete Town Panchayat"
+                                              >
+                                                <Trash2 className="h-3 w-3" />
+                                              </button>
+                                            </div>
                                           </div>
+                                          {tpOpen && (
+                                            <div className="portal-wt-fields is-leaves">
+                                              {tpWards.length === 0 && (
+                                                <p className="portal-wt-empty">{lang === 'ta' ? 'வார்டு/தெரு சேர்க்கப்படவில்லை' : 'No wards/streets mapped yet'}</p>
+                                              )}
+                                              {groupStreetsByWard(tpWards).map(([wardNo, streets]) => (
+                                                <div key={`ward-${wardNo}`} className="portal-wt-ward-block">
+                                                  <div className="portal-wt-ward-label">{lang === 'ta' ? 'வார்டு' : 'Ward'} {wardNo}</div>
+                                                  <div className="portal-wt-street-list">
+                                                  {streets.map((ws: any) => {
+                                                    const streetName = lang === 'ta'
+                                                      ? (String(ws.streetNameTa || '').trim() || String(ws.streetNameEn || '').trim() || '—')
+                                                      : (String(ws.streetNameEn || '').trim() || String(ws.streetNameTa || '').trim() || '—');
+                                                    return (
+                                                      <div key={ws.id} className="portal-wt-field portal-wt-leaf">
+                                                        <div className="portal-wt-field-main">
+                                                          <span className="portal-wt-leaf-name" title={streetName}>{streetName}</span>
+                                                        </div>
+                                                        <div className="portal-wt-actions">
+                                                          <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                              setEditingType('ward_street');
+                                                              setEditingId(ws.id);
+                                                              setEditNameEn(ws.streetNameEn);
+                                                              setEditNameTa(ws.streetNameTa);
+                                                              setEditWardNo(ws.wardNo);
+                                                              setEditTpId(ws.tpId);
+                                                            }}
+                                                            className="portal-fis-icon-btn"
+                                                            title="Edit Ward & Street"
+                                                          >
+                                                            <Pencil className="h-3 w-3" />
+                                                          </button>
+                                                          <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteMasterItem('wardsAndStreets', ws.id)}
+                                                            className="portal-fis-icon-btn is-danger"
+                                                            title="Delete Street"
+                                                          >
+                                                            <Trash2 className="h-3 w-3" />
+                                                          </button>
+                                                        </div>
+                                                      </div>
+                                                    );
+                                                  })}
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
                                         </div>
                                       );
                                     })}
@@ -1738,7 +1764,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                     </div>
                     <div>
                       <label>{t('payLevel')}</label>
-                      <select
+                      <ThemeSelect
                         value={postPayLevelId}
                         onChange={(e) => setPostPayLevelId(e.target.value)}
                       >
@@ -1746,11 +1772,11 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                         {payLevels.map((p: any) => (
                           <option key={p.id} value={p.id}>{tObj(p)}</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
                     <div>
                       <label>{t('nature')}</label>
-                      <select
+                      <ThemeSelect
                         value={postNatureId}
                         onChange={(e) => setPostNatureId(e.target.value)}
                       >
@@ -1758,11 +1784,11 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                         {postNatures.map((n: any) => (
                           <option key={n.id} value={n.id}>{tObj(n)}</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
                     <div>
                       <label>{t('category')}</label>
-                      <select
+                      <ThemeSelect
                         value={postCategoryId}
                         onChange={(e) => setPostCategoryId(e.target.value)}
                       >
@@ -1770,11 +1796,11 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                         {employeeCategories.map((c: any) => (
                           <option key={c.id} value={c.id}>{tObj(c)}</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
                     <div>
                       <label>{t('group')}</label>
-                      <select
+                      <ThemeSelect
                         value={postGroupId}
                         onChange={(e) => setPostGroupId(e.target.value)}
                       >
@@ -1782,7 +1808,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                         {employeeGroups.map((g: any) => (
                           <option key={g.id} value={g.id}>{tObj(g)}</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
                   </div>
                 </div>
@@ -2209,7 +2235,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                 <>
                   <div>
                     <label>{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</label>
-                    <select
+                    <ThemeSelect
                       value={editZoneId}
                       onChange={(e) => setEditZoneId(e.target.value)}
                       required
@@ -2218,7 +2244,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                       {zones.map((z: any) => (
                         <option key={z.id} value={z.id}>{tObj(z)}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
                   <div>
                     <label>{lang === 'ta' ? 'மாவட்டக் குறியீடு (2 இலக்கம்)' : 'District Code (2-digit)'}</label>
@@ -2237,7 +2263,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                 <>
                   <div>
                     <label>{lang === 'ta' ? 'மாவட்டம்' : 'District'}</label>
-                    <select
+                    <ThemeSelect
                       value={editDistrictId}
                       onChange={(e) => setEditDistrictId(e.target.value)}
                       required
@@ -2246,7 +2272,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                       {districts.map((d: any) => (
                         <option key={d.id} value={d.id}>{tObj(d)}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
                   <div>
                     <label>{lang === 'ta' ? 'பேரூராட்சிக் குறியீடு (2 இலக்கம்)' : 'Town Panchayat Code (2-digit)'}</label>
@@ -2268,7 +2294,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                 <>
                   <div>
                     <label>{lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}</label>
-                    <select
+                    <ThemeSelect
                       value={editTpId}
                       onChange={(e) => setEditTpId(e.target.value)}
                       required
@@ -2277,7 +2303,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                       {townPanchayats.map((tp: any) => (
                         <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
                   <div>
                     <label>{t('wardNo')}</label>

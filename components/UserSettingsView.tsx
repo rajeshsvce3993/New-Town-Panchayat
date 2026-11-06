@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from './ThemeSelect';
 
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -355,7 +356,7 @@ export default function UserSettingsView({
                         <MapPin className="mr-1 inline h-3 w-3" />
                         {lang === 'ta' ? 'மாவட்டம் வாரியாக வடிகட்டுக' : 'Filter by District'}
                       </label>
-                      <select
+                      <ThemeSelect
                         value={filterDistrictId}
                         onChange={(e) => setFilterDistrictId(e.target.value)}
                       >
@@ -365,7 +366,7 @@ export default function UserSettingsView({
                             {lang === 'ta' ? (d.nameTa || d.nameEn) : (d.nameEn || d.nameTa)}
                           </option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
 
                     <div>
@@ -373,7 +374,7 @@ export default function UserSettingsView({
                         <Building2 className="mr-1 inline h-3 w-3" />
                         {lang === 'ta' ? 'பேரூராட்சி தேர்வு' : 'Target Town Panchayat'}
                       </label>
-                      <select
+                      <ThemeSelect
                         value={selectedTpId}
                         onChange={(e) => setSelectedTpId(e.target.value)}
                       >
@@ -386,7 +387,7 @@ export default function UserSettingsView({
                             </option>
                           );
                         })}
-                      </select>
+                      </ThemeSelect>
                     </div>
                   </div>
 

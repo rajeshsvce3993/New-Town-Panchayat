@@ -12,8 +12,7 @@ export interface OfficialInterestRate {
 }
 
 /**
- * TAMILNADU GOVT. EMPLOYEES - GPF & CPS - RATES OF INTEREST
- * தமிழ்நாடு அரசுப் பணியாளர்கள் - பொது வருங்கால வைப்பு நிதி & பங்களிப்பு ஓய்வூதியத் திட்டம் - வட்டி வீதம்
+ * GPF & CPS rates of interest
  * Starting FY from 1970-71 up to 2026-09-30
  */
 export const OFFICIAL_PF_INTEREST_RATES: OfficialInterestRate[] = [

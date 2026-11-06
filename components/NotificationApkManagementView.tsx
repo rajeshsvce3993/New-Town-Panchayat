@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from './ThemeSelect';
 
 import React, { useState } from 'react';
 import { 
@@ -461,53 +462,53 @@ export default function NotificationApkManagementView({ state, lang, onSaveColle
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label>{t('zoneFilter')}</label>
-                        <select
+                        <ThemeSelect
                           value={targetZone}
                           onChange={(e) => { setTargetZone(e.target.value); setTargetDistrict('all'); setTargetTp('all'); }}
                         >
                           <option value="all">{t('all')}</option>
                           {zones.map((z: any) => <option key={z.id} value={z.id}>{z.nameEn}</option>)}
-                        </select>
+                        </ThemeSelect>
                       </div>
                       <div>
                         <label>{t('districtFilter')}</label>
-                        <select
+                        <ThemeSelect
                           value={targetDistrict}
                           onChange={(e) => { setTargetDistrict(e.target.value); setTargetTp('all'); }}
                         >
                           <option value="all">{t('all')}</option>
                           {filteredDistricts.map((d: any) => <option key={d.id} value={d.id}>{d.nameEn}</option>)}
-                        </select>
+                        </ThemeSelect>
                       </div>
                       <div>
                         <label>{t('tpFilter')}</label>
-                        <select
+                        <ThemeSelect
                           value={targetTp}
                           onChange={(e) => setTargetTp(e.target.value)}
                         >
                           <option value="all">{t('all')}</option>
                           {filteredTps.map((tp: any) => <option key={tp.id} value={tp.id}>{tp.nameEn}</option>)}
-                        </select>
+                        </ThemeSelect>
                       </div>
                       <div>
                         <label>{t('desigFilter')}</label>
-                        <select
+                        <ThemeSelect
                           value={targetDesignation}
                           onChange={(e) => setTargetDesignation(e.target.value)}
                         >
                           <option value="all">{t('all')}</option>
                           {designations.map((d: any) => <option key={d.id} value={d.id}>{d.nameEn}</option>)}
-                        </select>
+                        </ThemeSelect>
                       </div>
                       <div className="sm:col-span-2">
                         <label>{t('userFilter')}</label>
-                        <select
+                        <ThemeSelect
                           value={targetUser}
                           onChange={(e) => setTargetUser(e.target.value)}
                         >
                           <option value="all">{t('all')}</option>
                           {users.map((u: any) => <option key={u.id} value={u.id}>{u.nameEn} ({u.username})</option>)}
-                        </select>
+                        </ThemeSelect>
                       </div>
                     </div>
                   </div>

@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from '../ThemeSelect';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
@@ -578,7 +579,7 @@ export default function PfSubscriptionsTab({
           <div className="portal-dash-fields" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto' }}>
             <div>
               <label>{lang === 'ta' ? 'ஊழியரைத் தேர்ந்தெடுக்கவும்' : 'Select Employee'}</label>
-              <select
+              <ThemeSelect
                 onChange={(e) => {
                   const empId = e.target.value;
                   if (empId && !selectedBreakupEmployeeIds.includes(empId)) {
@@ -605,7 +606,7 @@ export default function PfSubscriptionsTab({
                     </option>
                   ))
                 }
-              </select>
+              </ThemeSelect>
             </div>
             <div>
               <label>&nbsp;</label>
@@ -951,7 +952,7 @@ export default function PfSubscriptionsTab({
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Contributor Breakup Adjustments</h4>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <select
+                  <ThemeSelect
                     onChange={(e) => {
                       const empId = e.target.value;
                       if (empId && !editSelectedEmployeeIds.includes(empId)) {
@@ -977,7 +978,7 @@ export default function PfSubscriptionsTab({
                         </option>
                       ))
                     }
-                  </select>
+                  </ThemeSelect>
                 </div>
               </div>
 

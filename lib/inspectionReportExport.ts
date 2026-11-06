@@ -59,28 +59,78 @@ function escapePdfHtml(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
-function appendCanvasPages(
+function maxScrollHeightForPage(container: HTMLElement, pageWidthMm: number, pageHeightMm: number) {
+  const widthPx = Math.max(container.clientWidth || container.offsetWidth || 1, 1);
+  return (pageHeightMm * widthPx) / pageWidthMm * 0.98;
+}
+
+function addCanvasAsSinglePage(
   pdf: jsPDF,
   canvas: HTMLCanvasElement,
   pageWidth: number,
   pageHeight: number,
   startNewPage: boolean
 ) {
+  if (startNewPage) pdf.addPage();
   const imgWidth = pageWidth;
-  const imgHeight = (canvas.height * imgWidth) / Math.max(canvas.width, 1);
-  const imgData = canvas.toDataURL('image/jpeg', 0.84);
-  let heightLeft = imgHeight;
-  let position = 0;
-  let first = true;
-  while (heightLeft > 0.4 || first) {
-    if (startNewPage || !first) pdf.addPage();
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-    heightLeft -= pageHeight;
-    position -= pageHeight;
-    first = false;
-    startNewPage = true;
-    if (heightLeft <= 0.4) break;
+  let imgHeight = (canvas.height * imgWidth) / Math.max(canvas.width, 1);
+  if (imgHeight > pageHeight) {
+    const fit = pageHeight / imgHeight;
+    pdf.addImage(
+      canvas.toDataURL('image/jpeg', 0.86),
+      'JPEG',
+      0,
+      0,
+      imgWidth * fit,
+      pageHeight,
+      undefined,
+      'FAST'
+    );
+    return;
   }
+  pdf.addImage(canvas.toDataURL('image/jpeg', 0.86), 'JPEG', 0, 0, imgWidth, imgHeight, undefined, 'FAST');
+}
+
+/** Repeating document header for jsPDF-autotable. Table column heads already repeat via showHead. */
+export function repeatingAutotableHeader(
+  doc: jsPDF,
+  title: string,
+  lang: 'ta' | 'en' = 'en',
+  skipFirstPage = false
+) {
+  return {
+    showHead: 'everyPage' as const,
+    margin: { top: 24, left: 14, right: 14, bottom: 16 },
+    didDrawPage: (data: { pageNumber: number }) => {
+      if (skipFirstPage && data.pageNumber === 1) return;
+      const pageW = doc.internal.pageSize.getWidth();
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(2, 132, 199);
+      doc.text(
+        lang === 'ta'
+          ? 'பேரூராட்சிகள் இயக்ககம்'
+          : 'Directorate of Town Panchayats',
+        14,
+        8
+      );
+      doc.setFontSize(11);
+      doc.setTextColor(30, 58, 138);
+      doc.text(title, 14, 14, { maxWidth: pageW - 36 });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184);
+      doc.text(
+        `${lang === 'ta' ? 'பக்கம்' : 'Page'} ${data.pageNumber}`,
+        pageW - 14,
+        8,
+        { align: 'right' }
+      );
+      doc.setDrawColor(30, 58, 138);
+      doc.setLineWidth(0.35);
+      doc.line(14, 17.5, pageW - 14, 17.5);
+    },
+  };
 }
 
 /**
@@ -91,9 +141,9 @@ export async function generateHtmlTablePDF(options: HtmlPdfOptions): Promise<{ b
   const {
     title,
     subtitle,
-    departmentHeader = options.lang === 'ta' 
-      ? 'தமிழ்நாடு அரசு • பேரூராட்சிகள் இயக்ககம்' 
-      : 'Government of Tamil Nadu • Directorate of Town Panchayats',
+    departmentHeader = options.lang === 'ta'
+      ? 'பேரூராட்சிகள் இயக்ககம்'
+      : 'Directorate of Town Panchayats',
     metadata = [],
     headers,
     rows,
@@ -200,41 +250,80 @@ export async function generateHtmlTablePDF(options: HtmlPdfOptions): Promise<{ b
     const pdf = new jsPDF(orientation, 'mm', 'a4');
     const pageWidth = landscape ? 297 : 210;
     const pageHeight = landscape ? 210 : 297;
-    const chunkSize = landscape ? 22 : 30;
-    const totalChunks = Math.max(1, Math.ceil(rows.length / chunkSize));
+    const footerLabel = lang === 'ta' ? 'கள ஆய்வு மேலாண்மை அமைப்பு (EMS)' : 'Field Inspection Management System';
+    const maxScroll = maxScrollHeightForPage(container, pageWidth, pageHeight);
 
-    for (let i = 0; i < totalChunks; i++) {
-      const chunk = rows.slice(i * chunkSize, (i + 1) * chunkSize);
-      const isFirst = i === 0;
-      const isLast = i === totalChunks - 1;
-      container.innerHTML = `
-        <div style="width: 100%; box-sizing: border-box;">
-          ${isFirst ? bannerHtml : ''}
-          <table style="width: 100%; border-collapse: collapse; margin-top: 6px;">
-            ${theadHtml}
-            ${renderBody(chunk, isLast)}
-          </table>
-          <div style="margin-top: 14px; padding-top: 8px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8;">
-            <span>${lang === 'ta' ? 'கள ஆய்வு மேலாண்மை அமைப்பு (EMS)' : 'Field Inspection Management System'}</span>
-            <span>${lang === 'ta' ? `பக்கம் ${i + 1}` : `Page ${i + 1}`}</span>
-          </div>
+    const buildPageHtml = (
+      chunk: (string | number)[][],
+      includeTotal: boolean,
+      pageNo: number,
+      pageCount: number
+    ) => `
+      <div style="width: 100%; box-sizing: border-box;">
+        ${bannerHtml}
+        <table style="width: 100%; border-collapse: collapse; margin-top: 6px;">
+          ${theadHtml}
+          ${renderBody(chunk, includeTotal)}
+        </table>
+        <div style="margin-top: 14px; padding-top: 8px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8;">
+          <span>${escapePdfHtml(footerLabel)}</span>
+          <span>${lang === 'ta' ? `பக்கம் ${pageNo} / ${pageCount}` : `Page ${pageNo} / ${pageCount}`}</span>
         </div>
-      `;
+      </div>
+    `;
+
+    const pageFits = (html: string) => {
+      container.innerHTML = html;
+      return container.scrollHeight <= maxScroll;
+    };
+
+    const pageChunks: { chunk: (string | number)[][]; includeTotal: boolean }[] = [];
+    let offset = 0;
+    if (rows.length === 0) {
+      pageChunks.push({ chunk: [], includeTotal: Boolean(totalRow) });
+    }
+    while (offset < rows.length) {
+      const remaining = rows.length - offset;
+      let lo = 1;
+      let hi = remaining;
+      let best = 1;
+      while (lo <= hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        const slice = rows.slice(offset, offset + mid);
+        const last = offset + mid >= rows.length;
+        if (pageFits(buildPageHtml(slice, last && Boolean(totalRow), 99, 99))) {
+          best = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      const take = Math.max(1, best);
+      const last = offset + take >= rows.length;
+      pageChunks.push({
+        chunk: rows.slice(offset, offset + take),
+        includeTotal: last && Boolean(totalRow),
+      });
+      offset += take;
+    }
+
+    const pageCount = Math.max(1, pageChunks.length);
+    for (let i = 0; i < pageChunks.length; i++) {
+      container.innerHTML = buildPageHtml(
+        pageChunks[i].chunk,
+        pageChunks[i].includeTotal,
+        i + 1,
+        pageCount
+      );
       const canvas = await html2canvas(container, {
         scale: 1.5,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff'
       });
-      if (i === 0) {
-        appendCanvasPages(pdf, canvas, pageWidth, pageHeight, false);
-      } else {
-        appendCanvasPages(pdf, canvas, pageWidth, pageHeight, true);
-      }
+      addCanvasAsSinglePage(pdf, canvas, pageWidth, pageHeight, i > 0);
     }
 
-    // jsPDF starts with a blank page; the first chunk fills it. Extra blank first page
-    // is avoided because appendCanvasPages(startNewPage=false) draws on page 1.
     const blob = pdf.output('blob');
     if (returnBlob) {
       return { blob, filename };

@@ -1,8 +1,9 @@
+'use client';
 /* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable react-hooks/purity */
-'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import ThemeSelect from './ThemeSelect';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   PlusCircle, 
@@ -1648,7 +1649,7 @@ export default function PendingIssuesView({
                 <label>
                   {lang === 'ta' ? 'மண்டலம்' : 'Zone'}
                 </label>
-                <select
+                <ThemeSelect
                   value={filterZoneId}
                   onChange={(e) => {
                     setFilterZoneId(e.target.value);
@@ -1661,7 +1662,7 @@ export default function PendingIssuesView({
                   {allowedZones.map((z: any) => (
                     <option key={z.id} value={z.id}>{tObj(z)}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
 
               {/* District Filter */}
@@ -1669,7 +1670,7 @@ export default function PendingIssuesView({
                 <label>
                   {lang === 'ta' ? 'மாவட்டம்' : 'District'}
                 </label>
-                <select
+                <ThemeSelect
                   value={filterDistrictId}
                   onChange={(e) => {
                     setFilterDistrictId(e.target.value);
@@ -1681,7 +1682,7 @@ export default function PendingIssuesView({
                   {availableDistricts.map((d: any) => (
                     <option key={d.id} value={d.id}>{tObj(d)}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
 
               {/* Town Panchayat Filter */}
@@ -1689,7 +1690,7 @@ export default function PendingIssuesView({
                 <label>
                   {lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}
                 </label>
-                <select
+                <ThemeSelect
                   value={filterTPId}
                   onChange={(e) => setFilterTPId(e.target.value)}
                   disabled={isTPUser}
@@ -1698,7 +1699,7 @@ export default function PendingIssuesView({
                   {availableTPs.map((tp: any) => (
                     <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
 
               {/* Category Filter */}
@@ -1706,7 +1707,7 @@ export default function PendingIssuesView({
                 <label>
                   {lang === 'ta' ? 'பிரிவு' : 'Category'}
                 </label>
-                <select
+                <ThemeSelect
                   value={filterCategory}
                   onChange={(e) => {
                     setFilterCategory(e.target.value);
@@ -1719,7 +1720,7 @@ export default function PendingIssuesView({
                       {lang === 'ta' ? CATEGORIES_MAP[catId].ta : CATEGORIES_MAP[catId].en}
                     </option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
 
               {/* Stage / Status Filter */}
@@ -1727,7 +1728,7 @@ export default function PendingIssuesView({
                 <label>
                   {lang === 'ta' ? 'நிலை' : 'Stage / Status'}
                 </label>
-                <select
+                <ThemeSelect
                   value={filterStage}
                   onChange={(e) => setFilterStage(e.target.value)}
                 >
@@ -1735,7 +1736,7 @@ export default function PendingIssuesView({
                   <option value="Pending">{lang === 'ta' ? 'நிலுவை (Pending)' : 'Pending'}</option>
                   <option value="In Progress">{lang === 'ta' ? 'நடவடிக்கை (In Progress)' : 'In Progress'}</option>
                   <option value="Resolved">{lang === 'ta' ? 'தீர்க்கப்பட்டது (Resolved)' : 'Resolved'}</option>
-                </select>
+                </ThemeSelect>
               </div>
             </div>
 
@@ -2543,7 +2544,7 @@ export default function PendingIssuesView({
               
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('Applies to Category', 'வகையைத் தேர்ந்தெடு')}</label>
-                <select
+                <ThemeSelect
                   value={newFieldCategory}
                   onChange={(e) => {
                     setNewFieldCategory(e.target.value);
@@ -2554,12 +2555,12 @@ export default function PendingIssuesView({
                   {CATEGORIES.map((cat: any) => (
                     <option key={cat.id} value={cat.id}>{t(cat.nameEn, cat.nameTa)}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('Applies to Subcategory', 'துணை வகையைத் தேர்ந்தெடு')}</label>
-                <select
+                <ThemeSelect
                   value={newFieldSubcategory}
                   onChange={(e) => setNewFieldSubcategory(e.target.value)}
                   className="w-full text-xs font-semibold p-3 border border-purple-100 bg-slate-50/50 rounded-xl outline-none focus:ring-1 focus:ring-fuchsia-500"
@@ -2568,7 +2569,7 @@ export default function PendingIssuesView({
                   {CATEGORIES.find((c: any) => c.id === newFieldCategory)?.subcategories.map((sub: any) => (
                     <option key={sub.id} value={sub.id}>{t(sub.nameEn, sub.nameTa)}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
 
               <div className="space-y-1">
@@ -2597,7 +2598,7 @@ export default function PendingIssuesView({
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('Field Type', 'புலத்தின் வகை')}</label>
-                <select
+                <ThemeSelect
                   value={newFieldType}
                   onChange={(e) => setNewFieldType(e.target.value as any)}
                   className="w-full text-xs font-semibold p-3 border border-purple-100 bg-slate-50/50 rounded-xl outline-none focus:ring-1 focus:ring-fuchsia-500"
@@ -2606,7 +2607,7 @@ export default function PendingIssuesView({
                   <option value="number">{t('Number', 'எண் (Number)')}</option>
                   <option value="date">{t('Date', 'தேதி (Date)')}</option>
                   <option value="file">{t('File Upload', 'கோப்பு பதிவேற்றம்')}</option>
-                </select>
+                </ThemeSelect>
               </div>
 
               {/* Required validator */}
@@ -2672,7 +2673,7 @@ export default function PendingIssuesView({
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('Allowed Extension Group', 'கோப்பு வகை அனுமதி')}</label>
-                    <select
+                    <ThemeSelect
                       value={fileTypeConstraint}
                       onChange={(e) => setFileTypeConstraint(e.target.value as any)}
                       className="w-full text-xs font-semibold p-2.5 border border-purple-100 rounded-lg outline-none bg-white"
@@ -2680,7 +2681,7 @@ export default function PendingIssuesView({
                       <option value="both">{t('PDF and Images', 'PDF மற்றும் படங்கள்')}</option>
                       <option value="pdf">{t('PDF Only', 'PDF மட்டும்')}</option>
                       <option value="image">{t('Images Only', 'படங்கள் மட்டும்')}</option>
-                    </select>
+                    </ThemeSelect>
                   </div>
                 </div>
               )}
@@ -3652,7 +3653,7 @@ export default function PendingIssuesView({
                   <label className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">
                     {lang === 'ta' ? 'அடுத்த கட்ட நிலை' : 'Next Stage'}
                   </label>
-                  <select
+                  <ThemeSelect
                     value={slideUpdateStatus}
                     onChange={(e: any) => setSlideUpdateStatus(e.target.value)}
                     className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800"
@@ -3672,7 +3673,7 @@ export default function PendingIssuesView({
                         );
                       }
                     })()}
-                  </select>
+                  </ThemeSelect>
                 </div>
 
                 {/* Notes/Remarks */}

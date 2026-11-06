@@ -1151,9 +1151,10 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   };
 
   const handleDownloadInspectionPDF = async () => {
-    const [{ default: jsPDF }, autoTableMod] = await Promise.all([
+    const [{ default: jsPDF }, autoTableMod, exportMod] = await Promise.all([
       import('jspdf'),
       import('jspdf-autotable'),
+      import('@/lib/inspectionReportExport'),
     ]);
     const autoTable = autoTableMod.default;
     const doc = new jsPDF('p', 'mm', 'a4');
@@ -1182,6 +1183,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     body.push(['Total', String(totalCount)]);
 
     autoTable(doc, {
+      ...exportMod.repeatingAutotableHeader(doc, 'Town Panchayat - Inspection Abstract Summary', lang === 'ta' ? 'ta' : 'en', true),
       startY: 28,
       head: [headers],
       body: body,
@@ -2978,7 +2980,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                   <label className="text-[10px] font-black uppercase portal-dash-label tracking-wider">
                     {lang === 'ta' ? 'அடுத்த கட்ட நிலை' : 'Next Stage'}
                   </label>
-                  <select
+                  <ThemeSelect
                     value={slideUpdateStatus}
                     onChange={(e: any) => setSlideUpdateStatus(e.target.value)}
                     className="w-full text-xs font-bold p-2.5 rounded-xl border border-slate-200 bg-white outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800"
@@ -2998,7 +3000,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
                         );
                       }
                     })()}
-                  </select>
+                  </ThemeSelect>
                 </div>
 
                 {/* Notes/Remarks */}

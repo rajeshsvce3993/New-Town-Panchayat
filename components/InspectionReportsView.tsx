@@ -782,7 +782,6 @@ export default function InspectionReportsView({
   const [reportModule, setReportModule] = useState<'inspection' | 'swm'>('inspection');
   const [swmAbstractWorks, setSwmAbstractWorks] = useState<any[]>([]);
   const [swmAbstractLoading, setSwmAbstractLoading] = useState(false);
-  const [showSwmDynamicColumns, setShowSwmDynamicColumns] = useState(false);
   const [swmWardCol, setSwmWardCol] = useState(false);
   const [swmStreetCol, setSwmStreetCol] = useState(false);
   const [swmBuildingType, setSwmBuildingType] = useState<'all' | 'residential' | 'commercial'>('all');
@@ -1523,7 +1522,6 @@ export default function InspectionReportsView({
   const [fetchedWorks, setFetchedWorks] = useState<any[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [filtersCollapsed, setFiltersCollapsed] = useState(false);
-  const [showDynamicColumns, setShowDynamicColumns] = useState(false);
   const [apiCategoryCounts, setApiCategoryCounts] = useState<Record<string, number>>({});
   const [apiTotalWithoutCategory, setApiTotalWithoutCategory] = useState(0);
   const [apiWorksTotal, setApiWorksTotal] = useState(0);
@@ -2138,7 +2136,6 @@ export default function InspectionReportsView({
       subject: false,
       category: false
     });
-    setShowSwmDynamicColumns(false);
     setSwmWardCol(false);
     setSwmStreetCol(false);
     setSwmBuildingType('all');
@@ -2994,7 +2991,7 @@ export default function InspectionReportsView({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, embedMode, fetchAllFilteredWorksForExport, filtersLoadToken, reportModule]);
+  }, [activeTab, embedMode, fetchAllFilteredWorksForExport, filtersLoadToken, fromDate, reportModule, toDate]);
 
   const currentSlideWork = useMemo(() => {
     const pageSize = REPORTS_SERVER_PAGE_SIZE;
@@ -3100,9 +3097,9 @@ export default function InspectionReportsView({
     [state.zones, state.districts, state.townPanchayats]
   );
 
-  const swmShowWard = showSwmDynamicColumns && swmWardCol;
-  const swmShowStreet = showSwmDynamicColumns && swmStreetCol;
-  const swmBuildingFilter = showSwmDynamicColumns ? swmBuildingType : 'all';
+  const swmShowWard = swmWardCol;
+  const swmShowStreet = swmStreetCol;
+  const swmBuildingFilter = swmBuildingType;
 
   const swmAbstractRows = useMemo(() => {
     const fields = state.inspectionFields || [];
@@ -4213,7 +4210,7 @@ export default function InspectionReportsView({
         {
           name: 'SWM TP',
           data: [
-            [lang === 'ta' ? 'தமிழ்நாடு அரசு • பேரூராட்சிகள் இயக்ககம்' : 'Government of Tamil Nadu • Directorate of Town Panchayats'],
+            [lang === 'ta' ? 'பேரூராட்சிகள் இயக்ககம்' : 'Directorate of Town Panchayats'],
             [lang === 'ta' ? 'SWM கண்காணிப்பு • வார்டு / தெரு அறிக்கை' : 'SWM Monitoring • Ward / Street Report'],
             [lang === 'ta' ? `தேதி: ${new Date().toLocaleDateString('ta-IN')}` : `Date: ${new Date().toLocaleDateString()}`],
             [],
@@ -4269,7 +4266,7 @@ export default function InspectionReportsView({
             {
               name: 'SWM Abstract',
               data: [
-                [lang === 'ta' ? 'தமிழ்நாடு அரசு • பேரூராட்சிகள் இயக்ககம்' : 'Government of Tamil Nadu • Directorate of Town Panchayats'],
+                [lang === 'ta' ? 'பேரூராட்சிகள் இயக்ககம்' : 'Directorate of Town Panchayats'],
                 [lang === 'ta' ? 'SWM கண்காணிப்பு • வீடு வீடாக மூலத்திலேயே பிரித்தல்' : 'SWM Monitoring • Door-to-Door Source Segregation'],
                 [lang === 'ta' ? `தேதி: ${new Date().toLocaleDateString('ta-IN')}` : `Date: ${new Date().toLocaleDateString()}`],
                 [],
@@ -4383,7 +4380,7 @@ export default function InspectionReportsView({
         {
           name: lang === 'ta' ? 'சுருக்க அறிக்கை' : 'Abstract Summary',
           data: [
-            [lang === 'ta' ? 'தமிழ்நாடு அரசு • பேரூராட்சிகள் இயக்ககம்' : 'Government of Tamil Nadu • Directorate of Town Panchayats'],
+            [lang === 'ta' ? 'பேரூராட்சிகள் இயக்ககம்' : 'Directorate of Town Panchayats'],
             [lang === 'ta' ? 'கள ஆய்வுகள் சுருக்க அறிக்கை' : 'Town Panchayat Field Inspection Abstract Report'],
             [lang === 'ta' ? `தேதி: ${new Date().toLocaleDateString('ta-IN')}` : `Date: ${new Date().toLocaleDateString()}`],
             [],
@@ -4589,7 +4586,7 @@ export default function InspectionReportsView({
       ];
 
       const sheet1Data: (string | number)[][] = [
-        [lang === 'ta' ? 'தமிழ்நாடு அரசு • பேரூராட்சிகள் இயக்ககம்' : 'Government of Tamil Nadu • Directorate of Town Panchayats'],
+        [lang === 'ta' ? 'பேரூராட்சிகள் இயக்ககம்' : 'Directorate of Town Panchayats'],
         [lang === 'ta' ? 'பேரூராட்சிகள் வாரியான கள ஆய்வுகள் சுருக்க அறிக்கை' : 'Town Panchayat Wise Field Inspections Abstract Summary Report'],
         [lang === 'ta' ? `அறிக்கை உருவாக்கப்பட்ட தேதி: ${new Date().toLocaleDateString('ta-IN')}` : `Generated on: ${new Date().toLocaleDateString()}`],
         [],
@@ -5479,7 +5476,7 @@ export default function InspectionReportsView({
       sheets.push({
         name: lang === 'ta' ? 'அனைத்து பேரூராட்சிகள்' : 'Total All TPs',
         data: [
-          [lang === 'ta' ? 'தமிழ்நாடு அரசு • பேரூராட்சிகள் இயக்ககம்' : 'Government of Tamil Nadu • Directorate of Town Panchayats'],
+          [lang === 'ta' ? 'பேரூராட்சிகள் இயக்ககம்' : 'Directorate of Town Panchayats'],
           [lang === 'ta' ? 'பேரூராட்சிகள் வாரியான கள ஆய்வுப் பதிவேடு சுருக்கம்' : 'Town Panchayat Wise Detailed Inspection Register Summary'],
           [lang === 'ta' ? `அறிக்கை தேதி: ${new Date().toLocaleDateString('ta-IN')}` : `Date: ${new Date().toLocaleDateString()}`],
           [],
@@ -6383,7 +6380,7 @@ export default function InspectionReportsView({
               </button>
             </div>
           </div>
-          <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          <div className="portal-fis-hero-actions relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
             {fetchError && (
               <span className="max-w-[14rem] truncate text-right text-[11px] font-semibold text-rose-100">
                 {fetchError}
@@ -6746,26 +6743,24 @@ export default function InspectionReportsView({
               <button
                 type="button"
                 onClick={() => {
-                  const today = new Intl.DateTimeFormat('en-CA', {
-                    timeZone: 'Asia/Kolkata',
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit'
-                  }).format(new Date());
-                  if (fromDate === today && toDate === today) {
-                    setFromDate('');
-                    setToDate('');
-                    queueMicrotask(() => applyFiltersAndLoad());
-                  } else {
-                    setFromDate(today);
-                    setToDate(today);
-                    queueMicrotask(() => applyFiltersAndLoad());
-                  }
+                  const today = getTodayYmd();
+                  const clearing = fromDate === today && toDate === today;
+                  const nextFrom = clearing ? '' : today;
+                  const nextTo = clearing ? '' : today;
+                  setFromDate(nextFrom);
+                  setToDate(nextTo);
+                  filterQueryRef.current = {
+                    ...filterQueryRef.current,
+                    fromDate: nextFrom,
+                    toDate: nextTo,
+                  };
+                  if (reportModule === 'swm') setSwmAbstractWorks([]);
+                  applyFiltersAndLoad({ refreshRemote: true });
                 }}
                 className="portal-fis-today"
               >
-                {fromDate === new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()) && toDate === fromDate 
-                  ? (lang === 'ta' ? 'அனைத்தும் (Clear)' : 'Clear Today') 
+                {fromDate === getTodayYmd() && toDate === fromDate
+                  ? (lang === 'ta' ? 'அனைத்தும் (Clear)' : 'Clear Today')
                   : (lang === 'ta' ? 'இன்று' : 'Today')}
               </button>
             </div>
@@ -6803,10 +6798,7 @@ export default function InspectionReportsView({
                 <div className="portal-fis-pills">
                   <button
                     type="button"
-                    onClick={() => {
-                      setGroupingStyle('subject');
-                      setShowDynamicColumns(false);
-                    }}
+                    onClick={() => setGroupingStyle('subject')}
                     className={`portal-fis-pill ${groupingStyle === 'subject' ? 'is-active' : ''}`}
                   >
                     <Layers className="h-3.5 w-3.5" />
@@ -6814,10 +6806,7 @@ export default function InspectionReportsView({
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setGroupingStyle('user');
-                      setShowDynamicColumns(true);
-                    }}
+                    onClick={() => setGroupingStyle('user')}
                     className={`portal-fis-pill ${groupingStyle === 'user' ? 'is-active' : ''}`}
                   >
                     <Users className="h-3.5 w-3.5" />
@@ -6825,10 +6814,7 @@ export default function InspectionReportsView({
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setGroupingStyle('location');
-                      setShowDynamicColumns(true);
-                    }}
+                    onClick={() => setGroupingStyle('location')}
                     className={`portal-fis-pill ${groupingStyle === 'location' ? 'is-active' : ''}`}
                   >
                     <MapPin className="h-3.5 w-3.5" />
@@ -6838,7 +6824,7 @@ export default function InspectionReportsView({
               </div>
 
               <div className="portal-fis-columns">
-                <div className={`portal-fis-pills${showDynamicColumns && groupingStyle !== 'subject' ? '' : ' hidden'}`}>
+                <div className={`portal-fis-pills${groupingStyle !== 'subject' ? '' : ' hidden'}`}>
                   {groupingStyle === 'user' && (
                     <>
                       <button
@@ -6905,22 +6891,6 @@ export default function InspectionReportsView({
                     </>
                   )}
                 </div>
-                <>
-                    <span className="portal-fis-bar-label">
-                      <BarChart3 className="h-3.5 w-3.5" />
-                      {lang === 'ta' ? 'டைனமிக் நெடுவரிசைகள்' : 'Dynamic Columns'}
-                    </span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={showDynamicColumns && groupingStyle !== 'subject'}
-                      disabled={groupingStyle === 'subject'}
-                      className={`portal-fis-switch${showDynamicColumns && groupingStyle !== 'subject' ? ' is-on' : ''}`}
-                      onClick={() => groupingStyle !== 'subject' && setShowDynamicColumns((open) => !open)}
-                    >
-                      <span className="portal-fis-switch-knob" />
-                    </button>
-                  </>
               </div>
             </div>
         </div>
@@ -6929,23 +6899,7 @@ export default function InspectionReportsView({
       {activeTab === 'abstract' && reportModule === 'swm' && (
         <div className="portal-fis-toolbar portal-swm-dyn">
           <div className="portal-swm-dyn-row">
-            <div className="portal-swm-dyn-left">
-              <span className="portal-fis-bar-label">
-                <BarChart3 className="h-3.5 w-3.5" />
-                {lang === 'ta' ? 'டைனமிக் நெடுவரிசைகள்' : 'Dynamic Columns'}
-              </span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={showSwmDynamicColumns}
-                className={`portal-fis-switch${showSwmDynamicColumns ? ' is-on' : ''}`}
-                onClick={() => setShowSwmDynamicColumns((open) => !open)}
-              >
-                <span className="portal-fis-switch-knob" />
-              </button>
-            </div>
-            {showSwmDynamicColumns && (
-              <div className="portal-swm-dyn-right">
+            <div className="portal-swm-dyn-right">
                 <div className="portal-fis-pills">
                   <button
                     type="button"
@@ -7012,7 +6966,6 @@ export default function InspectionReportsView({
                   </div>
                 </div>
               </div>
-            )}
           </div>
         </div>
       )}
@@ -7138,10 +7091,10 @@ export default function InspectionReportsView({
                     {swmShowStreet && <SwmHeaderCell lang={lang} en="Street Names" ta="தெருப்பெயர்" />}
                     {!swmShowWard && !swmShowStreet && (
                       <>
-                        <SwmHeaderCell lang={lang} en="Total No of Wards" ta="மொத்த வார்டுகளின் எண்ணிக்கை" className="text-right" />
-                        <SwmHeaderCell lang={lang} en="Wards surveyed" ta="ஆய்வுக்குட்படுத்தப்பட்ட வார்டுகளின் எண்ணிக்கை" className="text-right" />
-                        <SwmHeaderCell lang={lang} en="Total No of Streets" ta="மொத்த தெருக்களின் எண்ணிக்கை" className="text-right" />
-                        <SwmHeaderCell lang={lang} en="Streets surveyed" ta="ஆய்வுக்குட்படுத்தப்பட்ட தெருக்களின் எண்ணிக்கை" className="text-right" />
+                        <SwmHeaderCell lang={lang} en="Total No of Wards" ta="மொத்த வார்டுகளின் எண்ணிக்கை" />
+                        <SwmHeaderCell lang={lang} en="Wards surveyed" ta="ஆய்வுக்குட்படுத்தப்பட்ட வார்டுகளின் எண்ணிக்கை" />
+                        <SwmHeaderCell lang={lang} en="Total No of Streets" ta="மொத்த தெருக்களின் எண்ணிக்கை" />
+                        <SwmHeaderCell lang={lang} en="Streets surveyed" ta="ஆய்வுக்குட்படுத்தப்பட்ட தெருக்களின் எண்ணிக்கை" />
                       </>
                     )}
                     {swmShowWard && !swmShowStreet && (
@@ -8630,7 +8583,7 @@ export default function InspectionReportsView({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-semibold text-slate-600 dark:text-slate-300 block mb-1">Status</label>
-                  <select
+                  <ThemeSelect
                     value={editingWork.status || 'Completed'}
                     onChange={(e) => setEditingWork({ ...editingWork, status: e.target.value })}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 outline-none font-semibold"
@@ -8639,13 +8592,13 @@ export default function InspectionReportsView({
                     <option value="Pending">Pending</option>
                     <option value="In Progress">In Progress</option>
                     <option value="Action Required">Action Required</option>
-                  </select>
+                  </ThemeSelect>
                 </div>
 
                 <div>
                   <label className="font-semibold text-slate-600 dark:text-slate-300 block mb-1">Ward Number</label>
                   {editingTpWardsList.length > 0 ? (
-                    <select
+                    <ThemeSelect
                       value={editingWork.wardNumber || ''}
                       onChange={(e) => {
                         const newWard = e.target.value;
@@ -8676,7 +8629,7 @@ export default function InspectionReportsView({
                         <option value={editingWork.wardNumber}>Ward {editingWork.wardNumber}</option>
                       )}
                       <option value="custom">{lang === 'ta' ? 'மற்றவை / புதிய வார்டு' : 'Other / Custom Ward'}</option>
-                    </select>
+                    </ThemeSelect>
                   ) : (
                     <input
                       type="number"
@@ -8700,7 +8653,7 @@ export default function InspectionReportsView({
               <div>
                 <label className="font-semibold text-slate-600 dark:text-slate-300 block mb-1">Street / Location Name</label>
                 {editingTpStreetsList.length > 0 ? (
-                  <select
+                  <ThemeSelect
                     value={editingWork.streetName || ''}
                     onChange={(e) => {
                       if (e.target.value === 'custom') {
@@ -8722,7 +8675,7 @@ export default function InspectionReportsView({
                       <option value={editingWork.streetName}>{editingWork.streetName}</option>
                     )}
                     <option value="custom">{lang === 'ta' ? 'மற்றவை / புதிய தெரு' : 'Other / Custom Street'}</option>
-                  </select>
+                  </ThemeSelect>
                 ) : (
                   <input
                     type="text"

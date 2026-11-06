@@ -1,9 +1,11 @@
 'use client';
+import ThemeSelect from '../ThemeSelect';
 
 import React, { useState, useMemo } from 'react';
 import { Download, Printer, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { repeatingAutotableHeader } from '@/lib/inspectionReportExport';
 import * as XLSX from 'xlsx';
 import { Language } from '../translations';
 import { 
@@ -480,6 +482,7 @@ export default function PfReportsTab({
     ]);
 
     autoTable(doc, {
+      ...repeatingAutotableHeader(doc, `EMPLOYEE-WISE PROVIDENT FUND LEDGER ABSTRACT — ${employeeWiseFy}`, lang === 'ta' ? 'ta' : 'en', true),
       head: tableHeaders,
       body: tableRows,
       startY: 32,
@@ -499,7 +502,6 @@ export default function PfReportsTab({
 
     // Sheet 1: Consolidated Year-Wise Abstract
     const abstractSheetRows: any[] = [];
-    abstractSheetRows.push(['GOVERNMENT OF TAMIL NADU']);
     abstractSheetRows.push(['TOWN PANCHAYATS DEPARTMENT']);
     abstractSheetRows.push(['PROVIDENT FUND CONSOLIDATED ACCOUNT ABSTRACT (ALL EMPLOYEES)']);
     abstractSheetRows.push([]);
@@ -559,7 +561,6 @@ export default function PfReportsTab({
     
     data.filter(d => yearsToExport.includes(d.fy)).forEach((yrData) => {
       const sheetRows: any[] = [];
-      sheetRows.push(['GOVERNMENT OF TAMIL NADU']);
       sheetRows.push(['TOWN PANCHAYATS DEPARTMENT']);
       sheetRows.push([`PROVIDENT FUND ANNUAL CONSOLIDATED REPORT - FINANCIAL YEAR: ${yrData.fy}`]);
       sheetRows.push([]);
@@ -620,10 +621,7 @@ export default function PfReportsTab({
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 0, 0);
-    doc.text('GOVERNMENT OF TAMIL NADU', 105, 12, { align: 'center' });
-    doc.setFontSize(13);
-    doc.setFont('helvetica', 'bold');
-    doc.text('TOWN PANCHAYATS DEPARTMENT', 105, 17, { align: 'center' });
+    doc.text('TOWN PANCHAYATS DEPARTMENT', 105, 12, { align: 'center' });
     
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
@@ -684,6 +682,7 @@ export default function PfReportsTab({
     const latestAccInt = data.length > 0 ? (data[data.length - 1].totalAccumulatedInt || 0) : 0;
 
     autoTable(doc, {
+      ...repeatingAutotableHeader(doc, 'PROVIDENT FUND CONSOLIDATED ACCOUNT ABSTRACT (ALL EMPLOYEES)', lang === 'ta' ? 'ta' : 'en', true),
       head: abstractTableHeaders,
       body: abstractTableRows,
       foot: [[
@@ -715,10 +714,7 @@ export default function PfReportsTab({
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 0, 0);
-      doc.text('GOVERNMENT OF TAMIL NADU', 105, 12, { align: 'center' });
-      doc.setFontSize(13);
-      doc.setFont('helvetica', 'bold');
-      doc.text('TOWN PANCHAYATS DEPARTMENT', 105, 17, { align: 'center' });
+      doc.text('TOWN PANCHAYATS DEPARTMENT', 105, 12, { align: 'center' });
       
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
@@ -781,6 +777,7 @@ export default function PfReportsTab({
       ]);
 
       autoTable(doc, {
+        ...repeatingAutotableHeader(doc, `CONSOLIDATED PROVIDENT FUND ACCOUNT SLIP — ${yrData.fy}`, lang === 'ta' ? 'ta' : 'en', true),
         head: tableHeaders,
         body: tableRows,
         startY: 58,
@@ -815,6 +812,7 @@ export default function PfReportsTab({
       ]];
 
       autoTable(doc, {
+        ...repeatingAutotableHeader(doc, `CONSOLIDATED PROVIDENT FUND ACCOUNT SLIP — ${yrData.fy}`, lang === 'ta' ? 'ta' : 'en', true),
         head: abstractHead,
         body: [[
           `Rs. ${Math.round(yrData.totalOB).toLocaleString('en-IN')}`,
@@ -884,6 +882,7 @@ export default function PfReportsTab({
     ]);
 
     autoTable(doc, {
+      ...repeatingAutotableHeader(doc, `PF Interest Report — ${empId}`, lang === 'ta' ? 'ta' : 'en', true),
       head: tableHeaders,
       body: tableRows,
       startY: 38,
@@ -1036,10 +1035,7 @@ export default function PfReportsTab({
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 0, 0);
-    doc.text('GOVERNMENT OF TAMIL NADU', 105, 12, { align: 'center' });
-    doc.setFontSize(13);
-    doc.setFont('helvetica', 'bold');
-    doc.text('TOWN PANCHAYATS DEPARTMENT', 105, 17, { align: 'center' });
+    doc.text('TOWN PANCHAYATS DEPARTMENT', 105, 12, { align: 'center' });
     
     doc.setFontSize(13);
     doc.setFont('helvetica', 'bold');
@@ -1112,6 +1108,7 @@ export default function PfReportsTab({
     const latestAccInt = allYearSummaries.length > 0 ? allYearSummaries[allYearSummaries.length - 1].totalAccumulatedInterest : 0;
 
     autoTable(doc, {
+      ...repeatingAutotableHeader(doc, 'PROVIDENT FUND CONSOLIDATED ACCOUNT ABSTRACT (YEAR-WISE)', lang === 'ta' ? 'ta' : 'en', true),
       head: abstractTableHeaders,
       body: abstractTableRows,
       foot: [[
@@ -1142,10 +1139,7 @@ export default function PfReportsTab({
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 0, 0);
-      doc.text('GOVERNMENT OF TAMIL NADU', 105, 12, { align: 'center' });
-      doc.setFontSize(13);
-      doc.setFont('helvetica', 'bold');
-      doc.text('TOWN PANCHAYATS DEPARTMENT', 105, 17, { align: 'center' });
+      doc.text('TOWN PANCHAYATS DEPARTMENT', 105, 12, { align: 'center' });
       
       doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
@@ -1257,6 +1251,7 @@ export default function PfReportsTab({
       }
 
       autoTable(doc, {
+        ...repeatingAutotableHeader(doc, `PROVIDENT FUND ACCOUNT LEDGER SLIP`, lang === 'ta' ? 'ta' : 'en', true),
         head: tableHeaders,
         body: tableRows,
         startY: 69,
@@ -1290,6 +1285,7 @@ export default function PfReportsTab({
       const effectiveClosing = isCompletedMarch ? fyBalances.closingBalance : fyBalances.closingBalanceWithAccruedInterest;
 
       autoTable(doc, {
+        ...repeatingAutotableHeader(doc, `PROVIDENT FUND ACCOUNT LEDGER SLIP`, lang === 'ta' ? 'ta' : 'en', true),
         head: abstractHead,
         body: [[
           `Rs. ${Math.round(fyBalances.openingBalance).toLocaleString('en-IN')}`,
@@ -1347,7 +1343,6 @@ export default function PfReportsTab({
 
     // Sheet 1: Consolidated Abstract Summary
     const abstractSheetRows: any[] = [];
-    abstractSheetRows.push(['GOVERNMENT OF TAMIL NADU']);
     abstractSheetRows.push(['TOWN PANCHAYATS DEPARTMENT']);
     abstractSheetRows.push([`${jurisdiction.tpName} Town Panchayat, ${jurisdiction.districtName} District, ${jurisdiction.zoneName} Zone`]);
     abstractSheetRows.push(['PROVIDENT FUND CONSOLIDATED ACCOUNT ABSTRACT (YEAR-WISE)']);
@@ -1410,7 +1405,6 @@ export default function PfReportsTab({
     yearsToExport.forEach((currentFy) => {
       const sheetRows: any[] = [];
 
-      sheetRows.push(['GOVERNMENT OF TAMIL NADU']);
       sheetRows.push(['TOWN PANCHAYATS DEPARTMENT']);
       sheetRows.push([`${jurisdiction.tpName} Town Panchayat, ${jurisdiction.districtName} District, ${jurisdiction.zoneName} Zone`]);
       sheetRows.push(['PROVIDENT FUND ANNUAL ACCOUNT SLIP']);
@@ -1585,7 +1579,7 @@ export default function PfReportsTab({
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                 {lang === 'ta' ? 'சந்தாதாரர் / பணியாளர்' : 'Subscriber / Employee'}
               </label>
-              <select
+              <ThemeSelect
                 value={reportFilterEmpId}
                 onChange={(e) => setReportFilterEmpId(e.target.value)}
                 className="w-full border border-slate-200 rounded-2xl px-4 py-2.5 text-xs outline-none bg-white focus:ring-2 focus:ring-indigo-100 font-medium text-slate-700"
@@ -1601,7 +1595,7 @@ export default function PfReportsTab({
                     {e.employeeId} - {lang === 'ta' ? (e.nameTa || e.nameEn) : e.nameEn}
                   </option>
                 ))}
-              </select>
+              </ThemeSelect>
             </div>
 
             {(currentUser?.scopeType === 'HOD' || currentUser?.roleId === 'admin' || currentUser?.scopeType === 'Zone' || currentUser?.roleId === 'ad') && (
@@ -1609,7 +1603,7 @@ export default function PfReportsTab({
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                   {lang === 'ta' ? 'மாவட்ட வரம்பு' : 'District Scope'}
                 </label>
-                <select
+                <ThemeSelect
                   value={reportFilterDistrict}
                   onChange={(e) => {
                     setReportFilterDistrict(e.target.value);
@@ -1630,7 +1624,7 @@ export default function PfReportsTab({
                     .map((d: any) => (
                       <option key={d.id} value={d.id}>{lang === 'ta' ? (d.nameTa || d.nameEn) : d.nameEn}</option>
                     ))}
-                </select>
+                </ThemeSelect>
               </div>
             )}
 
@@ -1639,7 +1633,7 @@ export default function PfReportsTab({
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                   {lang === 'ta' ? 'பேரூராட்சி வரம்பு' : 'Town Panchayat Scope'}
                 </label>
-                <select
+                <ThemeSelect
                   value={reportFilterTp}
                   onChange={(e) => setReportFilterTp(e.target.value)}
                   className="w-full border border-slate-200 rounded-2xl px-4 py-2.5 text-xs outline-none bg-white focus:ring-2 focus:ring-indigo-100 font-medium text-slate-700"
@@ -1650,7 +1644,7 @@ export default function PfReportsTab({
                   {reportsFilteredTownPanchayats.map((tp: any) => (
                     <option key={tp.id} value={tp.id}>{lang === 'ta' ? (tp.nameTa || tp.nameEn) : tp.nameEn}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
             )}
 
@@ -1658,7 +1652,7 @@ export default function PfReportsTab({
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                 {lang === 'ta' ? 'நிதியாண்டு' : 'Financial Year'}
               </label>
-              <select
+              <ThemeSelect
                 value={employeeWiseFy}
                 onChange={(e) => setEmployeeWiseFy(e.target.value)}
                 className="w-full border border-slate-200 rounded-2xl px-4 py-2.5 text-xs outline-none bg-white focus:ring-2 focus:ring-indigo-100 font-medium text-slate-700"
@@ -1669,7 +1663,7 @@ export default function PfReportsTab({
                 {getEmployeeSlipYears(pfEmployees, '', currentOfficeSetup?.openingDate || '2023-04-01').map((y) => (
                   <option key={y} value={y}>{y.replace('-', ' - ')}</option>
                 ))}
-              </select>
+              </ThemeSelect>
             </div>
           </div>
 
@@ -1750,7 +1744,7 @@ export default function PfReportsTab({
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                     {lang === 'ta' ? 'மாவட்ட வரம்பு' : 'District Scope'}
                   </label>
-                  <select
+                  <ThemeSelect
                     value={reportFilterDistrict}
                     onChange={(e) => {
                       setReportFilterDistrict(e.target.value);
@@ -1771,7 +1765,7 @@ export default function PfReportsTab({
                       .map((d: any) => (
                         <option key={d.id} value={d.id}>{lang === 'ta' ? (d.nameTa || d.nameEn) : d.nameEn}</option>
                       ))}
-                  </select>
+                  </ThemeSelect>
                 </div>
               )}
 
@@ -1780,7 +1774,7 @@ export default function PfReportsTab({
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                     {lang === 'ta' ? 'பேரூராட்சி வரம்பு' : 'Town Panchayat Scope'}
                   </label>
-                  <select
+                  <ThemeSelect
                     value={reportFilterTp}
                     onChange={(e) => setReportFilterTp(e.target.value)}
                     className="w-full border border-slate-200 rounded-2xl px-4 py-2.5 text-xs outline-none bg-white focus:ring-2 focus:ring-indigo-100 font-medium text-slate-700"
@@ -1791,7 +1785,7 @@ export default function PfReportsTab({
                     {reportsFilteredTownPanchayats.map((tp: any) => (
                       <option key={tp.id} value={tp.id}>{lang === 'ta' ? (tp.nameTa || tp.nameEn) : tp.nameEn}</option>
                     ))}
-                  </select>
+                  </ThemeSelect>
                 </div>
               )}
 
@@ -1799,7 +1793,7 @@ export default function PfReportsTab({
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                   {lang === 'ta' ? 'நிதியாண்டு' : 'Financial Year'}
                 </label>
-                <select
+                <ThemeSelect
                   value={pfReportFy}
                   onChange={(e) => setPfReportFy(e.target.value)}
                   className="w-full border border-slate-200 rounded-2xl px-4 py-2.5 text-xs outline-none bg-white focus:ring-2 focus:ring-indigo-100 font-medium text-slate-700"
@@ -1810,7 +1804,7 @@ export default function PfReportsTab({
                   {getEmployeeSlipYears(pfEmployees, '', currentOfficeSetup?.openingDate || '2023-04-01').map((y) => (
                     <option key={y} value={y}>{y.replace('-', ' - ')}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
             </div>
 
@@ -1929,7 +1923,7 @@ export default function PfReportsTab({
             <div className="portal-dash-fields" style={{ gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 0.8fr) auto' }}>
               <div>
                 <label>{lang === 'ta' ? 'சந்தாதாரரைத் தேர்ந்தெடுக்கவும்' : 'Choose Employee'}</label>
-                <select
+                <ThemeSelect
                   value={reportEmpId === 'all' ? '' : reportEmpId}
                   onChange={(e) => setReportEmpId(e.target.value)}
                 >
@@ -1939,12 +1933,12 @@ export default function PfReportsTab({
                   {filteredEmployeesList.filter((emp: any) => pfEmployees.some((pe: PfEmployee) => pe.employeeId === emp.employeeId)).map((e: any) => (
                     <option key={e.id || e.employeeId} value={e.employeeId}>{e.employeeId} - {getEmpName(e.employeeId)}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
 
               <div>
                 <label>{lang === 'ta' ? 'நிதியாண்டு' : 'Financial Year'}</label>
-                <select
+                <ThemeSelect
                   value={accountSlipFy}
                   onChange={(e) => setAccountSlipFy(e.target.value)}
                 >
@@ -1954,7 +1948,7 @@ export default function PfReportsTab({
                   {getEmployeeSlipYears(pfEmployees, reportEmpId, currentOfficeSetup?.openingDate || '2023-04-01').map((y) => (
                     <option key={y} value={y}>{y.replace('-', ' - ')}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
               <div className="flex flex-wrap items-end gap-1.5">
                 <button
@@ -2009,11 +2003,8 @@ export default function PfReportsTab({
                   <div className="flex justify-between items-start border-b border-slate-200 pb-6">
                     <div>
                       <h1 className="text-lg font-extrabold text-slate-900 tracking-tight uppercase">
-                        {lang === 'ta' ? 'தமிழ்நாடு அரசு' : 'GOVERNMENT OF TAMIL NADU'}
-                      </h1>
-                      <h2 className="text-sm font-bold text-slate-700 tracking-tight uppercase">
                         {lang === 'ta' ? 'பேரூராட்சிகள் துறை' : 'TOWN PANCHAYATS DEPARTMENT'}
-                      </h2>
+                      </h1>
                       <p className="text-sm text-indigo-700 font-bold uppercase tracking-wide mt-0.5">
                         {lang === 'ta'
                           ? `${jurisdiction.tpName} பேரூராட்சி | ${jurisdiction.districtName} மாவட்டம் | ${jurisdiction.zoneName} மண்டலம்`

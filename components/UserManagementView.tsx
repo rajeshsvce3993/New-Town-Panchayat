@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from './ThemeSelect';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
@@ -1144,7 +1145,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
                 <div>
                   <label>{t('role')}</label>
-                  <select
+                  <ThemeSelect
                     value={selectedRoleId}
                     onChange={(e) => setSelectedRoleId(e.target.value)}
                     required
@@ -1153,12 +1154,12 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                     {roles.map((r: any) => (
                       <option key={r.id} value={r.id}>{tObj(r)}</option>
                     ))}
-                  </select>
+                  </ThemeSelect>
                 </div>
 
                 <div>
                   <label>{t('scopeType')}</label>
-                  <select
+                  <ThemeSelect
                     value={scopeType}
                     onChange={(e) => {
                       const val = e.target.value as 'HOD' | 'Zone' | 'TownPanchayat';
@@ -1170,13 +1171,13 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                     <option value="HOD">{t('hodScope')}</option>
                     <option value="Zone">{t('zoneScope')}</option>
                     <option value="TownPanchayat">{t('tpScope')}</option>
-                  </select>
+                  </ThemeSelect>
                 </div>
 
                 {scopeType === 'Zone' && (
                   <div>
                     <label>{t('selectZone')}</label>
-                    <select
+                    <ThemeSelect
                       value={scopeId}
                       onChange={(e) => setScopeId(e.target.value)}
                       required
@@ -1185,14 +1186,14 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                       {zones.map((z: any) => (
                         <option key={z.id} value={z.id}>{tObj(z)}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
                 )}
 
                 {scopeType === 'TownPanchayat' && (
                   <div>
                     <label>{t('selectTP')}</label>
-                    <select
+                    <ThemeSelect
                       value={scopeId}
                       onChange={(e) => setScopeId(e.target.value)}
                       required
@@ -1201,7 +1202,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                       {townPanchayats.map((tp: any) => (
                         <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
                 )}
 
@@ -1529,7 +1530,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                   </div>
 
                   <div className="md:col-span-7">
-                    <select
+                    <ThemeSelect
                       value={selectedUserForAccess || users[0]?.id || ''}
                       onChange={(e) => { setSelectedUserForAccess(e.target.value); setPageAccessFeedback(null); }}
                     >
@@ -1550,7 +1551,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                             </option>
                           );
                         })}
-                    </select>
+                    </ThemeSelect>
                   </div>
                 </div>
                 </div>
@@ -1808,7 +1809,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
               <div className="space-y-3">
                 <div>
                   <label>{t('officeType')}</label>
-                  <select
+                  <ThemeSelect
                     value={officeType}
                     onChange={(e) => {
                       setOfficeType(e.target.value);
@@ -1820,14 +1821,14 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                     <option value="DTP">DTP (Directorate)</option>
                     <option value="ADTP">ADTP (Assistant Director Office)</option>
                     <option value="TP">TP (Town Panchayat)</option>
-                  </select>
+                  </ThemeSelect>
                 </div>
 
                 {officeType === 'ADTP' && (
                   <div className="space-y-3 pt-1">
                     <div>
                       <label>{lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும்' : 'Select Zone'}</label>
-                      <select
+                      <ThemeSelect
                         value={officeZoneId}
                         onChange={(e) => setOfficeZoneId(e.target.value)}
                         required
@@ -1836,7 +1837,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                         {zones.map((z: any) => (
                           <option key={z.id} value={z.id}>{tObj(z)}</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
                   </div>
                 )}
@@ -1845,7 +1846,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                   <div className="space-y-3 pt-1">
                     <div>
                       <label>{lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும்' : 'Select Zone'}</label>
-                      <select
+                      <ThemeSelect
                         value={officeZoneId}
                         onChange={(e) => {
                           setOfficeZoneId(e.target.value);
@@ -1858,13 +1859,13 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                         {zones.map((z: any) => (
                           <option key={z.id} value={z.id}>{tObj(z)}</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
 
                     {officeZoneId && (
                       <div>
                         <label>{lang === 'ta' ? 'மாவட்டத்தைத் தேர்ந்தெடுக்கவும்' : 'Select District'}</label>
-                        <select
+                        <ThemeSelect
                           value={officeDistrictId}
                           onChange={(e) => {
                             setOfficeDistrictId(e.target.value);
@@ -1876,14 +1877,14 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                           {districts.filter((d: any) => d.zoneId === officeZoneId).map((d: any) => (
                             <option key={d.id} value={d.id}>{tObj(d)}</option>
                           ))}
-                        </select>
+                        </ThemeSelect>
                       </div>
                     )}
 
                     {officeDistrictId && (
                       <div>
                         <label>{lang === 'ta' ? 'பேரூராட்சியைத் தேர்ந்தெடுக்கவும்' : 'Select Town Panchayat'}</label>
-                        <select
+                        <ThemeSelect
                           value={officeTPId}
                           onChange={(e) => setOfficeTPId(e.target.value)}
                           required
@@ -1892,7 +1893,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                           {townPanchayats.filter((tp: any) => tp.districtId === officeDistrictId).map((tp: any) => (
                             <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
                           ))}
-                        </select>
+                        </ThemeSelect>
                       </div>
                     )}
                   </div>
@@ -2258,7 +2259,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
               <div>
                 <label>{t('role')}</label>
-                <select
+                <ThemeSelect
                   value={editRoleId}
                   onChange={(e) => setEditRoleId(e.target.value)}
                   required
@@ -2267,12 +2268,12 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                   {roles.map((r: any) => (
                     <option key={r.id} value={r.id}>{tObj(r)}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
 
               <div>
                 <label>{t('scopeType')}</label>
-                <select
+                <ThemeSelect
                   value={editScopeType}
                   onChange={(e) => {
                     const val = e.target.value as 'HOD' | 'Zone' | 'TownPanchayat';
@@ -2284,13 +2285,13 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                   <option value="HOD">{t('hodScope')}</option>
                   <option value="Zone">{t('zoneScope')}</option>
                   <option value="TownPanchayat">{t('tpScope')}</option>
-                </select>
+                </ThemeSelect>
               </div>
 
               {editScopeType === 'Zone' && (
                 <div>
                   <label>{t('selectZone')}</label>
-                  <select
+                  <ThemeSelect
                     value={editScopeId}
                     onChange={(e) => setEditScopeId(e.target.value)}
                     required
@@ -2299,14 +2300,14 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                     {zones.map((z: any) => (
                       <option key={z.id} value={z.id}>{tObj(z)}</option>
                     ))}
-                  </select>
+                  </ThemeSelect>
                 </div>
               )}
 
               {editScopeType === 'TownPanchayat' && (
                 <div>
                   <label>{t('selectTP')}</label>
-                  <select
+                  <ThemeSelect
                     value={editScopeId}
                     onChange={(e) => setEditScopeId(e.target.value)}
                     required
@@ -2315,7 +2316,7 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
                     {townPanchayats.map((tp: any) => (
                       <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
                     ))}
-                  </select>
+                  </ThemeSelect>
                 </div>
               )}
 

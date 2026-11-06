@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from './ThemeSelect';
 
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
@@ -1181,7 +1182,7 @@ export default function EmployeeManagementView({
                 <>
                   <div>
                     <label>{t('zone')}</label>
-                    <select
+                    <ThemeSelect
                       value={filterZoneId}
                       onChange={(e) => {
                         setFilterZoneId(e.target.value);
@@ -1193,11 +1194,11 @@ export default function EmployeeManagementView({
                       {zones.map((z: any) => (
                         <option key={z.id} value={z.id}>{tObj(z)}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
                   <div>
                     <label>{t('district')}</label>
-                    <select
+                    <ThemeSelect
                       value={filterDistrictId}
                       onChange={(e) => {
                         setFilterDistrictId(e.target.value);
@@ -1211,11 +1212,11 @@ export default function EmployeeManagementView({
                       ).map((d: any) => (
                         <option key={d.id} value={d.id}>{tObj(d)}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
                   <div>
                     <label>{t('townPanchayat')}</label>
-                    <select
+                    <ThemeSelect
                       value={filterTPId}
                       onChange={(e) => setFilterTPId(e.target.value)}
                     >
@@ -1232,7 +1233,7 @@ export default function EmployeeManagementView({
                       })().map((tp: any) => (
                         <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
                 </>
               )}
@@ -1241,18 +1242,18 @@ export default function EmployeeManagementView({
                 <>
                   <div>
                     <label>{t('zone')}</label>
-                    <select value={currentUser.scopeId} disabled>
+                    <ThemeSelect value={currentUser.scopeId} disabled>
                       <option value={currentUser.scopeId}>
                         {(() => {
                           const myZone = zones.find((z: any) => z.id === currentUser.scopeId);
                           return myZone ? tObj(myZone) : currentUser.scopeId;
                         })()}
                       </option>
-                    </select>
+                    </ThemeSelect>
                   </div>
                   <div>
                     <label>{t('district')}</label>
-                    <select
+                    <ThemeSelect
                       value={filterDistrictId}
                       onChange={(e) => {
                         setFilterDistrictId(e.target.value);
@@ -1263,11 +1264,11 @@ export default function EmployeeManagementView({
                       {districts.filter((d: any) => d.zoneId === currentUser.scopeId).map((d: any) => (
                         <option key={d.id} value={d.id}>{tObj(d)}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
                   <div>
                     <label>{t('townPanchayat')}</label>
-                    <select
+                    <ThemeSelect
                       value={filterTPId}
                       onChange={(e) => setFilterTPId(e.target.value)}
                     >
@@ -1281,7 +1282,7 @@ export default function EmployeeManagementView({
                       })().map((tp: any) => (
                         <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
                 </>
               )}
@@ -1289,14 +1290,14 @@ export default function EmployeeManagementView({
               {isTPUser && (
                 <div>
                   <label>{lang === 'ta' ? 'பேரூராட்சி அலுவலகம்' : 'Town Panchayat'}</label>
-                  <select value={currentUser?.scopeId || selectedTP} disabled>
+                  <ThemeSelect value={currentUser?.scopeId || selectedTP} disabled>
                     <option value={currentUser?.scopeId || selectedTP}>
                       {(() => {
                         const myTp = townPanchayats.find((tp: any) => tp.id === (currentUser?.scopeId || selectedTP));
                         return myTp ? tObj(myTp) : (currentUser?.scopeId || selectedTP);
                       })()}
                     </option>
-                  </select>
+                  </ThemeSelect>
                 </div>
               )}
               <div>
@@ -1493,16 +1494,16 @@ export default function EmployeeManagementView({
               <div>
                 <label>{t('townPanchayat')}</label>
                 {currentUser?.scopeType === 'TP' || (currentUser?.scopeType !== 'HOD' && currentUser?.scopeType !== 'Zone') ? (
-                  <select value={currentUser?.scopeId || selectedTP} disabled>
+                  <ThemeSelect value={currentUser?.scopeId || selectedTP} disabled>
                     <option value={currentUser?.scopeId || selectedTP}>
                       {(() => {
                         const myTp = townPanchayats.find((tp: any) => tp.id === (currentUser?.scopeId || selectedTP));
                         return myTp ? tObj(myTp) : (currentUser?.scopeId || selectedTP);
                       })()}
                     </option>
-                  </select>
+                  </ThemeSelect>
                 ) : (
-                  <select
+                  <ThemeSelect
                     value={selectedTP}
                     onChange={(e) => setSelectedTP(e.target.value)}
                     required
@@ -1519,12 +1520,12 @@ export default function EmployeeManagementView({
                     })().map((tp: any) => (
                       <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
                     ))}
-                  </select>
+                  </ThemeSelect>
                 )}
               </div>
               <div>
                 <label>{t('post')}</label>
-                <select
+                <ThemeSelect
                   value={selectedPost}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -1550,7 +1551,7 @@ export default function EmployeeManagementView({
                       <option key={p.id} value={p.id}>{tObj(p)}</option>
                     ));
                   })()}
-                </select>
+                </ThemeSelect>
               </div>
               <div>
                 <label>{t('empFullNameEn')}</label>
@@ -1596,7 +1597,7 @@ export default function EmployeeManagementView({
               </div>
               <div>
                 <label>{lang === 'ta' ? 'பாலினம்' : 'Gender'}</label>
-                <select
+                <ThemeSelect
                   value={gender}
                   onChange={(e) => setGender(e.target.value)}
                   required
@@ -1604,7 +1605,7 @@ export default function EmployeeManagementView({
                   <option value="Male">{lang === 'ta' ? 'ஆண்' : 'Male'}</option>
                   <option value="Female">{lang === 'ta' ? 'பெண்' : 'Female'}</option>
                   <option value="Transgender">{lang === 'ta' ? 'திருநங்கை / திருநம்பி' : 'Transgender'}</option>
-                </select>
+                </ThemeSelect>
               </div>
               <div>
                 <label>{lang === 'ta' ? 'ஆதார் எண்' : 'Aadhar No'}</label>
@@ -1622,7 +1623,7 @@ export default function EmployeeManagementView({
               </div>
               <div>
                 <label>{lang === 'ta' ? 'சமூகம் / வகுப்பு (Community)' : 'Community'}</label>
-                <select
+                <ThemeSelect
                   value={community}
                   onChange={(e) => setCommunity(e.target.value)}
                   required
@@ -1632,7 +1633,7 @@ export default function EmployeeManagementView({
                   <option value="mbc">MBC</option>
                   <option value="sc">SC</option>
                   <option value="st">ST</option>
-                </select>
+                </ThemeSelect>
               </div>
             </div>
 
@@ -1718,7 +1719,7 @@ export default function EmployeeManagementView({
                               )}
 
                               {field.type === 'select' && (
-                                <select
+                                <ThemeSelect
                                   value={currentVal}
                                   onChange={(e) => handleDynamicChange(field.id, e.target.value)}
                                   required={field.validations?.required}
@@ -1727,7 +1728,7 @@ export default function EmployeeManagementView({
                                   {field.validations?.options?.map((opt: string, oIdx: number) => (
                                     <option key={oIdx} value={opt}>{opt}</option>
                                   ))}
-                                </select>
+                                </ThemeSelect>
                               )}
 
                               {field.type === 'file' && (
@@ -1841,14 +1842,14 @@ export default function EmployeeManagementView({
                     </div>
                     <div>
                       <label>{lang === 'ta' ? 'வகை' : 'Category'}</label>
-                      <select
+                      <ThemeSelect
                         value={docCategory}
                         onChange={(e) => setDocCategory(e.target.value)}
                       >
                         <option value="Appointment">Appointment Order</option>
                         <option value="Probation">Probation Clearance</option>
                         <option value="Transfer">Transfer Certificate</option>
-                      </select>
+                      </ThemeSelect>
                     </div>
                     <div>
                       <label>{lang === 'ta' ? 'கோப்பு' : 'File'}</label>

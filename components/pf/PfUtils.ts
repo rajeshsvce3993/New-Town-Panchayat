@@ -143,17 +143,42 @@ export const downloadElementAsPDF = async (elementId: string, filename: string, 
     const imgWidth = pageWidth;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
+    const headerMm = 14;
+    const usableHeight = pageHeight - headerMm;
+    const imgData = canvas.toDataURL('image/png');
     let heightLeft = imgHeight;
-    let position = 0;
+    let sourceOffset = 0;
+    let pageNo = 1;
 
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-    heightLeft -= pageHeight;
+    const drawSliceHeader = () => {
+      pdf.setFillColor(255, 255, 255);
+      pdf.rect(0, 0, pageWidth, headerMm, 'F');
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8);
+      pdf.setTextColor(2, 132, 199);
+      pdf.text('Directorate of Town Panchayats', 10, 6);
+      pdf.setFontSize(10);
+      pdf.setTextColor(30, 58, 138);
+      pdf.text(filename.replace(/\.pdf$/i, '').replace(/[-_]/g, ' '), 10, 11, { maxWidth: pageWidth - 28 });
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text(`Page ${pageNo}`, pageWidth - 10, 6, { align: 'right' });
+      pdf.setDrawColor(30, 58, 138);
+      pdf.setLineWidth(0.3);
+      pdf.line(10, headerMm - 1.5, pageWidth - 10, headerMm - 1.5);
+    };
 
-    while (heightLeft > 0) {
-      position -= pageHeight;
-      pdf.addPage();
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-      heightLeft -= pageHeight;
+    while (heightLeft > 0.4) {
+      if (pageNo > 1) pdf.addPage();
+      drawSliceHeader();
+      pdf.addImage(imgData, 'PNG', 0, headerMm - sourceOffset, imgWidth, imgHeight, undefined, 'FAST');
+      pdf.setFillColor(255, 255, 255);
+      pdf.rect(0, 0, pageWidth, headerMm, 'F');
+      drawSliceHeader();
+      heightLeft -= usableHeight;
+      sourceOffset += usableHeight;
+      pageNo += 1;
     }
 
     pdf.save(filename);

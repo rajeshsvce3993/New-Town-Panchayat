@@ -1,10 +1,12 @@
 'use client';
+import ThemeSelect from './ThemeSelect';
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable react-hooks/set-state-in-effect */
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { repeatingAutotableHeader } from '@/lib/inspectionReportExport';
 import html2canvas from 'html2canvas-pro';
 import * as XLSX from 'xlsx';
 import { motion } from 'motion/react';
@@ -728,7 +730,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
   };
 
   const handleLoadOfficialRates = async () => {
-    if (window.confirm(lang === 'ta' ? 'அரசாணைப்படி அதிகாரப்பூர்வ வட்டி விகிதங்களை (1970-71 முதல் 86 பதிவுகள்) புதுப்பிக்கவா?' : 'Reset to official Tamil Nadu Government GPF & CPS Interest Rates (86 periods from FY 1970-71 to 2026-27)?')) {
+    if (window.confirm(lang === 'ta' ? 'அரசாணைப்படி அதிகாரப்பூர்வ வட்டி விகிதங்களை (1970-71 முதல் 86 பதிவுகள்) புதுப்பிக்கவா?' : 'Reset to official GPF & CPS Interest Rates (86 periods from FY 1970-71 to 2026-27)?')) {
       await onSaveCollection('pfInterestRates', OFFICIAL_PF_INTEREST_RATES);
     }
   };
@@ -754,7 +756,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
   const handleExportRatesPdf = () => {
     const doc = new jsPDF({ orientation: 'landscape' });
     doc.setFontSize(13);
-    doc.text('Tamil Nadu Government Employees - GPF & CPS Rates of Interest (1970-71 onwards)', 14, 15);
+    doc.text('GPF & CPS Rates of Interest (1970-71 onwards)', 14, 15);
     doc.setFontSize(9);
     doc.text(`Total Period Records: ${pfInterestRates.length} | Generated: ${new Date().toLocaleDateString()}`, 14, 21);
 
@@ -770,6 +772,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
     ]);
 
     autoTable(doc, {
+      ...repeatingAutotableHeader(doc, 'GPF & CPS Rates of Interest (1970-71 onwards)', lang === 'ta' ? 'ta' : 'en', true),
       head: [['S.No', 'Financial Year / Period', 'From Date', 'To Date', 'Rate (%)', 'Authority G.O. (Finance Dept)', 'Authority G.O. (CPS)']],
       body: tableData,
       startY: 25,
@@ -1693,10 +1696,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 0, 0);
-    doc.text('GOVERNMENT OF TAMIL NADU', 105, 12, { align: 'center' });
-    doc.setFontSize(13);
-    doc.setFont('helvetica', 'bold');
-    doc.text('TOWN PANCHAYATS DEPARTMENT', 105, 17, { align: 'center' });
+    doc.text('TOWN PANCHAYATS DEPARTMENT', 105, 12, { align: 'center' });
     
     doc.setFontSize(13);
     doc.setFont('helvetica', 'bold');
@@ -1774,6 +1774,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
       : 0;
 
     autoTable(doc, {
+      ...repeatingAutotableHeader(doc, 'PROVIDENT FUND CONSOLIDATED ACCOUNT ABSTRACT (YEAR-WISE)', lang === 'ta' ? 'ta' : 'en', true),
       head: abstractTableHeaders,
       body: abstractTableRows,
       foot: [[
@@ -1806,10 +1807,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(0, 0, 0);
-      doc.text('GOVERNMENT OF TAMIL NADU', 105, 12, { align: 'center' });
-      doc.setFontSize(13);
-      doc.setFont('helvetica', 'bold');
-      doc.text('TOWN PANCHAYATS DEPARTMENT', 105, 17, { align: 'center' });
+      doc.text('TOWN PANCHAYATS DEPARTMENT', 105, 12, { align: 'center' });
       
       doc.setFontSize(13);
       doc.setFont('helvetica', 'bold');
@@ -1910,6 +1908,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
       }
 
       autoTable(doc, {
+        ...repeatingAutotableHeader(doc, `PROVIDENT FUND ACCOUNT LEDGER SLIP — ${currentFy}`, lang === 'ta' ? 'ta' : 'en', true),
         head: tableHeaders,
         body: tableRows,
         startY: 69,
@@ -1944,6 +1943,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
       const effectiveClosing = isCompletedMarch ? fyBalances.closingBalance : fyBalances.closingBalanceWithAccruedInterest;
 
       autoTable(doc, {
+        ...repeatingAutotableHeader(doc, `PROVIDENT FUND ACCOUNT LEDGER SLIP — ${currentFy}`, lang === 'ta' ? 'ta' : 'en', true),
         head: abstractHead,
         body: [[
           `Rs. ${Math.round(fyBalances.openingBalance).toLocaleString('en-IN')}`,
@@ -2001,7 +2001,6 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
 
     // Sheet 1: Consolidated Abstract Summary
     const abstractSheetRows: any[] = [];
-    abstractSheetRows.push(['GOVERNMENT OF TAMIL NADU']);
     abstractSheetRows.push(['TOWN PANCHAYATS DEPARTMENT']);
     abstractSheetRows.push([`${jurisdiction.tpName} Town Panchayat, ${jurisdiction.districtName} District, ${jurisdiction.zoneName} Zone`]);
     abstractSheetRows.push(['PROVIDENT FUND CONSOLIDATED ACCOUNT ABSTRACT (YEAR-WISE)']);
@@ -2069,7 +2068,6 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
     yearsToExport.forEach((currentFy) => {
       const sheetRows: any[] = [];
 
-      sheetRows.push(['GOVERNMENT OF TAMIL NADU']);
       sheetRows.push(['TOWN PANCHAYATS DEPARTMENT']);
       sheetRows.push([`${jurisdiction.tpName} Town Panchayat, ${jurisdiction.districtName} District, ${jurisdiction.zoneName} Zone`]);
       sheetRows.push(['PROVIDENT FUND ANNUAL ACCOUNT SLIP']);
@@ -2267,7 +2265,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
             <div className="portal-dash-fields">
               <div>
                 <label>{lang === 'ta' ? 'நிதியாண்டு' : 'FY'}</label>
-                <select
+                <ThemeSelect
                   value={reportFy}
                   onChange={(e) => setReportFy(e.target.value)}
                 >
@@ -2275,7 +2273,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
                   {getEmployeeSlipYears(employeeSlipId).map((y) => (
                     <option key={y} value={y}>{y.replace('-', ' - ')}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
             </div>
           </div>
@@ -2288,9 +2286,6 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
               <h1 className="text-lg font-extrabold text-gray-900 tracking-tight uppercase">
                 {lang === 'ta' ? 'பேரூராட்சிகள் துறை' : 'TOWN PANCHAYATS DEPARTMENT'}
               </h1>
-              <p className="text-xs text-indigo-600 font-bold uppercase tracking-wide">
-                {lang === 'ta' ? 'தமிழ்நாடு அரசு' : 'Government of Tamil Nadu'}
-              </p>
               <p className="text-xs text-gray-500 font-semibold mt-1">
                 {lang === 'ta' ? 'பேரூராட்சி பணியாளர்களுக்கான சேமநலநிதி கணக்குச் சீட்டு' : 'Provident Fund Account Balance Slip for Town Panchayat Employees'}
               </p>
@@ -2528,7 +2523,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
             <div className="portal-dash-fields">
               <div>
                 <label>{lang === 'ta' ? 'வட்டம் (Zone)' : 'Zone'}</label>
-                <select
+                <ThemeSelect
                   value={selectedZoneId}
                   onChange={(e) => handleZoneChange(e.target.value)}
                   disabled={currentUser?.roleId === 'zonal' || currentUser?.scopeType === 'Zone'}
@@ -2538,11 +2533,11 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
                       {lang === 'ta' ? (z.nameTa || z.nameEn) : z.nameEn}
                     </option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
               <div>
                 <label>{lang === 'ta' ? 'மாவட்டம் (District)' : 'District'}</label>
-                <select
+                <ThemeSelect
                   value={selectedDistrictId}
                   onChange={(e) => handleDistrictChange(e.target.value)}
                 >
@@ -2553,11 +2548,11 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
                         {lang === 'ta' ? (d.nameTa || d.nameEn) : d.nameEn}
                       </option>
                     ))}
-                </select>
+                </ThemeSelect>
               </div>
               <div>
                 <label>{lang === 'ta' ? 'பேரூராட்சி (Town Panchayat)' : 'Town Panchayat'}</label>
-                <select
+                <ThemeSelect
                   value={selectedTpId}
                   onChange={(e) => setSelectedTpId(e.target.value)}
                 >
@@ -2568,7 +2563,7 @@ export default function PfManagementView({ state, lang, currentUser, onSaveColle
                         {lang === 'ta' ? (tp.nameTa || tp.nameEn) : tp.nameEn}
                       </option>
                     ))}
-                </select>
+                </ThemeSelect>
               </div>
             </div>
           </div>

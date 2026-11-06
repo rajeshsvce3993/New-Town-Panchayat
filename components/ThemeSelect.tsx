@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 
 type ThemeSelectProps = {
-  value: string;
-  onChange: (event: { target: { value: string } }) => void;
+  value?: string | number | null;
+  onChange?: (event: { target: { value: string } }) => void;
   children: React.ReactNode;
   disabled?: boolean;
   className?: string;
+  name?: string;
+  required?: boolean;
 };
 
 type SelectOption = {
@@ -37,13 +39,29 @@ function collectOptions(children: React.ReactNode): SelectOption[] {
   return options;
 }
 
-export default function ThemeSelect({ value, onChange, children, disabled, className }: ThemeSelectProps) {
+function isInside(node: EventTarget | null, el: HTMLElement | null) {
+  if (!el || !(node instanceof Node)) return false;
+  return el === node || el.contains(node);
+}
+
+export default function ThemeSelect({
+  value,
+  onChange,
+  children,
+  disabled,
+  className,
+  name,
+  required,
+}: ThemeSelectProps) {
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
   const options = useMemo(() => collectOptions(children), [children]);
-  const selected = options.find((option) => option.value === value) || options[0];
+  const normalizedValue = String(value ?? '');
+  const selected = options.find((option) => option.value === normalizedValue) || options[0];
 
   const updateMenuPos = () => {
     const trigger = triggerRef.current;
@@ -51,11 +69,11 @@ export default function ThemeSelect({ value, onChange, children, disabled, class
     const rect = trigger.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom - 8;
     const spaceAbove = rect.top - 8;
-    const openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
-    const maxHeight = Math.max(140, Math.min(240, openUp ? spaceAbove : spaceBelow));
+    const openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(160, Math.min(320, openUp ? spaceAbove : spaceBelow));
     setMenuPos({
-      top: openUp ? rect.top - maxHeight - 4 : rect.bottom + 4,
-      left: rect.left,
+      top: openUp ? Math.max(8, rect.top - maxHeight - 4) : rect.bottom + 4,
+      left: Math.min(rect.left, window.innerWidth - Math.max(rect.width, 160) - 8),
       width: Math.max(rect.width, 160),
       maxHeight,
     });
@@ -67,28 +85,31 @@ export default function ThemeSelect({ value, onChange, children, disabled, class
     const close = () => setOpen(false);
     const onDoc = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (rootRef.current?.contains(target)) return;
-      const menu = document.getElementById('portal-theme-select-menu');
-      if (menu?.contains(target)) return;
+      if (isInside(target, rootRef.current) || isInside(target, menuRef.current)) return;
       setOpen(false);
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') close();
     };
+    const onScroll = (event: Event) => {
+      if (isInside(event.target, menuRef.current)) return;
+      close();
+    };
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onKey);
-    window.addEventListener('scroll', close, true);
+    window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', close);
     return () => {
       document.removeEventListener('mousedown', onDoc);
       document.removeEventListener('keydown', onKey);
-      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', close);
     };
   }, [open]);
 
   return (
     <div className={`portal-theme-select ${open ? 'is-open' : ''} ${className || ''}`} ref={rootRef}>
+      {name ? <input type="hidden" name={name} value={normalizedValue} required={required} /> : null}
       <button
         ref={triggerRef}
         type="button"
@@ -96,6 +117,7 @@ export default function ThemeSelect({ value, onChange, children, disabled, class
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
         title={selected?.label}
         onClick={() => {
           if (disabled) return;
@@ -107,7 +129,8 @@ export default function ThemeSelect({ value, onChange, children, disabled, class
       </button>
       {open && menuPos && typeof document !== 'undefined' && createPortal(
         <div
-          id="portal-theme-select-menu"
+          ref={menuRef}
+          id={menuId}
           className="portal-theme-select-menu"
           role="listbox"
           style={{
@@ -116,17 +139,20 @@ export default function ThemeSelect({ value, onChange, children, disabled, class
             width: menuPos.width,
             maxHeight: menuPos.maxHeight,
           }}
+          onWheel={(event) => event.stopPropagation()}
+          onTouchMove={(event) => event.stopPropagation()}
         >
           {options.map((option, index) => (
             <button
               key={`${option.value}-${index}`}
               type="button"
               role="option"
-              aria-selected={option.value === value}
+              aria-selected={option.value === normalizedValue}
               disabled={option.disabled}
-              className={`portal-theme-select-option ${option.value === value ? 'is-active' : ''}`}
+              className={`portal-theme-select-option ${option.value === normalizedValue ? 'is-active' : ''}`}
+              onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
-                onChange({ target: { value: option.value } });
+                onChange?.({ target: { value: option.value } });
                 setOpen(false);
               }}
             >

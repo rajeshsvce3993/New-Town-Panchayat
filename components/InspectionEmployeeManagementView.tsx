@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from './ThemeSelect';
 
 import React, { useState, useRef } from 'react';
 import { jsPDF } from 'jspdf';
@@ -1215,7 +1216,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
               </div>
               <div>
                 <label>{lang === 'ta' ? 'அதிகார வரம்பு / வகை' : 'Operational Scope'}</label>
-                <select
+                <ThemeSelect
                   value={roleScope}
                   onChange={(e) => setRoleScope(e.target.value as any)}
                 >
@@ -1223,7 +1224,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                   <option value="multi_tp">{t('roleMultiTp')}</option>
                   <option value="zonal">{t('roleZonal')}</option>
                   <option value="field_worker">{t('roleFieldWorker')}</option>
-                </select>
+                </ThemeSelect>
               </div>
               <button type="submit">
                 {t('addInspectionRole')}
@@ -1235,7 +1236,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
             <form onSubmit={handleAddDesignation} className="space-y-3">
               <div>
                 <label>{t('selectInspectionRole')}</label>
-                <select
+                <ThemeSelect
                   value={desigRoleId}
                   onChange={(e) => setDesigRoleId(e.target.value)}
                   required
@@ -1244,7 +1245,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                   {inspectionRoles.map((r: any) => (
                     <option key={r.id} value={r.id}>{tObj(r)}</option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
               <div>
                 <label>{lang === 'ta' ? 'பதவி பெயர் (ஆங்கிலம்)' : 'Designation Name (English)'}</label>
@@ -1523,7 +1524,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label>{t('selectInspectionRole')} *</label>
-                      <select
+                      <ThemeSelect
                         value={userRoleId}
                         onChange={(e) => {
                           setUserRoleId(e.target.value);
@@ -1537,11 +1538,11 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                             {tObj(r)} ({r.scope})
                           </option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
                     <div>
                       <label>{t('selectInspectionDesignation')} *</label>
-                      <select
+                      <ThemeSelect
                         value={userDesigId}
                         onChange={(e) => setUserDesigId(e.target.value)}
                         required
@@ -1552,7 +1553,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           .map((d: any) => (
                             <option key={d.id} value={d.id}>{tObj(d)}</option>
                           ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
                   </div>
 
@@ -1586,7 +1587,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           <label>
                             {lang === 'ta' ? 'மண்டலத்தை தேர்ந்தெடுக்கவும் *' : 'Select Zone *'}
                           </label>
-                          <select
+                          <ThemeSelect
                             value={userZoneId}
                             onChange={(e) => setUserZoneId(e.target.value)}
                             required
@@ -1595,7 +1596,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                             {zones.map((z: any) => (
                               <option key={z.id} value={z.id}>{tObj(z)}</option>
                             ))}
-                          </select>
+                          </ThemeSelect>
                         </div>
 
                         <div className="portal-wt-note">
@@ -1614,7 +1615,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           <label>
                             {lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும் *' : 'Select Zone *'}
                           </label>
-                          <select
+                          <ThemeSelect
                             value={userZoneId}
                             onChange={(e) => {
                               setUserZoneId(e.target.value);
@@ -1627,7 +1628,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                             {zones.map((z: any) => (
                               <option key={z.id} value={z.id}>{tObj(z)}</option>
                             ))}
-                          </select>
+                          </ThemeSelect>
                         </div>
 
                         <div className="grid grid-cols-2 gap-2">
@@ -1635,7 +1636,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                             <label>
                               {lang === 'ta' ? 'மாவட்டம் தேர்வு *' : 'Select District *'}
                             </label>
-                            <select
+                            <ThemeSelect
                               value={userDistrictId}
                               onChange={(e) => {
                                 setUserDistrictId(e.target.value);
@@ -1650,14 +1651,14 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                 .map((d: any) => (
                                   <option key={d.id} value={d.id}>{tObj(d)}</option>
                                 ))}
-                            </select>
+                            </ThemeSelect>
                           </div>
 
                           <div>
                             <label>
                               {lang === 'ta' ? 'பேரூராட்சி தேர்வு *' : 'Select Town Panchayat *'}
                             </label>
-                            <select
+                            <ThemeSelect
                               value={userTpId}
                               onChange={(e) => setUserTpId(e.target.value)}
                               required
@@ -1669,7 +1670,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                 .map((tp: any) => (
                                   <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
                                 ))}
-                            </select>
+                            </ThemeSelect>
                           </div>
                         </div>
 
@@ -1689,7 +1690,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           <label>
                             {lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும் *' : 'Select Zone *'}
                           </label>
-                          <select
+                          <ThemeSelect
                             value={userZoneId}
                             onChange={(e) => {
                               setUserZoneId(e.target.value);
@@ -1702,14 +1703,14 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                             {zones.map((z: any) => (
                               <option key={z.id} value={z.id}>{tObj(z)}</option>
                             ))}
-                          </select>
+                          </ThemeSelect>
                         </div>
 
                         <div>
                           <label>
                             {lang === 'ta' ? 'மாவட்டம் தேர்வு *' : 'Select District *'}
                           </label>
-                          <select
+                          <ThemeSelect
                             value={userDistrictId}
                             onChange={(e) => {
                               setUserDistrictId(e.target.value);
@@ -1724,7 +1725,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                               .map((d: any) => (
                                 <option key={d.id} value={d.id}>{tObj(d)} {d.code ? `[Code: ${d.code}]` : ''}</option>
                               ))}
-                          </select>
+                          </ThemeSelect>
                         </div>
 
                         <div>
@@ -1780,7 +1781,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           <label>
                             {lang === 'ta' ? 'மண்டலத்தைத் தேர்ந்தெடுக்கவும் *' : 'Select Zone *'}
                           </label>
-                          <select
+                          <ThemeSelect
                             value={userZoneId}
                             onChange={(e) => {
                               setUserZoneId(e.target.value);
@@ -1794,7 +1795,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                             {zones.map((z: any) => (
                               <option key={z.id} value={z.id}>{tObj(z)}</option>
                             ))}
-                          </select>
+                          </ThemeSelect>
                         </div>
 
                         <div className="grid grid-cols-2 gap-2">
@@ -1802,7 +1803,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                             <label>
                               {lang === 'ta' ? 'மாவட்டம் தேர்வு *' : 'Select District *'}
                             </label>
-                            <select
+                            <ThemeSelect
                               value={userDistrictId}
                               onChange={(e) => {
                                 setUserDistrictId(e.target.value);
@@ -1818,14 +1819,14 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                 .map((d: any) => (
                                   <option key={d.id} value={d.id}>{tObj(d)} {d.code ? `[Code: ${d.code}]` : ''}</option>
                                 ))}
-                            </select>
+                            </ThemeSelect>
                           </div>
 
                           <div>
                             <label>
                               {lang === 'ta' ? 'பேரூராட்சி தேர்வு *' : 'Select Town Panchayat *'}
                             </label>
-                            <select
+                            <ThemeSelect
                               value={userTpId}
                               onChange={(e) => {
                                 setUserTpId(e.target.value);
@@ -1840,7 +1841,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                 .map((tp: any) => (
                                   <option key={tp.id} value={tp.id}>{tObj(tp)} {tp.code ? `[Code: ${tp.code}]` : ''}</option>
                                 ))}
-                            </select>
+                            </ThemeSelect>
                           </div>
                         </div>
 
@@ -2933,18 +2934,26 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
             // 7. PDF Exporter
             const handleExportPDF = () => {
               const doc = new jsPDF('l', 'mm', 'a4');
-              
-              doc.setFont('helvetica', 'bold');
-              doc.setFontSize(13);
-              doc.setTextColor(79, 70, 229);
-              doc.text(lang === 'ta' ? 'பயனர் செயல்பாட்டு அறிக்கை (User Activity & Work Entries Report)' : 'User Activity & Work Entries Report', 14, 14);
-              
-              doc.setFont('helvetica', 'normal');
-              doc.setFontSize(8.5);
-              doc.setTextColor(71, 85, 105);
-              doc.text(`Inspection Date: ${actDateFilter} | Generated on: ${new Date().toLocaleString()}`, 14, 20);
+              const reportTitle = lang === 'ta' ? 'பயனர் செயல்பாட்டு அறிக்கை (User Activity & Work Entries Report)' : 'User Activity & Work Entries Report';
+              const drawPageHeader = () => {
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(8);
+                doc.setTextColor(2, 132, 199);
+                doc.text(lang === 'ta' ? 'பேரூராட்சிகள் இயக்ககம்' : 'Directorate of Town Panchayats', 14, 8);
+                doc.setFontSize(13);
+                doc.setTextColor(79, 70, 229);
+                doc.text(reportTitle, 14, 14);
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(8.5);
+                doc.setTextColor(71, 85, 105);
+                doc.text(`Inspection Date: ${actDateFilter} | Generated on: ${new Date().toLocaleString()}`, 14, 19);
+                doc.setFontSize(8);
+                doc.setTextColor(148, 163, 184);
+                doc.text(`${lang === 'ta' ? 'பக்கம்' : 'Page'} ${doc.getNumberOfPages()}`, 283, 8, { align: 'right' });
+              };
+              drawPageHeader();
 
-              const startY = 25;
+              const startY = 24;
               doc.setFillColor(241, 245, 249);
               doc.rect(14, startY, 269, 8, 'F');
               
@@ -2970,7 +2979,8 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
               filteredAllUsers.forEach((u) => {
                 if (currentY > 185) {
                   doc.addPage();
-                  currentY = 18;
+                  drawPageHeader();
+                  currentY = 24;
                   
                   doc.setFillColor(241, 245, 249);
                   doc.rect(14, currentY, 269, 8, 'F');
@@ -3081,7 +3091,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                       <label>
                         {lang === 'ta' ? '1. பொறுப்பு தேர்வு செய்க (Role)' : '1. Select Role'}
                       </label>
-                      <select
+                      <ThemeSelect
                         value={bulkRole}
                         onChange={(e) => setBulkRole(e.target.value)}
                       >
@@ -3089,14 +3099,14 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                         {inspectionRoles.map((r: any) => (
                           <option key={r.id} value={r.id}>{tObj(r)}</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
 
                     <div>
                       <label>
                         {lang === 'ta' ? '2. பதவி தேர்வு செய்க (Designation)' : '2. Select Designation'}
                       </label>
-                      <select
+                      <ThemeSelect
                         value={bulkDesig}
                         onChange={(e) => setBulkDesig(e.target.value)}
                       >
@@ -3104,14 +3114,14 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                         {inspectionDesignations.map((d: any) => (
                           <option key={d.id} value={d.id}>{tObj(d)}</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
 
                     <div>
                       <label>
                         {lang === 'ta' ? '3. பேரூராட்சி தேர்வு செய்க (Town Panchayat)' : '3. Select Town Panchayat'}
                       </label>
-                      <select
+                      <ThemeSelect
                         value={bulkTp}
                         onChange={(e) => setBulkTp(e.target.value)}
                       >
@@ -3119,7 +3129,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                         {uniqueTownPanchayats.map((tp: any) => (
                           <option key={tp.id} value={tp.id}>{tp.nameEn} ({tp.nameTa || tp.nameEn})</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </div>
                   </div>
 
@@ -3181,7 +3191,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
 
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">{lang === 'ta' ? 'மண்டலம்' : 'Zone'}</label>
-                    <select
+                    <ThemeSelect
                       value={actZoneFilter}
                       onChange={(e) => setActZoneFilter(e.target.value)}
                       className="w-full text-xs font-semibold px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:outline-hidden focus:border-indigo-500"
@@ -3190,12 +3200,12 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                       {uniqueZones.map((z: string) => (
                         <option key={z} value={z}>{z}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
                   
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">{lang === 'ta' ? 'மாவட்டம்' : 'District'}</label>
-                    <select
+                    <ThemeSelect
                       value={actDistrictFilter}
                       onChange={(e) => setActDistrictFilter(e.target.value)}
                       className="w-full text-xs font-semibold px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:outline-hidden focus:border-indigo-500"
@@ -3204,12 +3214,12 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                       {uniqueDistricts.map((d: string) => (
                         <option key={d} value={d}>{d}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
 
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">{lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}</label>
-                    <select
+                    <ThemeSelect
                       value={actTpFilter}
                       onChange={(e) => setActTpFilter(e.target.value)}
                       className="w-full text-xs font-semibold px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:outline-hidden focus:border-indigo-500"
@@ -3218,12 +3228,12 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                       {uniqueTps.map((tp: string) => (
                         <option key={tp} value={tp}>{tp}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
 
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">{lang === 'ta' ? 'பதவி' : 'Designation'}</label>
-                    <select
+                    <ThemeSelect
                       value={actDesigFilter}
                       onChange={(e) => setActDesigFilter(e.target.value)}
                       className="w-full text-xs font-semibold px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 focus:outline-hidden focus:border-indigo-500"
@@ -3232,7 +3242,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                       {uniqueDesignations.map((d: string) => (
                         <option key={d} value={d}>{d}</option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </div>
 
                   <div>
@@ -3430,7 +3440,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                 <div className="portal-dash-fields">
                   <div>
                     <label>{lang === 'ta' ? 'பிரிவு' : 'Category'}</label>
-                    <select
+                    <ThemeSelect
                       value={serverLogCategory}
                       onChange={(e) => setServerLogCategory(e.target.value)}
                     >
@@ -3443,7 +3453,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                       <option value="USER_STATUS_CHANGE">USER_STATUS_CHANGE</option>
                       <option value="BULK_ACTION">BULK_ACTION</option>
                       <option value="SCOPE_SYNC">SCOPE_SYNC</option>
-                    </select>
+                    </ThemeSelect>
                   </div>
                 </div>
 

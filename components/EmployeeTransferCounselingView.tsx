@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from './ThemeSelect';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
@@ -618,7 +619,7 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
                   {en ? 'Matches' : 'பொருத்தம்'}{' '}
                   <strong className="font-semibold text-slate-900">{filteredApplicants.length}</strong>
                 </span>
-                <select
+                <ThemeSelect
                   value={filter}
                   onChange={(e) => setFilter(e.target.value as typeof filter)}
                   className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 outline-none"
@@ -629,7 +630,7 @@ export default function EmployeeTransferCounselingView({ lang, currentUser }: Pr
                       {count != null ? ` (${count})` : ''}
                     </option>
                   ))}
-                </select>
+                </ThemeSelect>
               </div>
 
               <ul className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5">

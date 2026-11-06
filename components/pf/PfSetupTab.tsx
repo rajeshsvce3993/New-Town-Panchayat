@@ -1,4 +1,5 @@
 'use client';
+import ThemeSelect from '../ThemeSelect';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
@@ -434,7 +435,7 @@ export default function PfSetupTab({
         <form onSubmit={handleAddOfficeBreakup} className="portal-dash-fields" style={{ gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 0.9fr) auto' }}>
           <div>
             <label>{lang === 'ta' ? 'ஊழியர்' : 'Choose Employee'}</label>
-            <select
+            <ThemeSelect
               value={breakupEmpId}
               onChange={(e) => {
                 const empId = e.target.value;
@@ -456,7 +457,7 @@ export default function PfSetupTab({
                   </option>
                 ))
               }
-            </select>
+            </ThemeSelect>
           </div>
           <div>
             <label>{lang === 'ta' ? 'தொகை (₹)' : 'Eligible Balance Amount (₹)'}</label>
