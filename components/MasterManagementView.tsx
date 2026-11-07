@@ -29,9 +29,10 @@ interface MasterManagementProps {
   state: any;
   lang: Language;
   onSaveCollection: (key: string, data: any[], skipCacheRebuild?: boolean) => Promise<void>;
+  onDeleteCollectionItem?: (key: string, itemId: string) => Promise<void>;
 }
 
-export default function MasterManagementView({ state, lang, onSaveCollection }: MasterManagementProps) {
+export default function MasterManagementView({ state, lang, onSaveCollection, onDeleteCollectionItem }: MasterManagementProps) {
   const [activeTab, setActiveTab] = useState<'hierarchy' | 'employee_masters'>('hierarchy');
   const [hierarchySubTab, setHierarchySubTab] = useState<'zone' | 'district' | 'tp' | 'ward_street'>('zone');
 
@@ -324,8 +325,14 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
 
   // Delete helpers
   const handleDeleteMasterItem = async (collectionKey: string, itemId: string) => {
+    const geoKeys = ['zones', 'districts', 'townPanchayats', 'wardsAndStreets'];
+    if (onDeleteCollectionItem && geoKeys.includes(collectionKey)) {
+      await onDeleteCollectionItem(collectionKey, itemId);
+      return;
+    }
     const currentList = state[collectionKey] || [];
     const updated = currentList.filter((item: any) => item.id !== itemId);
+    if (geoKeys.includes(collectionKey) && updated.length === 0) return;
     await onSaveCollection(collectionKey, updated);
   };
 
@@ -453,11 +460,11 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
         const normHeaders = headers.map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
 
         if (activeTab === 'hierarchy') {
-          // Parsing hierarchy with flexible header detection
-          const uploadedZones: any[] = [];
-          const uploadedDistricts: any[] = [];
-          const uploadedTPs: any[] = [];
-          const uploadedWardsAndStreets: any[] = [];
+          // Parsing hierarchy with flexible header detection — merge into existing records, never replace/wipe
+          const uploadedZones: any[] = [...zones];
+          const uploadedDistricts: any[] = [...districts];
+          const uploadedTPs: any[] = [...townPanchayats];
+          const uploadedWardsAndStreets: any[] = [...wardsAndStreets];
 
           // Locate columns by name or fallback to index
           const hasCustomHeaders = normHeaders.some(h => h.includes('districtcode') || h.includes('tpcode') || h.includes('townpanchayatcode'));
@@ -1470,7 +1477,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection }: 
                         {filteredHierarchy.length === 0 && (
                           <tr>
                             <td colSpan={5} className="portal-wt-empty is-center">
-                              {lang === 'ta' ? 'அதிகார வரம்புகள் அல்லது தெருக்கள் எதுவும் இல்லை (வெற்று நிலை - Blank State)' : 'No jurisdictional records or streets found (Clean Blank State)'}
+                              {lang === 'ta' ? 'அதிகார வரம்புகள் அல்லது தெருக்கள் எதுவும் இல்லை' : 'No jurisdictional records or streets found'}
                             </td>
                           </tr>
                         )}

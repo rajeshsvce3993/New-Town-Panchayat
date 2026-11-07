@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getCollectionData,
   saveCollectionData,
+  deleteCollectionItem,
   getAppSettings,
   saveAppSettings,
   saveSingleInspectionWork,
@@ -269,7 +270,8 @@ export async function POST(req: NextRequest) {
   try {
     cachedFullState = null; // Instantly invalidate server cache on any update
     const body = await req.json();
-    const { action, key, data, skipCacheRebuild } = body;
+    const { action, operation, key, data, skipCacheRebuild, itemId } = body;
+    const op = String(operation || action || '');
 
     if (shouldUseRemotePortalApi(req.nextUrl.origin)) {
       const remote = await fetchRemotePortalJson('/api/state', req.nextUrl.origin, {
@@ -288,6 +290,18 @@ export async function POST(req: NextRequest) {
         },
         { status: 502, headers: CORS_HEADERS }
       );
+    }
+
+    if (op === 'deleteCollectionItem' && key && itemId) {
+      await deleteCollectionItem(key, String(itemId));
+      invalidateAndRefreshUserScopeCache(`master_${key}_deleted`).catch((e) => console.error('[State] Refresh scope error:', e));
+      logServerProcess({
+        category: 'MASTER_UPDATE',
+        action: `DELETE_${String(key).toUpperCase()}`,
+        status: 'SUCCESS',
+        details: `Deleted ${itemId} from collection '${key}'`,
+      });
+      return NextResponse.json({ success: true, message: `${key} item deleted` }, { headers: CORS_HEADERS });
     }
 
     if (key === 'settings') {

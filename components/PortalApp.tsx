@@ -548,6 +548,25 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     }
   };
 
+  const handleDeleteCollectionItem = async (key: string, itemId: string) => {
+    try {
+      const res = await fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operation: 'deleteCollectionItem', action: 'deleteCollectionItem', key, itemId })
+      });
+      const resJson = await res.json();
+      if (resJson.success) {
+        setState((prev: any) => mergePortalState(prev, {
+          [key]: (prev?.[key] || []).filter((item: any) => String(item?.id || item?._id || '') !== String(itemId))
+        }));
+        await loadState(false, false, true);
+      }
+    } catch (err) {
+      console.error(`Error deleting ${key} item ${itemId}:`, err);
+    }
+  };
+
   // Employee CRUD Save
   const handleSaveEmployee = async (employee: any) => {
     try {
@@ -1184,7 +1203,8 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                 <MasterManagementView 
                   state={state} 
                   lang={lang} 
-                  onSaveCollection={handleSaveCollection} 
+                  onSaveCollection={handleSaveCollection}
+                  onDeleteCollectionItem={handleDeleteCollectionItem}
                 />
               )}
               {activeTab === 'users' && (

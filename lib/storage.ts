@@ -2614,8 +2614,71 @@ export async function rebuildUserScopeCache(targetUsername?: string): Promise<bo
   return true;
 }
 
+const GEO_MASTER_KEYS = ['zones', 'districts', 'townPanchayats', 'wardsAndStreets'] as const;
+
+function isGeoMasterKey(key: string): boolean {
+  return (GEO_MASTER_KEYS as readonly string[]).includes(key);
+}
+
+function mergeLocalCollectionItems(localDb: typeof INITIAL_DATA, key: keyof typeof INITIAL_DATA, items: any[]) {
+  const prev = Array.isArray((localDb as any)[key]) ? ((localDb as any)[key] as any[]) : [];
+  const byId = new Map(prev.map((item) => [String(item?.id || item?._id || ''), item]));
+  for (const item of items || []) {
+    const itemId = String(item?.id || item?._id || '');
+    if (!itemId) continue;
+    byId.set(itemId, { ...(byId.get(itemId) || {}), ...item, id: itemId });
+  }
+  (localDb as any)[key] = [...byId.values()];
+}
+
+async function upsertCollectionDocuments(col: any, items: any[], prefix: string) {
+  if (!Array.isArray(items) || items.length === 0) return;
+  const ops = items.map((item, idx) => {
+    const { id, _id, ...rest } = item || {};
+    const itemId = String(id || _id || `${prefix}_${idx}_${Date.now()}`);
+    return {
+      updateOne: {
+        filter: { id: itemId },
+        update: { $set: { id: itemId, ...rest } },
+        upsert: true,
+      },
+    };
+  }).filter((op) => op.updateOne.filter.id);
+  if (ops.length > 0) {
+    await col.bulkWrite(ops, { ordered: false });
+  }
+}
+
+export async function deleteCollectionItem(key: keyof typeof INITIAL_DATA, itemId: string) {
+  const id = String(itemId || '').trim();
+  if (!id) return;
+  try {
+    const client = await getMongoClient();
+    if (client) {
+      const db = await getActiveMongoDb(client);
+      const col = await getCollectionWithAliases(db, key);
+      await col.deleteMany({ $or: [{ id }, { _id: id as any }] });
+    }
+  } catch (e: any) {
+    console.warn(`MongoDB delete error for ${String(key)}/${id}:`, e?.message || e);
+  }
+  const localDb = readLocalDb();
+  const list = Array.isArray((localDb as any)[key]) ? ((localDb as any)[key] as any[]) : [];
+  (localDb as any)[key] = list.filter((item) => String(item?.id || item?._id || '') !== id);
+  writeLocalDb(localDb);
+  if (isGeoMasterKey(String(key))) {
+    rebuildUserScopeCache().catch((err) => console.error('[CACHE_TRIGGER] Background cache rebuild failed:', err));
+  }
+}
+
 // Save master data
 export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: any[], skipCacheRebuild = false) {
+  // Clear Blank State used to persist empty arrays and wipe Mongo. Never allow that for geo masters.
+  if (isGeoMasterKey(String(key)) && (!Array.isArray(items) || items.length === 0)) {
+    console.warn(`[saveCollectionData] Refusing empty wipe for ${String(key)}`);
+    return;
+  }
+
   // Never allow deleting core default roles (admin, ad, eo, zonal)
   if (key === 'roles') {
     const defaultRoles = INITIAL_DATA.roles;
@@ -2656,63 +2719,8 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
             await col.bulkWrite(ops, { ordered: false });
           }
         }
-      } else if (key === 'wardsAndStreets') {
-        // Purge all legacy alias collections to guarantee no ghost mock data
-        const wsAliases = ['wardsAndStreets', 'wards_and_streets', 'wardsandstreets', 'streets', 'wards', 'ward_streets', 'wardstreets', 'streets_master', 'wards_master'];
-        for (const alias of wsAliases) {
-          try {
-            await db.collection(alias).deleteMany({});
-          } catch (_) {}
-        }
-        if (items.length > 0) {
-          await db.collection('wardsAndStreets').insertMany(items.map((item, idx) => {
-            const { id, _id, ...rest } = item;
-            const itemId = id || (_id ? String(_id) : `ws_${item.tpId}_${item.wardNo || '1'}_${idx}`);
-            return { _id: itemId as any, id: itemId, ...rest };
-          }));
-        }
-      } else if (key === 'townPanchayats') {
-        const tpAliases = ['townPanchayats', 'town_panchayats', 'townpanchayats', 'panchayats', 'tps'];
-        for (const alias of tpAliases) {
-          try {
-            await db.collection(alias).deleteMany({});
-          } catch (_) {}
-        }
-        if (items.length > 0) {
-          await db.collection('townPanchayats').insertMany(items.map((item, idx) => {
-            const { id, _id, ...rest } = item;
-            const itemId = id || (_id ? String(_id) : `tp_${idx}`);
-            return { _id: itemId as any, id: itemId, ...rest };
-          }));
-        }
-      } else if (key === 'districts') {
-        const distAliases = ['districts', 'districts_master', 'districts_list'];
-        for (const alias of distAliases) {
-          try {
-            await db.collection(alias).deleteMany({});
-          } catch (_) {}
-        }
-        if (items.length > 0) {
-          await db.collection('districts').insertMany(items.map((item, idx) => {
-            const { id, _id, ...rest } = item;
-            const itemId = id || (_id ? String(_id) : `dist_${idx}`);
-            return { _id: itemId as any, id: itemId, ...rest };
-          }));
-        }
-      } else if (key === 'zones') {
-        const zoneAliases = ['zones', 'zones_master', 'zones_list'];
-        for (const alias of zoneAliases) {
-          try {
-            await db.collection(alias).deleteMany({});
-          } catch (_) {}
-        }
-        if (items.length > 0) {
-          await db.collection('zones').insertMany(items.map((item, idx) => {
-            const { id, _id, ...rest } = item;
-            const itemId = id || (_id ? String(_id) : `zone_${idx}`);
-            return { _id: itemId as any, id: itemId, ...rest };
-          }));
-        }
+      } else if (isGeoMasterKey(String(key))) {
+        await upsertCollectionDocuments(col, items, String(key));
       } else if (key === 'roles') {
         const existing = await col.find({}).toArray();
         const existingById = new Map(
@@ -2762,8 +2770,10 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
           );
         }
       } else {
-        await col.deleteMany({});
-        if (items.length > 0) {
+        if (!Array.isArray(items) || items.length === 0) {
+          console.warn(`[saveCollectionData] Refusing empty wipe for ${String(key)}`);
+        } else {
+          await col.deleteMany({});
           await col.insertMany(items.map(item => {
             const { id, _id, ...rest } = item;
             const itemId = id || (_id ? String(_id) : `item_${Date.now()}`);
@@ -2776,6 +2786,8 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
       const localDb = readLocalDb();
       if (key === 'inspectionWorks') {
         localDb.inspectionWorks = items.slice(0, 100) as any;
+      } else if (isGeoMasterKey(String(key))) {
+        mergeLocalCollectionItems(localDb, key, items);
       } else {
         localDb[key] = items as any;
       }
@@ -2785,6 +2797,8 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
       const localDb = readLocalDb();
       if (key === 'inspectionWorks') {
         localDb.inspectionWorks = items.slice(0, 50) as any;
+      } else if (isGeoMasterKey(String(key))) {
+        mergeLocalCollectionItems(localDb, key, items);
       } else {
         localDb[key] = items as any;
       }
@@ -2798,6 +2812,8 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
     const localDb = readLocalDb();
     if (key === 'inspectionWorks') {
       localDb.inspectionWorks = items.slice(0, 50) as any;
+    } else if (isGeoMasterKey(String(key))) {
+      mergeLocalCollectionItems(localDb, key, items);
     } else {
       localDb[key] = items as any;
     }

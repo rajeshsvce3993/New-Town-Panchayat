@@ -15,6 +15,7 @@ import {
   AlertCircle,
   FileSpreadsheet,
   Camera,
+  Image,
   FileUp,
   Calendar,
   Hash,
@@ -435,6 +436,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
       "SWM Management,திடக்கழிவு மேலாண்மை,Door to Door Survey,வீடு வீடாக ஆய்வு,Daily Waste Generation (KG),தினசரி கழிவு உற்பத்தி (கிலோ),number,false,false,\n" +
       "SWM Management,திடக்கழிவு மேலாண்மை,Door to Door Survey,வீடு வீடாக ஆய்வு,Waste Category Type,கழிவு வகை,dropdown,true,false,\"Wet Waste,Dry Waste,Hazardous Waste\"\n" +
       "SWM Management,திடக்கழிவு மேலாண்மை,Door to Door Survey,வீடு வீடாக ஆய்வு,Premise Photo Evidence,வளாக புகைப்பட சான்று,camera,true,false,\n" +
+      "SWM Management,திடக்கழிவு மேலாண்மை,Door to Door Survey,வீடு வீடாக ஆய்வு,Gallery Image Upload,தொகுப்பிலிருந்து படம்,image_upload,false,false,\n" +
       "SWM Management,திடக்கழிவு மேலாண்மை,Door to Door Survey,வீடு வீடாக ஆய்வு,Inspection Date,ஆய்வு தேதி,date,true,false,\n" +
       "Water Supply Management,குடிநீர் விநியோக மேலாண்மை,Chlorination Level Check,குளோரினேஷன் அளவு பரிசோதனை,PPM Level,பிபிஎம் அளவு,number,true,false,\n" +
       "Water Supply Management,குடிநீர் விநியோக மேலாண்மை,Chlorination Level Check,குளோரினேஷன் அளவு பரிசோதனை,Lab Test Report,ஆய்வக சோதனை அறிக்கை,file,false,false,";
@@ -531,16 +533,23 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
           if (catObj && fldEn) {
             const existingField = uploadedFields.find(f => f.categoryId === catObj!.id && f.nameEn.toLowerCase() === fldEn.toLowerCase());
             if (!existingField) {
-              const validTypes = ['text', 'number', 'mobile', 'dropdown', 'yes_no', 'camera', 'file', 'date'];
-              const normalizedType = validTypes.includes(fldType?.toLowerCase()) ? fldType.toLowerCase() : 'text';
+              const validTypes = ['text', 'number', 'mobile', 'dropdown', 'yes_no', 'camera', 'image', 'image_upload', 'file', 'date'];
+              const rawType = (fldType || '').toLowerCase();
+              const aliasedType = rawType === 'image' || rawType === 'gallery' ? 'image_upload' : rawType;
+              const normalizedType = validTypes.includes(aliasedType) ? aliasedType : 'text';
+              const isMandFlag = isMand?.toLowerCase() === 'true' || isMand === '1';
 
               uploadedFields.push({
                 id: 'fld_' + fldEn.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Math.random().toString(36).substr(2, 4),
                 categoryId: catObj.id,
                 nameEn: fldEn,
                 nameTa: fldTa || fldEn,
+                fieldName: fldEn,
+                fieldNameTa: fldTa || fldEn,
                 type: normalizedType,
-                isMandatory: isMand?.toLowerCase() === 'true' || isMand === '1',
+                fieldType: normalizedType,
+                isMandatory: isMandFlag,
+                isRequired: isMandFlag,
                 isUnique: isUniq?.toLowerCase() === 'true' || isUniq === '1',
                 options: normalizedType === 'dropdown' && dropOpts ? dropOpts.split(',').map(o => o.trim()).filter(Boolean) : undefined,
                 createdAt: new Date().toISOString()
@@ -576,6 +585,8 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
       case 'dropdown': return <ListFilter className="w-3.5 h-3.5 text-purple-500" />;
       case 'yes_no': return <CheckSquare className="w-3.5 h-3.5 text-amber-500" />;
       case 'camera': return <Camera className="w-3.5 h-3.5 text-rose-500" />;
+      case 'image':
+      case 'image_upload': return <Image className="w-3.5 h-3.5 text-cyan-600" />;
       case 'file': return <FileUp className="w-3.5 h-3.5 text-indigo-500" />;
       case 'date': return <Calendar className="w-3.5 h-3.5 text-teal-500" />;
       default: return <Type className="w-3.5 h-3.5 text-slate-500" />;
@@ -589,6 +600,8 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
       case 'dropdown': return t('fieldTypeDropdown');
       case 'yes_no': return t('fieldTypeYesNo');
       case 'camera': return t('fieldTypeCamera');
+      case 'image':
+      case 'image_upload': return t('fieldTypeImageUpload');
       case 'file': return t('fieldTypeFile');
       case 'date': return t('fieldTypeDate');
       default: return t('fieldTypeText');
@@ -873,6 +886,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                     <option value="dropdown">{t('fieldTypeDropdown')}</option>
                     <option value="yes_no">{t('fieldTypeYesNo')}</option>
                     <option value="camera">{t('fieldTypeCamera')}</option>
+                    <option value="image_upload">{t('fieldTypeImageUpload')}</option>
                     <option value="file">{t('fieldTypeFile')}</option>
                     <option value="date">{t('fieldTypeDate')}</option>
                   </ThemeSelect>
@@ -1664,8 +1678,8 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
               <div>
                 <label className="text-xs font-semibold text-gray-600">{t('fieldType')}</label>
                 <ThemeSelect
-                  value={editingField.type || 'text'}
-                  onChange={(e) => setEditingField({ ...editingField, type: e.target.value })}
+                  value={['image', 'gallery'].includes(String(editingField.type || editingField.fieldType || '')) ? 'image_upload' : (editingField.type || editingField.fieldType || 'text')}
+                  onChange={(e) => setEditingField({ ...editingField, type: e.target.value, fieldType: e.target.value })}
                   className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
                 >
                   <option value="text">{t('fieldTypeText')}</option>
@@ -1674,6 +1688,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                   <option value="dropdown">{t('fieldTypeDropdown')}</option>
                   <option value="yes_no">{t('fieldTypeYesNo')}</option>
                   <option value="camera">{t('fieldTypeCamera')}</option>
+                  <option value="image_upload">{t('fieldTypeImageUpload')}</option>
                   <option value="file">{t('fieldTypeFile')}</option>
                   <option value="date">{t('fieldTypeDate')}</option>
                 </ThemeSelect>

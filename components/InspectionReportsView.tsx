@@ -977,7 +977,7 @@ export default function InspectionReportsView({
           const valLower = normVal.toLowerCase();
           const keyLower = key.toLowerCase();
           const matchedField = (state.inspectionFields || []).find((f: any) => f.id === key || f.fieldName === key);
-          const isCameraField = matchedField && (matchedField.type === 'camera' || matchedField.fieldType === 'camera');
+          const isCameraField = matchedField && ['camera', 'image', 'image_upload'].includes(String(matchedField.type || matchedField.fieldType || '').toLowerCase());
           const isPhotoUrl = normVal.startsWith('http') || normVal.startsWith('/uploads') || normVal.startsWith('data:image') || valLower.endsWith('.jpg') || valLower.endsWith('.jpeg') || valLower.endsWith('.png') || valLower.endsWith('.webp') || normVal.includes('s3.amazonaws.com') || normVal.includes('offline_images');
           const isPhotoKey = keyLower.includes('photo') || keyLower.includes('camera') || keyLower.includes('image') || keyLower.includes('picture');
 
@@ -1073,7 +1073,7 @@ export default function InspectionReportsView({
     const checkIsPhoto = (valStr: string, keyName: string, matchedField?: any) => {
       const valLower = valStr.toLowerCase();
       const keyLower = keyName.toLowerCase();
-      const isCamera = matchedField && (matchedField.type === 'camera' || matchedField.fieldType === 'camera');
+      const isCamera = matchedField && ['camera', 'image', 'image_upload'].includes(String(matchedField.type || matchedField.fieldType || '').toLowerCase());
       return isCamera || 
         valStr.startsWith('http') || 
         valStr.startsWith('/uploads') || 
@@ -6327,7 +6327,8 @@ export default function InspectionReportsView({
         || normalizedKey.includes('image')
         || normalizedKey.includes('camera')
         || normalizedValue.startsWith('http')
-        || normalizedValue.includes('captured_photo');
+        || normalizedValue.includes('captured_photo')
+        || normalizedValue.includes('gallery_photo');
     });
     const fieldKey = matchingField?.[0] || fallbackKey || firstImageField?.[0];
     const field = fieldKey
@@ -8069,7 +8070,7 @@ export default function InspectionReportsView({
                         </td>
                         {dynamicColumns.map((col: any) => {
                           const val = getWorkDynamicFieldValue(work, col, state.inspectionFields || []);
-                          const isPhoto = col.type === 'camera' || col.fieldType === 'camera' || (typeof val === 'string' && (val.startsWith('http') || val.startsWith('/uploads') || val.includes('s3.amazonaws.com') || val.endsWith('.jpg') || val.endsWith('.png')));
+                          const isPhoto = ['camera', 'image', 'image_upload'].includes(String(col.type || col.fieldType || '').toLowerCase()) || (typeof val === 'string' && (val.startsWith('http') || val.startsWith('/uploads') || val.includes('s3.amazonaws.com') || val.endsWith('.jpg') || val.endsWith('.png')));
                           
                           return (
                             <td key={col.id} className="portal-fis-clip">
