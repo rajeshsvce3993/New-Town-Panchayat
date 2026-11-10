@@ -36,6 +36,8 @@ export function parseInspectionWorksViewQuery(searchParams: URLSearchParams) {
     pageSize: searchParams.get('pageSize') ? parseInt(searchParams.get('pageSize')!, 10) : 50,
     allTime: searchParams.get('allTime') === '1',
     reportsBundle: searchParams.get('reportsBundle') === '1',
+    swmSummary: searchParams.get('swmSummary') === '1',
+    swmBuildingType: searchParams.get('swmBuildingType'),
   };
 }
 
@@ -69,6 +71,8 @@ export function buildInspectionWorksCacheKey(searchParams: URLSearchParams): str
     q.pageSize || '',
     q.allTime ? 'all' : '',
     q.reportsBundle ? 'bundle' : '',
+    q.swmSummary ? 'swm' : '',
+    q.swmBuildingType || '',
   ].join('|');
 }
 

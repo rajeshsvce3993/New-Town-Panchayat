@@ -44,6 +44,7 @@ import {
   getInspectionWorksReportsDataGeneration,
 } from '@/lib/inspectionWorksLiteLoader';
 import { applyDefaultReportsDateWindow } from '@/lib/inspectionWorksMongoRepository';
+import { aggregateSwmStreetGroups } from '@/lib/swmReportsAggregate';
 import { toMediaProxyPath } from '@/lib/s3MediaKey';
 
 export const maxDuration = 300;
@@ -210,6 +211,33 @@ export async function GET(req: NextRequest) {
       const rowLimit = viewQuery.limit > 0 ? viewQuery.limit : 0;
       const page = viewQuery.page > 0 ? viewQuery.page : 1;
       const pageSize = viewQuery.pageSize > 0 ? viewQuery.pageSize : 50;
+
+      if (viewQuery.swmSummary) {
+        const masters = await resolveInspectionFilterMasters(requestOrigin);
+        const summary = await aggregateSwmStreetGroups(filterQuery, masters, {
+          buildingType: viewQuery.swmBuildingType,
+        });
+        const responsePayload = {
+          success: true,
+          swmSummary: true,
+          groups: summary.groups,
+          count: summary.groups.length,
+          total: summary.groups.reduce((sum, row) => sum + (row.householdsSurveyed || 0), 0),
+          meta: {
+            querySource: summary.source,
+            truncated: false,
+            defaultDateWindowApplied,
+          },
+        };
+        cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
+        return NextResponse.json(responsePayload, {
+          headers: {
+            ...CORS_HEADERS,
+            'X-Inspection-Works-Source': summary.source,
+            'X-Inspection-Works-Mode': 'swm-summary',
+          },
+        });
+      }
 
       if (viewQuery.reportsBundle) {
         const bundle = await loadInspectionWorksReportsBundle(
