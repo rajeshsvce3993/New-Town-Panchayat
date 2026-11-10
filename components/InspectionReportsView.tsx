@@ -7995,55 +7995,44 @@ export default function InspectionReportsView({
             </div>
           </div>
 
-          {/* Dynamic Categories Buttons for Selected Subject (look like dynamic columns buttons) */}
           {reportModule !== 'swm' && (
-          <div className="portal-fis-toolbar" style={{ margin: '0.4rem 0.65rem', borderRadius: '0.7rem' }}>
-            <div className="portal-fis-toolbar-row" style={{ width: '100%' }}>
-              <div className="portal-fis-group">
-                <span className="portal-fis-bar-label">
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                  {lang === 'ta' ? 'பிரிவின் கீழ் உள்ள ஆய்வு வகைகள்' : 'Categories in subject'}
-                </span>
-                <div className="portal-fis-pills">
+          <div className="portal-fis-cats">
+            <div className="portal-fis-cats-head">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {lang === 'ta' ? 'பிரிவின் கீழ் உள்ள ஆய்வு வகைகள்' : 'Categories in subject'}
+            </div>
+            <div className="portal-fis-cats-list">
               <button
                 type="button"
                 onClick={() => {
                   setSelectedCategoryId('all');
                   queueMicrotask(() => applyFiltersAndLoad());
                 }}
-                className={`portal-fis-pill ${selectedCategoryId === 'all' ? 'is-active' : ''}`}
+                className={`portal-fis-cat ${selectedCategoryId === 'all' ? 'is-active' : ''}`}
               >
-                <span>{lang === 'ta' ? 'அனைத்து வகைகளும்' : 'All Categories'}</span>
+                <span className="portal-fis-cat-name">{lang === 'ta' ? 'அனைத்து வகைகளும்' : 'All categories'}</span>
                 <span className="portal-fis-count">{worksFromApi ? apiTotalWithoutCategory : filteredWorks.length}</span>
               </button>
               {availableCategories.map((cat: any) => {
                 const isSelected = selectedCategoryId === cat.id || selectedCategoryId === cat.nameEn;
-                const count = resolveCategoryCountFromApi(cat);
+                const count = Number(resolveCategoryCountFromApi(cat) || 0);
 
                 return (
                   <button
                     key={cat.id}
                     type="button"
                     onClick={() => {
-                      if (isSelected) {
-                        setSelectedCategoryId('all');
-                      } else {
-                        setSelectedCategoryId(cat.id);
-                        if (cat.subjectId && selectedSubjectId === 'all') {
-                          setSelectedSubjectId(cat.subjectId);
-                        }
-                      }
+                      setSelectedCategoryId(isSelected ? 'all' : cat.id);
                       queueMicrotask(() => applyFiltersAndLoad());
                     }}
-                    className={`portal-fis-pill ${isSelected ? 'is-active' : ''}`}
+                    className={`portal-fis-cat ${isSelected ? 'is-active' : ''} ${count === 0 ? 'is-empty' : ''}`}
+                    title={lang === 'ta' ? cat.nameTa || cat.nameEn : cat.nameEn}
                   >
-                    <span>{lang === 'ta' ? cat.nameTa || cat.nameEn : cat.nameEn}</span>
+                    <span className="portal-fis-cat-name">{lang === 'ta' ? cat.nameTa || cat.nameEn : cat.nameEn}</span>
                     <span className="portal-fis-count">{count}</span>
                   </button>
                 );
               })}
-                </div>
-              </div>
             </div>
           </div>
           )}

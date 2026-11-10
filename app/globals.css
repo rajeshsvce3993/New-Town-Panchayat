@@ -2022,6 +2022,101 @@ select option {
   cursor: pointer;
 }
 
+.portal-fis-cats {
+  margin: 0.35rem 0 0.55rem;
+  padding: 0.6rem 0.75rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #0e7490) 14%, #e8eef3);
+  border-radius: 1rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--theme-accent, #0e7490) 5%, #ffffff), #ffffff);
+}
+
+.portal-fis-cats-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.portal-fis-cats-head svg {
+  color: var(--theme-accent, #0e7490);
+}
+
+.portal-fis-cats-list {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.05rem 0.1rem 0.2rem;
+}
+
+.portal-fis-cat {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.45rem;
+  width: max-content;
+  max-width: none;
+  min-height: 2rem;
+  padding: 0.28rem 0.4rem 0.28rem 0.7rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.7rem;
+  background: #ffffff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.portal-fis-cat:hover:not(.is-active) {
+  border-color: color-mix(in srgb, var(--theme-accent, #0e7490) 35%, #e2e8f0);
+  background: color-mix(in srgb, var(--theme-accent, #0e7490) 6%, #ffffff);
+}
+
+.portal-fis-cat-name {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.portal-fis-cat .portal-fis-count {
+  background: color-mix(in srgb, var(--theme-accent, #0e7490) 14%, #f1f5f9);
+  color: #0f172a;
+}
+
+.portal-fis-cat.is-empty {
+  color: #94a3b8;
+  border-color: #eef2f7;
+  background: #f8fafc;
+}
+
+.portal-fis-cat.is-empty .portal-fis-count {
+  background: #e2e8f0;
+  color: #64748b;
+}
+
+.portal-fis-cat.is-active {
+  border-color: transparent;
+  background: var(--theme-accent, #0e7490);
+  color: #ffffff;
+  box-shadow: 0 6px 14px -10px var(--theme-accent, #0e7490);
+}
+
+.portal-fis-cat.is-active .portal-fis-count {
+  background: rgb(255 255 255 / 0.22);
+  color: #ffffff;
+}
+
 .portal-fis-results {
   display: flex;
   flex-direction: column;
@@ -2813,6 +2908,31 @@ select option {
 [data-theme="dark"] .portal-fis-toolbar {
   background: #1e1b2e;
   border-color: #3f3a5a;
+}
+
+[data-theme="dark"] .portal-fis-cats {
+  background: #1e1b2e;
+  border-color: #3f3a5a;
+}
+
+[data-theme="dark"] .portal-fis-cats-head {
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .portal-fis-cat {
+  background: #111827;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+[data-theme="dark"] .portal-fis-cat.is-empty {
+  background: #0f172a;
+  color: #64748b;
+}
+
+[data-theme="dark"] .portal-fis-cat.is-active {
+  background: var(--theme-accent, #0e7490);
+  color: #ffffff;
 }
 
 [data-theme="dark"] .portal-fis-results,
