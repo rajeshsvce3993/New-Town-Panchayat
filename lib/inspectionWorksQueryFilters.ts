@@ -1,4 +1,5 @@
 import { extractCalendarDateYMD, extractInspectionDateMs } from '@/lib/inspectionDate';
+import { geoNameKeys, geoNamesEqual, setHasGeoName } from '@/lib/geoNameMatch';
 
 export type InspectionWorksFilterQuery = {
   fromDate?: string | null;
@@ -59,57 +60,42 @@ export function workMatchesDistrict(w: any, districtId: string, ctx: InspectionW
   if (!(ctx.districts || []).length) {
     const wDistId = String(w.districtId || '').toLowerCase();
     const wDistCode = padCode(w.districtCode).toLowerCase();
-    const wDistName = String(w.districtNameEn || '').trim().toLowerCase();
-    return wDistId === sDist || wDistCode === sDist || wDistName === sDist;
+    const wDistName = String(w.districtNameEn || w.districtNameTa || '').trim();
+    return wDistId === sDist || wDistCode === sDist || geoNamesEqual(wDistName, districtId);
   }
-  const dist = (ctx.districts || []).find((d: any) => String(d.id || '').toLowerCase() === sDist);
-  const distName = String(dist?.nameEn || '').trim().toLowerCase();
+  const dist = (ctx.districts || []).find(
+    (d: any) =>
+      String(d.id || '').toLowerCase() === sDist ||
+      geoNamesEqual(d.nameEn, districtId) ||
+      geoNamesEqual(d.nameTa, districtId)
+  );
+  const distName = String(dist?.nameEn || '').trim();
+  const distNameTa = String(dist?.nameTa || '').trim();
   const distCode = padCode(dist?.code).toLowerCase();
 
   const wDistId = String(w.districtId || '').toLowerCase();
   const wDistCode = padCode(w.districtCode).toLowerCase();
-  const wDistName = String(w.districtNameEn || '').trim().toLowerCase();
+  const wDistName = String(w.districtNameEn || '').trim();
+  const wDistNameTa = String(w.districtNameTa || '').trim();
 
-  if (wDistName) {
-    if (distName && wDistName === distName) return true;
-    if (wDistName === sDist) return true;
+  if (wDistName || wDistNameTa) {
+    if (distName && (geoNamesEqual(wDistName, distName) || geoNamesEqual(wDistNameTa, distName))) return true;
+    if (distNameTa && (geoNamesEqual(wDistName, distNameTa) || geoNamesEqual(wDistNameTa, distNameTa))) return true;
+    if (geoNamesEqual(wDistName, districtId) || geoNamesEqual(wDistNameTa, districtId)) return true;
     return false;
   }
-  if (wDistId && wDistId === sDist) return true;
+  if (wDistId && (wDistId === sDist || wDistId === String(dist?.id || '').toLowerCase())) return true;
   if (distCode && wDistCode && wDistCode === distCode) return true;
   if (wDistCode && wDistCode === sDist) return true;
   return false;
 }
 
-function normalizeGeoName(value?: string | null): string {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/\s+zone$/i, '')
-    .replace(/\s+district$/i, '')
-    .trim();
-}
-
 function geoTokenSet(...values: Array<string | undefined | null>): Set<string> {
-  const set = new Set<string>();
-  for (const value of values) {
-    const raw = String(value || '').trim().toLowerCase();
-    if (raw) set.add(raw);
-    const normalized = normalizeGeoName(value);
-    if (normalized) set.add(normalized);
-  }
-  return set;
+  return geoNameKeys(...values);
 }
 
 function setHasGeo(set: Set<string>, ...values: Array<string | undefined | null>): boolean {
-  for (const value of values) {
-    const raw = String(value || '').trim().toLowerCase();
-    if (raw && set.has(raw)) return true;
-    const normalized = normalizeGeoName(value);
-    if (normalized && set.has(normalized)) return true;
-  }
-  return false;
+  return setHasGeoName(set, ...values);
 }
 
 export function workMatchesZone(w: any, zoneId: string, ctx: InspectionWorksFilterMasters): boolean {
@@ -143,7 +129,7 @@ export function workMatchesZone(w: any, zoneId: string, ctx: InspectionWorksFilt
   const wDistName = String(w.districtNameEn || '').trim();
   if (wDistName) {
     const distByName = (ctx.districts || []).find(
-      (d: any) => normalizeGeoName(d.nameEn) === normalizeGeoName(wDistName)
+      (d: any) => geoNamesEqual(d.nameEn, wDistName) || geoNamesEqual(d.nameTa, wDistName)
     );
     if (!distByName) return false;
     return setHasGeo(selected, distByName.zoneId, distByName.zoneNameEn, distByName.zoneNameTa);
@@ -162,7 +148,7 @@ export function workMatchesZone(w: any, zoneId: string, ctx: InspectionWorksFilt
     const dist = (ctx.districts || []).find(
       (d: any) =>
         (!!tp.districtId && String(d.id || '').toLowerCase() === String(tp.districtId).toLowerCase()) ||
-        (!!tp.districtNameEn && normalizeGeoName(d.nameEn) === normalizeGeoName(tp.districtNameEn))
+        (!!tp.districtNameEn && geoNamesEqual(d.nameEn, tp.districtNameEn))
     );
     if (dist) return setHasGeo(selected, dist.zoneId, dist.zoneNameEn, dist.zoneNameTa);
   }
@@ -184,7 +170,11 @@ export function findWorkTownPanchayat(w: any, ctx: InspectionWorksFilterMasters)
     if (byCode) return byCode;
   }
   if (wName) {
-    return tps.find((t: any) => String(t.nameEn || '').trim().toLowerCase() === wName);
+    return tps.find(
+      (t: any) =>
+        geoNamesEqual(t.nameEn, wName) ||
+        geoNamesEqual(t.nameTa, wName)
+    );
   }
   return undefined;
 }
@@ -210,9 +200,11 @@ export function workMatchesTp(w: any, tpId: string, ctx: InspectionWorksFilterMa
 }
 
 function geoEq(a?: string | null, b?: string | null): boolean {
-  const x = String(a || '').trim().toLowerCase();
-  const y = String(b || '').trim().toLowerCase();
-  return !!x && !!y && x === y;
+  const x = String(a || '').trim();
+  const y = String(b || '').trim();
+  if (!x || !y) return false;
+  if (x.toLowerCase() === y.toLowerCase()) return true;
+  return geoNamesEqual(x, y);
 }
 
 /** Exact id/name match only — never infer another town panchayat, district, or zone. */

@@ -1,4 +1,5 @@
 import type { InspectionWorksFilterMasters, InspectionWorksFilterQuery } from '@/lib/inspectionWorksQueryFilters';
+import { geoNamesEqual } from '@/lib/geoNameMatch';
 import {
   getActiveMongoDb,
   getCollectionWithAliases,
@@ -83,8 +84,8 @@ export function tpIdsForDistrict(districtId: string, masters: InspectionWorksFil
   const dist = (masters.districts || []).find(
     (d) =>
       normId(d.id).toLowerCase() === needle ||
-      normId(d.nameEn).toLowerCase() === needle ||
-      normId(d.nameTa).toLowerCase() === needle ||
+      geoNamesEqual(d.nameEn, districtId) ||
+      geoNamesEqual(d.nameTa, districtId) ||
       normId(d.code).toLowerCase() === needle
   );
   const keys = new Set<string>(idVariants(districtId).map((v) => v.toLowerCase()));
@@ -97,7 +98,13 @@ export function tpIdsForDistrict(districtId: string, masters: InspectionWorksFil
   for (const tp of masters.townPanchayats || []) {
     const d = normId(tp.districtId).toLowerCase();
     const dName = normId(tp.districtNameEn).toLowerCase();
-    if (keys.has(d) || keys.has(dName) || keys.has(normId(tp.districtId))) {
+    if (
+      keys.has(d) ||
+      keys.has(dName) ||
+      keys.has(normId(tp.districtId)) ||
+      geoNamesEqual(tp.districtNameEn, dist?.nameEn) ||
+      geoNamesEqual(tp.districtNameEn, districtId)
+    ) {
       ids.push(normId(tp.id));
       if (tp.code) ids.push(normId(tp.code));
     }
@@ -232,7 +239,8 @@ export function buildInspectionWorksMongoMatch(
     const dist = (masters.districts || []).find(
       (d) =>
         variants.includes(normId(d.id).toLowerCase()) ||
-        variants.includes(normId(d.nameEn).toLowerCase()) ||
+        geoNamesEqual(d.nameEn, scopeDistrict) ||
+        geoNamesEqual(d.nameTa, scopeDistrict) ||
         variants.includes(normId(d.code).toLowerCase())
     );
     const tpIds = tpIdsForDistrict(scopeDistrict, masters);
@@ -240,6 +248,7 @@ export function buildInspectionWorksMongoMatch(
     for (const v of variants) or.push({ districtId: v });
     if (dist?.id) or.push({ districtId: dist.id });
     if (dist?.nameEn) or.push({ districtNameEn: dist.nameEn });
+    if (dist?.nameTa) or.push({ districtNameTa: dist.nameTa });
     if (tpIds.length) or.push({ tpId: { $in: tpIds } }, { townPanchayatId: { $in: tpIds } });
     and.push({ $or: or });
   } else if (scopeZone) {

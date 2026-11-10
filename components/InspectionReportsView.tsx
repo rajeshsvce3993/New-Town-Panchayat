@@ -80,6 +80,7 @@ import {
   workMatchesZone,
   type InspectionWorkReportDimensionRollup,
 } from '@/lib/inspectionWorksQueryFilters';
+import { geoNamesEqual } from '@/lib/geoNameMatch';
 import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
 import MapViewReport from './MapViewReport';
 import ThemeSelect from './ThemeSelect';
@@ -1746,15 +1747,18 @@ export default function InspectionReportsView({
       if (currentUser.districtId && currentUser.districtId !== 'all') return currentUser.districtId;
       if (currentUser.assignedDistrictId && currentUser.assignedDistrictId !== 'all') return currentUser.assignedDistrictId;
       if (tpObj?.districtNameEn) {
-        const matchedDist = (state.districts || []).find((d: any) => 
-          String(d.nameEn || '').toLowerCase() === String(tpObj.districtNameEn).toLowerCase()
+        const matchedDist = (state.districts || []).find((d: any) =>
+          geoNamesEqual(d.nameEn, tpObj.districtNameEn) ||
+          geoNamesEqual(d.nameTa, tpObj.districtNameEn)
         );
         if (matchedDist) return matchedDist.id;
       }
       if (String(userTpId).toLowerCase().includes('arani') || String(currentUser?.username).toLowerCase().includes('arani')) {
-        const thiruvallurDist = (state.districts || []).find((d: any) => 
-          String(d.nameEn || '').toLowerCase().includes('thiruvallur') || 
-          String(d.id || '').toLowerCase().includes('thiruvallur')
+        const thiruvallurDist = (state.districts || []).find((d: any) =>
+          geoNamesEqual(d.nameEn, 'Thiruvallur') ||
+          geoNamesEqual(d.nameEn, 'Tiruvallur') ||
+          String(d.id || '').toLowerCase().includes('thiruvallur') ||
+          String(d.id || '').toLowerCase().includes('tiruvallur')
         );
         if (thiruvallurDist) return thiruvallurDist.id;
       }
@@ -1803,9 +1807,10 @@ export default function InspectionReportsView({
         String(t.nameEn || '').toLowerCase() === String(userTpId).toLowerCase()
       );
       if (tpObj) {
-        const distObj = (state.districts || []).find((d: any) => 
+        const distObj = (state.districts || []).find((d: any) =>
           String(d.id).toLowerCase() === String(tpObj.districtId).toLowerCase() ||
-          String(d.nameEn || '').toLowerCase() === String(tpObj.districtNameEn || '').toLowerCase()
+          geoNamesEqual(d.nameEn, tpObj.districtNameEn) ||
+          geoNamesEqual(d.nameTa, tpObj.districtNameEn)
         );
         if (distObj?.zoneId) return distObj.zoneId;
       }
@@ -2515,9 +2520,17 @@ export default function InspectionReportsView({
     }
     if (selectedDistrictId !== 'all') {
       const sDist = String(selectedDistrictId).toLowerCase();
-      list = list.filter((tp: any) => 
+      const dist = (state.districts || []).find(
+        (d: any) =>
+          String(d.id || '').toLowerCase() === sDist ||
+          geoNamesEqual(d.nameEn, selectedDistrictId) ||
+          geoNamesEqual(d.nameTa, selectedDistrictId)
+      );
+      list = list.filter((tp: any) =>
         String(tp.districtId || '').toLowerCase() === sDist ||
-        String(tp.districtNameEn || '').toLowerCase() === sDist
+        String(tp.districtId || '').toLowerCase() === String(dist?.id || '').toLowerCase() ||
+        geoNamesEqual(tp.districtNameEn, dist?.nameEn) ||
+        geoNamesEqual(tp.districtNameEn, selectedDistrictId)
       );
     } else {
       const effZoneId = userZoneId || selectedZoneId;
@@ -3057,8 +3070,12 @@ export default function InspectionReportsView({
     ) => {
       const norm = (v: any) => String(v || '').trim().toLowerCase();
       const matchesGeo = (entity: any, ...needles: string[]) => {
-        const ids = [entity?.id, entity?.code, entity?.nameEn, entity?.nameTa].map(norm).filter(Boolean);
-        return needles.some((n) => n && ids.includes(n));
+        const ids = [entity?.id, entity?.code].map(norm).filter(Boolean);
+        return needles.some((n) => {
+          if (!n) return false;
+          if (ids.includes(n)) return true;
+          return geoNamesEqual(entity?.nameEn, n) || geoNamesEqual(entity?.nameTa, n);
+        });
       };
       const zoneName = String(names?.zoneNameEn || '').trim();
       const distName = String(names?.districtNameEn || '').trim();
@@ -3085,11 +3102,11 @@ export default function InspectionReportsView({
       }
 
       return {
-        zoneNameEn: zoneName || zone?.nameEn || zoneId || '-',
+        zoneNameEn: zone?.nameEn || zoneName || zoneId || '-',
         zoneNameTa: zone?.nameTa || zoneName || zone?.nameEn || zoneId || '-',
-        districtNameEn: distName || dist?.nameEn || districtId || '-',
+        districtNameEn: dist?.nameEn || distName || districtId || '-',
         districtNameTa: dist?.nameTa || distName || dist?.nameEn || districtId || '-',
-        tpNameEn: tpName || tp?.nameEn || tpId || '-',
+        tpNameEn: tp?.nameEn || tpName || tpId || '-',
         tpNameTa: tp?.nameTa || tpName || tp?.nameEn || tpId || '-',
         streetName: streetName || '-',
       };
@@ -3128,11 +3145,11 @@ export default function InspectionReportsView({
       if (!isSwmDoorToDoorWork(work, swmDoorToDoorCategoryIds)) return;
       if (swmBuildingFilter !== 'all' && readSwmBuildingType(work, fields) !== swmBuildingFilter) return;
       const geo = resolveGeoNames(work.zoneId, work.districtId, work.tpId || work.townPanchayatId, work);
-      const tpId = String(work.tpId || work.townPanchayatId || geo.tpNameEn || 'unknown').trim();
+      const tpId = String(geo.tpNameEn || work.tpId || work.townPanchayatId || 'unknown').trim();
       const ward = String(work.wardNumber || work.wardNo || '').trim().replace(/^0+/, '') || '0';
       const street = streetLabel(work);
       const streetKey = street && street !== '-' ? street : '-';
-      const groupKey = [tpId, swmShowWard ? ward : '', swmShowStreet ? streetKey.toLowerCase() : ''].join('|');
+      const groupKey = [tpId.toLowerCase(), swmShowWard ? ward : '', swmShowStreet ? streetKey.toLowerCase() : ''].join('|');
       if (!groups.has(groupKey)) {
         const master = masterByTp.get(String(work.tpId || work.townPanchayatId || '').toLowerCase())
           || masterByTp.get(String(geo.tpNameEn || '').toLowerCase());

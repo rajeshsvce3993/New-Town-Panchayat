@@ -9,6 +9,7 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { OFFICIAL_PF_INTEREST_RATES } from './pfInterestRatesData';
 import { getAppEnv, isLocalDevHost } from '@/lib/appEnvironment';
 import { isFallbackInspectionWork } from '@/lib/inspectionWorksQueryFilters';
+import { applyCanonicalDistrictNames } from '@/lib/geoNameMatch';
 import { applyUserPasswordFields, mergeUserRecordPreservingPassword } from '@/lib/userCredentials';
 
 // Storage paths for local fallback
@@ -2010,7 +2011,8 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
   const categories = masters?.inspectionCategories || localDb?.inspectionCategories || INITIAL_DATA.inspectionCategories || [];
   const lookups = buildEnrichMasterLookups(tps, districts, subjects, categories);
 
-  return (works || []).map((w: any) => {
+  return (works || []).map((raw: any) => {
+    const w = applyCanonicalDistrictNames(raw, districts);
     const tpIdKey = lowerKey(w.tpId);
     const tpNameKey = lowerKey(w.tpNameEn);
     const tp =
@@ -2088,8 +2090,8 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
       zoneId: resolvedZoneId || w.zoneId,
       tpNameEn: w.tpNameEn || tp?.nameEn || '',
       tpNameTa: w.tpNameTa || tp?.nameTa || '',
-      districtNameEn: w.districtNameEn || dist?.nameEn || '',
-      districtNameTa: w.districtNameTa || dist?.nameTa || '',
+      districtNameEn: dist?.nameEn || w.districtNameEn || '',
+      districtNameTa: dist?.nameTa || w.districtNameTa || '',
       zoneNameEn: w.zoneNameEn || dist?.zoneNameEn || '',
       zoneNameTa: w.zoneNameTa || dist?.zoneNameTa || '',
       subjectId: resolvedSubjectId,
@@ -3891,7 +3893,8 @@ export async function resolveInspectionWorkIdentity(
 export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
   let mongoSaved = false;
   const { attachInspectionWorkReportIndexFields } = await import('@/lib/inspectionWorkReportIndex');
-  const indexedWork = attachInspectionWorkReportIndexFields(newWork);
+  const districts = await getCollectionData('districts').catch(() => []);
+  const indexedWork = attachInspectionWorkReportIndexFields(applyCanonicalDistrictNames(newWork, districts));
   let previousWork: any | null = null;
   try {
     const client = await getMongoClient();
