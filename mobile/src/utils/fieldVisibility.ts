@@ -40,6 +40,11 @@ export function isCameraField(f: FieldDefinition): boolean {
   return (f.fieldType || '').toLowerCase() === 'camera' || (f.type || '').toLowerCase() === 'camera';
 }
 
+export function isImageUploadField(f: FieldDefinition): boolean {
+  const type = String(f.fieldType || f.type || '').toLowerCase();
+  return type === 'image' || type === 'image_upload' || type === 'gallery';
+}
+
 function yesNoMatch(currentVal: string, triggerVal: string): boolean {
   if (currentVal.toLowerCase() === triggerVal.toLowerCase()) return true;
   if (triggerVal.toLowerCase() === 'yes' && (currentVal === 'ஆம்' || currentVal.toLowerCase() === 'yes')) return true;

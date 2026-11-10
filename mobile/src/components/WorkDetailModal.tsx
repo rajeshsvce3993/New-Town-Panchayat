@@ -381,7 +381,7 @@ function displayImageUri(url: string, fieldKey: string) {
 function isImageValue(v: string) {
   const s = String(v || '').trim();
   if (!s || s === SAMPLE_PHOTO) return false;
-  if (/^captured_photo_/i.test(s) && !s.startsWith('http') && !s.startsWith('file:') && !s.includes('/')) return false;
+  if (/^(captured_photo_|gallery_photo_)/i.test(s) && !s.startsWith('http') && !s.startsWith('file:') && !s.includes('/')) return false;
   return (
     s.startsWith('http') ||
     s.startsWith('/uploads') ||

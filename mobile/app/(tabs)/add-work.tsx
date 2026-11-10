@@ -38,7 +38,7 @@ import { dedupeInspectionWorks } from '../../src/utils/dedupeWorks';
 import { prefs } from '../../src/storage/preferences';
 import type { Category, FieldDefinition, InspectionWork, Subject } from '../../src/types/models';
 import { effectiveCategoryIds, effectiveSubjectIds, effectiveWards, portalCategories, portalFields, portalSubjects, portalWorks } from '../../src/types/models';
-import { fieldKey, isCameraField, visibleDynamicFields } from '../../src/utils/fieldVisibility';
+import { fieldKey, isCameraField, isImageUploadField, visibleDynamicFields } from '../../src/utils/fieldVisibility';
 import { compressImageLocally } from '../../src/utils/imageCompression';
 import { uniquePhotoFileName } from '../../src/utils/photoPersist';
 import { now12Hr } from '../../src/utils/dates';
@@ -303,6 +303,26 @@ export default function AddWorkScreen() {
     toast(isTamil ? 'கோப்பு தேர்ந்தெடுக்கப்பட்டது!' : 'File selected successfully!');
   };
 
+  const pickGalleryImage = async (key: string) => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      toast(isTamil ? 'தொகுப்பு அனுமதி தேவை' : 'Gallery permission is required to upload an image');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.75,
+      exif: false,
+    });
+    if (res.canceled || !res.assets[0]) return;
+    const raw = res.assets[0].uri;
+    const compressed = await compressImageLocally(raw, uniquePhotoFileName(key || 'gallery'));
+    const uri = compressed || raw;
+    setPhotos((p) => ({ ...p, [key]: uri }));
+    setValues((v) => ({ ...v, [key]: `gallery_photo_${key}_${Date.now()}.jpg` }));
+    toast(isTamil ? 'படம் தேர்ந்தெடுக்கப்பட்டது!' : 'Image selected from gallery');
+  };
+
   const submit = async () => {
     if (submitInFlightRef.current || submitting || success) return;
     submitInFlightRef.current = true;
@@ -484,6 +504,23 @@ export default function AddWorkScreen() {
         />
       );
     }
+    if (isImageUploadField(f)) {
+      return (
+        <FormPhotoField
+          key={k}
+          label={label}
+          uri={photos[k] || null}
+          primary={palette.primary}
+          onPress={() => void pickGalleryImage(k)}
+          emptyTitle={isTamil ? 'தொகுப்பிலிருந்து படம் தேர்வு' : 'Choose image from gallery'}
+          emptySubtitle={isTamil ? 'உங்கள் தொகுப்பில் உள்ள படத்தை பதிவேற்றவும்' : 'Pick a photo from your gallery'}
+          capturedBadge={isTamil ? 'படம் சேர்க்கப்பட்டது' : 'Image added'}
+          retakeLabel={isTamil ? 'மாற்று' : 'Change'}
+          ctaLabel={isTamil ? 'தொகுப்பைத் திற' : 'Open gallery'}
+          source="gallery"
+        />
+      );
+    }
     if (type.includes('yes') || type.includes('boolean')) {
       const yesText = isTamil ? 'ஆம்' : 'Yes';
       const noText = isTamil ? 'இல்லை' : 'No';
@@ -520,7 +557,10 @@ export default function AddWorkScreen() {
         />
       );
     }
-    if (type.includes('file') || type.includes('document') || type.includes('pdf') || type.includes('upload')) {
+    if (
+      !isImageUploadField(f) &&
+      (type === 'file' || type.includes('document') || type.includes('pdf') || type === 'upload' || type === 'file_upload')
+    ) {
       return (
         <View key={k} style={styles.fieldCard}>
           <Text style={styles.fieldLbl}>{label}</Text>

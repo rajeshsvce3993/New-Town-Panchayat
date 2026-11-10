@@ -129,6 +129,7 @@ type PhotoFieldProps = {
   capturedBadge?: string;
   retakeLabel?: string;
   ctaLabel?: string;
+  source?: 'camera' | 'gallery';
 };
 
 export function FormPhotoField({
@@ -141,18 +142,25 @@ export function FormPhotoField({
   capturedBadge = 'Photo added',
   retakeLabel = 'Retake',
   ctaLabel = 'Open camera',
+  source = 'camera',
 }: PhotoFieldProps) {
   const themeBorder = formSelectBorder(primary);
   const themeSoft = withAlpha(primary, 0.12);
   const themeRing = withAlpha(primary, 0.28);
+  const isGallery = source === 'gallery';
+  const tagIcon = isGallery ? 'images' : 'camera';
+  const tagText = isGallery ? 'IMAGE' : 'PHOTO';
+  const emptyIcon = isGallery ? 'images' : 'camera';
+  const ctaIcon = isGallery ? 'images-outline' : 'aperture-outline';
+  const changeIcon = isGallery ? 'image-outline' : 'camera-reverse';
 
   return (
     <View style={styles.block}>
       <View style={styles.photoLabelRow}>
         <FormFieldLabel label={label} style={styles.photoLabelText} />
         <View style={[styles.photoLabelTag, { backgroundColor: themeSoft }]}>
-          <Ionicons name="camera" size={11} color={primary} />
-          <Text style={[styles.photoLabelTagText, { color: primary }]}>PHOTO</Text>
+          <Ionicons name={tagIcon} size={11} color={primary} />
+          <Text style={[styles.photoLabelTagText, { color: primary }]}>{tagText}</Text>
         </View>
       </View>
       {uri ? (
@@ -171,7 +179,7 @@ export function FormPhotoField({
                 pressed && { opacity: 0.88 },
               ]}
             >
-              <Ionicons name="camera-reverse" size={14} color={primary} />
+              <Ionicons name={changeIcon} size={14} color={primary} />
               <Text style={[styles.photoPreviewRetakeText, { color: primary }]}>{retakeLabel}</Text>
             </Pressable>
           </View>
@@ -200,7 +208,7 @@ export function FormPhotoField({
                   colors={['#FFFFFF', withAlpha(primary, 0.08)]}
                   style={styles.photoOrbitGradient}
                 >
-                  <Ionicons name="camera" size={18} color={primary} />
+                  <Ionicons name={emptyIcon} size={18} color={primary} />
                 </LinearGradient>
               </View>
             </View>
@@ -211,7 +219,7 @@ export function FormPhotoField({
               {emptySubtitle}
             </Text>
             <View style={[styles.photoCta, { backgroundColor: primary }]}>
-              <Ionicons name="aperture-outline" size={14} color="#fff" />
+              <Ionicons name={ctaIcon} size={14} color="#fff" />
               <Text style={styles.photoCtaText}>{ctaLabel}</Text>
             </View>
           </LinearGradient>
