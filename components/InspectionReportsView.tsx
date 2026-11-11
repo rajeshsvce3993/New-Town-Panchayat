@@ -876,6 +876,8 @@ interface InspectionReportsViewProps {
   currentUser?: any;
   defaultActiveTab?: 'abstract' | 'detailed' | 'mapview' | 'tp';
   defaultReportModule?: 'inspection' | 'swm';
+  /** Dashboard embed: keep one reports instance and switch module after the tab paints. */
+  forcedReportModule?: 'inspection' | 'swm';
   hideTabsHeader?: boolean;
   hideTopTitle?: boolean;
   /** Dashboard embed: no global refresh hooks; user applies filters explicitly */
@@ -906,6 +908,7 @@ export default function InspectionReportsView({
   currentUser,
   defaultActiveTab,
   defaultReportModule,
+  forcedReportModule,
   hideTabsHeader = false,
   hideTopTitle = false,
   embedMode = false,
@@ -1779,7 +1782,12 @@ export default function InspectionReportsView({
   const worksFromApi = fetchedWorks !== null;
 
   const rawWorks: any[] = useMemo(() => {
-    const list = fetchedWorks !== null ? fetchedWorks : (state.inspectionWorks || []);
+    const list =
+      fetchedWorks !== null
+        ? fetchedWorks
+        : embedMode
+          ? []
+          : (state.inspectionWorks || []);
     const seen = new Set<string>();
     const deduplicated: any[] = [];
     const subjects = state.inspectionSubjects || [];
@@ -1801,6 +1809,7 @@ export default function InspectionReportsView({
     }
     return deduplicated;
   }, [
+    embedMode,
     fetchedWorks,
     worksFromApi,
     state.inspectionWorks,
@@ -2224,6 +2233,7 @@ export default function InspectionReportsView({
           if (typeof json.total === 'number') setApiWorksTotal(json.total);
           else setApiWorksTotal(works.length);
         } else if (countsOnly) {
+          setFetchedWorks([]);
           if (typeof json.totalWithoutCategoryFilter === 'number') {
             setApiWorksTotal(json.totalWithoutCategoryFilter);
           }
@@ -2347,6 +2357,11 @@ export default function InspectionReportsView({
     }
     queueMicrotask(() => applyFiltersAndLoad());
   }, [applyFiltersAndLoad, reportModule, selectedSubjectId, swmDoorToDoorCategoryId, swmSubjectId]);
+
+  useEffect(() => {
+    if (!forcedReportModule || forcedReportModule === reportModule) return;
+    switchReportModule(forcedReportModule);
+  }, [forcedReportModule, reportModule, switchReportModule]);
 
   useEffect(() => {
     if (reportModule !== 'swm') return;
@@ -2778,12 +2793,7 @@ export default function InspectionReportsView({
         }
       });
     } else {
-      (state.wardsAndStreets || []).forEach((w: any) => {
-        const wNo = w.wardNumber || w.wardNo;
-        if (wNo) {
-          set.add(String(wNo).trim().replace(/^0+/, '') || '0');
-        }
-      });
+      for (let i = 1; i <= 15; i++) set.add(String(i));
     }
 
     if (set.size === 0) {
@@ -3333,50 +3343,11 @@ export default function InspectionReportsView({
 
   const swmAbstractRows = useMemo(() => {
     if (swmServerRows) return swmServerRows;
+    if (reportModule !== 'swm' || !swmSummaryGroups.length) return [];
     const fields = state.inspectionFields || [];
-    const streetsMaster = state.wardsAndStreets || [];
     const groups = new Map<string, SwmAbstractRow & { wardSet: Set<string>; streetSet: Set<string> }>();
 
-    const masterByTp = new Map<string, { wards: Set<string>; streets: number }>();
-    const masterByTpWard = new Map<string, number>();
-    const townPanchayats = state.townPanchayats || [];
-    streetsMaster.forEach((ws: any) => {
-      const rawKeys = [
-        ws.tpId,
-        ws.townPanchayatId,
-        ws.tp_id,
-        ws.tpNameEn,
-        ws.tpName,
-        ws.tpNameTa,
-      ].map((value) => String(value || '').trim()).filter(Boolean);
-      if (!rawKeys.length) return;
-      const tp = townPanchayats.find((item: any) =>
-        rawKeys.some((key) =>
-          String(item.id || '').toLowerCase() === key.toLowerCase()
-          || geoNamesEqual(item.nameEn, key)
-          || geoNamesEqual(item.nameTa, key)
-        )
-      );
-      const aliasKeys = [...rawKeys, tp?.id, tp?.nameEn, tp?.nameTa]
-        .map((value) => String(value || '').trim().toLowerCase())
-        .filter(Boolean);
-      let bucket = aliasKeys.map((key) => masterByTp.get(key)).find(Boolean);
-      if (!bucket) bucket = { wards: new Set<string>(), streets: 0 };
-      aliasKeys.forEach((key) => masterByTp.set(key, bucket!));
-      bucket.streets += 1;
-      const wardRaw = String(ws.wardNo || ws.wardNumber || ws.ward_no || ws.ward || '').trim();
-      const wardDigits = wardRaw.replace(/[^0-9]/g, '');
-      const ward = wardDigits.replace(/^0+/, '') || wardDigits || wardRaw;
-      if (ward) {
-        bucket.wards.add(ward);
-        aliasKeys.forEach((key) => {
-          const wardKey = `${key}|${ward}`;
-          masterByTpWard.set(wardKey, (masterByTpWard.get(wardKey) || 0) + 1);
-        });
-      }
-    });
-
-    const sourceGroups = swmSummaryGroups.length ? swmSummaryGroups : [];
+    const sourceGroups = swmSummaryGroups;
     sourceGroups.forEach((work: any) => {
       if (isFallbackInspectionWork(work)) return;
       if (work.categoryId && !isSwmDoorToDoorWork(work, swmDoorToDoorCategoryIds)) return;
@@ -3388,19 +3359,6 @@ export default function InspectionReportsView({
       const streetKey = street && street !== '-' ? street : '-';
       const groupKey = [tpId.toLowerCase(), swmShowWard ? ward : '', swmShowStreet ? streetKey.toLowerCase() : ''].join('|');
       if (!groups.has(groupKey)) {
-        const masterKeys = [
-          work.tpId,
-          work.townPanchayatId,
-          work.tp_id,
-          geo.tpNameEn,
-          geo.tpNameTa,
-          work.tpNameEn,
-          work.tpNameTa,
-        ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
-        const master = masterKeys.map((key) => masterByTp.get(key)).find(Boolean);
-        const wardMasterStreets = masterKeys
-          .map((key) => masterByTpWard.get(`${key}|${ward}`) || 0)
-          .find((count) => count > 0) || 0;
         groups.set(groupKey, {
           zoneNameEn: geo.zoneNameEn,
           zoneNameTa: geo.zoneNameTa,
@@ -3410,9 +3368,9 @@ export default function InspectionReportsView({
           tpNameTa: geo.tpNameTa,
           wardNumber: ward,
           streetName: streetKey,
-          totalWards: swmShowStreet || swmShowWard ? 1 : (master?.wards.size || 0),
+          totalWards: Number(work.totalWards) || (swmShowStreet || swmShowWard ? 1 : 0),
           wardsSurveyed: 0,
-          totalStreets: swmShowStreet ? 1 : (swmShowWard ? wardMasterStreets : (master?.streets || 0)),
+          totalStreets: Number(work.totalStreets) || (swmShowStreet || swmShowWard ? 1 : 0),
           streetsSurveyed: 0,
           householdsSurveyed: 0,
           segregating: 0,
@@ -3485,7 +3443,7 @@ export default function InspectionReportsView({
       || String(a.wardNumber || '').localeCompare(String(b.wardNumber || ''), undefined, { numeric: true })
       || String(a.streetName || '').localeCompare(String(b.streetName || ''))
     );
-  }, [resolveGeoNames, state.inspectionFields, state.townPanchayats, state.wardsAndStreets, streetLabel, swmSummaryGroups, swmBuildingFilter, swmDoorToDoorCategoryIds, swmShowStreet, swmShowWard, swmServerRows]);
+  }, [reportModule, resolveGeoNames, state.inspectionFields, streetLabel, swmSummaryGroups, swmBuildingFilter, swmDoorToDoorCategoryIds, swmShowStreet, swmShowWard, swmServerRows]);
 
   const swmAbstractTotals = useMemo(() => {
     if (swmServerTotals) {
@@ -3526,6 +3484,7 @@ export default function InspectionReportsView({
   }, [swmAbstractRows, swmServerTotals]);
 
   const swmTpStreetRows = useMemo(() => {
+    if (reportModule !== 'swm') return [];
     if (swmServerRows && swmServerGroup === 'street') {
       return swmServerRows.map((row) => ({
         wardNumber: String(row.wardNumber || '0'),
@@ -3612,7 +3571,7 @@ export default function InspectionReportsView({
       || String(a.wardNumber).localeCompare(String(b.wardNumber), undefined, { numeric: true })
       || String(a.streetName).localeCompare(String(b.streetName))
     );
-  }, [lang, state.inspectionFields, streetLabel, swmSummaryGroups, swmDoorToDoorCategoryIds, swmServerRows, swmServerGroup]);
+  }, [lang, reportModule, state.inspectionFields, streetLabel, swmSummaryGroups, swmDoorToDoorCategoryIds, swmServerRows, swmServerGroup]);
 
   const swmTpStreetTotals = useMemo(() => {
     return swmTpStreetRows.reduce((acc, row) => {

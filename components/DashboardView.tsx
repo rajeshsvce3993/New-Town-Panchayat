@@ -453,17 +453,11 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     isRefreshing: boolean;
     fetchError: string | null;
   } | null>(null);
-  const [swmEmbedFilterActions, setSwmEmbedFilterActions] = useState<{
-    apply: () => void;
-    reset: () => void;
-    isRefreshing: boolean;
-    fetchError: string | null;
-  } | null>(null);
   const [dashReportTab, setDashReportTab] = useState<'inspection' | 'swm'>('inspection');
-  const [mountedDashTabs, setMountedDashTabs] = useState<{ inspection: boolean; swm: boolean }>({
-    inspection: true,
-    swm: false,
-  });
+
+  const selectDashReportTab = useCallback((tab: 'inspection' | 'swm') => {
+    setDashReportTab(tab);
+  }, []);
   const [dashStats, setDashStats] = useState<{
     inspection: {
       totalInspections: number;
@@ -1295,14 +1289,14 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   };
 
   const scrollToInspectionReports = () => {
-    setDashReportTab('inspection');
+    selectDashReportTab('inspection');
     requestAnimationFrame(() => {
       document.getElementById('dashboard-reports-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   };
 
   const scrollToSwmReports = () => {
-    setDashReportTab('swm');
+    selectDashReportTab('swm');
     requestAnimationFrame(() => {
       document.getElementById('dashboard-reports-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
@@ -1314,10 +1308,10 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
       ? townPanchayats.filter((tp: any) => getTPZoneId(tp) === currentUser.scopeId)
       : townPanchayats.filter((tp: any) => tp.id === currentUser?.scopeId);
 
-  const fetchDashboardStats = useCallback(async () => {
+  const fetchDashboardStats = useCallback(async (module: 'inspection' | 'swm' | 'all' = 'inspection') => {
     const params = new URLSearchParams();
     params.set('allTime', '1');
-    params.set('module', dashReportTab);
+    params.set('module', module);
     if (userTpId) params.set('scopeTpId', String(userTpId));
     else if (userZoneId) params.set('scopeZoneId', String(userZoneId));
     else if (userDistrictId) params.set('scopeDistrictId', String(userDistrictId));
@@ -1327,8 +1321,8 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
       if (res.ok && json?.success !== false && (json?.inspection || json?.swm)) {
         setDashStats((prev) => {
           const inspection =
-            dashReportTab === 'swm' && prev?.inspection ? prev.inspection : json.inspection || prev?.inspection;
-          const swm = dashReportTab === 'inspection' && prev?.swm ? prev.swm : json.swm || prev?.swm;
+            module === 'swm' && prev?.inspection ? prev.inspection : json.inspection || prev?.inspection;
+          const swm = module === 'inspection' && prev?.swm ? prev.swm : json.swm || prev?.swm;
           if (!inspection || !swm) return prev;
           return { inspection, swm };
         });
@@ -1336,15 +1330,18 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     } catch {
       /* keep previous / fallback cards */
     }
-  }, [dashReportTab, userTpId, userZoneId, userDistrictId]);
+  }, [userTpId, userZoneId, userDistrictId]);
 
   useEffect(() => {
-    void fetchDashboardStats();
-  }, [fetchDashboardStats, dashStatsTick]);
+    void fetchDashboardStats(dashReportTab);
+  }, [dashReportTab, fetchDashboardStats, dashStatsTick]);
 
   useEffect(() => {
-    setMountedDashTabs((prev) => (prev[dashReportTab] ? prev : { ...prev, [dashReportTab]: true }));
-  }, [dashReportTab]);
+    const t = window.setTimeout(() => {
+      void fetchDashboardStats('swm');
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [fetchDashboardStats]);
 
   const kpi = dashStats?.inspection;
   const swm = dashStats?.swm;
@@ -1563,7 +1560,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
             <div className="portal-fis-hero-tabs">
               <button
                 type="button"
-                onClick={() => setDashReportTab('inspection')}
+                onClick={() => selectDashReportTab('inspection')}
                 className={`portal-fis-hero-tab ${dashReportTab === 'inspection' ? 'is-active' : ''}`}
               >
                 <ClipboardCheck />
@@ -1571,7 +1568,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               </button>
               <button
                 type="button"
-                onClick={() => setDashReportTab('swm')}
+                onClick={() => selectDashReportTab('swm')}
                 className={`portal-fis-hero-tab ${dashReportTab === 'swm' ? 'is-active' : ''}`}
               >
                 <Recycle />
@@ -1580,29 +1577,25 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
             </div>
           </div>
           <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-            {(dashReportTab === 'swm' ? swmEmbedFilterActions : embedFilterActions)?.fetchError && (
+            {embedFilterActions?.fetchError && (
               <span className="max-w-[14rem] truncate text-right text-[11px] font-semibold text-rose-100">
-                {(dashReportTab === 'swm' ? swmEmbedFilterActions : embedFilterActions)?.fetchError}
+                {embedFilterActions.fetchError}
               </span>
             )}
             <button
               type="button"
-              onClick={() => (dashReportTab === 'swm' ? swmEmbedFilterActions : embedFilterActions)?.apply()}
-              disabled={
-                dashReportTab === 'swm'
-                  ? !swmEmbedFilterActions || swmEmbedFilterActions.isRefreshing
-                  : !embedFilterActions || embedFilterActions.isRefreshing
-              }
+              onClick={() => embedFilterActions?.apply()}
+              disabled={!embedFilterActions || embedFilterActions.isRefreshing}
               className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-md hover:brightness-110 disabled:opacity-60 cursor-pointer"
               style={{ backgroundImage: `linear-gradient(90deg, ${currentTheme.chartGradient?.[0] || currentTheme.accentColor}, ${currentTheme.accentColor})` }}
             >
-              <RefreshCw className={`h-3 w-3 ${(dashReportTab === 'swm' ? swmEmbedFilterActions : embedFilterActions)?.isRefreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-3 w-3 ${embedFilterActions?.isRefreshing ? 'animate-spin' : ''}`} />
               {lang === 'ta' ? 'வடிகட்டி பயன்படுத்து' : 'Apply Filters'}
             </button>
             <button
               type="button"
-              onClick={() => (dashReportTab === 'swm' ? swmEmbedFilterActions : embedFilterActions)?.reset()}
-              disabled={dashReportTab === 'swm' ? !swmEmbedFilterActions : !embedFilterActions}
+              onClick={() => embedFilterActions?.reset()}
+              disabled={!embedFilterActions}
               className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 disabled:opacity-60 cursor-pointer"
             >
               <RotateCcw className="h-3 w-3" />
@@ -1611,39 +1604,19 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
           </div>
         </div>
         <div className="portal-fis-body">
-          <div className={dashReportTab === 'inspection' ? '' : 'portal-dash-tab-off'}>
-            {mountedDashTabs.inspection ? (
-            <InspectionReportsView
-              state={state}
-              lang={lang}
-              theme={theme}
-              currentUser={currentUser}
-              defaultActiveTab="abstract"
-              hideTabsHeader={false}
-              hideTopTitle={true}
-              embedMode={true}
-              hideFilterActions={true}
-              onFilterActionsReady={setEmbedFilterActions}
-            />
-            ) : null}
-          </div>
-          <div className={dashReportTab === 'swm' ? '' : 'portal-dash-tab-off'}>
-            {mountedDashTabs.swm ? (
-            <InspectionReportsView
-              state={state}
-              lang={lang}
-              theme={theme}
-              currentUser={currentUser}
-              defaultActiveTab="abstract"
-              defaultReportModule="swm"
-              hideTabsHeader={false}
-              hideTopTitle={true}
-              embedMode={true}
-              hideFilterActions={true}
-              onFilterActionsReady={setSwmEmbedFilterActions}
-            />
-            ) : null}
-          </div>
+          <InspectionReportsView
+            state={state}
+            lang={lang}
+            theme={theme}
+            currentUser={currentUser}
+            defaultActiveTab="abstract"
+            hideTabsHeader={false}
+            hideTopTitle={true}
+            embedMode={true}
+            hideFilterActions={true}
+            forcedReportModule={dashReportTab}
+            onFilterActionsReady={setEmbedFilterActions}
+          />
         </div>
       </section>
 
