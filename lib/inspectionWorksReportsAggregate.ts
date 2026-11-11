@@ -56,9 +56,9 @@ export function reportsFiltersNeedFullDocumentScan(filter: InspectionWorksFilter
   return !!(filter.street?.trim() || filter.search?.trim() || filter.adminFieldId);
 }
 
-/** Named geo (All Zones user/location) and streets are missing from empty-ID rollups — always live-group. */
+/** Street/search/admin already force a live scan. Prefer rollups for zone/district/TP/ward counts. */
 export function reportsFiltersNeedLiveGeoCounts(_filter?: InspectionWorksFilterQuery): boolean {
-  return true;
+  return false;
 }
 
 function escapeRegex(value: string): string {

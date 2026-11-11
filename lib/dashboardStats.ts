@@ -1,6 +1,7 @@
 import { tpIdsForDistrict, tpIdsForZone } from '@/lib/inspectionWorksMongoRepository';
 import { resolveInspectionFilterMasters } from '@/lib/inspectionWorksFilterMastersServer';
 import { loadInspectionWorksReportCounts } from '@/lib/inspectionWorksLiteLoader';
+import { queryInspectionWorkReportRollupCounts } from '@/lib/inspectionWorkReportRollups';
 import { aggregateSwmTotals } from '@/lib/swmReportsAggregate';
 import { getActiveMongoDb, getCollectionWithAliases, getMongoClient } from '@/lib/storage';
 import type { InspectionWorksFilterQuery } from '@/lib/inspectionWorksQueryFilters';
@@ -165,7 +166,8 @@ async function countInspectors() {
 
 export async function loadDashboardStats(
   requestOrigin: string,
-  filter: InspectionWorksFilterQuery
+  filter: InspectionWorksFilterQuery,
+  module: 'inspection' | 'swm' | 'all' = 'all'
 ): Promise<DashboardStatsPayload> {
   const allTime: InspectionWorksFilterQuery = {
     ...filter,
@@ -173,7 +175,7 @@ export async function loadDashboardStats(
     toDate: null,
     dateParam: null,
   };
-  const key = cacheKey(requestOrigin, allTime);
+  const key = cacheKey(requestOrigin, { ...allTime, module } as any);
   const hit = cache.get(key);
   if (hit && Date.now() - hit.ts < CACHE_TTL_MS) return hit.data;
 
@@ -184,17 +186,27 @@ export async function loadDashboardStats(
     : masters.townPanchayats || [];
   const subjects = liveList(masters.inspectionSubjects, 'subject');
   const categories = liveList(masters.inspectionCategories, 'category');
+  const needInspection = module !== 'swm';
+  const needSwm = module !== 'inspection';
 
-  const [geo, counts, swm, inspectors] = await Promise.all([
+  const [geo, rollup, swm, inspectors] = await Promise.all([
     countMasterGeo(masters, tpIds),
-    loadInspectionWorksReportCounts(requestOrigin, allTime),
-    aggregateSwmTotals(swmDefaultFilter(allTime, masters), masters),
+    needInspection ? queryInspectionWorkReportRollupCounts(allTime, masters, { omitCategory: true }) : Promise.resolve(null),
+    needSwm ? aggregateSwmTotals(swmDefaultFilter(allTime, masters), masters) : Promise.resolve(null),
     countInspectors(),
   ]);
 
+  let inspectionTotal = Number(rollup?.totalWithoutCategoryFilter) || 0;
+  let countsSource = rollup?.source || 'empty';
+  if (needInspection && !rollup) {
+    const counts = await loadInspectionWorksReportCounts(requestOrigin, allTime);
+    inspectionTotal = Number(counts.totalWithoutCategoryFilter) || 0;
+    countsSource = counts.source;
+  }
+
   const data: DashboardStatsPayload = {
     inspection: {
-      totalInspections: Number(counts.totalWithoutCategoryFilter) || 0,
+      totalInspections: inspectionTotal,
       subjects: subjects.length,
       categories: categories.length,
       townPanchayats: tps.length || (masters.townPanchayats || []).length,
@@ -205,13 +217,13 @@ export async function loadDashboardStats(
     swm: {
       totalWards: geo.wards,
       totalStreets: geo.streets,
-      householdsSurveyed: swm.householdsSurveyed,
-      segregating: swm.segregating,
-      notSegregating: swm.notSegregating,
-      doorLocked: swm.doorLocked,
-      homeComposting: swm.homeComposting,
+      householdsSurveyed: Number(swm?.householdsSurveyed) || 0,
+      segregating: Number(swm?.segregating) || 0,
+      notSegregating: Number(swm?.notSegregating) || 0,
+      doorLocked: Number(swm?.doorLocked) || 0,
+      homeComposting: Number(swm?.homeComposting) || 0,
     },
-    source: `${counts.source}|${swm.source}`,
+    source: `${countsSource}|${swm?.source || 'skipped'}`,
   };
   cache.set(key, { ts: Date.now(), data });
   if (cache.size > 80) {

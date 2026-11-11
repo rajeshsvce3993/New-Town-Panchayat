@@ -2205,9 +2205,11 @@ export default function InspectionReportsView({
     const seq = ++fetchSeqRef.current;
     isFetchingRef.current = true;
     setIsRefreshing(true);
+    const countsOnly = embedMode && (activeTab === 'abstract' || !activeTab);
     try {
       const bundleUrl = `/api/inspection-works?${buildInspectionWorksQueryParams({
-        reportsBundle: true,
+        countsOnly,
+        reportsBundle: !countsOnly,
         page: 1,
         pageSize: REPORTS_SERVER_PAGE_SIZE,
       }).toString()}`;
@@ -2216,10 +2218,16 @@ export default function InspectionReportsView({
 
       const json = await res.json().catch(() => ({}));
       const works = extractWorksFromInspectionApiPayload(json);
-      if (res.ok && json.success !== false && Array.isArray(works)) {
-        setFetchedWorks(works);
-        if (typeof json.total === 'number') setApiWorksTotal(json.total);
-        else setApiWorksTotal(works.length);
+      if (res.ok && json.success !== false) {
+        if (!countsOnly && Array.isArray(works)) {
+          setFetchedWorks(works);
+          if (typeof json.total === 'number') setApiWorksTotal(json.total);
+          else setApiWorksTotal(works.length);
+        } else if (countsOnly) {
+          if (typeof json.totalWithoutCategoryFilter === 'number') {
+            setApiWorksTotal(json.totalWithoutCategoryFilter);
+          }
+        }
         applyCountsPayload(json);
         if (Array.isArray(json.subjectCategoryRollups)) {
           setApiSubjectRollups(json.subjectCategoryRollups);
@@ -2252,6 +2260,7 @@ export default function InspectionReportsView({
       }
     }
   }, [
+    activeTab,
     lang,
     buildInspectionWorksQueryParams,
     embedMode,
@@ -3150,8 +3159,6 @@ export default function InspectionReportsView({
     if (reportModule !== 'swm' || (activeTab !== 'abstract' && activeTab !== 'tp')) return;
     if (filtersLoadToken === 0) return;
     const ac = new AbortController();
-    const fields = state.inspectionFields || [];
-    const pageSize = 200;
     setSwmAbstractLoading(true);
 
     const load = async () => {
@@ -3187,55 +3194,7 @@ export default function InspectionReportsView({
         return;
       }
 
-      const summaryParams = buildInspectionWorksQueryParams({ rowsOnly: true, page: 1, pageSize });
-      summaryParams.set('swmSummary', '1');
-      if (swmBuildingType !== 'all') summaryParams.set('swmBuildingType', swmBuildingType);
-      const summaryRes = await fetch(`/api/inspection-works?${summaryParams.toString()}`, {
-        cache: 'no-store',
-        signal: ac.signal,
-      });
-      const summaryJson = await summaryRes.json().catch(() => ({}));
-      if (ac.signal.aborted) return;
-      if (summaryJson.swmSummary && Array.isArray(summaryJson.groups)) {
-        setSwmServerRows(null);
-        setSwmServerTotals(null);
-        setSwmServerGroup('');
-        setSwmSummaryGroups(summaryJson.groups);
-        setFetchError(null);
-        return;
-      }
-
-      const toGroups = (works: any[]) =>
-        works
-          .filter((work) => !isFallbackInspectionWork(work))
-          .filter((work) => swmBuildingType === 'all' || readSwmBuildingType(work, fields) === swmBuildingType)
-          .map((work) => workToSwmSummaryGroup(work, fields));
-
-      let merged: any[] = [];
-      const firstWorks = extractWorksFromInspectionApiPayload(firstJson);
-      merged = mergeSwmSummaryGroups(merged, toGroups(firstWorks));
-      setSwmSummaryGroups(merged);
-      setFetchError(null);
-
-      let page = 1;
-      let total = typeof firstJson.total === 'number' ? firstJson.total : 0;
-      let loadedCount = firstWorks.length;
-      let lastCount = firstWorks.length;
-      while (
-        !ac.signal.aborted &&
-        lastCount > 0 &&
-        (total ? loadedCount < total : lastCount >= pageSize)
-      ) {
-        page += 1;
-        const loaded = await fetchRowsOnlyPage(page, pageSize);
-        if (ac.signal.aborted) return;
-        if (!loaded.ok || !loaded.works.length) break;
-        if (loaded.total > 0) total = loaded.total;
-        lastCount = loaded.works.length;
-        loadedCount += lastCount;
-        merged = mergeSwmSummaryGroups(merged, toGroups(loaded.works));
-        setSwmSummaryGroups(merged);
-      }
+      setFetchError(lang === 'ta' ? 'SWM தரவு பெற முடியவில்லை' : 'Could not load SWM reports');
     };
 
     void load()
@@ -3252,11 +3211,9 @@ export default function InspectionReportsView({
   }, [
     activeTab,
     buildInspectionWorksQueryParams,
-    fetchRowsOnlyPage,
     filtersLoadToken,
     lang,
     reportModule,
-    state.inspectionFields,
     swmBuildingType,
     swmWardCol,
     swmStreetCol,

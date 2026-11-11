@@ -43,7 +43,9 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const stats = await loadDashboardStats(origin, filter);
+    const moduleRaw = req.nextUrl.searchParams.get('module');
+    const module = moduleRaw === 'swm' || moduleRaw === 'inspection' ? moduleRaw : 'all';
+    const stats = await loadDashboardStats(origin, filter, module);
     return NextResponse.json({ success: true, ...stats, dataSource: getAppEnv() }, { headers: CORS_HEADERS });
   } catch (err: any) {
     return NextResponse.json(

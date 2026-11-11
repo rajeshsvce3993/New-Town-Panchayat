@@ -184,12 +184,23 @@ app.prepare().then(() => {
       };
 
       // Log API and Auth requests clearly in console
-      if (req.url && (req.url.startsWith('/api/auth') || req.url.startsWith('/api/portal-state') || req.url.startsWith('/api/inspection-works') || req.url.startsWith('/api/health'))) {
+      if (
+        req.url &&
+        (req.url.startsWith('/api/auth') ||
+          req.url.startsWith('/api/portal-state') ||
+          req.url.startsWith('/api/inspection-works') ||
+          req.url.startsWith('/api/dashboard'))
+      ) {
         res.on('finish', () => {
           const duration = Date.now() - reqStart;
           const status = res.statusCode;
           const statusIcon = status >= 200 && status < 300 ? '✅' : status >= 400 ? '❌' : 'ℹ️';
-          console.log(`[HTTP ${statusIcon}] ${req.method} ${parsedUrl.pathname} - ${status} (${duration}ms) - IP: ${req.socket.remoteAddress}`);
+          const qs = parsedUrl.search || '';
+          const label =
+            parsedUrl.pathname === '/api/health'
+              ? parsedUrl.pathname
+              : `${parsedUrl.pathname}${qs}`;
+          console.log(`[HTTP ${statusIcon}] ${req.method} ${label} - ${status} (${duration}ms) - IP: ${req.socket.remoteAddress}`);
         });
       }
 

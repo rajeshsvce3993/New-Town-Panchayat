@@ -1317,19 +1317,26 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   const fetchDashboardStats = useCallback(async () => {
     const params = new URLSearchParams();
     params.set('allTime', '1');
+    params.set('module', dashReportTab);
     if (userTpId) params.set('scopeTpId', String(userTpId));
     else if (userZoneId) params.set('scopeZoneId', String(userZoneId));
     else if (userDistrictId) params.set('scopeDistrictId', String(userDistrictId));
     try {
       const res = await fetch(`/api/dashboard/stats?${params.toString()}`, { cache: 'no-store' });
       const json = await res.json().catch(() => ({}));
-      if (res.ok && json?.success !== false && json?.inspection && json?.swm) {
-        setDashStats({ inspection: json.inspection, swm: json.swm });
+      if (res.ok && json?.success !== false && (json?.inspection || json?.swm)) {
+        setDashStats((prev) => {
+          const inspection =
+            dashReportTab === 'swm' && prev?.inspection ? prev.inspection : json.inspection || prev?.inspection;
+          const swm = dashReportTab === 'inspection' && prev?.swm ? prev.swm : json.swm || prev?.swm;
+          if (!inspection || !swm) return prev;
+          return { inspection, swm };
+        });
       }
     } catch {
       /* keep previous / fallback cards */
     }
-  }, [userTpId, userZoneId, userDistrictId]);
+  }, [dashReportTab, userTpId, userZoneId, userDistrictId]);
 
   useEffect(() => {
     void fetchDashboardStats();
