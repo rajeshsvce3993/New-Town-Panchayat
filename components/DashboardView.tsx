@@ -2,7 +2,7 @@
 /* eslint-disable react-hooks/purity */
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { 
   Building, 
@@ -459,22 +459,39 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     isRefreshing: boolean;
     fetchError: string | null;
   } | null>(null);
-  const [swmTileTotals, setSwmTileTotals] = useState({
-    totalWards: 0,
-    totalStreets: 0,
-    householdsSurveyed: 0,
-    segregating: 0,
-    notSegregating: 0,
-    doorLocked: 0,
-    homeComposting: 0,
-  });
   const [dashReportTab, setDashReportTab] = useState<'inspection' | 'swm'>('inspection');
+  const [mountedDashTabs, setMountedDashTabs] = useState<{ inspection: boolean; swm: boolean }>({
+    inspection: true,
+    swm: false,
+  });
+  const [dashStats, setDashStats] = useState<{
+    inspection: {
+      totalInspections: number;
+      subjects: number;
+      categories: number;
+      townPanchayats: number;
+      wards: number;
+      streets: number;
+      inspectors: number;
+    };
+    swm: {
+      totalWards: number;
+      totalStreets: number;
+      householdsSurveyed: number;
+      segregating: number;
+      notSegregating: number;
+      doorLocked: number;
+      homeComposting: number;
+    };
+  } | null>(null);
+  const [dashStatsTick, setDashStatsTick] = useState(0);
   const [abstractRefreshTime, setAbstractRefreshTime] = useState<string>('');
 
   const handleRefreshAbstract = async () => {
     setIsRefreshingAbstract(true);
     try {
       await onRefreshDashboardStats?.();
+      setDashStatsTick((n) => n + 1);
       setAbstractRefreshTime(new Date().toLocaleTimeString());
     } finally {
       setIsRefreshingAbstract(false);
@@ -1297,83 +1314,80 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
       ? townPanchayats.filter((tp: any) => getTPZoneId(tp) === currentUser.scopeId)
       : townPanchayats.filter((tp: any) => tp.id === currentUser?.scopeId);
 
-  const masterGeoCounts = useMemo(() => {
-    const tpIds = new Set(
-      scopedDashboardTps.map((tp: any) => String(tp.id || '').trim().toLowerCase()).filter(Boolean)
-    );
-    const tpNames = new Set(
-      scopedDashboardTps.flatMap((tp: any) => [
-        String(tp.nameEn || '').trim().toLowerCase(),
-        String(tp.nameTa || '').trim().toLowerCase(),
-      ]).filter(Boolean)
-    );
-    const restrictTp = !hodLike && tpIds.size > 0;
-    const wardKeys = new Set<string>();
-    let streetCount = 0;
-    (state?.wardsAndStreets || []).forEach((ws: any) => {
-      const tpId = String(ws.tpId || ws.townPanchayatId || ws.tp_id || '').trim().toLowerCase();
-      const tpName = String(ws.tpNameEn || ws.tpName || ws.tpNameTa || '').trim().toLowerCase();
-      if (restrictTp) {
-        const matchTp = (tpId && tpIds.has(tpId)) || (tpName && tpNames.has(tpName));
-        if (!matchTp) return;
+  const fetchDashboardStats = useCallback(async () => {
+    const params = new URLSearchParams();
+    params.set('allTime', '1');
+    if (userTpId) params.set('scopeTpId', String(userTpId));
+    else if (userZoneId) params.set('scopeZoneId', String(userZoneId));
+    else if (userDistrictId) params.set('scopeDistrictId', String(userDistrictId));
+    try {
+      const res = await fetch(`/api/dashboard/stats?${params.toString()}`, { cache: 'no-store' });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.success !== false && json?.inspection && json?.swm) {
+        setDashStats({ inspection: json.inspection, swm: json.swm });
       }
-      streetCount += 1;
-      const wardRaw = String(ws.wardNo || ws.wardNumber || ws.ward_no || ws.ward || '').trim();
-      const wardDigits = wardRaw.replace(/[^0-9]/g, '');
-      const ward = (wardDigits.replace(/^0+/, '') || wardDigits || wardRaw);
-      if (ward) wardKeys.add(`${tpId || tpName}|${ward}`);
-    });
-    return { totalWards: wardKeys.size, totalStreets: streetCount };
-  }, [hodLike, scopedDashboardTps, state?.wardsAndStreets]);
+    } catch {
+      /* keep previous / fallback cards */
+    }
+  }, [userTpId, userZoneId, userDistrictId]);
 
-  const totalInspections = dashboardAbstractData.reduce((sum, row) => sum + (Number(row.totalInspections) || 0), 0);
+  useEffect(() => {
+    void fetchDashboardStats();
+  }, [fetchDashboardStats, dashStatsTick]);
+
+  useEffect(() => {
+    setMountedDashTabs((prev) => (prev[dashReportTab] ? prev : { ...prev, [dashReportTab]: true }));
+  }, [dashReportTab]);
+
+  const kpi = dashStats?.inspection;
+  const swm = dashStats?.swm;
   const inspectionCards = [
     {
       id: 'total_inspections',
       title: lang === 'ta' ? 'மொத்த ஆய்வுகள்' : 'Total Inspections',
-      count: totalInspections,
+      count: Number(kpi?.totalInspections) || 0,
       icon: ClipboardCheck,
       action: scrollToInspectionReports
     },
     {
       id: 'total_subjects',
       title: lang === 'ta' ? 'ஆய்வுப் பிரிவுகள்' : 'Subjects',
-      count: (state.inspectionSubjects || []).length || dashboardAbstractData.length,
+      count: Number(kpi?.subjects) || 0,
       icon: Layers,
       action: scrollToInspectionReports
     },
     {
       id: 'total_categories',
       title: lang === 'ta' ? 'ஆய்வு வகைகள்' : 'Categories',
-      count: (state.inspectionCategories || []).length,
+      count: Number(kpi?.categories) || 0,
       icon: BarChart3,
       action: scrollToInspectionReports
     },
     {
       id: 'total_tps',
       title: lang === 'ta' ? 'பேரூராட்சிகள்' : 'Town Panchayats',
-      count: scopedDashboardTps.length,
+      count: Number(kpi?.townPanchayats) || 0,
       icon: Building,
       action: scrollToInspectionReports
     },
     {
       id: 'total_wards',
       title: lang === 'ta' ? 'மொத்த வார்டுகள்' : 'Total Wards',
-      count: masterGeoCounts.totalWards,
+      count: Number(kpi?.wards) || 0,
       icon: MapPin,
       action: scrollToInspectionReports
     },
     {
       id: 'total_streets',
       title: lang === 'ta' ? 'மொத்த தெருக்கள்' : 'Total Streets',
-      count: masterGeoCounts.totalStreets,
+      count: Number(kpi?.streets) || 0,
       icon: GitPullRequest,
       action: scrollToInspectionReports
     },
     {
       id: 'total_inspectors',
       title: lang === 'ta' ? 'கள ஆய்வாளர்கள்' : 'Field Inspectors',
-      count: (state.inspectionUsers || []).length || (employees || []).length,
+      count: Number(kpi?.inspectors) || 0,
       icon: UserCheck,
       action: scrollToInspectionReports
     }
@@ -1382,49 +1396,49 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     {
       id: 'total_wards',
       title: lang === 'ta' ? 'மொத்த வார்டுகள்' : 'Total Wards',
-      count: masterGeoCounts.totalWards || swmTileTotals.totalWards,
+      count: Number(swm?.totalWards) || 0,
       icon: Layers,
       action: scrollToSwmReports
     },
     {
       id: 'total_streets',
       title: lang === 'ta' ? 'மொத்த தெருக்கள்' : 'Total Streets',
-      count: masterGeoCounts.totalStreets || swmTileTotals.totalStreets,
+      count: Number(swm?.totalStreets) || 0,
       icon: MapPin,
       action: scrollToSwmReports
     },
     {
       id: 'total_surveyed',
       title: lang === 'ta' ? 'கணக்கெடுக்கப்பட்ட வீடுகள்' : 'Total Surveyed',
-      count: swmTileTotals.householdsSurveyed,
+      count: Number(swm?.householdsSurveyed) || 0,
       icon: Users,
       action: scrollToSwmReports
     },
     {
       id: 'segregating',
       title: lang === 'ta' ? 'தரம் பிரித்து வழங்கும் வீடுகள்' : 'Segregating Waste at Source',
-      count: swmTileTotals.segregating,
+      count: Number(swm?.segregating) || 0,
       icon: Recycle,
       action: scrollToSwmReports
     },
     {
       id: 'not_segregating',
       title: lang === 'ta' ? 'தரம் பிரிக்காமல் வழங்கும் வீடுகள்' : 'Not Segregating Waste at Source',
-      count: swmTileTotals.notSegregating,
+      count: Number(swm?.notSegregating) || 0,
       icon: AlertTriangle,
       action: scrollToSwmReports
     },
     {
       id: 'door_locked',
       title: lang === 'ta' ? 'பூட்டிய வீடுகள்' : 'Door Locked',
-      count: swmTileTotals.doorLocked,
+      count: Number(swm?.doorLocked) || 0,
       icon: Lock,
       action: scrollToSwmReports
     },
     {
       id: 'home_composting',
       title: lang === 'ta' ? 'வீட்டு உரமாக்கம்' : 'Home Composting',
-      count: swmTileTotals.homeComposting,
+      count: Number(swm?.homeComposting) || 0,
       icon: Home,
       action: scrollToSwmReports
     }
@@ -1505,42 +1519,33 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     };
   };
 
-  const kpiGridCols =
-    cards.length >= 7
-      ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7'
-      : cards.length >= 5
-        ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5'
-        : cards.length === 4
-          ? 'grid-cols-2 lg:grid-cols-4'
-          : 'grid-cols-2 sm:grid-cols-3';
+  const kpiGridMod = cards.length >= 7 ? 'is-seven' : cards.length >= 5 ? 'is-five' : '';
 
   return (
     <div id="dashboard-view-container" className="min-w-0 space-y-5 overflow-x-hidden">
-      <section className={`grid min-w-0 gap-2 md:gap-2.5 ${kpiGridCols}`}>
+      <section className={`portal-dashboard-kpi-grid ${kpiGridMod}`}>
         {cards.map((card, cardIndex) => (
           <button
             key={card.id}
             id={`kpi-card-${card.id}`}
             type="button"
+            title={card.title}
             onClick={card.action}
             style={getKpiStyle(card.id, cardIndex)}
-            className="portal-dashboard-kpi-card relative flex h-full min-h-[7.25rem] min-w-0 flex-col justify-between overflow-hidden rounded-2xl p-2.5 text-left text-white transition duration-200 hover:-translate-y-0.5 sm:min-h-[7.75rem] sm:p-3"
+            className="portal-dashboard-kpi-card relative h-full min-w-0 overflow-hidden rounded-2xl text-white transition duration-200 hover:-translate-y-0.5"
           >
-            <card.icon
-              className="pointer-events-none absolute -right-1 -top-1 h-11 w-11 text-white/20"
-              strokeWidth={1.25}
-            />
-            <span className="relative z-[1] inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/25 text-white ring-1 ring-white/30">
-              <card.icon className="h-3.5 w-3.5" strokeWidth={2.25} />
-            </span>
-            <div className="relative z-[1] mt-2 flex min-w-0 flex-1 flex-col justify-end gap-1">
-              <p className="kpi-label">
-                {card.title}
-              </p>
+            <card.icon className="kpi-mark" strokeWidth={1.15} />
+            <div className="kpi-head">
+              <span className="kpi-icon-wrap">
+                <card.icon strokeWidth={2.25} />
+              </span>
               <p className="kpi-value">
-                {card.count}
+                {Number(card.count || 0).toLocaleString('en-IN')}
               </p>
             </div>
+            <p className="kpi-label">
+              {card.title}
+            </p>
           </button>
         ))}
       </section>
@@ -1600,6 +1605,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
         </div>
         <div className="portal-fis-body">
           <div className={dashReportTab === 'inspection' ? '' : 'portal-dash-tab-off'}>
+            {mountedDashTabs.inspection ? (
             <InspectionReportsView
               state={state}
               lang={lang}
@@ -1612,8 +1618,10 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               hideFilterActions={true}
               onFilterActionsReady={setEmbedFilterActions}
             />
+            ) : null}
           </div>
           <div className={dashReportTab === 'swm' ? '' : 'portal-dash-tab-off'}>
+            {mountedDashTabs.swm ? (
             <InspectionReportsView
               state={state}
               lang={lang}
@@ -1626,20 +1634,8 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               embedMode={true}
               hideFilterActions={true}
               onFilterActionsReady={setSwmEmbedFilterActions}
-              onSwmTotalsReady={(next) => {
-                setSwmTileTotals((prev) => (
-                  prev.totalWards === next.totalWards
-                  && prev.totalStreets === next.totalStreets
-                  && prev.householdsSurveyed === next.householdsSurveyed
-                  && prev.segregating === next.segregating
-                  && prev.notSegregating === next.notSegregating
-                  && prev.doorLocked === next.doorLocked
-                  && prev.homeComposting === next.homeComposting
-                    ? prev
-                    : next
-                ));
-              }}
             />
+            ) : null}
           </div>
         </div>
       </section>

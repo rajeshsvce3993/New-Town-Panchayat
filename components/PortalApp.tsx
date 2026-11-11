@@ -143,6 +143,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
 
   // Navigation and Customization states
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [mountedHeavyPages, setMountedHeavyPages] = useState<Record<string, boolean>>({ dashboard: true });
   const [lang, setLang] = useState<Language>('en');
   const [theme, setTheme] = useState<ThemeType>('ocean-wave');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -174,6 +175,12 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     applyUiScale(next);
     setUiScaleReady(true);
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'dashboard' || activeTab === 'inspectionReports') {
+      setMountedHeavyPages((prev) => (prev[activeTab] ? prev : { ...prev, [activeTab]: true }));
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (!uiScaleReady) return;
@@ -1203,7 +1210,8 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                 </div>
               ) : (
                 <>
-                  {activeTab === 'dashboard' && (
+                  {mountedHeavyPages.dashboard ? (
+                    <div className={activeTab === 'dashboard' ? '' : 'portal-dash-tab-off'}>
                     <DashboardView 
                       state={state} 
                       lang={lang} 
@@ -1213,7 +1221,8 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                       onSaveCollection={handleSaveCollection}
                       onRefreshDashboardStats={() => refreshDashboardStats(true)}
                     />
-                  )}
+                    </div>
+                  ) : null}
               {activeTab === 'masters' && (
                 <MasterManagementView 
                   state={state} 
@@ -1288,7 +1297,8 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                   currentUser={currentUser}
                 />
               )}
-              {activeTab === 'inspectionReports' && (
+              {mountedHeavyPages.inspectionReports ? (
+                <div className={activeTab === 'inspectionReports' ? '' : 'portal-dash-tab-off'}>
                 <InspectionReportsView
                   state={state}
                   lang={lang}
@@ -1296,7 +1306,8 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                   currentUser={currentUser}
                   onSaveCollection={handleSaveCollection}
                 />
-              )}
+                </div>
+              ) : null}
               {activeTab === 'transferCounseling' && (
                 <EmployeeTransferCounselingView lang={lang} currentUser={currentUser} />
               )}

@@ -44,7 +44,7 @@ import {
   getInspectionWorksReportsDataGeneration,
 } from '@/lib/inspectionWorksLiteLoader';
 import { applyDefaultReportsDateWindow } from '@/lib/inspectionWorksMongoRepository';
-import { aggregateSwmStreetGroups } from '@/lib/swmReportsAggregate';
+import { aggregateSwmReport, aggregateSwmStreetGroups } from '@/lib/swmReportsAggregate';
 import { toMediaProxyPath } from '@/lib/s3MediaKey';
 
 export const maxDuration = 300;
@@ -211,6 +211,37 @@ export async function GET(req: NextRequest) {
       const rowLimit = viewQuery.limit > 0 ? viewQuery.limit : 0;
       const page = viewQuery.page > 0 ? viewQuery.page : 1;
       const pageSize = viewQuery.pageSize > 0 ? viewQuery.pageSize : 50;
+
+      if (viewQuery.swmReport) {
+        const masters = await resolveInspectionFilterMasters(requestOrigin);
+        const groupBy = viewQuery.swmGroup === 'ward' || viewQuery.swmGroup === 'street' ? viewQuery.swmGroup : 'tp';
+        const report = await aggregateSwmReport(filterQuery, masters, {
+          buildingType: viewQuery.swmBuildingType,
+          groupBy,
+        });
+        const responsePayload = {
+          success: true,
+          swmReport: true,
+          groupBy,
+          rows: report.rows,
+          totals: report.totals,
+          count: report.rows.length,
+          total: report.totals.householdsSurveyed,
+          meta: {
+            querySource: report.source,
+            truncated: false,
+            defaultDateWindowApplied,
+          },
+        };
+        cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
+        return NextResponse.json(responsePayload, {
+          headers: {
+            ...CORS_HEADERS,
+            'X-Inspection-Works-Source': report.source,
+            'X-Inspection-Works-Mode': `swm-report-${groupBy}`,
+          },
+        });
+      }
 
       if (viewQuery.swmSummary) {
         const masters = await resolveInspectionFilterMasters(requestOrigin);

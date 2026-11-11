@@ -919,6 +919,19 @@ export default function InspectionReportsView({
   const [reportModule, setReportModule] = useState<'inspection' | 'swm'>(defaultReportModule || 'inspection');
   const [swmSort, setSwmSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' });
   const [swmSummaryGroups, setSwmSummaryGroups] = useState<any[]>([]);
+  const [swmServerRows, setSwmServerRows] = useState<SwmAbstractRow[] | null>(null);
+  const [swmServerTotals, setSwmServerTotals] = useState<{
+    totalWards: number;
+    wardsSurveyed: number;
+    totalStreets: number;
+    streetsSurveyed: number;
+    householdsSurveyed: number;
+    segregating: number;
+    notSegregating: number;
+    doorLocked: number;
+    homeComposting: number;
+  } | null>(null);
+  const [swmServerGroup, setSwmServerGroup] = useState<'tp' | 'ward' | 'street' | ''>('');
   const [swmAbstractLoading, setSwmAbstractLoading] = useState(false);
   const [swmWardCol, setSwmWardCol] = useState(false);
   const [swmStreetCol, setSwmStreetCol] = useState(false);
@@ -3142,8 +3155,10 @@ export default function InspectionReportsView({
     setSwmAbstractLoading(true);
 
     const load = async () => {
-      const firstParams = buildInspectionWorksQueryParams({ rowsOnly: true, page: 1, pageSize });
-      firstParams.set('swmSummary', '1');
+      const swmGroup = activeTab === 'tp' || swmStreetCol ? 'street' : swmWardCol ? 'ward' : 'tp';
+      const firstParams = buildInspectionWorksQueryParams();
+      firstParams.set('swmReport', '1');
+      firstParams.set('swmGroup', swmGroup);
       if (swmBuildingType !== 'all') firstParams.set('swmBuildingType', swmBuildingType);
       const firstRes = await fetch(`/api/inspection-works?${firstParams.toString()}`, {
         cache: 'no-store',
@@ -3155,8 +3170,37 @@ export default function InspectionReportsView({
         setFetchError(firstJson?.message || (lang === 'ta' ? 'SWM தரவு பெற முடியவில்லை' : 'Could not load SWM reports'));
         return;
       }
+      if (firstJson.swmReport && Array.isArray(firstJson.rows)) {
+        setSwmServerRows(firstJson.rows);
+        setSwmServerTotals(firstJson.totals || null);
+        setSwmServerGroup(firstJson.groupBy === 'ward' || firstJson.groupBy === 'street' ? firstJson.groupBy : 'tp');
+        setSwmSummaryGroups([]);
+        setFetchError(null);
+        return;
+      }
       if (firstJson.swmSummary && Array.isArray(firstJson.groups)) {
+        setSwmServerRows(null);
+        setSwmServerTotals(null);
+        setSwmServerGroup('');
         setSwmSummaryGroups(firstJson.groups);
+        setFetchError(null);
+        return;
+      }
+
+      const summaryParams = buildInspectionWorksQueryParams({ rowsOnly: true, page: 1, pageSize });
+      summaryParams.set('swmSummary', '1');
+      if (swmBuildingType !== 'all') summaryParams.set('swmBuildingType', swmBuildingType);
+      const summaryRes = await fetch(`/api/inspection-works?${summaryParams.toString()}`, {
+        cache: 'no-store',
+        signal: ac.signal,
+      });
+      const summaryJson = await summaryRes.json().catch(() => ({}));
+      if (ac.signal.aborted) return;
+      if (summaryJson.swmSummary && Array.isArray(summaryJson.groups)) {
+        setSwmServerRows(null);
+        setSwmServerTotals(null);
+        setSwmServerGroup('');
+        setSwmSummaryGroups(summaryJson.groups);
         setFetchError(null);
         return;
       }
@@ -3214,6 +3258,8 @@ export default function InspectionReportsView({
     reportModule,
     state.inspectionFields,
     swmBuildingType,
+    swmWardCol,
+    swmStreetCol,
   ]);
 
   const currentSlideWork = useMemo(() => {
@@ -3329,6 +3375,7 @@ export default function InspectionReportsView({
   const swmBuildingFilter = swmBuildingType;
 
   const swmAbstractRows = useMemo(() => {
+    if (swmServerRows) return swmServerRows;
     const fields = state.inspectionFields || [];
     const streetsMaster = state.wardsAndStreets || [];
     const groups = new Map<string, SwmAbstractRow & { wardSet: Set<string>; streetSet: Set<string> }>();
@@ -3481,9 +3528,22 @@ export default function InspectionReportsView({
       || String(a.wardNumber || '').localeCompare(String(b.wardNumber || ''), undefined, { numeric: true })
       || String(a.streetName || '').localeCompare(String(b.streetName || ''))
     );
-  }, [resolveGeoNames, state.inspectionFields, state.townPanchayats, state.wardsAndStreets, streetLabel, swmSummaryGroups, swmBuildingFilter, swmDoorToDoorCategoryIds, swmShowStreet, swmShowWard]);
+  }, [resolveGeoNames, state.inspectionFields, state.townPanchayats, state.wardsAndStreets, streetLabel, swmSummaryGroups, swmBuildingFilter, swmDoorToDoorCategoryIds, swmShowStreet, swmShowWard, swmServerRows]);
 
   const swmAbstractTotals = useMemo(() => {
+    if (swmServerTotals) {
+      return {
+        totalWards: Number(swmServerTotals.totalWards) || 0,
+        wardsSurveyed: Number(swmServerTotals.wardsSurveyed) || 0,
+        totalStreets: Number(swmServerTotals.totalStreets) || 0,
+        streetsSurveyed: Number(swmServerTotals.streetsSurveyed) || 0,
+        householdsSurveyed: Number(swmServerTotals.householdsSurveyed) || 0,
+        segregating: Number(swmServerTotals.segregating) || 0,
+        notSegregating: Number(swmServerTotals.notSegregating) || 0,
+        doorLocked: Number(swmServerTotals.doorLocked) || 0,
+        homeComposting: Number(swmServerTotals.homeComposting) || 0,
+      };
+    }
     return swmAbstractRows.reduce((acc, row) => {
       acc.totalWards += row.totalWards;
       acc.wardsSurveyed += row.wardsSurveyed;
@@ -3506,9 +3566,25 @@ export default function InspectionReportsView({
       doorLocked: 0,
       homeComposting: 0,
     });
-  }, [swmAbstractRows]);
+  }, [swmAbstractRows, swmServerTotals]);
 
   const swmTpStreetRows = useMemo(() => {
+    if (swmServerRows && swmServerGroup === 'street') {
+      return swmServerRows.map((row) => ({
+        wardNumber: String(row.wardNumber || '0'),
+        streetName: String(row.streetName || '-'),
+        householdsSurveyed: row.householdsSurveyed,
+        segregating: row.segregating,
+        segregatingPct: row.segregatingPct,
+        notSegregating: row.notSegregating,
+        notSegregatingPct: row.notSegregatingPct,
+        doorLocked: row.doorLocked,
+        doorLockedPct: row.doorLockedPct,
+        homeComposting: row.homeComposting,
+        homeCompostingPct: row.homeCompostingPct,
+        sortWard: Number.parseInt(String(row.wardNumber || '0'), 10) || 0,
+      }));
+    }
     const fields = state.inspectionFields || [];
     const groups = new Map<string, SwmTpStreetRow & { sortWard: number }>();
     const sourceGroups = swmSummaryGroups.length ? swmSummaryGroups : [];
@@ -3579,7 +3655,7 @@ export default function InspectionReportsView({
       || String(a.wardNumber).localeCompare(String(b.wardNumber), undefined, { numeric: true })
       || String(a.streetName).localeCompare(String(b.streetName))
     );
-  }, [lang, state.inspectionFields, streetLabel, swmSummaryGroups, swmDoorToDoorCategoryIds]);
+  }, [lang, state.inspectionFields, streetLabel, swmSummaryGroups, swmDoorToDoorCategoryIds, swmServerRows, swmServerGroup]);
 
   const swmTpStreetTotals = useMemo(() => {
     return swmTpStreetRows.reduce((acc, row) => {

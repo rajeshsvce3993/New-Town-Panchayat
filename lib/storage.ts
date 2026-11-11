@@ -1244,6 +1244,7 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
       db.collection('inspectionWorks').createIndex({ zoneId: 1, submittedAt: -1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ subjectId: 1, submittedAt: -1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ categoryId: 1, submittedAt: -1 }, { background: true }),
+      db.collection('inspectionWorks').createIndex({ categoryId: 1, tpId: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ tpId: 1, wardNumber: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ submittedByUserName: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ submittedByUserId: 1 }, { background: true }),
@@ -1261,6 +1262,13 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
         { background: true }
       ),
       db.collection('inspectionWorks').createIndex({ streetName: 1, submittedDateYmd: -1 }, { background: true }),
+      db.collection('inspectionWorks').createIndex(
+        { submittedDateYmd: -1, categoryId: 1, tpId: 1, wardNumber: 1, streetName: 1 },
+        { background: true }
+      ),
+      db.collection('wardsAndStreets').createIndex({ tpId: 1, wardNo: 1 }, { background: true }),
+      db.collection('wardsAndStreets').createIndex({ townPanchayatId: 1, wardNumber: 1 }, { background: true }),
+      db.collection('wardsAndStreets').createIndex({ tpNameEn: 1 }, { background: true }),
       db.collection('inspectionWorkReportRollups').createIndex(
         { submittedDateYmd: 1, tpId: 1, subjectId: 1, categoryId: 1 },
         { background: true }
