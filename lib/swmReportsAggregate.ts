@@ -47,12 +47,40 @@ function firstValue(paths: string[]) {
   return paths.reduceRight((acc, path) => ({ $ifNull: [path, acc] }), '');
 }
 
-function yesOnPaths(paths: string[]) {
-  return { $or: paths.map((path) => mongoYes(path)) };
+function fieldValueExpr(key: string) {
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return `$fieldsData.${key}`;
+  return { $getField: { field: key, input: { $ifNull: ['$fieldsData', {}] } } };
 }
 
-function noOnPaths(paths: string[]) {
-  return { $or: paths.map((path) => mongoNo(path)) };
+function collectFieldExprs(masters: InspectionWorksFilterMasters | undefined, pred: (blob: string) => boolean, extras: string[] = []) {
+  const exprs: unknown[] = [];
+  const seen = new Set<string>();
+  const add = (key: string) => {
+    const k = String(key || '').trim();
+    if (!k || seen.has(k)) return;
+    seen.add(k);
+    exprs.push(fieldValueExpr(k));
+  };
+  extras.forEach(add);
+  for (const field of masters?.inspectionFields || []) {
+    const blob = [field?.id, field?.nameEn, field?.nameTa, field?.fieldName, field?.fieldNameTa]
+      .map((x) => String(x || '').toLowerCase())
+      .join(' | ');
+    if (!pred(blob)) continue;
+    add(field.id);
+    add(field.fieldName);
+    add(field.nameEn);
+    add(field.nameTa);
+  }
+  return exprs;
+}
+
+function yesOnExprs(exprs: unknown[]) {
+  return exprs.length ? { $or: exprs.map((expr) => mongoYes(expr)) } : false;
+}
+
+function noOnExprs(exprs: unknown[]) {
+  return exprs.length ? { $or: exprs.map((expr) => mongoNo(expr)) } : false;
 }
 
 export async function aggregateSwmStreetGroups(
@@ -67,26 +95,31 @@ export async function aggregateSwmStreetGroups(
   const match = buildReportsMongoMatch(filter, masters, { useReportDate: true, includeSecondary: true });
   const buildingType = String(opts?.buildingType || '').trim().toLowerCase();
 
-  const segregatePaths = [
-    '$fieldsData.fld_is_waste_segregated_at_source__jdua',
-    '$fieldsData.Is waste segregated at source?',
-    '$fieldsData.is_waste_segregated_at_source',
-  ];
-  const lockedPaths = [
-    '$fieldsData.fld_is_door_locked__r98z',
-    '$fieldsData.Is door locked?',
-    '$fieldsData.is_door_locked',
-  ];
-  const compostPaths = [
-    '$fieldsData.fld_home_composting_available___c5p9',
-    '$fieldsData.Home composting available?',
-    '$fieldsData.home_composting_available',
-  ];
-  const buildingPaths = [
-    '$fieldsData.fld_building_type_cu5l',
-    '$fieldsData.Building Type',
-    '$fieldsData.building_type',
-  ];
+  const segregateExprs = collectFieldExprs(
+    masters,
+    (blob) => blob.includes('segregat') && blob.includes('source') && !blob.includes('worker') && !blob.includes('collected'),
+    ['fld_is_waste_segregated_at_source__jdua', 'Is waste segregated at source?', 'is_waste_segregated_at_source']
+  );
+  const lockedExprs = collectFieldExprs(
+    masters,
+    (blob) =>
+      blob.includes('door locked') ||
+      blob.includes('house locked') ||
+      blob.includes('is_door_locked') ||
+      blob.includes('வீடு பூட்ட') ||
+      (blob.includes('பூட்ட') && blob.includes('வீடு')),
+    ['fld_is_door_locked__r98z', 'Is door locked?', 'is_door_locked', 'Is house locked?', 'is house locked']
+  );
+  const compostExprs = collectFieldExprs(
+    masters,
+    (blob) => blob.includes('compost') || blob.includes('உரம்'),
+    ['fld_home_composting_available___c5p9', 'Home composting available?', 'home_composting_available', 'Is compost created at home?', 'is compost created at home']
+  );
+  const buildingExprs = collectFieldExprs(
+    masters,
+    (blob) => blob.includes('building type') || blob.includes('கட்டிட'),
+    ['fld_building_type_cu5l', 'Building Type', 'building_type']
+  );
 
   const pipeline: Record<string, unknown>[] = [
     { $match: match },
@@ -107,12 +140,12 @@ export async function aggregateSwmStreetGroups(
         swmStreet: {
           $trim: { input: mongoString(firstValue(['$streetName', '$streetNameEn', '$street'])) },
         },
-        swmDoorLocked: yesOnPaths(lockedPaths),
-        swmDoorUnlocked: { $cond: [yesOnPaths(lockedPaths), false, true] },
-        swmSegregatedYes: yesOnPaths(segregatePaths),
-        swmSegregatedNo: noOnPaths(segregatePaths),
-        swmCompost: yesOnPaths(compostPaths),
-        swmBuilding: { $toLower: { $trim: { input: mongoString(firstValue(buildingPaths)) } } },
+        swmDoorLocked: yesOnExprs(lockedExprs),
+        swmDoorUnlocked: { $cond: [yesOnExprs(lockedExprs), false, true] },
+        swmSegregatedYes: yesOnExprs(segregateExprs),
+        swmSegregatedNo: noOnExprs(segregateExprs),
+        swmCompost: yesOnExprs(compostExprs),
+        swmBuilding: { $toLower: { $trim: { input: mongoString(buildingExprs[0] || firstValue(['$fieldsData.building_type'])) } } },
       },
     },
   ];

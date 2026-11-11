@@ -85,8 +85,7 @@ import { geoNamesEqual } from '@/lib/geoNameMatch';
 import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
 import MapViewReport from './MapViewReport';
 import ThemeSelect from './ThemeSelect';
-import html2canvas from 'html2canvas-pro';
-import { buildInspectionSlidesFile } from '@/lib/buildInspectionSlideDeck';
+import { buildInspectionSlidesFile, renderInspectionSlideJpeg } from '@/lib/buildInspectionSlideDeck';
 
 export function formatIndianTime(dateStr: any): string {
   if (!dateStr) return '-';
@@ -369,10 +368,14 @@ function readSwmHouseholdFlags(work: any, fields: any[]) {
     readWorkFieldAnswer(work, fields, (label) =>
       label.includes('segregat') && label.includes('source') && !label.includes('worker') && !label.includes('collected')
     );
-  const locked =
+    const locked =
     getWorkDynamicFieldValue(work, 'fld_is_door_locked__r98z', fields) ||
     readWorkFieldAnswer(work, fields, (label) =>
-      label.includes('door locked') || label.includes('house locked') || label.includes('வீடு பூட்ட')
+      label.includes('door locked') ||
+      label.includes('house locked') ||
+      label.includes('is_door_locked') ||
+      label.includes('வீடு பூட்ட') ||
+      (label.includes('பூட்ட') && label.includes('வீடு'))
     );
   const compost =
     getWorkDynamicFieldValue(work, 'fld_home_composting_available___c5p9', fields) ||
@@ -3332,29 +3335,41 @@ export default function InspectionReportsView({
 
     const masterByTp = new Map<string, { wards: Set<string>; streets: number }>();
     const masterByTpWard = new Map<string, number>();
+    const townPanchayats = state.townPanchayats || [];
     streetsMaster.forEach((ws: any) => {
-      const tpKeys = [
+      const rawKeys = [
         ws.tpId,
         ws.townPanchayatId,
         ws.tp_id,
         ws.tpNameEn,
         ws.tpName,
         ws.tpNameTa,
-      ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
-      if (!tpKeys.length) return;
+      ].map((value) => String(value || '').trim()).filter(Boolean);
+      if (!rawKeys.length) return;
+      const tp = townPanchayats.find((item: any) =>
+        rawKeys.some((key) =>
+          String(item.id || '').toLowerCase() === key.toLowerCase()
+          || geoNamesEqual(item.nameEn, key)
+          || geoNamesEqual(item.nameTa, key)
+        )
+      );
+      const aliasKeys = [...rawKeys, tp?.id, tp?.nameEn, tp?.nameTa]
+        .map((value) => String(value || '').trim().toLowerCase())
+        .filter(Boolean);
+      let bucket = aliasKeys.map((key) => masterByTp.get(key)).find(Boolean);
+      if (!bucket) bucket = { wards: new Set<string>(), streets: 0 };
+      aliasKeys.forEach((key) => masterByTp.set(key, bucket!));
+      bucket.streets += 1;
       const wardRaw = String(ws.wardNo || ws.wardNumber || ws.ward_no || ws.ward || '').trim();
       const wardDigits = wardRaw.replace(/[^0-9]/g, '');
       const ward = wardDigits.replace(/^0+/, '') || wardDigits || wardRaw;
-      tpKeys.forEach((tpKey) => {
-        if (!masterByTp.has(tpKey)) masterByTp.set(tpKey, { wards: new Set(), streets: 0 });
-        const bucket = masterByTp.get(tpKey)!;
-        bucket.streets += 1;
-        if (ward) {
-          bucket.wards.add(ward);
-          const wardKey = `${tpKey}|${ward}`;
+      if (ward) {
+        bucket.wards.add(ward);
+        aliasKeys.forEach((key) => {
+          const wardKey = `${key}|${ward}`;
           masterByTpWard.set(wardKey, (masterByTpWard.get(wardKey) || 0) + 1);
-        }
-      });
+        });
+      }
     });
 
     const sourceGroups = swmSummaryGroups.length ? swmSummaryGroups : [];
@@ -3369,9 +3384,19 @@ export default function InspectionReportsView({
       const streetKey = street && street !== '-' ? street : '-';
       const groupKey = [tpId.toLowerCase(), swmShowWard ? ward : '', swmShowStreet ? streetKey.toLowerCase() : ''].join('|');
       if (!groups.has(groupKey)) {
-        const master = masterByTp.get(String(work.tpId || work.townPanchayatId || '').toLowerCase())
-          || masterByTp.get(String(geo.tpNameEn || '').toLowerCase());
-        const wardMasterStreets = masterByTpWard.get(`${String(work.tpId || work.townPanchayatId || geo.tpNameEn || '').toLowerCase()}|${ward}`) || 0;
+        const masterKeys = [
+          work.tpId,
+          work.townPanchayatId,
+          work.tp_id,
+          geo.tpNameEn,
+          geo.tpNameTa,
+          work.tpNameEn,
+          work.tpNameTa,
+        ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
+        const master = masterKeys.map((key) => masterByTp.get(key)).find(Boolean);
+        const wardMasterStreets = masterKeys
+          .map((key) => masterByTpWard.get(`${key}|${ward}`) || 0)
+          .find((count) => count > 0) || 0;
         groups.set(groupKey, {
           zoneNameEn: geo.zoneNameEn,
           zoneNameTa: geo.zoneNameTa,
@@ -3456,7 +3481,7 @@ export default function InspectionReportsView({
       || String(a.wardNumber || '').localeCompare(String(b.wardNumber || ''), undefined, { numeric: true })
       || String(a.streetName || '').localeCompare(String(b.streetName || ''))
     );
-  }, [resolveGeoNames, state.inspectionFields, state.wardsAndStreets, streetLabel, swmSummaryGroups, swmBuildingFilter, swmDoorToDoorCategoryIds, swmShowStreet, swmShowWard]);
+  }, [resolveGeoNames, state.inspectionFields, state.townPanchayats, state.wardsAndStreets, streetLabel, swmSummaryGroups, swmBuildingFilter, swmDoorToDoorCategoryIds, swmShowStreet, swmShowWard]);
 
   const swmAbstractTotals = useMemo(() => {
     return swmAbstractRows.reduce((acc, row) => {
@@ -6565,53 +6590,37 @@ export default function InspectionReportsView({
     }
   };
 
-  // Helper to download ENTIRE SLIDE FRAME as a single high-resolution image PNG using html2canvas
+  const loadSlideExportImage = async (url: string) => {
+    const dataUrl = await resolvePhotoDataUrl(url);
+    if (!dataUrl) return null;
+    try {
+      return await loadImageFromDataUrl(dataUrl);
+    } catch {
+      return null;
+    }
+  };
+
+  const renderCurrentSlideJpeg = async () => {
+    if (!currentSlideWork) throw new Error('Slide is not ready');
+    return renderInspectionSlideJpeg({
+      work: currentSlideWork,
+      index: detailedSlideIndex,
+      total: Math.max(1, slideRecordTotal),
+      lang: slideLang,
+      theme: slideTheme,
+      fields: state.inspectionFields || [],
+      loadImage: loadSlideExportImage,
+    });
+  };
+
   const handleDownloadFullSlideAsImage = async () => {
-    if (!slideContainerRef.current || isSlideDownloading) return;
-    const slideEl = slideContainerRef.current;
-    const hideBtns = slideEl.querySelectorAll('.hide-on-export') as NodeListOf<HTMLElement>;
-    const prevTransform = slideEl.style.transform;
-    const prevWidth = slideEl.style.width;
-    const prevHeight = slideEl.style.height;
-    let restoreImages: (() => void) | null = null;
+    if (isSlideDownloading || !currentSlideWork) return;
     setIsSlideDownloading(true);
     try {
-      hideBtns.forEach((btn) => {
-        btn.style.opacity = '0';
-        btn.style.pointerEvents = 'none';
-      });
-
-      const width = slideEl.offsetWidth;
-      const height = slideEl.offsetHeight;
-      slideEl.style.transform = 'none';
-      slideEl.style.width = `${width}px`;
-      slideEl.style.height = `${height}px`;
-
-      restoreImages = await convertImagesToBase64InContainer(slideEl);
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-      const canvas = await html2canvas(slideEl, {
-        useCORS: true,
-        allowTaint: false,
-        scale: 1.4,
-        backgroundColor: slideTheme === 'light' ? '#f8fafc' : '#020617',
-        logging: false,
-        width,
-        height,
-        windowWidth: width,
-        windowHeight: height,
-        x: 0,
-        y: 0,
-        scrollX: 0,
-        scrollY: 0,
-        imageTimeout: 20000,
-        ignoreElements: (el) => (el as HTMLElement).classList?.contains('hide-on-export'),
-      });
-
-      const pngUrl = canvas.toDataURL('image/png', 0.95);
+      const jpeg = await renderCurrentSlideJpeg();
       const a = document.createElement('a');
-      a.href = pngUrl;
-      a.download = `Full_Slide_Work_${currentSlideWork?.workId || currentSlideWork?.id || 'entry'}.png`;
+      a.href = jpeg;
+      a.download = `Full_Slide_Work_${currentSlideWork?.workId || currentSlideWork?.id || 'entry'}.jpg`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -6619,82 +6628,33 @@ export default function InspectionReportsView({
       console.error('Error capturing full slide image:', err);
       alert('Error capturing slide frame image: ' + err.message);
     } finally {
-      restoreImages?.();
-      slideEl.style.transform = prevTransform;
-      slideEl.style.width = prevWidth;
-      slideEl.style.height = prevHeight;
-      hideBtns.forEach((btn) => {
-        btn.style.opacity = '1';
-        btn.style.pointerEvents = 'auto';
-      });
       setIsSlideDownloading(false);
     }
   };
 
   const handleDownloadFullSlideAsPdf = async () => {
-    if (!slideContainerRef.current || isSlideDownloading) return;
-    const slideEl = slideContainerRef.current;
-    const hideBtns = slideEl.querySelectorAll('.hide-on-export') as NodeListOf<HTMLElement>;
-    const prevTransform = slideEl.style.transform;
-    const prevWidth = slideEl.style.width;
-    const prevHeight = slideEl.style.height;
-    let restoreImages: (() => void) | null = null;
+    if (isSlideDownloading || !currentSlideWork) return;
     setIsSlideDownloading(true);
     try {
-      hideBtns.forEach((btn) => {
-        btn.style.opacity = '0';
-        btn.style.pointerEvents = 'none';
-      });
-
-      const width = slideEl.offsetWidth;
-      const height = slideEl.offsetHeight;
-      slideEl.style.transform = 'none';
-      slideEl.style.width = `${width}px`;
-      slideEl.style.height = `${height}px`;
-
-      restoreImages = await convertImagesToBase64InContainer(slideEl);
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-      const canvas = await html2canvas(slideEl, {
-        useCORS: true,
-        allowTaint: false,
-        scale: 1.4,
-        backgroundColor: slideTheme === 'light' ? '#f8fafc' : '#020617',
-        logging: false,
-        width,
-        height,
-        windowWidth: width,
-        windowHeight: height,
-        x: 0,
-        y: 0,
-        scrollX: 0,
-        scrollY: 0,
-        imageTimeout: 20000,
-        ignoreElements: (el) => (el as HTMLElement).classList?.contains('hide-on-export'),
-      });
-
-      const img = canvas.toDataURL('image/jpeg', 0.92);
-      const orient = canvas.width >= canvas.height ? 'l' : 'p';
-      const pdf = new jsPDF({ orientation: orient, unit: 'pt', format: 'a4' });
+      const jpeg = await renderCurrentSlideJpeg();
+      const pdf = new jsPDF({ orientation: 'l', unit: 'pt', format: 'a4' });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
-      const w = canvas.width * ratio;
-      const h = canvas.height * ratio;
-      pdf.addImage(img, 'JPEG', (pageW - w) / 2, (pageH - h) / 2, w, h);
+      const props = pdf.getImageProperties(jpeg);
+      const ratio = Math.min(pageW / props.width, pageH / props.height);
+      pdf.addImage(
+        jpeg,
+        'JPEG',
+        (pageW - props.width * ratio) / 2,
+        (pageH - props.height * ratio) / 2,
+        props.width * ratio,
+        props.height * ratio
+      );
       pdf.save(`Full_Slide_Work_${currentSlideWork?.workId || currentSlideWork?.id || 'entry'}.pdf`);
     } catch (err: any) {
       console.error('Error capturing full slide image:', err);
       alert('Error capturing slide frame image: ' + err.message);
     } finally {
-      restoreImages?.();
-      slideEl.style.transform = prevTransform;
-      slideEl.style.width = prevWidth;
-      slideEl.style.height = prevHeight;
-      hideBtns.forEach((btn) => {
-        btn.style.opacity = '1';
-        btn.style.pointerEvents = 'auto';
-      });
       setIsSlideDownloading(false);
     }
   };
@@ -9248,7 +9208,7 @@ export default function InspectionReportsView({
             className={`fixed inset-0 z-50 flex flex-col w-full h-full overflow-hidden transition-colors duration-200 select-none ${slideTheme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-950 text-white'}`}
           >
             {isSlideDownloading && (
-              <div className="portal-slide-export-progress is-blocking">
+              <div className="hide-on-export portal-slide-export-progress is-blocking">
                 <div className="portal-slide-export-progress-card">
                   <Loader2 className="h-5 w-5 animate-spin shrink-0" />
                   <div className="min-w-0">

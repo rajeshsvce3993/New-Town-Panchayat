@@ -1277,6 +1277,13 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     }, 50);
   };
 
+  const scrollToInspectionReports = () => {
+    setDashReportTab('inspection');
+    requestAnimationFrame(() => {
+      document.getElementById('dashboard-reports-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   const scrollToSwmReports = () => {
     setDashReportTab('swm');
     requestAnimationFrame(() => {
@@ -1319,7 +1326,59 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     return { totalWards: wardKeys.size, totalStreets: streetCount };
   }, [hodLike, scopedDashboardTps, state?.wardsAndStreets]);
 
-  const cards = [
+  const totalInspections = dashboardAbstractData.reduce((sum, row) => sum + (Number(row.totalInspections) || 0), 0);
+  const inspectionCards = [
+    {
+      id: 'total_inspections',
+      title: lang === 'ta' ? 'மொத்த ஆய்வுகள்' : 'Total Inspections',
+      count: totalInspections,
+      icon: ClipboardCheck,
+      action: scrollToInspectionReports
+    },
+    {
+      id: 'total_subjects',
+      title: lang === 'ta' ? 'ஆய்வுப் பிரிவுகள்' : 'Subjects',
+      count: (state.inspectionSubjects || []).length || dashboardAbstractData.length,
+      icon: Layers,
+      action: scrollToInspectionReports
+    },
+    {
+      id: 'total_categories',
+      title: lang === 'ta' ? 'ஆய்வு வகைகள்' : 'Categories',
+      count: (state.inspectionCategories || []).length,
+      icon: BarChart3,
+      action: scrollToInspectionReports
+    },
+    {
+      id: 'total_tps',
+      title: lang === 'ta' ? 'பேரூராட்சிகள்' : 'Town Panchayats',
+      count: scopedDashboardTps.length,
+      icon: Building,
+      action: scrollToInspectionReports
+    },
+    {
+      id: 'total_wards',
+      title: lang === 'ta' ? 'மொத்த வார்டுகள்' : 'Total Wards',
+      count: masterGeoCounts.totalWards,
+      icon: MapPin,
+      action: scrollToInspectionReports
+    },
+    {
+      id: 'total_streets',
+      title: lang === 'ta' ? 'மொத்த தெருக்கள்' : 'Total Streets',
+      count: masterGeoCounts.totalStreets,
+      icon: GitPullRequest,
+      action: scrollToInspectionReports
+    },
+    {
+      id: 'total_inspectors',
+      title: lang === 'ta' ? 'கள ஆய்வாளர்கள்' : 'Field Inspectors',
+      count: (state.inspectionUsers || []).length || (employees || []).length,
+      icon: UserCheck,
+      action: scrollToInspectionReports
+    }
+  ];
+  const swmCards = [
     {
       id: 'total_wards',
       title: lang === 'ta' ? 'மொத்த வார்டுகள்' : 'Total Wards',
@@ -1336,7 +1395,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     },
     {
       id: 'total_surveyed',
-      title: lang === 'ta' ? 'கணக்கெடுக்கப்பட்டவை' : 'Total Surveyed',
+      title: lang === 'ta' ? 'கணக்கெடுக்கப்பட்ட வீடுகள்' : 'Total Surveyed',
       count: swmTileTotals.householdsSurveyed,
       icon: Users,
       action: scrollToSwmReports
@@ -1370,6 +1429,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
       action: scrollToSwmReports
     }
   ];
+  const cards = dashReportTab === 'swm' ? swmCards : inspectionCards;
 
   // Helper for sorting arrows
   const renderSortIcon = (field: string) => {
@@ -1412,6 +1472,11 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   });
 
   const kpiAccents: Record<string, string> = {
+    total_inspections: '#1d4ed8',
+    total_subjects: '#7c3aed',
+    total_categories: '#0f766e',
+    total_tps: '#c2410c',
+    total_inspectors: '#0284c7',
     total_wards: '#1d4ed8',
     total_streets: '#0f766e',
     total_surveyed: '#0284c7',
@@ -1459,17 +1524,17 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
             type="button"
             onClick={card.action}
             style={getKpiStyle(card.id, cardIndex)}
-            className="portal-dashboard-kpi-card relative flex min-w-0 flex-col overflow-hidden rounded-2xl p-2.5 text-left text-white transition duration-200 hover:-translate-y-0.5 sm:p-3"
+            className="portal-dashboard-kpi-card relative flex h-full min-h-[7.25rem] min-w-0 flex-col justify-between overflow-hidden rounded-2xl p-2.5 text-left text-white transition duration-200 hover:-translate-y-0.5 sm:min-h-[7.75rem] sm:p-3"
           >
             <card.icon
               className="pointer-events-none absolute -right-1 -top-1 h-11 w-11 text-white/20"
               strokeWidth={1.25}
             />
-            <span className="relative z-[1] inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/25 text-white ring-1 ring-white/30">
+            <span className="relative z-[1] inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/25 text-white ring-1 ring-white/30">
               <card.icon className="h-3.5 w-3.5" strokeWidth={2.25} />
             </span>
-            <div className="relative z-[1] mt-1.5 min-w-0">
-              <p className="kpi-label truncate">
+            <div className="relative z-[1] mt-2 flex min-w-0 flex-1 flex-col justify-end gap-1">
+              <p className="kpi-label">
                 {card.title}
               </p>
               <p className="kpi-value">
