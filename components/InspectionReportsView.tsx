@@ -51,7 +51,8 @@ import {
   Zap,
   BarChart3,
   Building2,
-  Recycle
+  Recycle,
+  Presentation
 } from 'lucide-react';
 import { Language, translations } from './translations';
 import { ThemeType, themesConfig } from '@/lib/themeConfig';
@@ -85,6 +86,7 @@ import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
 import MapViewReport from './MapViewReport';
 import ThemeSelect from './ThemeSelect';
 import html2canvas from 'html2canvas-pro';
+import { buildInspectionSlidesFile } from '@/lib/buildInspectionSlideDeck';
 
 export function formatIndianTime(dateStr: any): string {
   if (!dateStr) return '-';
@@ -200,6 +202,7 @@ function getLocalizedStreetName(work: any, lang: string, streets: any[] = []): s
 function isYesAnswer(raw: any): boolean {
   const v = String(raw || '').trim().toLowerCase();
   if (!v) return false;
+  if (isNoAnswer(raw)) return false;
   return (
     v === 'yes' ||
     v === 'y' ||
@@ -213,10 +216,70 @@ function isYesAnswer(raw: any): boolean {
   );
 }
 
-function SwmHeaderCell({ en, ta, lang, className = '' }: { en: string; ta: string; lang: string; className?: string }) {
+function isNoAnswer(raw: any): boolean {
+  const v = String(raw || '').trim().toLowerCase();
+  if (!v) return false;
   return (
-    <th className={`portal-swm-th ${className}`.trim()}>
-      {lang === 'ta' ? ta : en}
+    v === 'no' ||
+    v === 'n' ||
+    v === 'false' ||
+    v === '0' ||
+    v === 'இல்லை' ||
+    v.startsWith('no') ||
+    v.startsWith('இல்லை')
+  );
+}
+
+const SWM_COL = {
+  sno: { en: 'S.No', ta: 'வ.எண்' },
+  zone: { en: 'Zone', ta: 'மண்டலம்' },
+  district: { en: 'District', ta: 'மாவட்டம்' },
+  tp: { en: 'Town Panchayat', ta: 'பேரூராட்சி' },
+  wardNo: { en: 'Ward No', ta: 'வார்டு எண்' },
+  street: { en: 'Street Names', ta: 'தெருப்பெயர்' },
+  totalWards: { en: 'Total No of Wards', ta: 'மொத்த வார்டுகளின் எண்ணிக்கை' },
+  wardsSurveyed: { en: 'Wards surveyed', ta: 'கணக்கெடுக்கப்பட்ட வார்டுகள்' },
+  totalStreets: { en: 'Total No of Streets', ta: 'மொத்த தெருக்களின் எண்ணிக்கை' },
+  streetsSurveyed: { en: 'Streets surveyed', ta: 'கணக்கெடுக்கப்பட்ட தெருக்கள்' },
+  households: { en: 'Total Households Surveyed', ta: 'கணக்கெடுக்கப்பட்ட மொத்த குடியிருப்புகள்' },
+  segregating: { en: 'Households Segregating Waste at Source', ta: 'தரம் பிரித்து வழங்கும் வீடுகள்' },
+  notSegregating: { en: 'Households Not Segregating Waste at Source', ta: 'தரம் பிரிக்காமல் வழங்கும் வீடுகள்' },
+  doorLocked: { en: 'Households with Door Locked', ta: 'பூட்டிய வீடுகள்' },
+  compost: { en: 'Households with Home Composting', ta: 'வீட்டு உரமாக்கம் உள்ள வீடுகள்' },
+  pct: { en: 'Percentage (%)', ta: 'சதவீதம்' },
+};
+
+function SwmHeaderCell({
+  col,
+  lang,
+  align = 'text',
+  sortKey,
+  sortState,
+  onSort,
+}: {
+  col: { en: string; ta: string };
+  lang: string;
+  align?: 'text' | 'num' | 'sno' | 'pct';
+  sortKey?: string;
+  sortState?: { key: string; dir: 'asc' | 'desc' };
+  onSort?: (key: string) => void;
+}) {
+  const active = Boolean(sortKey && sortState?.key === sortKey);
+  const sortable = Boolean(onSort && sortKey);
+  return (
+    <th
+      className={`portal-swm-th is-${align} ${sortable ? 'is-sortable' : ''}`.trim()}
+      onClick={sortable ? () => onSort?.(sortKey!) : undefined}
+      aria-sort={active ? (sortState?.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <span className="portal-swm-th-label">
+        <span>{lang === 'ta' ? col.ta : col.en}</span>
+        {sortable && (
+          <span className="portal-swm-th-sort" aria-hidden="true">
+            {active ? (sortState?.dir === 'asc' ? '↑' : '↓') : '↕'}
+          </span>
+        )}
+      </span>
     </th>
   );
 }
@@ -316,9 +379,12 @@ function readSwmHouseholdFlags(work: any, fields: any[]) {
     readWorkFieldAnswer(work, fields, (label) =>
       label.includes('compost')
     );
+  const doorLocked = isYesAnswer(locked);
+  const doorUnlocked = !doorLocked;
   return {
-    segregating: isYesAnswer(segregated),
-    doorLocked: isYesAnswer(locked),
+    doorLocked,
+    segregating: doorUnlocked && isYesAnswer(segregated),
+    notSegregating: doorUnlocked && isNoAnswer(segregated),
     homeComposting: isYesAnswer(compost),
   };
 }
@@ -370,6 +436,7 @@ function workToSwmSummaryGroup(work: any, fields: any[]) {
     streetName: String(work.streetName || work.streetNameEn || work.street || '').trim() || '-',
     householdsSurveyed: 1,
     segregating: flags.segregating ? 1 : 0,
+    notSegregating: flags.notSegregating ? 1 : 0,
     doorLocked: flags.doorLocked ? 1 : 0,
     homeComposting: flags.homeComposting ? 1 : 0,
     buildingType: readSwmBuildingType(work, fields),
@@ -390,6 +457,7 @@ function mergeSwmSummaryGroups(existing: any[], incoming: any[]): any[] {
     }
     prev.householdsSurveyed = (Number(prev.householdsSurveyed) || 0) + (Number(row.householdsSurveyed) || 0);
     prev.segregating = (Number(prev.segregating) || 0) + (Number(row.segregating) || 0);
+    prev.notSegregating = (Number(prev.notSegregating) || 0) + (Number(row.notSegregating) || 0);
     prev.doorLocked = (Number(prev.doorLocked) || 0) + (Number(row.doorLocked) || 0);
     prev.homeComposting = (Number(prev.homeComposting) || 0) + (Number(row.homeComposting) || 0);
     if (!prev.tpNameEn && row.tpNameEn) prev.tpNameEn = row.tpNameEn;
@@ -804,6 +872,7 @@ interface InspectionReportsViewProps {
   theme: ThemeType;
   currentUser?: any;
   defaultActiveTab?: 'abstract' | 'detailed' | 'mapview' | 'tp';
+  defaultReportModule?: 'inspection' | 'swm';
   hideTabsHeader?: boolean;
   hideTopTitle?: boolean;
   /** Dashboard embed: no global refresh hooks; user applies filters explicitly */
@@ -815,6 +884,15 @@ interface InspectionReportsViewProps {
     isRefreshing: boolean;
     fetchError: string | null;
   }) => void;
+  onSwmTotalsReady?: (totals: {
+    totalWards: number;
+    totalStreets: number;
+    householdsSurveyed: number;
+    segregating: number;
+    notSegregating: number;
+    doorLocked: number;
+    homeComposting: number;
+  }) => void;
   onSaveCollection?: (key: string, data: any[]) => Promise<void>;
 }
 
@@ -824,16 +902,19 @@ export default function InspectionReportsView({
   theme,
   currentUser,
   defaultActiveTab,
+  defaultReportModule,
   hideTabsHeader = false,
   hideTopTitle = false,
   embedMode = false,
   hideFilterActions = false,
   onFilterActionsReady,
+  onSwmTotalsReady,
   onSaveCollection
 }: InspectionReportsViewProps) {
   // Current active sub-tab: 'abstract' | 'detailed' | 'mapview'
   const [activeTab, setActiveTab] = useState<'abstract' | 'detailed' | 'mapview' | 'tp'>(defaultActiveTab || 'abstract');
-  const [reportModule, setReportModule] = useState<'inspection' | 'swm'>('inspection');
+  const [reportModule, setReportModule] = useState<'inspection' | 'swm'>(defaultReportModule || 'inspection');
+  const [swmSort, setSwmSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' });
   const [swmSummaryGroups, setSwmSummaryGroups] = useState<any[]>([]);
   const [swmAbstractLoading, setSwmAbstractLoading] = useState(false);
   const [swmWardCol, setSwmWardCol] = useState(false);
@@ -1457,6 +1538,7 @@ export default function InspectionReportsView({
   const [slideTheme, setSlideTheme] = useState<'dark' | 'light'>('dark');
   const [slideLang, setSlideLang] = useState<'ta' | 'en'>(lang);
   const [isSlideDownloading, setIsSlideDownloading] = useState(false);
+  const [slideDeckExport, setSlideDeckExport] = useState<{ current: number; total: number; format: 'pdf' | 'ppt' } | null>(null);
   const slideContainerRef = useRef<HTMLDivElement | null>(null);
   const slidePageCacheRef = useRef<Map<number, any[]>>(new Map());
   const slideCacheGenRef = useRef(0);
@@ -3049,7 +3131,7 @@ export default function InspectionReportsView({
   }, [worksFromApi, filteredWorks, slideRecordTotal, fetchRowsOnlyPage]);
 
   useEffect(() => {
-    if (embedMode || reportModule !== 'swm' || (activeTab !== 'abstract' && activeTab !== 'tp')) return;
+    if (reportModule !== 'swm' || (activeTab !== 'abstract' && activeTab !== 'tp')) return;
     if (filtersLoadToken === 0) return;
     const ac = new AbortController();
     const fields = state.inspectionFields || [];
@@ -3123,7 +3205,6 @@ export default function InspectionReportsView({
   }, [
     activeTab,
     buildInspectionWorksQueryParams,
-    embedMode,
     fetchRowsOnlyPage,
     filtersLoadToken,
     lang,
@@ -3252,17 +3333,28 @@ export default function InspectionReportsView({
     const masterByTp = new Map<string, { wards: Set<string>; streets: number }>();
     const masterByTpWard = new Map<string, number>();
     streetsMaster.forEach((ws: any) => {
-      const tpKey = String(ws.tpId || ws.townPanchayatId || ws.tpNameEn || '').trim().toLowerCase();
-      if (!tpKey) return;
-      if (!masterByTp.has(tpKey)) masterByTp.set(tpKey, { wards: new Set(), streets: 0 });
-      const bucket = masterByTp.get(tpKey)!;
-      bucket.streets += 1;
-      const ward = String(ws.wardNo || ws.wardNumber || '').trim().replace(/^0+/, '');
-      if (ward) {
-        bucket.wards.add(ward);
-        const wardKey = `${tpKey}|${ward}`;
-        masterByTpWard.set(wardKey, (masterByTpWard.get(wardKey) || 0) + 1);
-      }
+      const tpKeys = [
+        ws.tpId,
+        ws.townPanchayatId,
+        ws.tp_id,
+        ws.tpNameEn,
+        ws.tpName,
+        ws.tpNameTa,
+      ].map((value) => String(value || '').trim().toLowerCase()).filter(Boolean);
+      if (!tpKeys.length) return;
+      const wardRaw = String(ws.wardNo || ws.wardNumber || ws.ward_no || ws.ward || '').trim();
+      const wardDigits = wardRaw.replace(/[^0-9]/g, '');
+      const ward = wardDigits.replace(/^0+/, '') || wardDigits || wardRaw;
+      tpKeys.forEach((tpKey) => {
+        if (!masterByTp.has(tpKey)) masterByTp.set(tpKey, { wards: new Set(), streets: 0 });
+        const bucket = masterByTp.get(tpKey)!;
+        bucket.streets += 1;
+        if (ward) {
+          bucket.wards.add(ward);
+          const wardKey = `${tpKey}|${ward}`;
+          masterByTpWard.set(wardKey, (masterByTpWard.get(wardKey) || 0) + 1);
+        }
+      });
     });
 
     const sourceGroups = swmSummaryGroups.length ? swmSummaryGroups : [];
@@ -3313,12 +3405,19 @@ export default function InspectionReportsView({
       if (streetKey && streetKey !== '-') row.streetSet.add(streetKey.toLowerCase());
 
       if (work.householdsSurveyed != null) {
-        row.segregating += Number(work.segregating) || 0;
-        row.doorLocked += Number(work.doorLocked) || 0;
+        const surveyedHH = Number(work.householdsSurveyed) || 0;
+        const seg = Number(work.segregating) || 0;
+        const locked = Number(work.doorLocked) || 0;
+        row.segregating += seg;
+        row.notSegregating += work.notSegregating != null
+          ? Number(work.notSegregating) || 0
+          : Math.max(0, surveyedHH - seg - locked);
+        row.doorLocked += locked;
         row.homeComposting += Number(work.homeComposting) || 0;
       } else {
         const flags = readSwmHouseholdFlags(work, fields);
         if (flags.segregating) row.segregating += 1;
+        if (flags.notSegregating) row.notSegregating += 1;
         if (flags.doorLocked) row.doorLocked += 1;
         if (flags.homeComposting) row.homeComposting += 1;
       }
@@ -3326,7 +3425,7 @@ export default function InspectionReportsView({
 
     return Array.from(groups.values()).map((row) => {
       const surveyed = row.householdsSurveyed;
-      const notSegregating = Math.max(0, surveyed - row.segregating);
+      const notSegregating = Number(row.notSegregating) || 0;
       return {
         zoneNameEn: row.zoneNameEn,
         zoneNameTa: row.zoneNameTa,
@@ -3416,12 +3515,18 @@ export default function InspectionReportsView({
       const households = Number(work.householdsSurveyed || 0) || 1;
       row.householdsSurveyed += households;
       if (work.householdsSurveyed != null) {
-        row.segregating += Number(work.segregating) || 0;
-        row.doorLocked += Number(work.doorLocked) || 0;
+        const seg = Number(work.segregating) || 0;
+        const locked = Number(work.doorLocked) || 0;
+        row.segregating += seg;
+        row.notSegregating += work.notSegregating != null
+          ? Number(work.notSegregating) || 0
+          : Math.max(0, households - seg - locked);
+        row.doorLocked += locked;
         row.homeComposting += Number(work.homeComposting) || 0;
       } else {
         const flags = readSwmHouseholdFlags(work, fields);
         if (flags.segregating) row.segregating += 1;
+        if (flags.notSegregating) row.notSegregating += 1;
         if (flags.doorLocked) row.doorLocked += 1;
         if (flags.homeComposting) row.homeComposting += 1;
       }
@@ -3429,7 +3534,7 @@ export default function InspectionReportsView({
 
     return Array.from(groups.values()).map((row) => {
       const surveyed = row.householdsSurveyed;
-      const notSegregating = Math.max(0, surveyed - row.segregating);
+      const notSegregating = Number(row.notSegregating) || 0;
       return {
         wardNumber: row.wardNumber,
         streetName: row.streetName,
@@ -3467,6 +3572,62 @@ export default function InspectionReportsView({
       homeComposting: 0,
     });
   }, [swmTpStreetRows]);
+
+  const toggleSwmSort = (key: string) => {
+    setSwmSort((prev) => (
+      prev.key === key
+        ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: 'asc' }
+    ));
+  };
+
+  const swmSortValue = (row: any, key: string) => {
+    if (key === 'zone') return lang === 'ta' ? row.zoneNameTa : row.zoneNameEn;
+    if (key === 'district') return lang === 'ta' ? row.districtNameTa : row.districtNameEn;
+    if (key === 'tp') return lang === 'ta' ? row.tpNameTa : row.tpNameEn;
+    if (key === 'ward') return Number.parseInt(String(row.wardNumber || '0'), 10) || 0;
+    if (key === 'street') return row.streetName || '';
+    return row[key];
+  };
+
+  const sortSwmRows = <T,>(rows: T[]) => {
+    if (!swmSort.key) return rows;
+    const dir = swmSort.dir === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const av = swmSortValue(a, swmSort.key);
+      const bv = swmSortValue(b, swmSort.key);
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+      return String(av ?? '').localeCompare(String(bv ?? ''), undefined, { numeric: true, sensitivity: 'base' }) * dir;
+    });
+  };
+
+  const swmAbstractRowsView = useMemo(
+    () => sortSwmRows(swmAbstractRows),
+    [swmAbstractRows, swmSort, lang]
+  );
+  const swmTpStreetRowsView = useMemo(
+    () => sortSwmRows(swmTpStreetRows),
+    [swmTpStreetRows, swmSort, lang]
+  );
+
+  useEffect(() => {
+    if (reportModule !== 'swm' || !onSwmTotalsReady) return;
+    onSwmTotalsReady({
+      totalWards: swmAbstractTotals.totalWards,
+      totalStreets: swmAbstractTotals.totalStreets || swmAbstractTotals.streetsSurveyed,
+      householdsSurveyed: swmAbstractTotals.householdsSurveyed,
+      segregating: swmAbstractTotals.segregating,
+      notSegregating: swmAbstractTotals.notSegregating,
+      doorLocked: swmAbstractTotals.doorLocked,
+      homeComposting: swmAbstractTotals.homeComposting,
+    });
+  }, [onSwmTotalsReady, reportModule, swmAbstractTotals]);
+
+  useEffect(() => {
+    if (reportModule !== 'swm') return;
+    setSelectedSubjectId(swmSubjectId);
+    setSelectedCategoryId(swmDoorToDoorCategoryId);
+  }, [reportModule, swmDoorToDoorCategoryId, swmSubjectId]);
 
   // Abstract calculations
   const abstractData = useMemo(() => {
@@ -4219,24 +4380,24 @@ export default function InspectionReportsView({
     if (swmShowStreet) headers.push(isTa ? 'தெருப்பெயர்' : 'Street Names');
     if (!swmShowWard && !swmShowStreet) {
       headers.push(
-        isTa ? 'மொத்த வார்டுகளின் எண்ணிக்கை' : 'Total No of Wards',
-        isTa ? 'ஆய்வுக்குட்படுத்தப்பட்ட வார்டுகளின் எண்ணிக்கை' : 'Wards surveyed',
-        isTa ? 'மொத்த தெருக்களின் எண்ணிக்கை' : 'Total No of Streets',
-        isTa ? 'ஆய்வுக்குட்படுத்தப்பட்ட தெருக்களின் எண்ணிக்கை' : 'Streets surveyed'
+        isTa ? SWM_COL.totalWards.ta : SWM_COL.totalWards.en,
+        isTa ? SWM_COL.wardsSurveyed.ta : SWM_COL.wardsSurveyed.en,
+        isTa ? SWM_COL.totalStreets.ta : SWM_COL.totalStreets.en,
+        isTa ? SWM_COL.streetsSurveyed.ta : SWM_COL.streetsSurveyed.en
       );
     } else if (swmShowWard && !swmShowStreet) {
-      headers.push(isTa ? 'ஆய்வுக்குட்படுத்தப்பட்ட தெருக்களின் எண்ணிக்கை' : 'Streets surveyed');
+      headers.push(isTa ? SWM_COL.streetsSurveyed.ta : SWM_COL.streetsSurveyed.en);
     }
     headers.push(
-      isTa ? 'ஆய்வுக்குட்படுத்தப்பட்ட வீடுகளின் எண்ணிக்கை' : 'Total Households Surveyed',
-      isTa ? 'மூலத்திலேயே பிரித்தெடுக்கும் வீடுகள்' : 'Households Segregating Waste at Source',
-      isTa ? 'சதவீதம் (%)' : 'Percentage (%)',
-      isTa ? 'மூலத்திலேயே பிரித்தெடுக்காத வீடுகள்' : 'Households Not Segregating Waste at Source',
-      isTa ? 'சதவீதம் (%)' : 'Percentage (%)',
-      isTa ? 'தாழ் பூட்டிய வீடுகள்' : 'Households with Door Locked',
-      isTa ? 'சதவீதம் (%)' : 'Percentage (%)',
-      isTa ? 'வீட்டிலேயே உரம் தயாரிக்கும் வீடுகள்' : 'Households with Home Composting',
-      isTa ? 'சதவீதம் (%)' : 'Percentage (%)'
+      isTa ? SWM_COL.households.ta : SWM_COL.households.en,
+      isTa ? SWM_COL.segregating.ta : SWM_COL.segregating.en,
+      isTa ? SWM_COL.pct.ta : SWM_COL.pct.en,
+      isTa ? SWM_COL.notSegregating.ta : SWM_COL.notSegregating.en,
+      isTa ? SWM_COL.pct.ta : SWM_COL.pct.en,
+      isTa ? SWM_COL.doorLocked.ta : SWM_COL.doorLocked.en,
+      isTa ? SWM_COL.pct.ta : SWM_COL.pct.en,
+      isTa ? SWM_COL.compost.ta : SWM_COL.compost.en,
+      isTa ? SWM_COL.pct.ta : SWM_COL.pct.en
     );
     return headers;
   })();
@@ -4296,32 +4457,32 @@ export default function InspectionReportsView({
   const swmAbstractColCount = swmAbstractExportHeaders.length;
 
   const swmTpHeaderEn = [
-    'S.No',
-    'Ward No',
-    'Street Names',
-    'Total Households Surveyed',
-    'Households Segregating Waste at Source',
-    'Percentage (%)',
-    'Households Not Segregating Waste at Source',
-    'Percentage (%)',
-    'Households with Door Locked',
-    'Percentage (%)',
-    'Households with Home Composting',
-    'Percentage (%)',
+    SWM_COL.sno.en,
+    SWM_COL.wardNo.en,
+    SWM_COL.street.en,
+    SWM_COL.households.en,
+    SWM_COL.segregating.en,
+    SWM_COL.pct.en,
+    SWM_COL.notSegregating.en,
+    SWM_COL.pct.en,
+    SWM_COL.doorLocked.en,
+    SWM_COL.pct.en,
+    SWM_COL.compost.en,
+    SWM_COL.pct.en,
   ];
   const swmTpHeaderTa = [
-    'வ.எண்',
-    'வார்டு எண்',
-    'தெருப்பெயர்',
-    'கணக்கெடுக்கப்பட்ட மொத்த குடியிருப்புகள்',
-    'தரம் பிரித்த வழங்கும் வீடுகள்',
-    'சதவீதம் (%)',
-    'தரம் பிரிக்காமல் வழங்கும் வீடுகள்',
-    'சதவீதம் (%)',
-    'பூட்டிய வீடுகள்',
-    'சதவீதம் (%)',
-    'வீட்டு உரமாக்கல் உள்ள வீடுகள்',
-    'சதவீதம் (%)',
+    SWM_COL.sno.ta,
+    SWM_COL.wardNo.ta,
+    SWM_COL.street.ta,
+    SWM_COL.households.ta,
+    SWM_COL.segregating.ta,
+    SWM_COL.pct.ta,
+    SWM_COL.notSegregating.ta,
+    SWM_COL.pct.ta,
+    SWM_COL.doorLocked.ta,
+    SWM_COL.pct.ta,
+    SWM_COL.compost.ta,
+    SWM_COL.pct.ta,
   ];
   const swmTpExportHeaders = lang === 'ta' ? swmTpHeaderTa : swmTpHeaderEn;
 
@@ -6383,26 +6544,24 @@ export default function InspectionReportsView({
 
   // Helper to download slideshow image with burned-in golden captions
   const handleDownloadSlidePhotoWithCaptions = async (work: any, photoObj?: { url: string; label: string }) => {
-    if (!work) return;
+    if (!work || isSlideDownloading) return;
     const activeLang = slideLang || lang;
     const photos = getWorkPhotos(work, activeLang);
     if (photos.length === 0) {
       alert(activeLang === 'ta' ? 'பதிவிறக்குவதற்கு படம் எதுவும் இல்லை.' : 'NO PHOTO AVAILABLE TO DOWNLOAD.');
       return;
     }
-
-    // 1. If photoObj is passed explicitly -> download single photo with golden caption
-    if (photoObj) {
-      await downloadSingleCaptionedPhoto(work, photoObj, activeLang);
-      return;
-    }
-
-    // 2. If photoObj is NOT passed, download EACH photo as a separate single photo file with golden caption stamp
-    for (let i = 0; i < photos.length; i++) {
-      await downloadSingleCaptionedPhoto(work, photos[i], activeLang);
-      if (photos.length > 1 && i < photos.length - 1) {
-        await new Promise(r => setTimeout(r, 300));
+    setIsSlideDownloading(true);
+    try {
+      if (photoObj) {
+        await downloadSingleCaptionedPhoto(work, photoObj, activeLang);
+        return;
       }
+      for (let i = 0; i < photos.length; i++) {
+        await downloadSingleCaptionedPhoto(work, photos[i], activeLang);
+      }
+    } finally {
+      setIsSlideDownloading(false);
     }
   };
 
@@ -6434,7 +6593,7 @@ export default function InspectionReportsView({
       const canvas = await html2canvas(slideEl, {
         useCORS: true,
         allowTaint: false,
-        scale: 2,
+        scale: 1.4,
         backgroundColor: slideTheme === 'light' ? '#f8fafc' : '#020617',
         logging: false,
         width,
@@ -6468,6 +6627,134 @@ export default function InspectionReportsView({
         btn.style.opacity = '1';
         btn.style.pointerEvents = 'auto';
       });
+      setIsSlideDownloading(false);
+    }
+  };
+
+  const handleDownloadFullSlideAsPdf = async () => {
+    if (!slideContainerRef.current || isSlideDownloading) return;
+    const slideEl = slideContainerRef.current;
+    const hideBtns = slideEl.querySelectorAll('.hide-on-export') as NodeListOf<HTMLElement>;
+    const prevTransform = slideEl.style.transform;
+    const prevWidth = slideEl.style.width;
+    const prevHeight = slideEl.style.height;
+    let restoreImages: (() => void) | null = null;
+    setIsSlideDownloading(true);
+    try {
+      hideBtns.forEach((btn) => {
+        btn.style.opacity = '0';
+        btn.style.pointerEvents = 'none';
+      });
+
+      const width = slideEl.offsetWidth;
+      const height = slideEl.offsetHeight;
+      slideEl.style.transform = 'none';
+      slideEl.style.width = `${width}px`;
+      slideEl.style.height = `${height}px`;
+
+      restoreImages = await convertImagesToBase64InContainer(slideEl);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      const canvas = await html2canvas(slideEl, {
+        useCORS: true,
+        allowTaint: false,
+        scale: 1.4,
+        backgroundColor: slideTheme === 'light' ? '#f8fafc' : '#020617',
+        logging: false,
+        width,
+        height,
+        windowWidth: width,
+        windowHeight: height,
+        x: 0,
+        y: 0,
+        scrollX: 0,
+        scrollY: 0,
+        imageTimeout: 20000,
+        ignoreElements: (el) => (el as HTMLElement).classList?.contains('hide-on-export'),
+      });
+
+      const img = canvas.toDataURL('image/jpeg', 0.92);
+      const orient = canvas.width >= canvas.height ? 'l' : 'p';
+      const pdf = new jsPDF({ orientation: orient, unit: 'pt', format: 'a4' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
+      const w = canvas.width * ratio;
+      const h = canvas.height * ratio;
+      pdf.addImage(img, 'JPEG', (pageW - w) / 2, (pageH - h) / 2, w, h);
+      pdf.save(`Full_Slide_Work_${currentSlideWork?.workId || currentSlideWork?.id || 'entry'}.pdf`);
+    } catch (err: any) {
+      console.error('Error capturing full slide image:', err);
+      alert('Error capturing slide frame image: ' + err.message);
+    } finally {
+      restoreImages?.();
+      slideEl.style.transform = prevTransform;
+      slideEl.style.width = prevWidth;
+      slideEl.style.height = prevHeight;
+      hideBtns.forEach((btn) => {
+        btn.style.opacity = '1';
+        btn.style.pointerEvents = 'auto';
+      });
+      setIsSlideDownloading(false);
+    }
+  };
+
+  const handleDownloadAllSlidesDeck = async (format: 'pdf' | 'ppt') => {
+    if (isSlideDownloading) return;
+    setIsSlideDownloading(true);
+    setSlideDeckExport({ current: 0, total: Math.max(1, slideRecordTotal), format });
+    try {
+      const loaded = await fetchAllFilteredWorksForExport();
+      const works = (loaded && loaded.length ? loaded : filteredWorks).filter(Boolean);
+      if (!works.length) {
+        alert(slideLang === 'ta' ? 'பதிவிறக்க ஸ்லைடுகள் இல்லை.' : 'No slides available to download.');
+        return;
+      }
+      setSlideDeckExport({ current: 0, total: works.length, format });
+      const missing = works.filter((w) => !w.fieldsData || !Object.keys(w.fieldsData).length).slice(0, 40);
+      await Promise.all(
+        missing.map(async (w) => {
+          const id = w.id || w.workId;
+          if (!id) return;
+          try {
+            const res = await fetch(`/api/inspection-works?lookupId=${encodeURIComponent(String(id))}`, {
+              cache: 'no-store',
+            });
+            const json = await res.json();
+            if (json?.work?.fieldsData) w.fieldsData = json.work.fieldsData;
+            if (json?.work?.imageUrl) w.imageUrl = json.work.imageUrl;
+          } catch {
+            /* keep lite row */
+          }
+        })
+      );
+      await buildInspectionSlidesFile({
+        works,
+        lang: slideLang,
+        theme: slideTheme,
+        fields: state.inspectionFields || [],
+        format,
+        filename: `Inspection_Slides_${works.length}_${getTodayYmd()}`,
+        loadImage: async (url) => {
+          const dataUrl = await resolvePhotoDataUrl(url);
+          if (!dataUrl) return null;
+          try {
+            return await loadImageFromDataUrl(dataUrl);
+          } catch {
+            return null;
+          }
+        },
+        onProgress: (current, total) => setSlideDeckExport({ current, total, format }),
+      });
+    } catch (err: any) {
+      console.error('Error exporting all slides:', err);
+      alert(
+        slideLang === 'ta'
+          ? `அனைத்து ஸ்லைடுகளையும் பதிவிறக்க முடியவில்லை: ${err?.message || ''}`
+          : `Could not download all slides: ${err?.message || ''}`
+      );
+    } finally {
+      setSlideDeckExport(null);
       setIsSlideDownloading(false);
     }
   };
@@ -7241,32 +7528,32 @@ export default function InspectionReportsView({
               <table className="w-full text-left text-xs border-collapse portal-studio-table">
                 <thead>
                   <tr>
-                    <SwmHeaderCell lang={lang} en="S.No" ta="வ.எண்" />
-                    <SwmHeaderCell lang={lang} en="Zone" ta="மண்டலம்" />
-                    <SwmHeaderCell lang={lang} en="District" ta="மாவட்டம்" />
-                    <SwmHeaderCell lang={lang} en="Town Panchayat" ta="பேரூராட்சி" />
-                    {swmShowWard && <SwmHeaderCell lang={lang} en="Ward No" ta="வார்டு எண்" />}
-                    {swmShowStreet && <SwmHeaderCell lang={lang} en="Street Names" ta="தெருப்பெயர்" />}
+                    <SwmHeaderCell lang={lang} col={SWM_COL.sno} align="sno" />
+                    <SwmHeaderCell lang={lang} col={SWM_COL.zone} align="text" sortKey="zone" sortState={swmSort} onSort={toggleSwmSort} />
+                    <SwmHeaderCell lang={lang} col={SWM_COL.district} align="text" sortKey="district" sortState={swmSort} onSort={toggleSwmSort} />
+                    <SwmHeaderCell lang={lang} col={SWM_COL.tp} align="text" sortKey="tp" sortState={swmSort} onSort={toggleSwmSort} />
+                    {swmShowWard && <SwmHeaderCell lang={lang} col={SWM_COL.wardNo} align="text" sortKey="ward" sortState={swmSort} onSort={toggleSwmSort} />}
+                    {swmShowStreet && <SwmHeaderCell lang={lang} col={SWM_COL.street} align="text" sortKey="street" sortState={swmSort} onSort={toggleSwmSort} />}
                     {!swmShowWard && !swmShowStreet && (
                       <>
-                        <SwmHeaderCell lang={lang} en="Total No of Wards" ta="மொத்த வார்டுகளின் எண்ணிக்கை" />
-                        <SwmHeaderCell lang={lang} en="Wards surveyed" ta="ஆய்வுக்குட்படுத்தப்பட்ட வார்டுகளின் எண்ணிக்கை" />
-                        <SwmHeaderCell lang={lang} en="Total No of Streets" ta="மொத்த தெருக்களின் எண்ணிக்கை" />
-                        <SwmHeaderCell lang={lang} en="Streets surveyed" ta="ஆய்வுக்குட்படுத்தப்பட்ட தெருக்களின் எண்ணிக்கை" />
+                        <SwmHeaderCell lang={lang} col={SWM_COL.totalWards} align="num" sortKey="totalWards" sortState={swmSort} onSort={toggleSwmSort} />
+                        <SwmHeaderCell lang={lang} col={SWM_COL.wardsSurveyed} align="num" sortKey="wardsSurveyed" sortState={swmSort} onSort={toggleSwmSort} />
+                        <SwmHeaderCell lang={lang} col={SWM_COL.totalStreets} align="num" sortKey="totalStreets" sortState={swmSort} onSort={toggleSwmSort} />
+                        <SwmHeaderCell lang={lang} col={SWM_COL.streetsSurveyed} align="num" sortKey="streetsSurveyed" sortState={swmSort} onSort={toggleSwmSort} />
                       </>
                     )}
                     {swmShowWard && !swmShowStreet && (
-                      <SwmHeaderCell lang={lang} en="Streets surveyed" ta="ஆய்வுக்குட்படுத்தப்பட்ட தெருக்களின் எண்ணிக்கை" className="text-right" />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.streetsSurveyed} align="num" sortKey="streetsSurveyed" sortState={swmSort} onSort={toggleSwmSort} />
                     )}
-                    <SwmHeaderCell lang={lang} en="Total Households Surveyed" ta="ஆய்வுக்குட்படுத்தப்பட்ட வீடுகளின் எண்ணிக்கை" className="text-right" />
-                    <SwmHeaderCell lang={lang} en="Households Segregating Waste at Source" ta="மூலத்திலேயே பிரித்தெடுக்கும் வீடுகள்" className="text-right" />
-                    <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
-                    <SwmHeaderCell lang={lang} en="Households Not Segregating Waste at Source" ta="மூலத்திலேயே பிரித்தெடுக்காத வீடுகள்" className="text-right" />
-                    <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
-                    <SwmHeaderCell lang={lang} en="Households with Door Locked" ta="தாழ் பூட்டிய வீடுகள்" className="text-right" />
-                    <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
-                    <SwmHeaderCell lang={lang} en="Households with Home Composting" ta="வீட்டிலேயே உரம் தயாரிக்கும் வீடுகள்" className="text-right" />
-                    <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
+                    <SwmHeaderCell lang={lang} col={SWM_COL.households} align="num" sortKey="householdsSurveyed" sortState={swmSort} onSort={toggleSwmSort} />
+                    <SwmHeaderCell lang={lang} col={SWM_COL.segregating} align="num" sortKey="segregating" sortState={swmSort} onSort={toggleSwmSort} />
+                    <SwmHeaderCell lang={lang} col={SWM_COL.pct} align="pct" sortKey="segregatingPct" sortState={swmSort} onSort={toggleSwmSort} />
+                    <SwmHeaderCell lang={lang} col={SWM_COL.notSegregating} align="num" sortKey="notSegregating" sortState={swmSort} onSort={toggleSwmSort} />
+                    <SwmHeaderCell lang={lang} col={SWM_COL.pct} align="pct" sortKey="notSegregatingPct" sortState={swmSort} onSort={toggleSwmSort} />
+                    <SwmHeaderCell lang={lang} col={SWM_COL.doorLocked} align="num" sortKey="doorLocked" sortState={swmSort} onSort={toggleSwmSort} />
+                    <SwmHeaderCell lang={lang} col={SWM_COL.pct} align="pct" sortKey="doorLockedPct" sortState={swmSort} onSort={toggleSwmSort} />
+                    <SwmHeaderCell lang={lang} col={SWM_COL.compost} align="num" sortKey="homeComposting" sortState={swmSort} onSort={toggleSwmSort} />
+                    <SwmHeaderCell lang={lang} col={SWM_COL.pct} align="pct" sortKey="homeCompostingPct" sortState={swmSort} onSort={toggleSwmSort} />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
@@ -7290,69 +7577,69 @@ export default function InspectionReportsView({
                       </td>
                     </tr>
                   ) : (
-                    swmAbstractRows.map((row, idx) => (
+                    swmAbstractRowsView.map((row, idx) => (
                       <tr key={`${row.tpNameEn}-${row.wardNumber || ''}-${row.streetName || ''}-${idx}`}>
-                        <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-800">{idx + 1}</td>
-                        <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800">{lang === 'ta' ? row.zoneNameTa : row.zoneNameEn}</td>
-                        <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800">{lang === 'ta' ? row.districtNameTa : row.districtNameEn}</td>
-                        <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-800">{lang === 'ta' ? row.tpNameTa : row.tpNameEn}</td>
+                        <td className="portal-swm-td is-sno">{idx + 1}</td>
+                        <td className="portal-swm-td is-text">{lang === 'ta' ? row.zoneNameTa : row.zoneNameEn}</td>
+                        <td className="portal-swm-td is-text">{lang === 'ta' ? row.districtNameTa : row.districtNameEn}</td>
+                        <td className="portal-swm-td is-text is-strong">{lang === 'ta' ? row.tpNameTa : row.tpNameEn}</td>
                         {swmShowWard && (
-                          <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800">{formatSwmWard(row.wardNumber || '0', lang)}</td>
+                          <td className="portal-swm-td is-text">{formatSwmWard(row.wardNumber || '0', lang)}</td>
                         )}
                         {swmShowStreet && (
-                          <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800">{row.streetName || '-'}</td>
+                          <td className="portal-swm-td is-text">{row.streetName || '-'}</td>
                         )}
                         {!swmShowWard && !swmShowStreet && (
                           <>
-                            <td className="text-right">{row.totalWards}</td>
-                            <td className="text-right">{row.wardsSurveyed}</td>
-                            <td className="text-right">{row.totalStreets}</td>
-                            <td className="text-right">{row.streetsSurveyed}</td>
+                            <td className="portal-swm-td is-num">{row.totalWards}</td>
+                            <td className="portal-swm-td is-num">{row.wardsSurveyed}</td>
+                            <td className="portal-swm-td is-num">{row.totalStreets}</td>
+                            <td className="portal-swm-td is-num">{row.streetsSurveyed}</td>
                           </>
                         )}
                         {swmShowWard && !swmShowStreet && (
-                          <td className="text-right">{row.streetsSurveyed}</td>
+                          <td className="portal-swm-td is-num">{row.streetsSurveyed}</td>
                         )}
-                        <td className="text-right">{row.householdsSurveyed}</td>
-                        <td className="text-right">{row.segregating}</td>
-                        <td className="text-right">{row.segregatingPct}%</td>
-                        <td className="text-right">{row.notSegregating}</td>
-                        <td className="text-right">{row.notSegregatingPct}%</td>
-                        <td className="text-right">{row.doorLocked}</td>
-                        <td className="text-right">{row.doorLockedPct}%</td>
-                        <td className="text-right">{row.homeComposting}</td>
-                        <td className="text-right">{row.homeCompostingPct}%</td>
+                        <td className="portal-swm-td is-num">{row.householdsSurveyed}</td>
+                        <td className="portal-swm-td is-num">{row.segregating}</td>
+                        <td className="portal-swm-td is-pct">{row.segregatingPct}%</td>
+                        <td className="portal-swm-td is-num">{row.notSegregating}</td>
+                        <td className="portal-swm-td is-pct">{row.notSegregatingPct}%</td>
+                        <td className="portal-swm-td is-num">{row.doorLocked}</td>
+                        <td className="portal-swm-td is-pct">{row.doorLockedPct}%</td>
+                        <td className="portal-swm-td is-num">{row.homeComposting}</td>
+                        <td className="portal-swm-td is-pct">{row.homeCompostingPct}%</td>
                       </tr>
                     ))
                   )}
                   {!swmAbstractLoading && swmAbstractRows.length > 0 && (
                     <tr className="portal-fis-total">
-                      <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
-                      <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
-                      <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
-                      <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
-                      {swmShowWard && <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>}
-                      {swmShowStreet && <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>}
+                      <td className="portal-swm-td is-sno">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
+                      <td className="portal-swm-td is-text">-</td>
+                      <td className="portal-swm-td is-text">-</td>
+                      <td className="portal-swm-td is-text">-</td>
+                      {swmShowWard && <td className="portal-swm-td is-text">-</td>}
+                      {swmShowStreet && <td className="portal-swm-td is-text">-</td>}
                       {!swmShowWard && !swmShowStreet && (
                         <>
-                          <td className="text-right">{swmAbstractTotals.totalWards}</td>
-                          <td className="text-right">{swmAbstractTotals.wardsSurveyed}</td>
-                          <td className="text-right">{swmAbstractTotals.totalStreets}</td>
-                          <td className="text-right">{swmAbstractTotals.streetsSurveyed}</td>
+                          <td className="portal-swm-td is-num">{swmAbstractTotals.totalWards}</td>
+                          <td className="portal-swm-td is-num">{swmAbstractTotals.wardsSurveyed}</td>
+                          <td className="portal-swm-td is-num">{swmAbstractTotals.totalStreets}</td>
+                          <td className="portal-swm-td is-num">{swmAbstractTotals.streetsSurveyed}</td>
                         </>
                       )}
                       {swmShowWard && !swmShowStreet && (
-                        <td className="text-right">{swmAbstractTotals.streetsSurveyed}</td>
+                        <td className="portal-swm-td is-num">{swmAbstractTotals.streetsSurveyed}</td>
                       )}
-                      <td className="text-right">{swmAbstractTotals.householdsSurveyed}</td>
-                      <td className="text-right">{swmAbstractTotals.segregating}</td>
-                      <td className="text-right">{swmPercent(swmAbstractTotals.segregating, swmAbstractTotals.householdsSurveyed)}%</td>
-                      <td className="text-right">{swmAbstractTotals.notSegregating}</td>
-                      <td className="text-right">{swmPercent(swmAbstractTotals.notSegregating, swmAbstractTotals.householdsSurveyed)}%</td>
-                      <td className="text-right">{swmAbstractTotals.doorLocked}</td>
-                      <td className="text-right">{swmPercent(swmAbstractTotals.doorLocked, swmAbstractTotals.householdsSurveyed)}%</td>
-                      <td className="text-right">{swmAbstractTotals.homeComposting}</td>
-                      <td className="text-right">{swmPercent(swmAbstractTotals.homeComposting, swmAbstractTotals.householdsSurveyed)}%</td>
+                      <td className="portal-swm-td is-num">{swmAbstractTotals.householdsSurveyed}</td>
+                      <td className="portal-swm-td is-num">{swmAbstractTotals.segregating}</td>
+                      <td className="portal-swm-td is-pct">{swmPercent(swmAbstractTotals.segregating, swmAbstractTotals.householdsSurveyed)}%</td>
+                      <td className="portal-swm-td is-num">{swmAbstractTotals.notSegregating}</td>
+                      <td className="portal-swm-td is-pct">{swmPercent(swmAbstractTotals.notSegregating, swmAbstractTotals.householdsSurveyed)}%</td>
+                      <td className="portal-swm-td is-num">{swmAbstractTotals.doorLocked}</td>
+                      <td className="portal-swm-td is-pct">{swmPercent(swmAbstractTotals.doorLocked, swmAbstractTotals.householdsSurveyed)}%</td>
+                      <td className="portal-swm-td is-num">{swmAbstractTotals.homeComposting}</td>
+                      <td className="portal-swm-td is-pct">{swmPercent(swmAbstractTotals.homeComposting, swmAbstractTotals.householdsSurveyed)}%</td>
                     </tr>
                   )}
                 </tbody>
@@ -7820,18 +8107,18 @@ export default function InspectionReportsView({
                 <table className="w-full text-left text-xs border-collapse portal-studio-table">
                   <thead>
                     <tr>
-                      <SwmHeaderCell lang={lang} en="S.No" ta="வ.எண்" />
-                      <SwmHeaderCell lang={lang} en="Ward No" ta="வார்டு எண்" />
-                      <SwmHeaderCell lang={lang} en="Street Names" ta="தெருப்பெயர்" />
-                      <SwmHeaderCell lang={lang} en="Total Households Surveyed" ta="கணக்கெடுக்கப்பட்ட மொத்த குடியிருப்புகள்" className="text-right" />
-                      <SwmHeaderCell lang={lang} en="Households Segregating Waste at Source" ta="தரம் பிரித்த வழங்கும் வீடுகள்" className="text-right" />
-                      <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
-                      <SwmHeaderCell lang={lang} en="Households Not Segregating Waste at Source" ta="தரம் பிரிக்காமல் வழங்கும் வீடுகள்" className="text-right" />
-                      <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
-                      <SwmHeaderCell lang={lang} en="Households with Door Locked" ta="பூட்டிய வீடுகள்" className="text-right" />
-                      <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
-                      <SwmHeaderCell lang={lang} en="Households with Home Composting" ta="வீட்டு உரமாக்கல் உள்ள வீடுகள்" className="text-right" />
-                      <SwmHeaderCell lang={lang} en="Percentage (%)" ta="சதவீதம் (%)" className="text-right" />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.sno} align="sno" />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.wardNo} align="text" sortKey="ward" sortState={swmSort} onSort={toggleSwmSort} />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.street} align="text" sortKey="street" sortState={swmSort} onSort={toggleSwmSort} />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.households} align="num" sortKey="householdsSurveyed" sortState={swmSort} onSort={toggleSwmSort} />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.segregating} align="num" sortKey="segregating" sortState={swmSort} onSort={toggleSwmSort} />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.pct} align="pct" sortKey="segregatingPct" sortState={swmSort} onSort={toggleSwmSort} />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.notSegregating} align="num" sortKey="notSegregating" sortState={swmSort} onSort={toggleSwmSort} />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.pct} align="pct" sortKey="notSegregatingPct" sortState={swmSort} onSort={toggleSwmSort} />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.doorLocked} align="num" sortKey="doorLocked" sortState={swmSort} onSort={toggleSwmSort} />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.pct} align="pct" sortKey="doorLockedPct" sortState={swmSort} onSort={toggleSwmSort} />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.compost} align="num" sortKey="homeComposting" sortState={swmSort} onSort={toggleSwmSort} />
+                      <SwmHeaderCell lang={lang} col={SWM_COL.pct} align="pct" sortKey="homeCompostingPct" sortState={swmSort} onSort={toggleSwmSort} />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
@@ -7855,37 +8142,37 @@ export default function InspectionReportsView({
                         </td>
                       </tr>
                     ) : (
-                      swmTpStreetRows.map((row, idx) => (
+                      swmTpStreetRowsView.map((row, idx) => (
                         <tr key={`${row.wardNumber}-${row.streetName}-${idx}`}>
-                          <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-800">{idx + 1}</td>
-                          <td className="py-3.5 px-4 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-800">{formatSwmWard(row.wardNumber, lang)}</td>
-                          <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white border border-slate-100 dark:border-slate-800">{row.streetName}</td>
-                          <td className="text-right">{row.householdsSurveyed}</td>
-                          <td className="text-right">{row.segregating}</td>
-                          <td className="text-right">{row.segregatingPct}%</td>
-                          <td className="text-right">{row.notSegregating}</td>
-                          <td className="text-right">{row.notSegregatingPct}%</td>
-                          <td className="text-right">{row.doorLocked}</td>
-                          <td className="text-right">{row.doorLockedPct}%</td>
-                          <td className="text-right">{row.homeComposting}</td>
-                          <td className="text-right">{row.homeCompostingPct}%</td>
+                          <td className="portal-swm-td is-sno">{idx + 1}</td>
+                          <td className="portal-swm-td is-text">{formatSwmWard(row.wardNumber, lang)}</td>
+                          <td className="portal-swm-td is-text is-strong">{row.streetName}</td>
+                          <td className="portal-swm-td is-num">{row.householdsSurveyed}</td>
+                          <td className="portal-swm-td is-num">{row.segregating}</td>
+                          <td className="portal-swm-td is-pct">{row.segregatingPct}%</td>
+                          <td className="portal-swm-td is-num">{row.notSegregating}</td>
+                          <td className="portal-swm-td is-pct">{row.notSegregatingPct}%</td>
+                          <td className="portal-swm-td is-num">{row.doorLocked}</td>
+                          <td className="portal-swm-td is-pct">{row.doorLockedPct}%</td>
+                          <td className="portal-swm-td is-num">{row.homeComposting}</td>
+                          <td className="portal-swm-td is-pct">{row.homeCompostingPct}%</td>
                         </tr>
                       ))
                     )}
                     {!swmAbstractLoading && swmTpStreetRows.length > 0 && (
                       <tr className="portal-fis-total">
-                        <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
-                        <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
-                        <td className="py-3 px-4 border border-slate-200 dark:border-slate-700">-</td>
-                        <td className="text-right">{swmTpStreetTotals.householdsSurveyed}</td>
-                        <td className="text-right">{swmTpStreetTotals.segregating}</td>
-                        <td className="text-right">{swmPercent(swmTpStreetTotals.segregating, swmTpStreetTotals.householdsSurveyed)}%</td>
-                        <td className="text-right">{swmTpStreetTotals.notSegregating}</td>
-                        <td className="text-right">{swmPercent(swmTpStreetTotals.notSegregating, swmTpStreetTotals.householdsSurveyed)}%</td>
-                        <td className="text-right">{swmTpStreetTotals.doorLocked}</td>
-                        <td className="text-right">{swmPercent(swmTpStreetTotals.doorLocked, swmTpStreetTotals.householdsSurveyed)}%</td>
-                        <td className="text-right">{swmTpStreetTotals.homeComposting}</td>
-                        <td className="text-right">{swmPercent(swmTpStreetTotals.homeComposting, swmTpStreetTotals.householdsSurveyed)}%</td>
+                        <td className="portal-swm-td is-sno">{lang === 'ta' ? 'மொத்தம்' : 'Total'}</td>
+                        <td className="portal-swm-td is-text">-</td>
+                        <td className="portal-swm-td is-text">-</td>
+                        <td className="portal-swm-td is-num">{swmTpStreetTotals.householdsSurveyed}</td>
+                        <td className="portal-swm-td is-num">{swmTpStreetTotals.segregating}</td>
+                        <td className="portal-swm-td is-pct">{swmPercent(swmTpStreetTotals.segregating, swmTpStreetTotals.householdsSurveyed)}%</td>
+                        <td className="portal-swm-td is-num">{swmTpStreetTotals.notSegregating}</td>
+                        <td className="portal-swm-td is-pct">{swmPercent(swmTpStreetTotals.notSegregating, swmTpStreetTotals.householdsSurveyed)}%</td>
+                        <td className="portal-swm-td is-num">{swmTpStreetTotals.doorLocked}</td>
+                        <td className="portal-swm-td is-pct">{swmPercent(swmTpStreetTotals.doorLocked, swmTpStreetTotals.householdsSurveyed)}%</td>
+                        <td className="portal-swm-td is-num">{swmTpStreetTotals.homeComposting}</td>
+                        <td className="portal-swm-td is-pct">{swmPercent(swmTpStreetTotals.homeComposting, swmTpStreetTotals.householdsSurveyed)}%</td>
                       </tr>
                     )}
                   </tbody>
@@ -8960,6 +9247,32 @@ export default function InspectionReportsView({
             onTouchEnd={handleSlideTouchEnd}
             className={`fixed inset-0 z-50 flex flex-col w-full h-full overflow-hidden transition-colors duration-200 select-none ${slideTheme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-950 text-white'}`}
           >
+            {isSlideDownloading && (
+              <div className="portal-slide-export-progress is-blocking">
+                <div className="portal-slide-export-progress-card">
+                  <Loader2 className="h-5 w-5 animate-spin shrink-0" />
+                  <div className="min-w-0">
+                    <p>
+                      {slideDeckExport
+                        ? slideLang === 'ta'
+                          ? `பதிவிறக்கம் தயாராகிறது ${slideDeckExport.current}/${slideDeckExport.total} · ${slideDeckExport.format === 'ppt' ? 'PPT' : 'PDF'}`
+                          : `Preparing download ${slideDeckExport.current}/${slideDeckExport.total} · ${slideDeckExport.format === 'ppt' ? 'PPT' : 'PDF'}`
+                        : slideLang === 'ta'
+                          ? 'பதிவிறக்கம் நடைபெறுகிறது...'
+                          : 'Download in progress...'}
+                    </p>
+                    <span
+                      className={`portal-slide-export-progress-bar ${!slideDeckExport || slideDeckExport.current < 1 ? 'is-busy' : ''}`}
+                      style={{
+                        width: slideDeckExport
+                          ? `${Math.max(8, Math.round((slideDeckExport.current / Math.max(1, slideDeckExport.total)) * 100))}%`
+                          : '40%',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Top Bar with Autofit Height, Center-Aligned Subject & Category, Hierarchy & Action Controls */}
             <div className={`w-full h-auto min-h-fit py-2 px-3 md:px-6 flex flex-wrap items-center justify-between shrink-0 gap-2 md:gap-3 z-20 border-b transition-colors duration-200 ${slideTheme === 'light' ? 'bg-white border-slate-200 text-slate-800 shadow-xs' : 'bg-slate-900/95 border-slate-800 text-white'}`}>
               {/* Left: Work index & Nav & Inspector info */}
@@ -9094,36 +9407,85 @@ export default function InspectionReportsView({
                   </span>
                 </button>
 
-                {/* 2. Download Photo Only Button */}
-                <button
-                  onClick={() => handleDownloadSlidePhotoWithCaptions(currentSlideWork)}
-                  className="hide-on-export inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black transition shadow-xs cursor-pointer border border-amber-400 shrink-0"
-                  title={slideLang === 'ta' ? 'படத்தை மட்டும் தலைப்புடன் பதிவிறக்குகிறது' : 'DOWNLOAD PHOTO ONLY WITH CAPTIONS'}
-                >
-                  <ImageIcon className="w-3.5 h-3.5 text-slate-950 stroke-[2.5]" />
-                  <span className="text-[11px] font-black uppercase">
-                    {slideLang === 'ta' ? 'படம் பதிவிறக்கம்' : 'DOWNLOAD PHOTO'}
-                  </span>
-                </button>
-
-                {/* 3. Download Entire Slide as Image Frame Button */}
-                <button
-                  onClick={handleDownloadFullSlideAsImage}
-                  disabled={isSlideDownloading}
-                  className="hide-on-export portal-dash-action inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black cursor-pointer shrink-0 disabled:opacity-60"
-                  title={slideLang === 'ta' ? 'முழு ஸ்லைடு காட்சியையும் படமாக பதிவிறக்குகிறது' : 'DOWNLOAD ENTIRE SLIDE FRAME AS IMAGE'}
-                >
-                  {isSlideDownloading ? (
-                    <Loader2 className="w-3.5 h-3.5 text-white stroke-[2.5] animate-spin" />
-                  ) : (
-                    <Download className="w-3.5 h-3.5 text-white stroke-[2.5]" />
-                  )}
-                  <span className="text-[11px] font-black uppercase">
-                    {isSlideDownloading
-                      ? (slideLang === 'ta' ? 'பதிவிறக்குகிறது...' : 'DOWNLOADING...')
-                      : (slideLang === 'ta' ? 'முழு ஸ்லைடு படம்' : 'DOWNLOAD SLIDE')}
-                  </span>
-                </button>
+                <div className={`hide-on-export portal-slide-exports ${slideTheme === 'light' ? 'is-light' : 'is-dark'}`}>
+                  <div className="portal-slide-exports-col">
+                    <span className="portal-slide-exports-kicker">
+                      {slideLang === 'ta' ? 'இந்த ஸ்லைடு' : 'This slide'}
+                    </span>
+                    <div className="portal-slide-exports-btns">
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadSlidePhotoWithCaptions(currentSlideWork)}
+                        disabled={isSlideDownloading}
+                        title={slideLang === 'ta' ? 'படத்தை மட்டும் தலைப்புடன் பதிவிறக்குக' : 'Download photo with captions'}
+                      >
+                        {isSlideDownloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageIcon className="w-3.5 h-3.5" />}
+                        <span>{slideLang === 'ta' ? 'படம்' : 'Photo'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadFullSlideAsImage}
+                        disabled={isSlideDownloading}
+                        title={slideLang === 'ta' ? 'முழு ஸ்லைடை படமாக பதிவிறக்குக' : 'Download this slide as image'}
+                      >
+                        {isSlideDownloading ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Download className="w-3.5 h-3.5" />
+                        )}
+                        <span>{slideLang === 'ta' ? 'ஸ்லைடு' : 'Image'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadFullSlideAsPdf}
+                        disabled={isSlideDownloading}
+                        className="is-pdf"
+                        title={slideLang === 'ta' ? 'இந்த ஸ்லைடை PDF ஆக பதிவிறக்குக' : 'Download this slide as PDF'}
+                      >
+                        {isSlideDownloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />}
+                        <span>PDF</span>
+                      </button>
+                    </div>
+                  </div>
+                  <span className="portal-slide-exports-rule" aria-hidden="true" />
+                  <div className="portal-slide-exports-col">
+                    <span className="portal-slide-exports-kicker">
+                      {slideLang === 'ta'
+                        ? `அனைத்து ${slideRecordTotal} ஸ்லைடுகள்`
+                        : `All ${slideRecordTotal} slides`}
+                    </span>
+                    <div className="portal-slide-exports-btns">
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadAllSlidesDeck('pdf')}
+                        disabled={isSlideDownloading || slideRecordTotal < 1}
+                        className="is-pdf"
+                        title={slideLang === 'ta' ? 'பார்க்கும் அனைத்து ஸ்லைடுகளையும் PDF ஆக பதிவிறக்குக' : 'Download all browsed slides as PDF'}
+                      >
+                        {slideDeckExport?.format === 'pdf' ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <FileText className="w-3.5 h-3.5" />
+                        )}
+                        <span>PDF</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadAllSlidesDeck('ppt')}
+                        disabled={isSlideDownloading || slideRecordTotal < 1}
+                        className="is-ppt"
+                        title={slideLang === 'ta' ? 'பார்க்கும் அனைத்து ஸ்லைடுகளையும் PPT ஆக பதிவிறக்குக' : 'Download all browsed slides as PPT'}
+                      >
+                        {slideDeckExport?.format === 'ppt' ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Presentation className="w-3.5 h-3.5" />
+                        )}
+                        <span>PPT</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
 
                 {/* Mobile rotate to landscape button */}
                 <button

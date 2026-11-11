@@ -504,18 +504,21 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
   }, [activeTab, allowedPageIds, state.settings?.enableEmployeeManagement, state.settings?.enableTransferPosting, currentUser]);
 
   // Handle language switch
-  const toggleLanguage = async () => {
-    const nextLang = lang === 'en' ? 'ta' : 'en';
+  const applyLanguage = async (nextLang: Language) => {
+    if (nextLang === lang) return;
     setLang(nextLang);
     try {
       localStorage.setItem('portal_lang', nextLang);
     } catch {
       /* ignore */
     }
-    
-    // Sync to DB settings
+
     const updatedSettings = { ...state.settings, currentLanguage: nextLang };
     await handleSaveSettings(updatedSettings);
+  };
+
+  const toggleLanguage = async () => {
+    await applyLanguage(lang === 'en' ? 'ta' : 'en');
   };
 
   // Handle active theme class updates
@@ -1005,7 +1008,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
             isRail ? 'md:left-[4.25rem]' : 'md:left-[248px]'
           } left-0`}
         >
-            <div className="relative z-10 flex h-full items-center justify-between gap-3 pl-10 pr-4 sm:pl-12 sm:pr-6 lg:pr-8">
+            <div className="portal-header-inner">
               <button
                 type="button"
                 onClick={() => {
@@ -1026,51 +1029,63 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                 </span>
               </button>
 
-              <div className="min-w-0 flex-1">
-                <h1 className="portal-header-title truncate text-[16px] font-semibold leading-tight tracking-tight sm:text-[17px]">
-                  {headerPageTitle}
-                </h1>
-                <p className="portal-header-sub mt-0.5 truncate text-[12px] font-medium opacity-85">
-                  {headerPageSub}
-                </p>
+              <div className="portal-header-page">
+                <h1 className="portal-header-title">{headerPageTitle}</h1>
+                <p className="portal-header-sub">{headerPageSub}</p>
               </div>
 
-              <div className="relative z-50 flex min-w-0 items-center gap-3" data-user-menu>
-                <div className="min-w-0 max-w-[min(52vw,22rem)] text-right">
-                  <h1 className="portal-header-title truncate text-[15px] font-semibold leading-tight tracking-tight sm:text-[16px]">
-                    {headerOfficeName}
-                  </h1>
-                  <p className="portal-header-sub mt-0.5 truncate text-[11px] font-medium opacity-85 sm:text-[12px]">
-                    {headerOfficeSub}
-                  </p>
+              <div className="portal-header-end" data-user-menu>
+                <div className="portal-header-tools">
+                  <div className="portal-lang-switch" role="group" aria-label={t('language')}>
+                    <button
+                      type="button"
+                      className={lang === 'en' ? 'is-active' : ''}
+                      onClick={() => { void applyLanguage('en'); }}
+                      aria-pressed={lang === 'en'}
+                    >
+                      EN
+                    </button>
+                    <button
+                      type="button"
+                      className={lang === 'ta' ? 'is-active' : ''}
+                      onClick={() => { void applyLanguage('ta'); }}
+                      aria-pressed={lang === 'ta'}
+                    >
+                      தமிழ்
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setUserMenuOpen((open) => !open);
-                  }}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white shadow-md ring-2 ring-white/80"
-                  style={{ backgroundImage: `linear-gradient(135deg, ${currentTheme.chartGradient?.[0] || accentColor}, ${currentTheme.chartGradient?.[1] || accentColor})` }}
-                  title={userDisplayName}
-                  aria-label={userDisplayName}
-                >
-                  {userInitials}
-                </button>
+                <span className="portal-header-divider" aria-hidden="true" />
+                <div className="portal-header-identity">
+                  <div className="portal-header-user">
+                    <strong>{headerOfficeName}</strong>
+                    <span>{headerOfficeSub}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setUserMenuOpen((open) => !open);
+                    }}
+                    className="portal-header-avatar"
+                    style={{ backgroundImage: `linear-gradient(135deg, ${currentTheme.chartGradient?.[0] || accentColor}, ${currentTheme.chartGradient?.[1] || accentColor})` }}
+                    title={userDisplayName}
+                    aria-label={userDisplayName}
+                  >
+                    {userInitials}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="portal-header-logout"
+                    title={t('logout')}
+                    aria-label={t('logout')}
+                  >
+                    <LogOut />
+                  </button>
+                </div>
                 {userMenuOpen && (
                   <div className="portal-user-menu">
-                    <div className="portal-user-menu-head">
-                      <span
-                        className="portal-user-menu-avatar"
-                        style={{ backgroundImage: `linear-gradient(135deg, ${currentTheme.chartGradient?.[0] || accentColor}, ${currentTheme.chartGradient?.[1] || accentColor})` }}
-                      >
-                        {userInitials}
-                      </span>
-                      <div className="min-w-0">
-                        <strong className="truncate">{userDisplayName}</strong>
-                        <span>{currentUser?.roleId || currentUser?.scopeType || 'User'}</span>
-                      </div>
-                    </div>
                     <div className="portal-user-menu-body">
                       <button type="button" onClick={() => { setUserMenuOpen(false); toggleLanguage(); }} className="portal-user-menu-item">
                         <Globe />
@@ -1108,7 +1123,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                         </button>
                       )}
                       <div className="portal-user-menu-themes">
-                        <p>{lang === 'ta' ? 'தீம்' : 'Theme'} · {lang === 'ta' ? currentTheme.nameTa : currentTheme.nameEn}</p>
+                        <p>{lang === 'ta' ? 'தீம்' : 'Theme'}</p>
                         <div className="portal-theme-swatches">
                           {(Object.values(themesConfig) as { id: ThemeType; nameEn: string; nameTa: string; chartGradient: string[] }[]).map((th) => {
                             const from = th.id === 'custom' ? customColors.sidebarFrom : (th.chartGradient?.[0] || accentColor);

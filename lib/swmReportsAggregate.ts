@@ -16,6 +16,7 @@ export type SwmSummaryGroup = {
   streetName: string;
   householdsSurveyed: number;
   segregating: number;
+  notSegregating: number;
   doorLocked: number;
   homeComposting: number;
 };
@@ -33,12 +34,25 @@ function mongoYes(expr: unknown) {
   };
 }
 
+function mongoNo(expr: unknown) {
+  return {
+    $regexMatch: {
+      input: { $toLower: { $trim: { input: mongoString(expr) } } },
+      regex: '^(no|false|0|இல்லை)|(^n$)',
+    },
+  };
+}
+
 function firstValue(paths: string[]) {
   return paths.reduceRight((acc, path) => ({ $ifNull: [path, acc] }), '');
 }
 
 function yesOnPaths(paths: string[]) {
   return { $or: paths.map((path) => mongoYes(path)) };
+}
+
+function noOnPaths(paths: string[]) {
+  return { $or: paths.map((path) => mongoNo(path)) };
 }
 
 export async function aggregateSwmStreetGroups(
@@ -93,8 +107,10 @@ export async function aggregateSwmStreetGroups(
         swmStreet: {
           $trim: { input: mongoString(firstValue(['$streetName', '$streetNameEn', '$street'])) },
         },
-        swmSegregating: yesOnPaths(segregatePaths),
         swmDoorLocked: yesOnPaths(lockedPaths),
+        swmDoorUnlocked: { $cond: [yesOnPaths(lockedPaths), false, true] },
+        swmSegregatedYes: yesOnPaths(segregatePaths),
+        swmSegregatedNo: noOnPaths(segregatePaths),
         swmCompost: yesOnPaths(compostPaths),
         swmBuilding: { $toLower: { $trim: { input: mongoString(firstValue(buildingPaths)) } } },
       },
@@ -123,7 +139,12 @@ export async function aggregateSwmStreetGroups(
         street: '$swmStreet',
       },
       householdsSurveyed: { $sum: 1 },
-      segregating: { $sum: { $cond: ['$swmSegregating', 1, 0] } },
+      segregating: {
+        $sum: { $cond: [{ $and: ['$swmDoorUnlocked', '$swmSegregatedYes'] }, 1, 0] },
+      },
+      notSegregating: {
+        $sum: { $cond: [{ $and: ['$swmDoorUnlocked', '$swmSegregatedNo'] }, 1, 0] },
+      },
       doorLocked: { $sum: { $cond: ['$swmDoorLocked', 1, 0] } },
       homeComposting: { $sum: { $cond: ['$swmCompost', 1, 0] } },
     },
@@ -146,6 +167,7 @@ export async function aggregateSwmStreetGroups(
       streetName: String(id.street || '').trim() || '-',
       householdsSurveyed: Number(row.householdsSurveyed) || 0,
       segregating: Number(row.segregating) || 0,
+      notSegregating: Number(row.notSegregating) || 0,
       doorLocked: Number(row.doorLocked) || 0,
       homeComposting: Number(row.homeComposting) || 0,
     };
