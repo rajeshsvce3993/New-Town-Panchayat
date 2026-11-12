@@ -387,7 +387,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
         const zEn = zone?.nameEn || 'Kanchipuram';
         const zTa = zone?.nameTa || 'காஞ்சிபுரம்';
         const dCode = dist?.code || '01';
-        const dEn = dist?.nameEn || 'Thiruvallur';
+        const dEn = dist?.nameEn || 'Tiruvallur';
         const dTa = dist?.nameTa || 'திருவள்ளூர்';
         const tpCode = tp?.code || '01';
         const tpEn = tp?.nameEn || 'Thirumazhisai';
@@ -408,9 +408,9 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
       });
     } else {
       // Clean blank state sample rows with BOTH languages and Tamil "வார்டு 1" compatible WardNo
-      rows.push(`"Chennai Zone","சென்னை மண்டலம்","01","Thiruvallur","திருவள்ளூர்","01","Thirumazhisai","திருமழிசை","1","Bazaar Street","பஜார் தெரு"`);
-      rows.push(`"Chennai Zone","சென்னை மண்டலம்","01","Thiruvallur","திருவள்ளூர்","01","Thirumazhisai","திருமழிசை","2","Gandhi Street","காந்தி தெரு"`);
-      rows.push(`"Chennai Zone","சென்னை மண்டலம்","01","Thiruvallur","திருவள்ளூர்","01","Thirumazhisai","திருமழிசை","வார்டு 1","Anna Street","அண்ணா தெரு"`);
+      rows.push(`"Chennai Zone","சென்னை மண்டலம்","01","Tiruvallur","திருவள்ளூர்","01","Thirumazhisai","திருமழிசை","1","Bazaar Street","பஜார் தெரு"`);
+      rows.push(`"Chennai Zone","சென்னை மண்டலம்","01","Tiruvallur","திருவள்ளூர்","01","Thirumazhisai","திருமழிசை","2","Gandhi Street","காந்தி தெரு"`);
+      rows.push(`"Chennai Zone","சென்னை மண்டலம்","01","Tiruvallur","திருவள்ளூர்","01","Thirumazhisai","திருமழிசை","வார்டு 1","Anna Street","அண்ணா தெரு"`);
     }
 
     const csvContent = "\uFEFF" + rows.join("\n");
@@ -778,7 +778,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
                     <td>Kanchipuram</td>
                     <td>காஞ்சிபுரம்</td>
                     <td className="portal-dash-id">01</td>
-                    <td>Thiruvallur</td>
+                    <td>Tiruvallur</td>
                     <td>திருவள்ளூர்</td>
                     <td className="portal-dash-id">01</td>
                     <td>Thirumazhisai</td>
@@ -791,7 +791,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
                     <td>Kanchipuram</td>
                     <td>காஞ்சிபுரம்</td>
                     <td className="portal-dash-id">01</td>
-                    <td>Thiruvallur</td>
+                    <td>Tiruvallur</td>
                     <td>திருவள்ளூர்</td>
                     <td className="portal-dash-id">01</td>
                     <td>Thirumazhisai</td>
@@ -804,7 +804,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
                     <td>Kanchipuram</td>
                     <td>காஞ்சிபுரம்</td>
                     <td className="portal-dash-id">01</td>
-                    <td>Thiruvallur</td>
+                    <td>Tiruvallur</td>
                     <td>திருவள்ளூர்</td>
                     <td className="portal-dash-id">02</td>
                     <td>Arani</td>

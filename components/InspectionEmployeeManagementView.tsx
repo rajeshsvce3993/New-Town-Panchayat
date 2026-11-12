@@ -626,7 +626,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     ];
 
     const actualZone = zones[0]?.nameEn || 'Kanchipuram';
-    const actualDist = districts[0]?.nameEn || 'Thiruvallur';
+    const actualDist = districts[0]?.nameEn || 'Tiruvallur';
     const actualTps = (townPanchayats && townPanchayats.length > 0) ? townPanchayats : [{ nameEn: 'Thirumazhisai' }, { nameEn: 'Arani' }];
     const tp1 = actualTps[0]?.nameEn || 'Thirumazhisai';
     const tp2 = actualTps[1]?.nameEn || actualTps[0]?.nameEn || 'Arani';

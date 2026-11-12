@@ -9,7 +9,7 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { OFFICIAL_PF_INTEREST_RATES } from './pfInterestRatesData';
 import { getAppEnv, isLocalDevHost } from '@/lib/appEnvironment';
 import { isFallbackInspectionWork } from '@/lib/inspectionWorksQueryFilters';
-import { applyCanonicalDistrictNames } from '@/lib/geoNameMatch';
+import { applyCanonicalDistrictNames, geoNamesEqual } from '@/lib/geoNameMatch';
 import { applyUserPasswordFields, mergeUserRecordPreservingPassword } from '@/lib/userCredentials';
 
 // Storage paths for local fallback
@@ -46,7 +46,7 @@ const INITIAL_DATA = {
   districts: [
     { id: 'd_chengalpattu', zoneId: 'z1', nameEn: 'Chengalpattu', nameTa: 'செங்கல்பட்டு', code: '01' },
     { id: 'd_kanchi', zoneId: 'z1', nameEn: 'Kanchipuram', nameTa: 'காஞ்சிபுரம்', code: '02' },
-    { id: 'd_thiruvallur', zoneId: 'z_chennai', nameEn: 'Thiruvallur', nameTa: 'திருவள்ளூர்', code: '03' }
+    { id: 'd_thiruvallur', zoneId: 'z_chennai', nameEn: 'Tiruvallur', nameTa: 'திருவள்ளூர்', code: '03' }
   ],
   townPanchayats: [
     { id: 'tp_arani', districtId: 'd_thiruvallur', nameEn: 'Arani', nameTa: 'ஆரணி', code: '01' },
@@ -1283,6 +1283,9 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
       db.collection('user_activity').createIndex({ status: 1 }, { background: true }),
     ]);
     hasEnsuredIndexes = true;
+    void import('@/lib/canonicalizeDistrictSpellings')
+      .then((m) => m.canonicalizeThiruvallurDistrictSpellingsInBackground())
+      .catch(() => {});
   } catch (_) {}
 }
 
@@ -1671,9 +1674,8 @@ export function enrichUserForApp(user: any, masters?: any): any {
   const matchedDist = districts.find((d: any) =>
     String(d.id || '').toLowerCase() === rawDistStr ||
     String(d._id || '').toLowerCase() === rawDistStr ||
-    String(d.nameEn || '').toLowerCase() === rawDistStr ||
-    String(d.nameTa || '').toLowerCase() === rawDistStr ||
-    String(d.code || '').toLowerCase() === rawDistStr
+    geoNamesEqual(d.nameEn, rawDist) ||
+    geoNamesEqual(d.nameTa, rawDist)
   );
   const resolvedDistId = matchedDist ? matchedDist.id : (user.districtId || rawDist || '');
 
@@ -2020,7 +2022,7 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
   const lookups = buildEnrichMasterLookups(tps, districts, subjects, categories);
 
   return (works || []).map((raw: any) => {
-    const w = applyCanonicalDistrictNames(raw, districts);
+    const w = raw || {};
     const tpIdKey = lowerKey(w.tpId);
     const tpNameKey = lowerKey(w.tpNameEn);
     const tp =

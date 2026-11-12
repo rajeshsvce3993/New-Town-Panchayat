@@ -99,13 +99,11 @@ async function countMasterGeo(masters: Awaited<ReturnType<typeof resolveInspecti
   const db = await getActiveMongoDb(client);
   const col = await getCollectionWithAliases(db, 'wardsAndStreets');
   const tps = tpIds.length
-    ? (masters.townPanchayats || []).filter((tp: any) =>
-        tpIds.includes(String(tp.id || '')) || tpIds.includes(String(tp.code || ''))
-      )
+    ? (masters.townPanchayats || []).filter((tp: any) => tpIds.includes(String(tp.id || '')))
     : [];
   const needles = [
     ...new Set(
-      [...tpIds, ...tps.flatMap((tp: any) => [tp.id, tp.code, tp.nameEn, tp.nameTa])]
+      [...tpIds, ...tps.flatMap((tp: any) => [tp.id, tp.nameEn, tp.nameTa])]
         .map((v) => String(v || '').trim().toLowerCase())
         .filter(Boolean)
     ),
@@ -182,7 +180,7 @@ export async function loadDashboardStats(
   const masters = await resolveInspectionFilterMasters(requestOrigin);
   const tpIds = scopedTpIds(allTime, masters);
   const tps = tpIds.length
-    ? (masters.townPanchayats || []).filter((tp: any) => tpIds.includes(String(tp.id || '')) || tpIds.includes(String(tp.code || '')))
+    ? (masters.townPanchayats || []).filter((tp: any) => tpIds.includes(String(tp.id || '')))
     : masters.townPanchayats || [];
   const subjects = liveList(masters.inspectionSubjects, 'subject');
   const categories = liveList(masters.inspectionCategories, 'category');

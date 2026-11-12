@@ -36,12 +36,6 @@ export type InspectionWorksViewResult = {
   totalWithoutCategoryFilter: number;
 };
 
-function padCode(code: string | undefined | null): string {
-  const s = String(code ?? '').replace(/\D/g, '');
-  if (!s) return '';
-  return s.padStart(2, '0');
-}
-
 function workSubmittedYmd(w: any): string | null {
   if (w?.submittedDateYmd && /^\d{4}-\d{2}-\d{2}$/.test(String(w.submittedDateYmd))) {
     return String(w.submittedDateYmd);
@@ -59,9 +53,8 @@ export function workMatchesDistrict(w: any, districtId: string, ctx: InspectionW
   const sDist = String(districtId).toLowerCase();
   if (!(ctx.districts || []).length) {
     const wDistId = String(w.districtId || '').toLowerCase();
-    const wDistCode = padCode(w.districtCode).toLowerCase();
     const wDistName = String(w.districtNameEn || w.districtNameTa || '').trim();
-    return wDistId === sDist || wDistCode === sDist || geoNamesEqual(wDistName, districtId);
+    return wDistId === sDist || geoNamesEqual(wDistName, districtId);
   }
   const dist = (ctx.districts || []).find(
     (d: any) =>
@@ -71,10 +64,8 @@ export function workMatchesDistrict(w: any, districtId: string, ctx: InspectionW
   );
   const distName = String(dist?.nameEn || '').trim();
   const distNameTa = String(dist?.nameTa || '').trim();
-  const distCode = padCode(dist?.code).toLowerCase();
 
   const wDistId = String(w.districtId || '').toLowerCase();
-  const wDistCode = padCode(w.districtCode).toLowerCase();
   const wDistName = String(w.districtNameEn || '').trim();
   const wDistNameTa = String(w.districtNameTa || '').trim();
 
@@ -85,8 +76,6 @@ export function workMatchesDistrict(w: any, districtId: string, ctx: InspectionW
     return false;
   }
   if (wDistId && (wDistId === sDist || wDistId === String(dist?.id || '').toLowerCase())) return true;
-  if (distCode && wDistCode && wDistCode === distCode) return true;
-  if (wDistCode && wDistCode === sDist) return true;
   return false;
 }
 
@@ -103,13 +92,12 @@ export function workMatchesZone(w: any, zoneId: string, ctx: InspectionWorksFilt
   const zone = (ctx.zones || []).find(
     (z: any) =>
       String(z.id || '').toLowerCase() === sZone ||
-      String(z.nameEn || '').trim().toLowerCase() === sZone ||
-      String(z.nameTa || '').trim().toLowerCase() === sZone ||
-      String(z.code || '').toLowerCase() === sZone
+      geoNamesEqual(z.nameEn, zoneId) ||
+      geoNamesEqual(z.nameTa, zoneId)
   );
-  const selectedIds = geoTokenSet(zoneId, zone?.id, zone?.code);
+  const selectedIds = geoTokenSet(zoneId, zone?.id);
   const selectedNames = geoTokenSet(zone?.nameEn, zone?.nameTa);
-  const selected = geoTokenSet(zoneId, zone?.id, zone?.nameEn, zone?.nameTa, zone?.code);
+  const selected = geoTokenSet(zoneId, zone?.id, zone?.nameEn, zone?.nameTa);
 
   const wZoneId = String(w.zoneId || '').trim();
   const wZoneName = String(w.zoneNameEn || w.zone || '').trim();
@@ -158,23 +146,22 @@ export function workMatchesZone(w: any, zoneId: string, ctx: InspectionWorksFilt
 export function findWorkTownPanchayat(w: any, ctx: InspectionWorksFilterMasters): any | undefined {
   const tps = ctx.townPanchayats || [];
   const wTp = String(w.tpId || w.townPanchayatId || '').toLowerCase();
-  const wCode = padCode(w.tpCode).toLowerCase();
-  const wName = String(w.tpNameEn || w.townPanchayat || '').trim().toLowerCase();
+  const wName = String(w.tpNameEn || w.townPanchayat || '').trim();
+  const wNameTa = String(w.tpNameTa || '').trim();
 
+  if (wName || wNameTa) {
+    const byName = tps.find(
+      (t: any) =>
+        geoNamesEqual(t.nameEn, wName) ||
+        geoNamesEqual(t.nameTa, wName) ||
+        geoNamesEqual(t.nameEn, wNameTa) ||
+        geoNamesEqual(t.nameTa, wNameTa)
+    );
+    if (byName) return byName;
+  }
   if (wTp) {
     const byId = tps.find((t: any) => String(t.id || '').toLowerCase() === wTp);
     if (byId) return byId;
-  }
-  if (wCode) {
-    const byCode = tps.find((t: any) => padCode(t.code).toLowerCase() === wCode);
-    if (byCode) return byCode;
-  }
-  if (wName) {
-    return tps.find(
-      (t: any) =>
-        geoNamesEqual(t.nameEn, wName) ||
-        geoNamesEqual(t.nameTa, wName)
-    );
   }
   return undefined;
 }

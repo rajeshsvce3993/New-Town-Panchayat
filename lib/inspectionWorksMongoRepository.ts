@@ -57,24 +57,23 @@ export function districtIdsForZone(zoneId: string, masters: InspectionWorksFilte
   const zone = (masters.zones || []).find(
     (z) =>
       normId(z.id).toLowerCase() === needle ||
-      normId(z.nameEn).toLowerCase() === needle ||
-      normId(z.nameTa).toLowerCase() === needle ||
-      normId(z.code).toLowerCase() === needle
+      geoNamesEqual(z.nameEn, zoneId) ||
+      geoNamesEqual(z.nameTa, zoneId)
   );
-  const zoneKeys = new Set<string>([needle]);
-  if (zone?.id) zoneKeys.add(normId(zone.id).toLowerCase());
-  if (zone?.nameEn) zoneKeys.add(normId(zone.nameEn).toLowerCase());
-  if (zone?.nameTa) zoneKeys.add(normId(zone.nameTa).toLowerCase());
-  if (zone?.code) zoneKeys.add(normId(zone.code).toLowerCase());
+  const zoneIdKey = normId(zone?.id || zoneId).toLowerCase();
+  const zoneNameEn = String(zone?.nameEn || '').trim();
+  const zoneNameTa = String(zone?.nameTa || '').trim();
 
   const ids: string[] = [];
   for (const d of masters.districts || []) {
     const dZone = normId(d.zoneId).toLowerCase();
-    const dZoneName = normId(d.zoneNameEn).toLowerCase();
-    if ((dZone && zoneKeys.has(dZone)) || (dZoneName && zoneKeys.has(dZoneName))) {
-      ids.push(normId(d.id));
-      if (d.code) ids.push(normId(d.code));
-    }
+    const belongs =
+      (dZone && dZone === zoneIdKey) ||
+      geoNamesEqual(d.zoneNameEn, zoneNameEn) ||
+      geoNamesEqual(d.zoneNameEn, zoneNameTa) ||
+      geoNamesEqual(d.zoneNameEn, zoneId);
+    if (!belongs) continue;
+    if (d.id) ids.push(normId(d.id));
   }
   return [...new Set(ids.filter(Boolean))];
 }
@@ -85,29 +84,24 @@ export function tpIdsForDistrict(districtId: string, masters: InspectionWorksFil
     (d) =>
       normId(d.id).toLowerCase() === needle ||
       geoNamesEqual(d.nameEn, districtId) ||
-      geoNamesEqual(d.nameTa, districtId) ||
-      normId(d.code).toLowerCase() === needle
+      geoNamesEqual(d.nameTa, districtId)
   );
-  const keys = new Set<string>(idVariants(districtId).map((v) => v.toLowerCase()));
-  if (dist?.id) keys.add(normId(dist.id).toLowerCase());
-  if (dist?.code) keys.add(normId(dist.code).toLowerCase());
-  if (dist?.nameEn) keys.add(normId(dist.nameEn).toLowerCase());
-  if (dist?.nameTa) keys.add(normId(dist.nameTa).toLowerCase());
+  const distIdKey = normId(dist?.id || districtId).toLowerCase();
+  const distNameEn = String(dist?.nameEn || '').trim();
+  const distNameTa = String(dist?.nameTa || '').trim();
 
   const ids: string[] = [];
   for (const tp of masters.townPanchayats || []) {
     const d = normId(tp.districtId).toLowerCase();
-    const dName = normId(tp.districtNameEn).toLowerCase();
-    if (
-      keys.has(d) ||
-      keys.has(dName) ||
-      keys.has(normId(tp.districtId)) ||
-      geoNamesEqual(tp.districtNameEn, dist?.nameEn) ||
-      geoNamesEqual(tp.districtNameEn, districtId)
-    ) {
-      ids.push(normId(tp.id));
-      if (tp.code) ids.push(normId(tp.code));
-    }
+    const belongs =
+      (d && d === distIdKey) ||
+      geoNamesEqual(tp.districtNameEn, distNameEn) ||
+      geoNamesEqual(tp.districtNameEn, distNameTa) ||
+      geoNamesEqual(tp.districtNameEn, districtId) ||
+      geoNamesEqual(tp.districtNameTa, distNameEn) ||
+      geoNamesEqual(tp.districtNameTa, districtId);
+    if (!belongs) continue;
+    if (tp.id) ids.push(normId(tp.id));
   }
   return [...new Set(ids.filter(Boolean))];
 }
@@ -117,14 +111,11 @@ export function tpIdsForZone(zoneId: string, masters: InspectionWorksFilterMaste
   const zone = (masters.zones || []).find(
     (z) =>
       normId(z.id).toLowerCase() === needle ||
-      normId(z.nameEn).toLowerCase() === needle ||
-      normId(z.nameTa).toLowerCase() === needle ||
-      normId(z.code).toLowerCase() === needle
+      geoNamesEqual(z.nameEn, zoneId) ||
+      geoNamesEqual(z.nameTa, zoneId)
   );
-  const zoneKeys = new Set<string>([needle]);
-  if (zone?.id) zoneKeys.add(normId(zone.id).toLowerCase());
-  if (zone?.nameEn) zoneKeys.add(normId(zone.nameEn).toLowerCase());
-  if (zone?.code) zoneKeys.add(normId(zone.code).toLowerCase());
+  const zoneIdKey = normId(zone?.id || zoneId).toLowerCase();
+  const zoneNameEn = String(zone?.nameEn || '').trim();
 
   const tpIds: string[] = [];
   for (const did of districtIdsForZone(zoneId, masters)) {
@@ -132,10 +123,12 @@ export function tpIdsForZone(zoneId: string, masters: InspectionWorksFilterMaste
   }
   for (const tp of masters.townPanchayats || []) {
     const z = normId(tp.zoneId).toLowerCase();
-    if (z && zoneKeys.has(z)) {
-      tpIds.push(normId(tp.id));
-      if (tp.code) tpIds.push(normId(tp.code));
-    }
+    const belongs =
+      (z && z === zoneIdKey) ||
+      geoNamesEqual(tp.zoneNameEn, zoneNameEn) ||
+      geoNamesEqual(tp.zoneNameEn, zoneId);
+    if (!belongs) continue;
+    if (tp.id) tpIds.push(normId(tp.id));
   }
   return [...new Set(tpIds.filter(Boolean))];
 }
@@ -240,8 +233,7 @@ export function buildInspectionWorksMongoMatch(
       (d) =>
         variants.includes(normId(d.id).toLowerCase()) ||
         geoNamesEqual(d.nameEn, scopeDistrict) ||
-        geoNamesEqual(d.nameTa, scopeDistrict) ||
-        variants.includes(normId(d.code).toLowerCase())
+        geoNamesEqual(d.nameTa, scopeDistrict)
     );
     const tpIds = tpIdsForDistrict(scopeDistrict, masters);
     const or: Record<string, unknown>[] = [];
@@ -256,8 +248,8 @@ export function buildInspectionWorksMongoMatch(
     const zone = (masters.zones || []).find(
       (z) =>
         zoneVariants.includes(normId(z.id).toLowerCase()) ||
-        zoneVariants.includes(normId(z.nameEn).toLowerCase()) ||
-        zoneVariants.includes(normId(z.code).toLowerCase())
+        geoNamesEqual(z.nameEn, scopeZone) ||
+        geoNamesEqual(z.nameTa, scopeZone)
     );
     const districtIds = districtIdsForZone(scopeZone, masters);
     const tpIds = tpIdsForZone(scopeZone, masters);

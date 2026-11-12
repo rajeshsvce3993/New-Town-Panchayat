@@ -146,7 +146,6 @@ function buildRollupMatch(
     );
     const ids = [...variants];
     if (tp?.id) ids.push(norm(tp.id));
-    if (tp?.code) ids.push(norm(tp.code));
     if (tp?.nameEn) ids.push(norm(tp.nameEn));
     const names = [tp?.nameEn, tp?.nameTa].filter(Boolean).map((v) => norm(v));
     const or: Record<string, unknown>[] = [{ tpId: { $in: [...new Set(ids.filter(Boolean))] } }];
@@ -158,8 +157,8 @@ function buildRollupMatch(
     const dist = (masters.districts || []).find(
       (d) =>
         variants.includes(norm(d.id).toLowerCase()) ||
-        variants.includes(norm(d.nameEn).toLowerCase()) ||
-        variants.includes(norm(d.code).toLowerCase())
+        geoNamesEqual(d.nameEn, scopeDistrict) ||
+        geoNamesEqual(d.nameTa, scopeDistrict)
     );
     const or: Record<string, unknown>[] = [{ districtId: { $in: variants } }];
     if (dist?.nameEn) or.push({ districtNameEn: dist.nameEn });
@@ -171,8 +170,8 @@ function buildRollupMatch(
     const zone = (masters.zones || []).find(
       (z) =>
         idVariants(scopeZone).includes(norm(z.id).toLowerCase()) ||
-        idVariants(scopeZone).includes(norm(z.nameEn).toLowerCase()) ||
-        idVariants(scopeZone).includes(norm(z.code).toLowerCase())
+        geoNamesEqual(z.nameEn, scopeZone) ||
+        geoNamesEqual(z.nameTa, scopeZone)
     );
     const or: Record<string, unknown>[] = [{ zoneId: { $in: idVariants(scopeZone) } }];
     if (zone?.nameEn) or.push({ zoneNameEn: zone.nameEn });

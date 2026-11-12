@@ -1916,8 +1916,7 @@ export default function InspectionReportsView({
       }
       if (String(userTpId).toLowerCase().includes('arani') || String(currentUser?.username).toLowerCase().includes('arani')) {
         const thiruvallurDist = (state.districts || []).find((d: any) =>
-          geoNamesEqual(d.nameEn, 'Thiruvallur') ||
-          geoNamesEqual(d.nameEn, 'Tiruvallur') ||
+          String(d.nameEn || '').toLowerCase() === 'tiruvallur' ||
           String(d.id || '').toLowerCase().includes('thiruvallur') ||
           String(d.id || '').toLowerCase().includes('tiruvallur')
         );
@@ -2654,19 +2653,18 @@ export default function InspectionReportsView({
       const zone = (state.zones || []).find(
         (z: any) =>
           String(z.id || '').toLowerCase() === sZone ||
-          String(z.nameEn || '').toLowerCase() === sZone ||
-          String(z.nameTa || '').toLowerCase() === sZone ||
-          String(z.code || '').toLowerCase() === sZone
+          geoNamesEqual(z.nameEn, effZoneId) ||
+          geoNamesEqual(z.nameTa, effZoneId)
       );
-      const zoneKeys = new Set(
-        [sZone, zone?.id, zone?.nameEn, zone?.nameTa, zone?.code]
-          .filter(Boolean)
-          .map((v) => String(v).toLowerCase())
-      );
+      const zoneIdKey = String(zone?.id || effZoneId).toLowerCase();
+      const zoneNameEn = String(zone?.nameEn || '').trim();
       list = list.filter((d: any) => {
         const dZone = String(d.zoneId || '').toLowerCase();
-        const dZoneName = String(d.zoneNameEn || '').toLowerCase();
-        return (dZone && zoneKeys.has(dZone)) || (dZoneName && zoneKeys.has(dZoneName));
+        return (
+          (dZone && dZone === zoneIdKey) ||
+          geoNamesEqual(d.zoneNameEn, zoneNameEn) ||
+          geoNamesEqual(d.zoneNameEn, effZoneId)
+        );
       });
     }
     return list;
@@ -2720,27 +2718,27 @@ export default function InspectionReportsView({
         const zone = (state.zones || []).find(
           (z: any) =>
             String(z.id || '').toLowerCase() === sZone ||
-            String(z.nameEn || '').toLowerCase() === sZone ||
-            String(z.nameTa || '').toLowerCase() === sZone ||
-            String(z.code || '').toLowerCase() === sZone
+            geoNamesEqual(z.nameEn, effZoneId) ||
+            geoNamesEqual(z.nameTa, effZoneId)
         );
-        const zoneKeys = new Set(
-          [sZone, zone?.id, zone?.nameEn, zone?.nameTa, zone?.code]
-            .filter(Boolean)
-            .map((v) => String(v).toLowerCase())
-        );
+        const zoneIdKey = String(zone?.id || effZoneId).toLowerCase();
+        const zoneNameEn = String(zone?.nameEn || '').trim();
         list = list.filter((tp: any) => {
           const tpZone = String(tp.zoneId || '').toLowerCase();
-          const tpZoneName = String(tp.zoneNameEn || '').toLowerCase();
-          if ((tpZone && zoneKeys.has(tpZone)) || (tpZoneName && zoneKeys.has(tpZoneName))) return true;
-          const dist = (state.districts || []).find((d: any) => 
-            String(d.id).toLowerCase() === String(tp.districtId || '').toLowerCase() ||
-            String(d.nameEn || '').toLowerCase() === String(tp.districtNameEn || '').toLowerCase()
+          if ((tpZone && tpZone === zoneIdKey) || geoNamesEqual(tp.zoneNameEn, zoneNameEn) || geoNamesEqual(tp.zoneNameEn, effZoneId)) {
+            return true;
+          }
+          const dist = (state.districts || []).find((d: any) =>
+            String(d.id || '').toLowerCase() === String(tp.districtId || '').toLowerCase() ||
+            geoNamesEqual(d.nameEn, tp.districtNameEn)
           );
           if (!dist) return false;
           const dZone = String(dist.zoneId || '').toLowerCase();
-          const dZoneName = String(dist.zoneNameEn || '').toLowerCase();
-          return (dZone && zoneKeys.has(dZone)) || (dZoneName && zoneKeys.has(dZoneName));
+          return (
+            (dZone && dZone === zoneIdKey) ||
+            geoNamesEqual(dist.zoneNameEn, zoneNameEn) ||
+            geoNamesEqual(dist.zoneNameEn, effZoneId)
+          );
         });
       }
     }

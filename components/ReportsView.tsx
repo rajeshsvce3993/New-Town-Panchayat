@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Language, translations } from './translations';
 import { ThemeType, themesConfig } from '@/lib/themeConfig';
+import { geoNamesEqual } from '@/lib/geoNameMatch';
 
 const STATIC_CATEGORIES = [
   { 
@@ -177,9 +178,10 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
       if (tpObj?.districtId) return tpObj.districtId;
       if (currentUser.districtId && currentUser.districtId !== 'all') return currentUser.districtId;
       if (String(userTpId).toLowerCase().includes('arani')) {
-        const thiruvallurDist = districts.find((d: any) => 
-          String(d.nameEn || '').toLowerCase().includes('thiruvallur') || 
-          String(d.id || '').toLowerCase().includes('thiruvallur')
+        const thiruvallurDist = districts.find((d: any) =>
+          String(d.nameEn || '').toLowerCase() === 'tiruvallur' ||
+          String(d.id || '').toLowerCase().includes('thiruvallur') ||
+          String(d.id || '').toLowerCase().includes('tiruvallur')
         );
         if (thiruvallurDist) return thiruvallurDist.id;
       }
@@ -224,14 +226,14 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
         String(t.nameEn || '').toLowerCase() === String(userTpId).toLowerCase()
       );
       if (tpObj) {
-        const distObj = districts.find((d: any) => 
+        const distObj = districts.find((d: any) =>
           String(d.id).toLowerCase() === String(tpObj.districtId).toLowerCase() ||
-          String(d.nameEn || '').toLowerCase() === String(tpObj.districtNameEn || '').toLowerCase()
+          geoNamesEqual(d.nameEn, tpObj.districtNameEn)
         );
         if (distObj?.zoneId) return distObj.zoneId;
       }
-      const matchZone = zones.find((z: any) => 
-        String(z.nameEn || '').toLowerCase().includes('thiruvallur') ||
+      const matchZone = zones.find((z: any) =>
+        String(z.nameEn || '').toLowerCase() === 'tiruvallur zone' ||
         String(z.nameEn || '').toLowerCase().includes('chennai')
       );
       if (matchZone) return matchZone.id;

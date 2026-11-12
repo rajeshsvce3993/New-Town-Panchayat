@@ -15,7 +15,7 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
 }
 
-/** One-time spelling correction: Tiruvallur / Tiruvallue / Thiruvalur → master Thiruvallur. */
+/** Spelling correction: Thiruvallur / Tiruvallue → Tiruvallur district and Tiruvallur Zone. */
 export async function POST(req: NextRequest) {
   const confirm = (req.nextUrl.searchParams.get('confirm') || '').trim().toLowerCase();
   if (confirm !== 'thiruvallur' && confirm !== 'tiruvallur') {
