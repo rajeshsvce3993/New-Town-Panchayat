@@ -233,7 +233,7 @@ export default function ReportsView({ state, lang, theme, currentUser }: Reports
         if (distObj?.zoneId) return distObj.zoneId;
       }
       const matchZone = zones.find((z: any) =>
-        String(z.nameEn || '').toLowerCase() === 'tiruvallur zone' ||
+        String(z.nameEn || '').toLowerCase() === 'tiruvallur' ||
         String(z.nameEn || '').toLowerCase().includes('chennai')
       );
       if (matchZone) return matchZone.id;

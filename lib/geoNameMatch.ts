@@ -58,8 +58,8 @@ export function setHasGeoName(set: Set<string>, ...values: Array<string | undefi
 /** Single English/Tamil spelling used in DB, filters, and UI: Tiruvallur. Does not match Tiruchirappalli. */
 export const CANONICAL_THIRUVALLUR_EN = 'Tiruvallur';
 export const CANONICAL_THIRUVALLUR_TA = 'திருவள்ளூர்';
-export const CANONICAL_TIRUVALLUR_ZONE_EN = 'Tiruvallur Zone';
-export const CANONICAL_TIRUVALLUR_ZONE_TA = 'திருவள்ளூர் மண்டலம்';
+export const CANONICAL_TIRUVALLUR_ZONE_EN = 'Tiruvallur';
+export const CANONICAL_TIRUVALLUR_ZONE_TA = 'திருவள்ளூர்';
 
 export const THIRUVALLUR_NAME_REGEX =
   /^(?:the\s+)?(thiru|tiru)\s*(vallur|valur|vallue|vallor|valloer)(?:\s*(district|dt\.?|zone|மண்டலம்))?$/i;
@@ -144,7 +144,7 @@ function withCanonicalGeoFields(
   return next;
 }
 
-/** One-time write correction so new inspection works store Tiruvallur / Tiruvallur Zone. */
+/** One-time write correction so new inspection works store Tiruvallur. */
 export function applyCanonicalDistrictNames(work: any, districts: any[] = []): any {
   if (!work || typeof work !== 'object') return work;
   const districtCurrent = String(work.districtNameEn || work.district || work.districtName || work.districtNameTa || '').trim();
