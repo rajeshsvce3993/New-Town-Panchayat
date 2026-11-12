@@ -13,6 +13,7 @@ import {
   tpIdsForZone,
   wardFilterVariants,
 } from '@/lib/inspectionWorksMongoRepository';
+import { geoNamesEqual } from '@/lib/geoNameMatch';
 
 export const INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION = 'inspectionWorkReportRollups';
 
@@ -508,6 +509,38 @@ export async function decrementInspectionWorkReportRollup(work: any): Promise<vo
   await incrementInspectionWorkReportRollup(work, -1);
 }
 
+function findMasterByIdOrName(list: any[] | undefined, id: string) {
+  const needle = String(id || '').trim();
+  if (!needle) return undefined;
+  const lower = needle.toLowerCase();
+  return (list || []).find(
+    (item: any) =>
+      String(item?.id || '').trim().toLowerCase() === lower ||
+      geoNamesEqual(item?.nameEn, needle) ||
+      geoNamesEqual(item?.nameTa, needle)
+  );
+}
+
+function attachMasterGeoNames(
+  row: InspectionWorkReportDimensionRollup,
+  masters: InspectionWorksFilterMasters
+): InspectionWorkReportDimensionRollup {
+  const tp = findMasterByIdOrName(masters.townPanchayats, row.tpId);
+  const dist =
+    findMasterByIdOrName(masters.districts, row.districtId) ||
+    (tp?.districtId ? findMasterByIdOrName(masters.districts, String(tp.districtId)) : undefined);
+  const zone =
+    findMasterByIdOrName(masters.zones, row.zoneId) ||
+    (dist?.zoneId ? findMasterByIdOrName(masters.zones, String(dist.zoneId)) : undefined) ||
+    (tp?.zoneId ? findMasterByIdOrName(masters.zones, String(tp.zoneId)) : undefined);
+  return {
+    ...row,
+    zoneNameEn: zone?.nameEn || row.zoneNameEn || '',
+    districtNameEn: dist?.nameEn || row.districtNameEn || '',
+    tpNameEn: tp?.nameEn || row.tpNameEn || '',
+  };
+}
+
 export async function queryInspectionWorkReportRollupCounts(
   filter: InspectionWorksFilterQuery,
   masters: InspectionWorksFilterMasters,
@@ -547,16 +580,21 @@ export async function queryInspectionWorkReportRollupCounts(
       };
       count: number;
     }>;
-    const dimensionRollups: InspectionWorkReportDimensionRollup[] = grouped.map((r) => ({
-      zoneId: String(r._id?.zoneId || ''),
-      districtId: String(r._id?.districtId || ''),
-      tpId: String(r._id?.tpId || ''),
-      wardNumber: String(r._id?.wardNumber || ''),
-      submittedByUserName: String(r._id?.submittedByUserName || ''),
-      subjectId: String(r._id?.subjectId || 'unknown'),
-      categoryId: String(r._id?.categoryId || '_unknown'),
-      count: Number(r.count) || 0,
-    }));
+    const dimensionRollups: InspectionWorkReportDimensionRollup[] = grouped.map((r) =>
+      attachMasterGeoNames(
+        {
+          zoneId: String(r._id?.zoneId || ''),
+          districtId: String(r._id?.districtId || ''),
+          tpId: String(r._id?.tpId || ''),
+          wardNumber: String(r._id?.wardNumber || ''),
+          submittedByUserName: String(r._id?.submittedByUserName || ''),
+          subjectId: String(r._id?.subjectId || 'unknown'),
+          categoryId: String(r._id?.categoryId || '_unknown'),
+          count: Number(r.count) || 0,
+        },
+        masters
+      )
+    );
     const subjectCategoryRollups = collapseDimensionRollupsToSubjectCategory(dimensionRollups);
     const totalWithoutCategoryFilter = subjectCategoryRollups.reduce((s, r) => s + r.count, 0);
     const categoryCounts = categoryCountsFromRollupRows(

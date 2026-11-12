@@ -3293,7 +3293,7 @@ export default function InspectionReportsView({
     ) => {
       const norm = (v: any) => String(v || '').trim().toLowerCase();
       const matchesGeo = (entity: any, ...needles: string[]) => {
-        const ids = [entity?.id, entity?.code].map(norm).filter(Boolean);
+        const ids = [entity?.id].map(norm).filter(Boolean);
         return needles.some((n) => {
           if (!n) return false;
           if (ids.includes(n)) return true;
@@ -3971,19 +3971,41 @@ export default function InspectionReportsView({
       totalInspections: number;
     }> = {};
 
+    const showDistrict = locCols.district;
+    const showTp = locCols.tp;
+    const showWard = locCols.ward;
+    const showStreet = locCols.street;
+    const showSubj = locCols.subject;
+    const showCat = locCols.category;
+
+    const locationGroupKey = (geo: {
+      zoneNameEn: string;
+      districtNameEn: string;
+      tpNameEn: string;
+      streetName?: string;
+    }, extra: { wardNumber?: string; streetName?: string; subjectId?: string; categoryId?: string; tpId?: string; districtId?: string }) => {
+      let key = `zone_${geo.zoneNameEn || '-'}`;
+      if (showDistrict) key += `|d_${geo.districtNameEn || extra.districtId || '-'}`;
+      if (showTp) key += `|tp_${geo.tpNameEn || extra.tpId || '-'}`;
+      if (showWard) key += `|ward_${extra.wardNumber || 'unknown'}`;
+      if (showStreet) key += `|street_${extra.streetName || geo.streetName || '-'}`;
+      if (showSubj) key += `|subj_${extra.subjectId || 'unknown'}`;
+      if (showCat) key += `|cat_${extra.categoryId || 'unknown'}`;
+      return key;
+    };
+
     if (worksFromApi) {
-      const showWard = categoryWiseEnabled && locCols.ward;
-      const showStreet = categoryWiseEnabled && locCols.street;
-      const showSubj = categoryWiseEnabled && locCols.subject;
-      const showCat = categoryWiseEnabled && locCols.category;
       filteredApiDimensionRollups.forEach((row) => {
         const geo = resolveGeoNames(row.zoneId, row.districtId, row.tpId, row);
         const streetName = String(row.streetName || geo.streetName || '').trim() || '-';
-        let key = `${geo.zoneNameEn}_${geo.districtNameEn}_${geo.tpNameEn}`;
-        if (showWard) key += `_ward_${row.wardNumber || 'unknown'}`;
-        if (showStreet) key += `_street_${streetName}`;
-        if (showSubj) key += `_subj_${row.subjectId || 'unknown'}`;
-        if (showCat) key += `_cat_${row.categoryId || 'unknown'}`;
+        const key = locationGroupKey(geo, {
+          wardNumber: row.wardNumber,
+          streetName,
+          subjectId: row.subjectId,
+          categoryId: row.categoryId,
+          tpId: row.tpId,
+          districtId: row.districtId,
+        });
         if (!groups[key]) {
           groups[key] = {
             zoneNameEn: geo.zoneNameEn,
@@ -4018,34 +4040,23 @@ export default function InspectionReportsView({
 
     filteredWorks.forEach((w) => {
       const geo = resolveGeoNames(w.zoneId, w.districtId, w.tpId || w.townPanchayatId, w);
-      const zNameEn = geo.zoneNameEn;
-      const zNameTa = geo.zoneNameTa;
-      const dNameEn = geo.districtNameEn;
-      const dNameTa = geo.districtNameTa;
-      const tNameEn = geo.tpNameEn;
-      const tNameTa = geo.tpNameTa;
-
-      // Grouping key strictly preserves municipal segregation (Zone, District, TP) at minimum
-      let key = `${zNameEn}_${dNameEn}_${tNameEn}`;
-
-      const showWard = categoryWiseEnabled && locCols.ward;
-      const showStreet = categoryWiseEnabled && locCols.street;
-      const showSubj = categoryWiseEnabled && locCols.subject;
-      const showCat = categoryWiseEnabled && locCols.category;
-
-      if (showWard) key += `_ward_${w.wardNumber || 'unknown'}`;
-      if (showStreet) key += `_street_${geo.streetName}`;
-      if (showSubj) key += `_subj_${w.subjectId || 'unknown'}`;
-      if (showCat) key += `_cat_${w.categoryId || 'unknown'}`;
+      const key = locationGroupKey(geo, {
+        wardNumber: w.wardNumber || w.wardNo,
+        streetName: geo.streetName,
+        subjectId: w.subjectId,
+        categoryId: w.categoryId,
+        tpId: w.tpId || w.townPanchayatId,
+        districtId: w.districtId,
+      });
 
       if (!groups[key]) {
         groups[key] = {
-          zoneNameEn: zNameEn,
-          zoneNameTa: zNameTa,
-          districtNameEn: dNameEn,
-          districtNameTa: dNameTa,
-          tpNameEn: tNameEn,
-          tpNameTa: tNameTa,
+          zoneNameEn: geo.zoneNameEn,
+          zoneNameTa: geo.zoneNameTa,
+          districtNameEn: geo.districtNameEn,
+          districtNameTa: geo.districtNameTa,
+          tpNameEn: geo.tpNameEn,
+          tpNameTa: geo.tpNameTa,
           totalInspections: 0
         };
         if (showWard) {
@@ -4072,7 +4083,6 @@ export default function InspectionReportsView({
     filteredWorks,
     worksFromApi,
     filteredApiDimensionRollups,
-    categoryWiseEnabled,
     locCols,
     resolveGeoNames,
     state.inspectionSubjects,
@@ -4185,7 +4195,9 @@ export default function InspectionReportsView({
     selectedStreetName,
     selectedSubjectId,
     selectedCategoryId,
-    searchQuery
+    searchQuery,
+    locCols,
+    userCols,
   ]);
 
   // Handle Admin Delete of Inspected Work
