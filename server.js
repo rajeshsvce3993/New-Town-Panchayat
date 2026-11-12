@@ -138,6 +138,13 @@ async function runSystemDiagnostics() {
       console.warn(`   - Index setup note    : ${idxErr.message}`);
     }
 
+    try {
+      const { canonicalizeTiruvallurSpellings } = require('./lib/canonicalizeTiruvallurMongo.js');
+      await canonicalizeTiruvallurSpellings(db);
+    } catch (canonErr) {
+      console.warn(`[canonicalize-district] Startup rewrite failed: ${canonErr.message}`);
+    }
+
     await client.close();
   } catch (mongoErr) {
     console.warn(`🍃 [MongoDB Connection] : Local Fallback Mode (${mongoErr.message}) ⚠️`);

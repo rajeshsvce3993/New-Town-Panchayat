@@ -1195,6 +1195,16 @@ export async function getMongoClient(): Promise<MongoClient | null> {
         await client.connect();
         console.log(`Successfully connected to MongoDB (${activeUri.includes(':27017') ? 'Port 27017' : 'Port 27018'}) with Robust Pool (pool size: ${Math.max(poolSize, 100)})`);
         globalWithMongo._mongoClient = client;
+        try {
+          const db = await getActiveMongoDb(client);
+          const { canonicalizeTiruvallurMasters } = require('./canonicalizeTiruvallurMongo.js');
+          await canonicalizeTiruvallurMasters(db);
+        } catch (canonErr: any) {
+          console.warn('[canonicalize-district] master rewrite failed:', canonErr?.message || canonErr);
+        }
+        void ensureDatabaseIndexes(client).catch((err) => {
+          console.warn('[MongoDB] ensureDatabaseIndexes failed:', err?.message || err);
+        });
         return globalWithMongo._mongoClient;
       } catch (err: any) {
         lastError = err;
@@ -1285,8 +1295,17 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
     hasEnsuredIndexes = true;
     void import('@/lib/canonicalizeDistrictSpellings')
       .then((m) => m.canonicalizeThiruvallurDistrictSpellingsInBackground())
-      .catch(() => {});
-  } catch (_) {}
+      .catch((err) => {
+        console.warn('[canonicalize-district] could not start rewrite:', err?.message || err);
+      });
+  } catch (err: any) {
+    console.warn('[MongoDB] ensureDatabaseIndexes failed:', err?.message || err);
+    void import('@/lib/canonicalizeDistrictSpellings')
+      .then((m) => m.canonicalizeThiruvallurDistrictSpellingsInBackground())
+      .catch((e) => {
+        console.warn('[canonicalize-district] could not start rewrite:', e?.message || e);
+      });
+  }
 }
 
 // Get Dynamic Collection database based on Employee's TP / Zone / HOD
