@@ -2048,7 +2048,7 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
       (tpIdKey && lookups.tpById.get(tpIdKey)) ||
       (tpNameKey && lookups.tpByNameEn.get(tpNameKey)) ||
       undefined;
-    const distKey = lowerKey(w.districtId || tp?.districtId);
+    const distKey = lowerKey(tp?.districtId || w.districtId);
     const dist = distKey ? lookups.districtById.get(distKey) : undefined;
 
     const wCatId = lowerKey(w.categoryId);
@@ -2101,13 +2101,9 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
     const resolvedCategoryNameEn = cat ? (cat.nameEn || cat.name) : (w.categoryNameEn || '');
     const resolvedCategoryNameTa = cat ? (cat.nameTa || cat.nameEn) : (w.categoryNameTa || resolvedCategoryNameEn || '');
 
-    const hasWorkDistrictName = !!String(w.districtNameEn || '').trim();
-    const hasWorkZoneName = !!String(w.zoneNameEn || w.zone || '').trim();
-    const resolvedTpId = String(w.tpId || w.townPanchayatId || tp?.id || '').trim();
-    const resolvedDistrictId = String(w.districtId || '').trim()
-      || (hasWorkDistrictName ? '' : String(tp?.districtId || dist?.id || '').trim());
-    const resolvedZoneId = String(w.zoneId || '').trim()
-      || (hasWorkZoneName ? '' : String(dist?.zoneId || '').trim());
+    const resolvedTpId = String(tp?.id || w.tpId || w.townPanchayatId || '').trim();
+    const resolvedDistrictId = String(tp?.districtId || dist?.id || w.districtId || '').trim();
+    const resolvedZoneId = String(dist?.zoneId || w.zoneId || '').trim();
 
     return {
       ...w,
@@ -2117,12 +2113,12 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
       townPanchayatId: resolvedTpId || w.townPanchayatId,
       districtId: resolvedDistrictId || w.districtId,
       zoneId: resolvedZoneId || w.zoneId,
-      tpNameEn: w.tpNameEn || tp?.nameEn || '',
-      tpNameTa: w.tpNameTa || tp?.nameTa || '',
+      tpNameEn: tp?.nameEn || w.tpNameEn || '',
+      tpNameTa: tp?.nameTa || w.tpNameTa || '',
       districtNameEn: dist?.nameEn || w.districtNameEn || '',
       districtNameTa: dist?.nameTa || w.districtNameTa || '',
-      zoneNameEn: w.zoneNameEn || dist?.zoneNameEn || '',
-      zoneNameTa: w.zoneNameTa || dist?.zoneNameTa || '',
+      zoneNameEn: dist?.zoneNameEn || w.zoneNameEn || '',
+      zoneNameTa: dist?.zoneNameTa || w.zoneNameTa || '',
       subjectId: resolvedSubjectId,
       subjectNameEn: resolvedSubjectNameEn,
       subjectNameTa: resolvedSubjectNameTa,

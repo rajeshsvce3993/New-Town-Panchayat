@@ -64,11 +64,15 @@ export const CANONICAL_TIRUVALLUR_ZONE_TA = 'திருவள்ளூர்';
 export const THIRUVALLUR_NAME_REGEX =
   /^(?:the\s+)?(thiru|tiru)\s*(vallur|valur|vallue|vallor|valloer)(?:\s*(district|dt\.?|zone|மண்டலம்))?$/i;
 
+export function looksLikeGeoId(value?: string | null): boolean {
+  return /^(z|d|tp|iu)_/i.test(String(value || '').trim());
+}
+
 export function isThiruvallurDistrictSpelling(value?: string | null): boolean {
   const s = String(value || '').trim();
-  if (!s) return false;
+  if (!s || looksLikeGeoId(s)) return false;
   if (THIRUVALLUR_NAME_REGEX.test(s)) return true;
-  return /திருவள்ளூர்/.test(s);
+  return /^திருவள்ளூர்/.test(s);
 }
 
 function looksLikeZoneName(value?: string | null): boolean {
@@ -122,15 +126,17 @@ function withCanonicalGeoFields(
   if (districtHit) {
     next.districtNameEn = CANONICAL_THIRUVALLUR_EN;
     next.districtNameTa = CANONICAL_THIRUVALLUR_TA;
-    if (opts?.districtId) next.districtId = opts.districtId;
-    if (obj.district != null) next.district = CANONICAL_THIRUVALLUR_EN;
+    if (obj.district != null && isThiruvallurDistrictSpelling(obj.district)) {
+      next.district = CANONICAL_THIRUVALLUR_EN;
+    }
     if (obj.districtName != null) next.districtName = CANONICAL_THIRUVALLUR_EN;
   }
   if (zoneHit) {
     next.zoneNameEn = CANONICAL_TIRUVALLUR_ZONE_EN;
     next.zoneNameTa = CANONICAL_TIRUVALLUR_ZONE_TA;
-    if (opts?.zoneId) next.zoneId = opts.zoneId;
-    if (obj.zone != null) next.zone = CANONICAL_TIRUVALLUR_ZONE_EN;
+    if (obj.zone != null && isThiruvallurDistrictSpelling(obj.zone)) {
+      next.zone = CANONICAL_TIRUVALLUR_ZONE_EN;
+    }
   }
   if (nameHit) {
     if (nameKind === 'zone') {
@@ -144,15 +150,14 @@ function withCanonicalGeoFields(
   return next;
 }
 
-/** One-time write correction so new inspection works store Tiruvallur. */
-export function applyCanonicalDistrictNames(work: any, districts: any[] = []): any {
+/** Write-path spelling only. Never overwrite districtId/zoneId from the Tiruvallur master. */
+export function applyCanonicalDistrictNames(work: any, _districts: any[] = []): any {
   if (!work || typeof work !== 'object') return work;
-  const districtCurrent = String(work.districtNameEn || work.district || work.districtName || work.districtNameTa || '').trim();
-  const zoneCurrent = String(work.zoneNameEn || work.zone || work.zoneNameTa || '').trim();
+  const districtCurrent = String(work.districtNameEn || work.districtName || work.districtNameTa || '').trim();
+  const zoneCurrent = String(work.zoneNameEn || work.zoneNameTa || '').trim();
   const districtHit = districtCurrent && isThiruvallurDistrictSpelling(districtCurrent);
   const zoneHit = zoneCurrent && isThiruvallurDistrictSpelling(zoneCurrent);
   if (!districtHit && !zoneHit) return work;
-  const master = findThiruvallurDistrict(districts);
-  return withCanonicalGeoFields(work, { districtId: master?.id || work.districtId });
+  return withCanonicalGeoFields(work);
 }
 

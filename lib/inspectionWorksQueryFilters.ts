@@ -51,31 +51,36 @@ function workSubmittedYmd(w: any): string | null {
 
 export function workMatchesDistrict(w: any, districtId: string, ctx: InspectionWorksFilterMasters): boolean {
   const sDist = String(districtId).toLowerCase();
-  if (!(ctx.districts || []).length) {
-    const wDistId = String(w.districtId || '').toLowerCase();
-    const wDistName = String(w.districtNameEn || w.districtNameTa || '').trim();
-    return wDistId === sDist || geoNamesEqual(wDistName, districtId);
-  }
   const dist = (ctx.districts || []).find(
     (d: any) =>
       String(d.id || '').toLowerCase() === sDist ||
       geoNamesEqual(d.nameEn, districtId) ||
       geoNamesEqual(d.nameTa, districtId)
   );
+  const distIdKey = String(dist?.id || districtId).toLowerCase();
   const distName = String(dist?.nameEn || '').trim();
   const distNameTa = String(dist?.nameTa || '').trim();
 
-  const wDistId = String(w.districtId || '').toLowerCase();
-  const wDistName = String(w.districtNameEn || '').trim();
-  const wDistNameTa = String(w.districtNameTa || '').trim();
-
-  if (wDistName || wDistNameTa) {
-    if (distName && (geoNamesEqual(wDistName, distName) || geoNamesEqual(wDistNameTa, distName))) return true;
-    if (distNameTa && (geoNamesEqual(wDistName, distNameTa) || geoNamesEqual(wDistNameTa, distNameTa))) return true;
-    if (geoNamesEqual(wDistName, districtId) || geoNamesEqual(wDistNameTa, districtId)) return true;
+  const tp = findWorkTownPanchayat(w, ctx);
+  if (tp) {
+    if (tp.districtId) return String(tp.districtId).toLowerCase() === distIdKey;
+    if (distName && (geoNamesEqual(tp.districtNameEn, distName) || geoNamesEqual(tp.districtNameTa, distName))) {
+      return true;
+    }
+    if (distNameTa && (geoNamesEqual(tp.districtNameEn, distNameTa) || geoNamesEqual(tp.districtNameTa, distNameTa))) {
+      return true;
+    }
     return false;
   }
-  if (wDistId && (wDistId === sDist || wDistId === String(dist?.id || '').toLowerCase())) return true;
+
+  const wDistId = String(w.districtId || '').toLowerCase();
+  if (wDistId && (wDistId === sDist || wDistId === distIdKey)) return true;
+
+  const wDistName = String(w.districtNameEn || '').trim();
+  const wDistNameTa = String(w.districtNameTa || '').trim();
+  if (distName && (geoNamesEqual(wDistName, distName) || geoNamesEqual(wDistNameTa, distName))) return true;
+  if (distNameTa && (geoNamesEqual(wDistName, distNameTa) || geoNamesEqual(wDistNameTa, distNameTa))) return true;
+  if (geoNamesEqual(wDistName, districtId) || geoNamesEqual(wDistNameTa, districtId)) return true;
   return false;
 }
 
@@ -99,46 +104,39 @@ export function workMatchesZone(w: any, zoneId: string, ctx: InspectionWorksFilt
   const selectedNames = geoTokenSet(zone?.nameEn, zone?.nameTa);
   const selected = geoTokenSet(zoneId, zone?.id, zone?.nameEn, zone?.nameTa);
 
-  const wZoneId = String(w.zoneId || '').trim();
-  const wZoneName = String(w.zoneNameEn || w.zone || '').trim();
-  const wZoneNameTa = String(w.zoneNameTa || '').trim();
-  if (wZoneName || wZoneNameTa) {
-    if (selectedNames.size && setHasGeo(selectedNames, wZoneName, wZoneNameTa)) return true;
-    if (!selectedNames.size && setHasGeo(selectedIds, wZoneId)) return true;
-    // A stored zone name is the source of truth. Do not pull Thiruvallur into Tiruchirappalli via a wrong zoneId.
-    if (selectedNames.size) return false;
-    return setHasGeo(selectedIds, wZoneName, wZoneNameTa, wZoneId);
+  const tp = findWorkTownPanchayat(w, ctx);
+  if (tp) {
+    const dist = (ctx.districts || []).find(
+      (d: any) => !!tp.districtId && String(d.id || '').toLowerCase() === String(tp.districtId).toLowerCase()
+    );
+    if (dist) return setHasGeo(selectedIds, dist.zoneId) || setHasGeo(selected, dist.zoneId, dist.zoneNameEn, dist.zoneNameTa);
+    if (tp.zoneId) return setHasGeo(selectedIds, tp.zoneId);
+    return false;
   }
-  if (wZoneId) {
-    return setHasGeo(selectedIds, wZoneId) || setHasGeo(selectedNames, wZoneId);
+
+  const wZoneId = String(w.zoneId || '').trim();
+  if (wZoneId && (setHasGeo(selectedIds, wZoneId) || setHasGeo(selectedNames, wZoneId))) return true;
+
+  const wZoneName = String(w.zoneNameEn || '').trim();
+  const wZoneNameTa = String(w.zoneNameTa || '').trim();
+  if ((wZoneName || wZoneNameTa) && selectedNames.size && setHasGeo(selectedNames, wZoneName, wZoneNameTa)) {
+    return true;
   }
 
   const wDistId = String(w.districtId || '').trim();
+  if (wDistId) {
+    const dist = (ctx.districts || []).find(
+      (d: any) => String(d.id || '').toLowerCase() === wDistId.toLowerCase()
+    );
+    if (dist) return setHasGeo(selected, dist.zoneId, dist.zoneNameEn, dist.zoneNameTa);
+  }
+
   const wDistName = String(w.districtNameEn || '').trim();
   if (wDistName) {
     const distByName = (ctx.districts || []).find(
       (d: any) => geoNamesEqual(d.nameEn, wDistName) || geoNamesEqual(d.nameTa, wDistName)
     );
-    if (!distByName) return false;
-    return setHasGeo(selected, distByName.zoneId, distByName.zoneNameEn, distByName.zoneNameTa);
-  }
-  if (wDistId) {
-    const dist = (ctx.districts || []).find(
-      (d: any) => String(d.id || '').toLowerCase() === wDistId.toLowerCase()
-    );
-    if (!dist) return false;
-    return setHasGeo(selected, dist.zoneId, dist.zoneNameEn, dist.zoneNameTa);
-  }
-
-  const tp = findWorkTownPanchayat(w, ctx);
-  if (tp) {
-    if (setHasGeo(selected, tp.zoneId, tp.zoneNameEn, tp.zoneNameTa)) return true;
-    const dist = (ctx.districts || []).find(
-      (d: any) =>
-        (!!tp.districtId && String(d.id || '').toLowerCase() === String(tp.districtId).toLowerCase()) ||
-        (!!tp.districtNameEn && geoNamesEqual(d.nameEn, tp.districtNameEn))
-    );
-    if (dist) return setHasGeo(selected, dist.zoneId, dist.zoneNameEn, dist.zoneNameTa);
+    if (distByName) return setHasGeo(selected, distByName.zoneId, distByName.zoneNameEn, distByName.zoneNameTa);
   }
   return false;
 }
@@ -146,9 +144,12 @@ export function workMatchesZone(w: any, zoneId: string, ctx: InspectionWorksFilt
 export function findWorkTownPanchayat(w: any, ctx: InspectionWorksFilterMasters): any | undefined {
   const tps = ctx.townPanchayats || [];
   const wTp = String(w.tpId || w.townPanchayatId || '').toLowerCase();
+  if (wTp) {
+    const byId = tps.find((t: any) => String(t.id || '').toLowerCase() === wTp);
+    if (byId) return byId;
+  }
   const wName = String(w.tpNameEn || w.townPanchayat || '').trim();
   const wNameTa = String(w.tpNameTa || '').trim();
-
   if (wName || wNameTa) {
     const byName = tps.find(
       (t: any) =>
@@ -158,10 +159,6 @@ export function findWorkTownPanchayat(w: any, ctx: InspectionWorksFilterMasters)
         geoNamesEqual(t.nameTa, wNameTa)
     );
     if (byName) return byName;
-  }
-  if (wTp) {
-    const byId = tps.find((t: any) => String(t.id || '').toLowerCase() === wTp);
-    if (byId) return byId;
   }
   return undefined;
 }

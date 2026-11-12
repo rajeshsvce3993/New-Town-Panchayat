@@ -56,6 +56,17 @@ function idVariants(id: string): string[] {
   return [...new Set([s, s.toLowerCase(), s.toUpperCase()])];
 }
 
+function firstNonEmpty(...values: unknown[]): string {
+  for (const value of values) {
+    const s = norm(value);
+    if (s) return s;
+  }
+  return '';
+}
+
+const ROLLUP_GEO_VERSION = 'rollups_geo_from_tp_v2';
+const ROLLUP_GEO_META_COLLECTION = 'appMeta';
+
 export function inspectionWorkReportRollupDims(work: any): InspectionWorkReportRollupDims | null {
   const submittedDateYmd = deriveSubmittedDateYmd(work);
   if (!submittedDateYmd) return null;
@@ -63,7 +74,7 @@ export function inspectionWorkReportRollupDims(work: any): InspectionWorkReportR
     submittedDateYmd,
     zoneId: norm(work.zoneId),
     districtId: norm(work.districtId),
-    tpId: norm(work.tpId || work.townPanchayatId),
+    tpId: firstNonEmpty(work.tpId, work.townPanchayatId),
     wardNumber: norm(work.wardNumber ?? work.wardNo ?? work.ward),
     submittedByUserName: norm(work.submittedByUserName || work.username),
     subjectId: norm(work.subjectId) || 'unknown',
@@ -436,15 +447,32 @@ export async function ensureInspectionWorkReportRollupsReady(): Promise<{
     return { ready: rollupsReady, ranBackfill: ran };
   }
   backfillInFlight = (async () => {
+    try {
+      const { canonicalizeThiruvallurDistrictSpellings } = await import('@/lib/canonicalizeDistrictSpellings');
+      await canonicalizeThiruvallurDistrictSpellings();
+    } catch (err) {
+      console.warn('[inspectionWorkReportRollups] canonicalize before rebuild failed:', err);
+    }
     await ensureInspectionWorkReportIndexes();
     const ctx = await mongo();
     if (!ctx) return false;
+    const meta = ctx.db.collection(ROLLUP_GEO_META_COLLECTION);
+    const versionDoc = await meta.findOne({ _id: ROLLUP_GEO_VERSION as any });
     const n = await ctx.rollups.estimatedDocumentCount();
-    if (n > 0) {
+    if (n > 0 && versionDoc) {
       rollupsReady = true;
       return false;
     }
+    if (n > 0) {
+      console.log(`[inspectionWorkReportRollups] Rebuilding rollups for ${ROLLUP_GEO_VERSION}`);
+      await ctx.rollups.deleteMany({});
+    }
     await backfillInspectionWorkReportRollups();
+    await meta.updateOne(
+      { _id: ROLLUP_GEO_VERSION as any },
+      { $set: { _id: ROLLUP_GEO_VERSION, at: new Date() } },
+      { upsert: true }
+    );
     rollupsReady = true;
     return true;
   })();
@@ -508,32 +536,29 @@ export async function decrementInspectionWorkReportRollup(work: any): Promise<vo
   await incrementInspectionWorkReportRollup(work, -1);
 }
 
-function findMasterByIdOrName(list: any[] | undefined, id: string) {
-  const needle = String(id || '').trim();
+function findMasterById(list: any[] | undefined, id: string) {
+  const needle = String(id || '').trim().toLowerCase();
   if (!needle) return undefined;
-  const lower = needle.toLowerCase();
-  return (list || []).find(
-    (item: any) =>
-      String(item?.id || '').trim().toLowerCase() === lower ||
-      geoNamesEqual(item?.nameEn, needle) ||
-      geoNamesEqual(item?.nameTa, needle)
-  );
+  return (list || []).find((item: any) => String(item?.id || '').trim().toLowerCase() === needle);
 }
 
 function attachMasterGeoNames(
   row: InspectionWorkReportDimensionRollup,
   masters: InspectionWorksFilterMasters
 ): InspectionWorkReportDimensionRollup {
-  const tp = findMasterByIdOrName(masters.townPanchayats, row.tpId);
+  const tp = findMasterById(masters.townPanchayats, row.tpId);
   const dist =
-    findMasterByIdOrName(masters.districts, row.districtId) ||
-    (tp?.districtId ? findMasterByIdOrName(masters.districts, String(tp.districtId)) : undefined);
+    (tp?.districtId ? findMasterById(masters.districts, String(tp.districtId)) : undefined) ||
+    findMasterById(masters.districts, row.districtId);
   const zone =
-    findMasterByIdOrName(masters.zones, row.zoneId) ||
-    (dist?.zoneId ? findMasterByIdOrName(masters.zones, String(dist.zoneId)) : undefined) ||
-    (tp?.zoneId ? findMasterByIdOrName(masters.zones, String(tp.zoneId)) : undefined);
+    (dist?.zoneId ? findMasterById(masters.zones, String(dist.zoneId)) : undefined) ||
+    (tp?.zoneId ? findMasterById(masters.zones, String(tp.zoneId)) : undefined) ||
+    findMasterById(masters.zones, row.zoneId);
   return {
     ...row,
+    zoneId: zone?.id || row.zoneId || '',
+    districtId: dist?.id || row.districtId || '',
+    tpId: tp?.id || row.tpId || '',
     zoneNameEn: zone?.nameEn || row.zoneNameEn || '',
     districtNameEn: dist?.nameEn || row.districtNameEn || '',
     tpNameEn: tp?.nameEn || row.tpNameEn || '',

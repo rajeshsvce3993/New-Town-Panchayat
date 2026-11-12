@@ -2660,11 +2660,9 @@ export default function InspectionReportsView({
       const zoneNameEn = String(zone?.nameEn || '').trim();
       list = list.filter((d: any) => {
         const dZone = String(d.zoneId || '').toLowerCase();
-        return (
-          (dZone && dZone === zoneIdKey) ||
-          geoNamesEqual(d.zoneNameEn, zoneNameEn) ||
-          geoNamesEqual(d.zoneNameEn, effZoneId)
-        );
+        if (dZone && dZone === zoneIdKey) return true;
+        if (!dZone && zoneNameEn && String(d.zoneNameEn || '').trim() === zoneNameEn) return true;
+        return false;
       });
     }
     return list;
@@ -2705,12 +2703,12 @@ export default function InspectionReportsView({
           geoNamesEqual(d.nameEn, selectedDistrictId) ||
           geoNamesEqual(d.nameTa, selectedDistrictId)
       );
-      list = list.filter((tp: any) =>
-        String(tp.districtId || '').toLowerCase() === sDist ||
-        String(tp.districtId || '').toLowerCase() === String(dist?.id || '').toLowerCase() ||
-        geoNamesEqual(tp.districtNameEn, dist?.nameEn) ||
-        geoNamesEqual(tp.districtNameEn, selectedDistrictId)
-      );
+      list = list.filter((tp: any) => {
+        const tpDist = String(tp.districtId || '').toLowerCase();
+        if (tpDist && (tpDist === sDist || tpDist === String(dist?.id || '').toLowerCase())) return true;
+        if (!tpDist && dist?.nameEn && geoNamesEqual(tp.districtNameEn, dist.nameEn)) return true;
+        return false;
+      });
     } else {
       const effZoneId = userZoneId || selectedZoneId;
       if (effZoneId && effZoneId !== 'all') {
@@ -2722,23 +2720,15 @@ export default function InspectionReportsView({
             geoNamesEqual(z.nameTa, effZoneId)
         );
         const zoneIdKey = String(zone?.id || effZoneId).toLowerCase();
-        const zoneNameEn = String(zone?.nameEn || '').trim();
         list = list.filter((tp: any) => {
           const tpZone = String(tp.zoneId || '').toLowerCase();
-          if ((tpZone && tpZone === zoneIdKey) || geoNamesEqual(tp.zoneNameEn, zoneNameEn) || geoNamesEqual(tp.zoneNameEn, effZoneId)) {
-            return true;
-          }
+          if (tpZone && tpZone === zoneIdKey) return true;
           const dist = (state.districts || []).find((d: any) =>
-            String(d.id || '').toLowerCase() === String(tp.districtId || '').toLowerCase() ||
-            geoNamesEqual(d.nameEn, tp.districtNameEn)
+            String(d.id || '').toLowerCase() === String(tp.districtId || '').toLowerCase()
           );
           if (!dist) return false;
           const dZone = String(dist.zoneId || '').toLowerCase();
-          return (
-            (dZone && dZone === zoneIdKey) ||
-            geoNamesEqual(dist.zoneNameEn, zoneNameEn) ||
-            geoNamesEqual(dist.zoneNameEn, effZoneId)
-          );
+          return !!(dZone && dZone === zoneIdKey);
         });
       }
     }
@@ -3290,45 +3280,48 @@ export default function InspectionReportsView({
       names?: { zoneNameEn?: string; districtNameEn?: string; tpNameEn?: string; streetName?: string; street?: string }
     ) => {
       const norm = (v: any) => String(v || '').trim().toLowerCase();
-      const matchesGeo = (entity: any, ...needles: string[]) => {
-        const ids = [entity?.id].map(norm).filter(Boolean);
-        return needles.some((n) => {
-          if (!n) return false;
-          if (ids.includes(n)) return true;
-          return geoNamesEqual(entity?.nameEn, n) || geoNamesEqual(entity?.nameTa, n);
-        });
+      const byId = (list: any[] | undefined, id: string) => {
+        const n = norm(id);
+        if (!n) return undefined;
+        return (list || []).find((item: any) => norm(item?.id) === n);
+      };
+      const byName = (list: any[] | undefined, name: string) => {
+        const n = String(name || '').trim();
+        if (!n || /^(z|d|tp|iu)_/i.test(n)) return undefined;
+        return (list || []).find(
+          (item: any) => geoNamesEqual(item?.nameEn, n) || geoNamesEqual(item?.nameTa, n)
+        );
+      };
+      const displayName = (...values: Array<string | undefined>) => {
+        for (const value of values) {
+          const s = String(value || '').trim();
+          if (s && !/^(z|d|tp|iu)_/i.test(s)) return s;
+        }
+        return '-';
       };
       const zoneName = String(names?.zoneNameEn || '').trim();
       const distName = String(names?.districtNameEn || '').trim();
       const tpName = String(names?.tpNameEn || '').trim();
       const streetName = String(names?.streetName || names?.street || '').trim();
 
-      let tp = (state.townPanchayats || []).find((t: any) =>
-        matchesGeo(t, norm(tpId), norm(tpName))
-      );
-      let dist = (state.districts || []).find((d: any) =>
-        matchesGeo(d, norm(districtId), norm(distName))
-      );
-      if (!dist && tp?.districtId) {
-        dist = (state.districts || []).find((d: any) => matchesGeo(d, norm(tp.districtId)));
-      }
-      let zone = (state.zones || []).find((z: any) =>
-        matchesGeo(z, norm(zoneId), norm(zoneName))
-      );
-      if (!zone && dist?.zoneId) {
-        zone = (state.zones || []).find((z: any) => matchesGeo(z, norm(dist.zoneId)));
-      }
-      if (!zone && tp?.zoneId) {
-        zone = (state.zones || []).find((z: any) => matchesGeo(z, norm(tp.zoneId)));
-      }
+      const tp = byId(state.townPanchayats, tpId) || byName(state.townPanchayats, tpName);
+      const dist =
+        byId(state.districts, tp?.districtId) ||
+        byId(state.districts, districtId) ||
+        byName(state.districts, distName);
+      const zone =
+        byId(state.zones, dist?.zoneId) ||
+        byId(state.zones, tp?.zoneId) ||
+        byId(state.zones, zoneId) ||
+        byName(state.zones, zoneName);
 
       return {
-        zoneNameEn: zone?.nameEn || zoneName || zoneId || '-',
-        zoneNameTa: zone?.nameTa || zoneName || zone?.nameEn || zoneId || '-',
-        districtNameEn: dist?.nameEn || distName || districtId || '-',
-        districtNameTa: dist?.nameTa || distName || dist?.nameEn || districtId || '-',
-        tpNameEn: tp?.nameEn || tpName || tpId || '-',
-        tpNameTa: tp?.nameTa || tpName || tp?.nameEn || tpId || '-',
+        zoneNameEn: displayName(zone?.nameEn, zoneName),
+        zoneNameTa: displayName(zone?.nameTa, zone?.nameEn, zoneName),
+        districtNameEn: displayName(dist?.nameEn, distName),
+        districtNameTa: displayName(dist?.nameTa, dist?.nameEn, distName),
+        tpNameEn: displayName(tp?.nameEn, tpName),
+        tpNameTa: displayName(tp?.nameTa, tp?.nameEn, tpName),
         streetName: streetName || '-',
       };
     },

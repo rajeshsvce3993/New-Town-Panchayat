@@ -69,9 +69,8 @@ export function districtIdsForZone(zoneId: string, masters: InspectionWorksFilte
     const dZone = normId(d.zoneId).toLowerCase();
     const belongs =
       (dZone && dZone === zoneIdKey) ||
-      geoNamesEqual(d.zoneNameEn, zoneNameEn) ||
-      geoNamesEqual(d.zoneNameEn, zoneNameTa) ||
-      geoNamesEqual(d.zoneNameEn, zoneId);
+      (!dZone && !!zoneNameEn && String(d.zoneNameEn || '').trim() === zoneNameEn) ||
+      (!dZone && !!zoneNameTa && String(d.zoneNameEn || '').trim() === zoneNameTa);
     if (!belongs) continue;
     if (d.id) ids.push(normId(d.id));
   }
@@ -95,11 +94,10 @@ export function tpIdsForDistrict(districtId: string, masters: InspectionWorksFil
     const d = normId(tp.districtId).toLowerCase();
     const belongs =
       (d && d === distIdKey) ||
-      geoNamesEqual(tp.districtNameEn, distNameEn) ||
-      geoNamesEqual(tp.districtNameEn, distNameTa) ||
-      geoNamesEqual(tp.districtNameEn, districtId) ||
-      geoNamesEqual(tp.districtNameTa, distNameEn) ||
-      geoNamesEqual(tp.districtNameTa, districtId);
+      (!d &&
+        ((distNameEn && geoNamesEqual(tp.districtNameEn, distNameEn)) ||
+          (distNameTa && geoNamesEqual(tp.districtNameEn, distNameTa)) ||
+          (distNameEn && geoNamesEqual(tp.districtNameTa, distNameEn))));
     if (!belongs) continue;
     if (tp.id) ids.push(normId(tp.id));
   }
@@ -125,8 +123,7 @@ export function tpIdsForZone(zoneId: string, masters: InspectionWorksFilterMaste
     const z = normId(tp.zoneId).toLowerCase();
     const belongs =
       (z && z === zoneIdKey) ||
-      geoNamesEqual(tp.zoneNameEn, zoneNameEn) ||
-      geoNamesEqual(tp.zoneNameEn, zoneId);
+      (!z && !!zoneNameEn && String(tp.zoneNameEn || '').trim() === zoneNameEn);
     if (!belongs) continue;
     if (tp.id) tpIds.push(normId(tp.id));
   }
