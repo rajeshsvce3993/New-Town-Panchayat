@@ -9,7 +9,7 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { OFFICIAL_PF_INTEREST_RATES } from './pfInterestRatesData';
 import { getAppEnv, isLocalDevHost } from '@/lib/appEnvironment';
 import { isFallbackInspectionWork } from '@/lib/inspectionWorksQueryFilters';
-import { applyCanonicalDistrictNames, geoNamesEqual } from '@/lib/geoNameMatch';
+import { applyCanonicalDistrictNames, geoNamesEqual, stampWorkGeoFromMasters } from '@/lib/geoNameMatch';
 import { applyUserPasswordFields, mergeUserRecordPreservingPassword } from '@/lib/userCredentials';
 
 // Storage paths for local fallback
@@ -41,18 +41,19 @@ const INITIAL_DATA = {
   },
   zones: [
     { id: 'z1', nameEn: 'Kanchipuram Zone', nameTa: 'காஞ்சிபுரம் மண்டலம்', code: '01' },
-    { id: 'z_chennai', nameEn: 'Chennai Zone', nameTa: 'சென்னை மண்டலம்', code: '02' }
+    { id: 'z_chennai', nameEn: 'Chennai Zone', nameTa: 'சென்னை மண்டலம்', code: '02' },
+    { id: 'z_thiruvallur', nameEn: 'Tiruvallur', nameTa: 'திருவள்ளூர்', code: '03' }
   ],
   districts: [
     { id: 'd_chengalpattu', zoneId: 'z1', nameEn: 'Chengalpattu', nameTa: 'செங்கல்பட்டு', code: '01' },
     { id: 'd_kanchi', zoneId: 'z1', nameEn: 'Kanchipuram', nameTa: 'காஞ்சிபுரம்', code: '02' },
-    { id: 'd_thiruvallur', zoneId: 'z_chennai', nameEn: 'Tiruvallur', nameTa: 'திருவள்ளூர்', code: '03' }
+    { id: 'd_thiruvallur', zoneId: 'z_thiruvallur', nameEn: 'Tiruvallur', nameTa: 'திருவள்ளூர்', code: '03' }
   ],
   townPanchayats: [
-    { id: 'tp_arani', districtId: 'd_thiruvallur', nameEn: 'Arani', nameTa: 'ஆரணி', code: '01' },
-    { id: 'tp_csv_36u9', districtId: 'd_thiruvallur', nameEn: 'Arani', nameTa: 'ஆரணி', code: '01' },
-    { id: 'tp_thirumazhisai', districtId: 'd_thiruvallur', nameEn: 'Thirumazhisai', nameTa: 'திருமழிசை', code: '02' },
-    { id: 'tp1', districtId: 'd_chengalpattu', nameEn: 'Thiruporur', nameTa: 'திருப்போரூர்', code: '01' }
+    { id: 'tp_arani', districtId: 'd_thiruvallur', zoneId: 'z_thiruvallur', nameEn: 'Arani', nameTa: 'ஆரணி', code: '01' },
+    { id: 'tp_csv_36u9', districtId: 'd_thiruvallur', zoneId: 'z_thiruvallur', nameEn: 'Arani', nameTa: 'ஆரணி', code: '01' },
+    { id: 'tp_thirumazhisai', districtId: 'd_thiruvallur', zoneId: 'z_thiruvallur', nameEn: 'Thirumazhisai', nameTa: 'திருமழிசை', code: '02' },
+    { id: 'tp1', districtId: 'd_chengalpattu', zoneId: 'z1', nameEn: 'Thiruporur', nameTa: 'திருப்போரூர்', code: '01' }
   ],
   wardsAndStreets: [
     { id: 'st_1', tpId: 'tp_arani', wardNo: '1', streetNameEn: 'Bazaar Street', streetNameTa: 'பஜார் வீதி' },
@@ -2057,8 +2058,11 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
       undefined;
     const distKey = lowerKey(tp?.districtId || w.districtId);
     const dist = distKey ? lookups.districtById.get(distKey) : undefined;
-    const zoneKey = lowerKey(dist?.zoneId || w.zoneId);
-    const zone = zoneKey ? lookups.zoneById.get(zoneKey) : undefined;
+    const zone =
+      (w.zoneId && lookups.zoneById.get(lowerKey(w.zoneId))) ||
+      (tp?.zoneId && lookups.zoneById.get(lowerKey(tp.zoneId))) ||
+      (dist?.zoneId && lookups.zoneById.get(lowerKey(dist.zoneId))) ||
+      undefined;
 
     const wCatId = lowerKey(w.categoryId);
     const wCatName = lowerKey(w.categoryNameEn || w.categoryName || w.category);
@@ -2112,7 +2116,7 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
 
     const resolvedTpId = String(tp?.id || w.tpId || w.townPanchayatId || '').trim();
     const resolvedDistrictId = String(tp?.districtId || dist?.id || w.districtId || '').trim();
-    const resolvedZoneId = String(zone?.id || dist?.zoneId || w.zoneId || '').trim();
+    const resolvedZoneId = String(zone?.id || w.zoneId || tp?.zoneId || dist?.zoneId || '').trim();
 
     return {
       ...w,
@@ -2126,8 +2130,8 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
       tpNameTa: tp?.nameTa || w.tpNameTa || '',
       districtNameEn: dist?.nameEn || w.districtNameEn || '',
       districtNameTa: dist?.nameTa || w.districtNameTa || '',
-      zoneNameEn: zone?.nameEn || '',
-      zoneNameTa: zone?.nameTa || zone?.nameEn || '',
+      zoneNameEn: zone?.nameEn || w.zoneNameEn || '',
+      zoneNameTa: zone?.nameTa || zone?.nameEn || w.zoneNameTa || '',
       subjectId: resolvedSubjectId,
       subjectNameEn: resolvedSubjectNameEn,
       subjectNameTa: resolvedSubjectNameTa,
@@ -3921,8 +3925,18 @@ export async function resolveInspectionWorkIdentity(
 export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
   let mongoSaved = false;
   const { attachInspectionWorkReportIndexFields } = await import('@/lib/inspectionWorkReportIndex');
-  const districts = await getCollectionData('districts').catch(() => []);
-  const indexedWork = attachInspectionWorkReportIndexFields(applyCanonicalDistrictNames(newWork, districts));
+  const [districts, townPanchayats, zones] = await Promise.all([
+    getCollectionData('districts').catch(() => []),
+    getCollectionData('townPanchayats').catch(() => []),
+    getCollectionData('zones').catch(() => []),
+  ]);
+  const indexedWork = attachInspectionWorkReportIndexFields(
+    stampWorkGeoFromMasters(applyCanonicalDistrictNames(newWork, districts), {
+      townPanchayats,
+      districts,
+      zones,
+    })
+  );
   let previousWork: any | null = null;
   try {
     const client = await getMongoClient();

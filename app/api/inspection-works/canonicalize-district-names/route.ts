@@ -15,7 +15,7 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
 }
 
-/** Spelling correction: Thiruvallur / Tiruvallue → Tiruvallur for district and zone. */
+/** One-time DB rewrite: canonical Tiruvallur names and zone/district/TP parent ids. */
 export async function POST(req: NextRequest) {
   const confirm = (req.nextUrl.searchParams.get('confirm') || '').trim().toLowerCase();
   if (confirm !== 'thiruvallur' && confirm !== 'tiruvallur') {

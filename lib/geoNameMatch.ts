@@ -161,3 +161,46 @@ export function applyCanonicalDistrictNames(work: any, _districts: any[] = []): 
   return withCanonicalGeoFields(work);
 }
 
+function masterById(list: any[] | undefined, id: unknown) {
+  const n = String(id || '').trim().toLowerCase();
+  if (!n) return undefined;
+  return (list || []).find((item: any) => String(item?.id || '').trim().toLowerCase() === n);
+}
+
+/** Copy zone/district/TP ids and names from master collections by id. Used on save so reports read stored ids. */
+export function stampWorkGeoFromMasters(
+  work: any,
+  masters: { townPanchayats?: any[]; districts?: any[]; zones?: any[] } = {}
+): any {
+  if (!work || typeof work !== 'object') return work;
+  const tp = masterById(masters.townPanchayats, work.tpId || work.townPanchayatId);
+  const dist = masterById(masters.districts, tp?.districtId || work.districtId);
+  const zone = masterById(masters.zones, tp?.zoneId || dist?.zoneId || work.zoneId);
+  if (!tp && !dist && !zone) return work;
+  return {
+    ...work,
+    ...(tp?.id
+      ? {
+          tpId: tp.id,
+          townPanchayatId: tp.id,
+          tpNameEn: tp.nameEn || work.tpNameEn,
+          tpNameTa: tp.nameTa || work.tpNameTa,
+        }
+      : {}),
+    ...(dist?.id
+      ? {
+          districtId: dist.id,
+          districtNameEn: dist.nameEn || work.districtNameEn,
+          districtNameTa: dist.nameTa || work.districtNameTa,
+        }
+      : {}),
+    ...(zone?.id
+      ? {
+          zoneId: zone.id,
+          zoneNameEn: zone.nameEn || work.zoneNameEn,
+          zoneNameTa: zone.nameTa || work.zoneNameTa,
+        }
+      : {}),
+  };
+}
+

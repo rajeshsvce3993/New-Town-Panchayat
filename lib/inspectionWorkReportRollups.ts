@@ -13,7 +13,6 @@ import {
   tpIdsForZone,
   wardFilterVariants,
 } from '@/lib/inspectionWorksMongoRepository';
-import { geoNamesEqual } from '@/lib/geoNameMatch';
 import os from 'node:os';
 
 export const INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION = 'inspectionWorkReportRollups';
@@ -47,7 +46,7 @@ const LIVE_COLLECTION = INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION;
 const BUILD_COLLECTION = `${INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION}_build`;
 const PREV_COLLECTION = `${INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION}_prev`;
 const META_ID = 'inspection_work_report_rollups';
-const WORKS_GEO_REPAIR_META_ID = 'tiruvallur_works_geo_repair_v1';
+const WORKS_GEO_REPAIR_META_ID = 'geo_hierarchy_repair_v2';
 const ROLLUP_SCHEMA_VERSION = 3;
 const MONTH_AGG_MAX_MS = 180_000;
 const STALE_BUILD_MS = 10 * 60_000;
@@ -187,26 +186,14 @@ function buildRollupMatch(
 
   if (scopeTp) {
     const variants = idVariants(scopeTp);
-    const tp = (masters.townPanchayats || []).find(
-      (t) =>
-        variants.includes(norm(t.id).toLowerCase()) || variants.includes(norm(t.nameEn).toLowerCase())
-    );
+    const tp = (masters.townPanchayats || []).find((t) => variants.includes(norm(t.id).toLowerCase()));
     const ids = [...variants];
     if (tp?.id) ids.push(norm(tp.id));
-    if (tp?.nameEn) ids.push(norm(tp.nameEn));
-    const names = [tp?.nameEn, tp?.nameTa].filter(Boolean).map((v) => norm(v));
-    const or: Record<string, unknown>[] = [{ tpId: { $in: [...new Set(ids.filter(Boolean))] } }];
-    if (names.length) or.push({ tpNameEn: { $in: [...new Set(names)] } });
-    and.push(or.length === 1 ? or[0] : { $or: or });
+    and.push({ tpId: { $in: [...new Set(ids.filter(Boolean))] } });
   } else if (scopeDistrict) {
     const variants = idVariants(scopeDistrict);
     const tpIds = tpIdsForDistrict(scopeDistrict, masters);
-    const dist = (masters.districts || []).find(
-      (d) =>
-        variants.includes(norm(d.id).toLowerCase()) ||
-        geoNamesEqual(d.nameEn, scopeDistrict) ||
-        geoNamesEqual(d.nameTa, scopeDistrict)
-    );
+    const dist = (masters.districts || []).find((d) => variants.includes(norm(d.id).toLowerCase()));
     const or: Record<string, unknown>[] = [{ districtId: { $in: variants } }];
     if (dist?.id) or.push({ districtId: dist.id });
     if (tpIds.length) or.push({ tpId: { $in: tpIds } });
@@ -214,12 +201,7 @@ function buildRollupMatch(
   } else if (scopeZone) {
     const districtIds = districtIdsForZone(scopeZone, masters);
     const tpIds = tpIdsForZone(scopeZone, masters);
-    const zone = (masters.zones || []).find(
-      (z) =>
-        idVariants(scopeZone).includes(norm(z.id).toLowerCase()) ||
-        geoNamesEqual(z.nameEn, scopeZone) ||
-        geoNamesEqual(z.nameTa, scopeZone)
-    );
+    const zone = (masters.zones || []).find((z) => idVariants(scopeZone).includes(norm(z.id).toLowerCase()));
     const zoneIds = [...idVariants(scopeZone)];
     if (zone?.id) zoneIds.push(norm(zone.id));
     const or: Record<string, unknown>[] = [{ zoneId: { $in: [...new Set(zoneIds.filter(Boolean))] } }];
@@ -781,6 +763,73 @@ async function runFullBuild(ctx: MongoCtx, force: boolean): Promise<void> {
   console.log(`[inspectionWorkReportRollups] BUILD promoted to LIVE (${buckets} buckets)`);
 }
 
+type GeoRemap = {
+  districtId: string;
+  fromZoneId?: string;
+  zoneId: string;
+  zoneNameEn?: string;
+  zoneNameTa?: string;
+  tpIds?: string[];
+};
+
+async function remapRollupZoneIds(ctx: MongoCtx, remaps: GeoRemap[]): Promise<number> {
+  const changed = remaps.filter(
+    (r) => r.districtId && r.zoneId && norm(r.fromZoneId).toLowerCase() !== norm(r.zoneId).toLowerCase()
+  );
+  if (!changed.length) return 0;
+  const cols = [LIVE_COLLECTION, BUILD_COLLECTION, PREV_COLLECTION];
+  let moved = 0;
+  for (const colName of cols) {
+    if (!(await collectionExists(ctx, colName))) continue;
+    const col = ctx.db.collection<InspectionWorkReportRollupDoc>(colName);
+    for (const remap of changed) {
+      const cursor = col.find({ districtId: remap.districtId, zoneId: { $ne: remap.zoneId } });
+      for await (const doc of cursor) {
+        const nextDims: InspectionWorkReportRollupDims = {
+          submittedDateYmd: doc.submittedDateYmd,
+          zoneId: remap.zoneId,
+          districtId: doc.districtId,
+          tpId: doc.tpId,
+          wardNumber: doc.wardNumber,
+          submittedByUserName: doc.submittedByUserName,
+          subjectId: doc.subjectId,
+          categoryId: doc.categoryId,
+        };
+        const newId = inspectionWorkReportRollupId(nextDims);
+        const count = Number(doc.count) || 0;
+        if (newId === String(doc._id)) {
+          await col.updateOne({ _id: doc._id }, { $set: { zoneId: remap.zoneId } });
+          moved += 1;
+          continue;
+        }
+        await col.updateOne(
+          { _id: newId as any },
+          {
+            $set: { zoneId: remap.zoneId },
+            $setOnInsert: {
+              submittedDateYmd: nextDims.submittedDateYmd,
+              districtId: nextDims.districtId,
+              tpId: nextDims.tpId,
+              wardNumber: nextDims.wardNumber,
+              submittedByUserName: nextDims.submittedByUserName,
+              subjectId: nextDims.subjectId,
+              categoryId: nextDims.categoryId,
+            },
+            $inc: { count },
+          },
+          { upsert: true }
+        );
+        await col.deleteOne({ _id: doc._id });
+        moved += 1;
+      }
+    }
+  }
+  if (moved) {
+    console.log(`[geo-hierarchy] Remapped ${moved} report rollup buckets onto corrected zone ids`);
+  }
+  return moved;
+}
+
 async function maybeRepairWorksGeoOnce(ctx: MongoCtx): Promise<void> {
   const metaCol = ctx.db.collection('appMeta');
   const existing = await metaCol.findOne({ _id: WORKS_GEO_REPAIR_META_ID });
@@ -795,13 +844,37 @@ async function maybeRepairWorksGeoOnce(ctx: MongoCtx): Promise<void> {
   if (doc.owner && doc.owner !== workerOwner() && doc.startedAt) return;
   try {
     const { canonicalizeTiruvallurSpellings } = require('./canonicalizeTiruvallurMongo.js');
-    await canonicalizeTiruvallurSpellings(ctx.db);
+    const result = await canonicalizeTiruvallurSpellings(ctx.db);
+    const remapped = await remapRollupZoneIds(ctx, result?.remaps || []);
+    try {
+      const { invalidateInspectionWorksLiteCache } = await import('@/lib/inspectionWorksLiteLoader');
+      invalidateInspectionWorksLiteCache();
+    } catch (_) {}
+    try {
+      const { invalidateInspectionWorksAggregateCache } = await import('@/lib/inspectionWorksReportsAggregate');
+      invalidateInspectionWorksAggregateCache();
+    } catch (_) {}
     await metaCol.updateOne(
       { _id: WORKS_GEO_REPAIR_META_ID },
-      { $set: { done: true, finishedAt: new Date() } }
+      {
+        $set: {
+          done: true,
+          finishedAt: new Date(),
+          remaps: (result?.remaps || []).length,
+          remappedRollups: remapped,
+          modified: result?.modified || 0,
+        },
+      }
+    );
+    console.log(
+      `[geo-hierarchy] One-time collection repair finished on "${result?.dbName || ctx.db.databaseName}" modified=${result?.modified || 0} remaps=${(result?.remaps || []).length} rollups=${remapped}`
     );
   } catch (err) {
-    console.warn('[inspectionWorkReportRollups] one-time geo repair failed:', err);
+    console.warn('[geo-hierarchy] one-time geo repair failed:', err);
+    await metaCol.updateOne(
+      { _id: WORKS_GEO_REPAIR_META_ID },
+      { $unset: { startedAt: 1, owner: 1 } }
+    );
   }
 }
 
@@ -815,6 +888,7 @@ async function runRollupWorker(): Promise<void> {
   const ctx = await mongo();
   if (!ctx) return;
   await ensureInspectionWorkReportIndexes();
+  await maybeRepairWorksGeoOnce(ctx);
   const meta = (await ctx.meta.findOne({ _id: META_ID })) as RollupMetaDoc | null;
   const liveCount = (await collectionExists(ctx, LIVE_COLLECTION))
     ? await ctx.rollups.estimatedDocumentCount()
@@ -841,7 +915,6 @@ async function runRollupWorker(): Promise<void> {
     await catchupRecentDays(ctx, LIVE_COLLECTION);
     await ctx.meta.updateOne({ _id: META_ID }, { $set: { lastCatchupAt: new Date() } }, { upsert: true });
   }
-  await maybeRepairWorksGeoOnce(ctx);
 }
 
 function tickRollupWorker(): Promise<void> {
@@ -982,30 +1055,18 @@ function findMasterById(list: any[] | undefined, id: string) {
   return (list || []).find((item: any) => String(item?.id || '').trim().toLowerCase() === needle);
 }
 
-function findMasterByUniqueName(list: any[] | undefined, name: string) {
-  const needle = String(name || '').trim().toLowerCase();
-  if (!needle) return undefined;
-  const matches = (list || []).filter(
-    (item: any) => String(item?.nameEn || '').trim().toLowerCase() === needle
-  );
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
 function attachMasterGeoNames(
   row: InspectionWorkReportDimensionRollup,
   masters: InspectionWorksFilterMasters
 ): InspectionWorkReportDimensionRollup {
-  const tp =
-    findMasterById(masters.townPanchayats, row.tpId) ||
-    findMasterByUniqueName(masters.townPanchayats, row.tpId) ||
-    findMasterByUniqueName(masters.townPanchayats, row.tpNameEn || '');
+  const tp = findMasterById(masters.townPanchayats, row.tpId);
   const dist =
     (tp?.districtId ? findMasterById(masters.districts, String(tp.districtId)) : undefined) ||
     findMasterById(masters.districts, row.districtId);
   const zone =
-    (dist?.zoneId ? findMasterById(masters.zones, String(dist.zoneId)) : undefined) ||
+    findMasterById(masters.zones, row.zoneId) ||
     (tp?.zoneId ? findMasterById(masters.zones, String(tp.zoneId)) : undefined) ||
-    findMasterById(masters.zones, row.zoneId);
+    (dist?.zoneId ? findMasterById(masters.zones, String(dist.zoneId)) : undefined);
   return {
     ...row,
     zoneId: zone?.id || row.zoneId || '',

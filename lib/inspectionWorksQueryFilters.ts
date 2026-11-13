@@ -1,5 +1,4 @@
 import { extractCalendarDateYMD, extractInspectionDateMs } from '@/lib/inspectionDate';
-import { geoNameKeys, geoNamesEqual, setHasGeoName } from '@/lib/geoNameMatch';
 import { scalarFieldAnswer } from '@/lib/yesNoAnswer';
 
 export type InspectionWorksFilterQuery = {
@@ -52,121 +51,70 @@ function workSubmittedYmd(w: any): string | null {
 
 export function workMatchesDistrict(w: any, districtId: string, ctx: InspectionWorksFilterMasters): boolean {
   const sDist = String(districtId).toLowerCase();
-  const dist = (ctx.districts || []).find(
-    (d: any) =>
-      String(d.id || '').toLowerCase() === sDist ||
-      geoNamesEqual(d.nameEn, districtId) ||
-      geoNamesEqual(d.nameTa, districtId)
-  );
+  const dist = findMasterById(ctx.districts, districtId);
   const distIdKey = String(dist?.id || districtId).toLowerCase();
-  const distName = String(dist?.nameEn || '').trim();
-  const distNameTa = String(dist?.nameTa || '').trim();
-
   const tp = findWorkTownPanchayat(w, ctx);
   if (tp?.districtId) return String(tp.districtId).toLowerCase() === distIdKey;
-
   const wDistId = String(w.districtId || '').toLowerCase();
-  if (wDistId && (wDistId === sDist || wDistId === distIdKey)) return true;
-
-  const wDistName = String(w.districtNameEn || '').trim();
-  const wDistNameTa = String(w.districtNameTa || '').trim();
-  if (distName && (geoNamesEqual(wDistName, distName) || geoNamesEqual(wDistNameTa, distName))) return true;
-  if (distNameTa && (geoNamesEqual(wDistName, distNameTa) || geoNamesEqual(wDistNameTa, distNameTa))) return true;
-  return false;
+  return !!wDistId && (wDistId === sDist || wDistId === distIdKey);
 }
 
-function geoTokenSet(...values: Array<string | undefined | null>): Set<string> {
-  return geoNameKeys(...values);
+function findMasterById(list: any[] | undefined, id: unknown) {
+  const n = String(id || '').trim().toLowerCase();
+  if (!n) return undefined;
+  return (list || []).find((item: any) => String(item?.id || '').trim().toLowerCase() === n);
 }
 
-function setHasGeo(set: Set<string>, ...values: Array<string | undefined | null>): boolean {
-  return setHasGeoName(set, ...values);
+/** Zone from stored ids on the work, then TP master, then district master. */
+export function resolveZoneFromMasters(row: any, ctx: InspectionWorksFilterMasters): any | undefined {
+  const zones = ctx.zones || [];
+  const fromWorkId = findMasterById(zones, row?.zoneId);
+  if (fromWorkId) return fromWorkId;
+  const tp = findWorkTownPanchayat(row, ctx);
+  const fromTp = findMasterById(zones, tp?.zoneId);
+  if (fromTp) return fromTp;
+  const dist =
+    findMasterById(ctx.districts, tp?.districtId) || findMasterById(ctx.districts, row?.districtId);
+  return findMasterById(zones, dist?.zoneId);
 }
 
 export function workMatchesZone(w: any, zoneId: string, ctx: InspectionWorksFilterMasters): boolean {
-  const sZone = String(zoneId).toLowerCase();
-  const zone = (ctx.zones || []).find(
-    (z: any) =>
-      String(z.id || '').toLowerCase() === sZone ||
-      geoNamesEqual(z.nameEn, zoneId) ||
-      geoNamesEqual(z.nameTa, zoneId)
-  );
-  const selectedIds = geoTokenSet(zoneId, zone?.id);
-
+  const sZone = String(zoneId || '').trim();
+  if (!sZone) return false;
+  const selected = findMasterById(ctx.zones, sZone);
+  const selectedId = String(selected?.id || sZone).trim().toLowerCase();
   const tp = findWorkTownPanchayat(w, ctx);
-  if (tp) {
-    const dist = (ctx.districts || []).find(
-      (d: any) => !!tp.districtId && String(d.id || '').toLowerCase() === String(tp.districtId).toLowerCase()
-    );
-    if (dist?.zoneId) return setHasGeo(selectedIds, dist.zoneId);
-    if (tp.zoneId) return setHasGeo(selectedIds, tp.zoneId);
-    return false;
-  }
-
-  const wZoneId = String(w.zoneId || '').trim();
-  if (wZoneId) return setHasGeo(selectedIds, wZoneId);
-
-  const wDistId = String(w.districtId || '').trim();
-  if (wDistId) {
-    const dist = (ctx.districts || []).find(
-      (d: any) => String(d.id || '').toLowerCase() === wDistId.toLowerCase()
-    );
-    if (dist?.zoneId) return setHasGeo(selectedIds, dist.zoneId);
-  }
-  return false;
+  const dist =
+    findMasterById(ctx.districts, tp?.districtId) || findMasterById(ctx.districts, w?.districtId);
+  const ids = [w?.zoneId, tp?.zoneId, dist?.zoneId]
+    .map((v) => String(v || '').trim().toLowerCase())
+    .filter(Boolean);
+  return ids.includes(selectedId);
 }
 
 export function findWorkTownPanchayat(w: any, ctx: InspectionWorksFilterMasters): any | undefined {
   const tps = ctx.townPanchayats || [];
   const wTp = String(w.tpId || w.townPanchayatId || '').toLowerCase();
-  if (wTp) {
-    const byId = tps.find((t: any) => String(t.id || '').toLowerCase() === wTp);
-    if (byId) return byId;
-  }
-  const wName = String(w.tpNameEn || w.townPanchayat || '').trim();
-  const wNameTa = String(w.tpNameTa || '').trim();
-  if (wName || wNameTa) {
-    const byName = tps.find(
-      (t: any) =>
-        geoNamesEqual(t.nameEn, wName) ||
-        geoNamesEqual(t.nameTa, wName) ||
-        geoNamesEqual(t.nameEn, wNameTa) ||
-        geoNamesEqual(t.nameTa, wNameTa)
-    );
-    if (byName) return byName;
-  }
-  return undefined;
+  if (!wTp) return undefined;
+  return tps.find((t: any) => String(t.id || '').toLowerCase() === wTp);
 }
 
 export function workMatchesTp(w: any, tpId: string, ctx: InspectionWorksFilterMasters): boolean {
   const sTp = String(tpId || '').trim();
   if (!sTp || sTp === 'all') return true;
-  const sLower = sTp.toLowerCase();
-  const tp = (ctx.townPanchayats || []).find(
-    (t: any) =>
-      String(t.id || '').toLowerCase() === sLower ||
-      String(t.nameEn || '').trim().toLowerCase() === sLower ||
-      String(t.nameTa || '').trim().toLowerCase() === sLower
-  );
-  const tokens = geoTokenSet(sTp, tp?.id, tp?.nameEn, tp?.nameTa);
-  const wTp = String(w.tpId || w.townPanchayatId || '').trim();
-  const wName = String(w.tpNameEn || w.townPanchayat || '').trim();
-  const wNameTa = String(w.tpNameTa || '').trim();
-
-  if (wName || wNameTa) return setHasGeo(tokens, wName, wNameTa);
-  if (wTp) return setHasGeo(tokens, wTp);
-  return false;
+  const tp = findMasterById(ctx.townPanchayats, sTp);
+  const selectedId = String(tp?.id || sTp).trim().toLowerCase();
+  const wTp = String(w.tpId || w.townPanchayatId || '').trim().toLowerCase();
+  return !!wTp && wTp === selectedId;
 }
 
 function geoEq(a?: string | null, b?: string | null): boolean {
-  const x = String(a || '').trim();
-  const y = String(b || '').trim();
-  if (!x || !y) return false;
-  if (x.toLowerCase() === y.toLowerCase()) return true;
-  return geoNamesEqual(x, y);
+  const x = String(a || '').trim().toLowerCase();
+  const y = String(b || '').trim().toLowerCase();
+  return !!x && !!y && x === y;
 }
 
-/** Exact id match only. Zone and district can share the display name Tiruvallur. */
+/** Exact id match only. Empty stored ids are kept so child tpId/districtId matches are not dropped. */
 export function rowMatchesRemoteGeoSelection(
   row: any,
   sel: {
@@ -181,15 +129,14 @@ export function rowMatchesRemoteGeoSelection(
   if (sel.tpId) {
     const id = row?.tpId || row?.townPanchayatId || '';
     if (!geoEq(id, sel.tpId)) return false;
-  } else if (sel.tpNameEn) {
-    const name = row?.tpNameEn || row?.townPanchayat || '';
-    if (!geoEq(name, sel.tpNameEn)) return false;
   }
   if (sel.districtId) {
-    if (!geoEq(row?.districtId, sel.districtId)) return false;
+    const rowDist = String(row?.districtId || '').trim();
+    if (rowDist && !geoEq(rowDist, sel.districtId)) return false;
   }
   if (sel.zoneId) {
-    if (!geoEq(row?.zoneId, sel.zoneId)) return false;
+    const rowZone = String(row?.zoneId || '').trim();
+    if (rowZone && !geoEq(rowZone, sel.zoneId)) return false;
   }
   return true;
 }

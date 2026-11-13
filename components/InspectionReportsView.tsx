@@ -81,7 +81,6 @@ import {
   workMatchesZone,
   type InspectionWorkReportDimensionRollup,
 } from '@/lib/inspectionWorksQueryFilters';
-import { geoNamesEqual } from '@/lib/geoNameMatch';
 import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
 import { isNoAnswer, isYesAnswer } from '@/lib/yesNoAnswer';
 import MapViewReport from './MapViewReport';
@@ -1871,29 +1870,12 @@ export default function InspectionReportsView({
     const role = String(currentUser.roleId || currentUser.role || '').toLowerCase();
     if (isZonalScopedUser(currentUser)) return null;
     if (userTpId) {
-      const tpObj = (state.townPanchayats || []).find((t: any) => 
-        String(t.id).toLowerCase() === String(userTpId).toLowerCase() || 
-        String(t.nameEn || '').toLowerCase() === String(userTpId).toLowerCase() ||
-        String(t.nameTa || '').toLowerCase() === String(userTpId).toLowerCase()
+      const tpObj = (state.townPanchayats || []).find(
+        (t: any) => String(t.id).toLowerCase() === String(userTpId).toLowerCase()
       );
       if (tpObj?.districtId) return tpObj.districtId;
       if (currentUser.districtId && currentUser.districtId !== 'all') return currentUser.districtId;
       if (currentUser.assignedDistrictId && currentUser.assignedDistrictId !== 'all') return currentUser.assignedDistrictId;
-      if (tpObj?.districtNameEn) {
-        const matchedDist = (state.districts || []).find((d: any) =>
-          geoNamesEqual(d.nameEn, tpObj.districtNameEn) ||
-          geoNamesEqual(d.nameTa, tpObj.districtNameEn)
-        );
-        if (matchedDist) return matchedDist.id;
-      }
-      if (String(userTpId).toLowerCase().includes('arani') || String(currentUser?.username).toLowerCase().includes('arani')) {
-        const thiruvallurDist = (state.districts || []).find((d: any) =>
-          String(d.nameEn || '').toLowerCase() === 'tiruvallur' ||
-          String(d.id || '').toLowerCase().includes('thiruvallur') ||
-          String(d.id || '').toLowerCase().includes('tiruvallur')
-        );
-        if (thiruvallurDist) return thiruvallurDist.id;
-      }
     }
     if (!isZonalScopedUser(currentUser) && currentUser.districtId && currentUser.districtId !== 'all') {
       return currentUser.districtId;
@@ -1906,43 +1888,32 @@ export default function InspectionReportsView({
     if (isZonalScopedUser(currentUser)) {
       const explicitZone = currentUser.zoneId || (currentUser.scopeType === 'Zone' ? currentUser.scopeId : null);
       if (explicitZone && explicitZone !== 'all') {
-        const matched = (state.zones || []).find((z: any) => 
-          String(z.id).toLowerCase() === String(explicitZone).toLowerCase() ||
-          String(z.nameEn || '').toLowerCase() === String(explicitZone).toLowerCase()
+        const matched = (state.zones || []).find(
+          (z: any) => String(z.id).toLowerCase() === String(explicitZone).toLowerCase()
         );
         return matched ? matched.id : explicitZone;
       }
       if (currentUser.scopeId && currentUser.scopeId !== 'all') {
-        const matched = (state.zones || []).find((z: any) => 
-          String(z.id).toLowerCase() === String(currentUser.scopeId).toLowerCase() ||
-          String(z.nameEn || '').toLowerCase() === String(currentUser.scopeId).toLowerCase()
+        const matched = (state.zones || []).find(
+          (z: any) => String(z.id).toLowerCase() === String(currentUser.scopeId).toLowerCase()
         );
         return matched ? matched.id : currentUser.scopeId;
       }
     }
     if (userDistrictId) {
-      const distObj = (state.districts || []).find((d: any) => 
-        String(d.id).toLowerCase() === String(userDistrictId).toLowerCase() ||
-        String(d.nameEn || '').toLowerCase() === String(userDistrictId).toLowerCase()
+      const distObj = (state.districts || []).find(
+        (d: any) => String(d.id).toLowerCase() === String(userDistrictId).toLowerCase()
       );
       if (distObj?.zoneId) return distObj.zoneId;
-      if (distObj?.zoneNameEn) {
-        const matchedZone = (state.zones || []).find((z: any) => 
-          String(z.nameEn || '').toLowerCase() === String(distObj.zoneNameEn).toLowerCase()
-        );
-        if (matchedZone) return matchedZone.id;
-      }
     }
     if (userTpId) {
-      const tpObj = (state.townPanchayats || []).find((t: any) => 
-        String(t.id).toLowerCase() === String(userTpId).toLowerCase() || 
-        String(t.nameEn || '').toLowerCase() === String(userTpId).toLowerCase()
+      const tpObj = (state.townPanchayats || []).find(
+        (t: any) => String(t.id).toLowerCase() === String(userTpId).toLowerCase()
       );
-      if (tpObj) {
-        const distObj = (state.districts || []).find((d: any) =>
-          String(d.id).toLowerCase() === String(tpObj.districtId).toLowerCase() ||
-          geoNamesEqual(d.nameEn, tpObj.districtNameEn) ||
-          geoNamesEqual(d.nameTa, tpObj.districtNameEn)
+      if (tpObj?.zoneId) return tpObj.zoneId;
+      if (tpObj?.districtId) {
+        const distObj = (state.districts || []).find(
+          (d: any) => String(d.id).toLowerCase() === String(tpObj.districtId).toLowerCase()
         );
         if (distObj?.zoneId) return distObj.zoneId;
       }
@@ -2590,9 +2561,8 @@ export default function InspectionReportsView({
   const filteredZones = useMemo(() => {
     const list = state.zones || [];
     if (userZoneId) {
-      const matched = list.filter((z: any) => 
-        String(z.id).toLowerCase() === String(userZoneId).toLowerCase() ||
-        String(z.nameEn || '').toLowerCase() === String(userZoneId).toLowerCase()
+      const matched = list.filter(
+        (z: any) => String(z.id).toLowerCase() === String(userZoneId).toLowerCase()
       );
       if (matched.length > 0) return matched;
       return [{ id: userZoneId, nameEn: userZoneId, nameTa: userZoneId }];
@@ -2604,9 +2574,8 @@ export default function InspectionReportsView({
   const availableDistricts = useMemo(() => {
     let list = state.districts || [];
     if (userDistrictId) {
-      const matched = list.filter((d: any) => 
-        String(d.id).toLowerCase() === String(userDistrictId).toLowerCase() ||
-        String(d.nameEn || '').toLowerCase() === String(userDistrictId).toLowerCase()
+      const matched = list.filter(
+        (d: any) => String(d.id).toLowerCase() === String(userDistrictId).toLowerCase()
       );
       if (matched.length > 0) return matched;
       return [{ id: userDistrictId, nameEn: userDistrictId, nameTa: userDistrictId }];
@@ -2614,20 +2583,9 @@ export default function InspectionReportsView({
     const effZoneId = userZoneId || selectedZoneId;
     if (effZoneId && effZoneId !== 'all') {
       const sZone = String(effZoneId).toLowerCase();
-      const zone = (state.zones || []).find(
-        (z: any) =>
-          String(z.id || '').toLowerCase() === sZone ||
-          geoNamesEqual(z.nameEn, effZoneId) ||
-          geoNamesEqual(z.nameTa, effZoneId)
-      );
+      const zone = (state.zones || []).find((z: any) => String(z.id || '').toLowerCase() === sZone);
       const zoneIdKey = String(zone?.id || effZoneId).toLowerCase();
-      const zoneNameEn = String(zone?.nameEn || '').trim();
-      list = list.filter((d: any) => {
-        const dZone = String(d.zoneId || '').toLowerCase();
-        if (dZone && dZone === zoneIdKey) return true;
-        if (!dZone && zoneNameEn && String(d.zoneNameEn || '').trim() === zoneNameEn) return true;
-        return false;
-      });
+      list = list.filter((d: any) => String(d.zoneId || '').toLowerCase() === zoneIdKey);
     }
     return list;
   }, [state.districts, state.zones, selectedZoneId, userZoneId, userDistrictId]);
@@ -2661,38 +2619,22 @@ export default function InspectionReportsView({
     }
     if (selectedDistrictId !== 'all') {
       const sDist = String(selectedDistrictId).toLowerCase();
-      const dist = (state.districts || []).find(
-        (d: any) =>
-          String(d.id || '').toLowerCase() === sDist ||
-          geoNamesEqual(d.nameEn, selectedDistrictId) ||
-          geoNamesEqual(d.nameTa, selectedDistrictId)
-      );
-      list = list.filter((tp: any) => {
-        const tpDist = String(tp.districtId || '').toLowerCase();
-        if (tpDist && (tpDist === sDist || tpDist === String(dist?.id || '').toLowerCase())) return true;
-        if (!tpDist && dist?.nameEn && geoNamesEqual(tp.districtNameEn, dist.nameEn)) return true;
-        return false;
-      });
+      const dist = (state.districts || []).find((d: any) => String(d.id || '').toLowerCase() === sDist);
+      const distIdKey = String(dist?.id || selectedDistrictId).toLowerCase();
+      list = list.filter((tp: any) => String(tp.districtId || '').toLowerCase() === distIdKey);
     } else {
       const effZoneId = userZoneId || selectedZoneId;
       if (effZoneId && effZoneId !== 'all') {
         const sZone = String(effZoneId).toLowerCase();
-        const zone = (state.zones || []).find(
-          (z: any) =>
-            String(z.id || '').toLowerCase() === sZone ||
-            geoNamesEqual(z.nameEn, effZoneId) ||
-            geoNamesEqual(z.nameTa, effZoneId)
-        );
+        const zone = (state.zones || []).find((z: any) => String(z.id || '').toLowerCase() === sZone);
         const zoneIdKey = String(zone?.id || effZoneId).toLowerCase();
         list = list.filter((tp: any) => {
           const tpZone = String(tp.zoneId || '').toLowerCase();
           if (tpZone && tpZone === zoneIdKey) return true;
-          const dist = (state.districts || []).find((d: any) =>
-            String(d.id || '').toLowerCase() === String(tp.districtId || '').toLowerCase()
+          const dist = (state.districts || []).find(
+            (d: any) => String(d.id || '').toLowerCase() === String(tp.districtId || '').toLowerCase()
           );
-          if (!dist) return false;
-          const dZone = String(dist.zoneId || '').toLowerCase();
-          return !!(dZone && dZone === zoneIdKey);
+          return String(dist?.zoneId || '').toLowerCase() === zoneIdKey;
         });
       }
     }
@@ -3249,13 +3191,6 @@ export default function InspectionReportsView({
         if (!n) return undefined;
         return (list || []).find((item: any) => norm(item?.id) === n);
       };
-      const byName = (list: any[] | undefined, name: string) => {
-        const n = String(name || '').trim();
-        if (!n || /^(z|d|tp|iu)_/i.test(n)) return undefined;
-        return (list || []).find(
-          (item: any) => geoNamesEqual(item?.nameEn, n) || geoNamesEqual(item?.nameTa, n)
-        );
-      };
       const displayName = (...values: Array<string | undefined>) => {
         for (const value of values) {
           const s = String(value || '').trim();
@@ -3268,19 +3203,15 @@ export default function InspectionReportsView({
       const tpName = String(names?.tpNameEn || '').trim();
       const streetName = String(names?.streetName || names?.street || '').trim();
 
-      const tp = byId(state.townPanchayats, tpId) || byName(state.townPanchayats, tpName);
-      const dist =
-        byId(state.districts, tp?.districtId) ||
-        byId(state.districts, districtId) ||
-        byName(state.districts, distName);
+      const tp = byId(state.townPanchayats, tpId);
+      const dist = byId(state.districts, tp?.districtId) || byId(state.districts, districtId);
       const zone =
-        byId(state.zones, dist?.zoneId) ||
-        byId(state.zones, tp?.zoneId) ||
         byId(state.zones, zoneId) ||
-        byName(state.zones, zoneName);
+        byId(state.zones, tp?.zoneId) ||
+        byId(state.zones, dist?.zoneId);
       const resolvedTpId = String(tp?.id || tpId || '').trim();
       const resolvedDistrictId = String(dist?.id || tp?.districtId || districtId || '').trim();
-      const resolvedZoneId = String(zone?.id || dist?.zoneId || tp?.zoneId || zoneId || '').trim();
+      const resolvedZoneId = String(zone?.id || zoneId || tp?.zoneId || dist?.zoneId || '').trim();
 
       return {
         zoneId: resolvedZoneId,
