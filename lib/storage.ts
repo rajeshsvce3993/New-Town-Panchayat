@@ -3701,11 +3701,44 @@ export interface TargetedWorksQuery {
   tpNameEn?: string;
   limit?: number;
   todayOnly?: boolean;
+  lite?: boolean;
 }
+
+const MOBILE_LITE_WORK_PROJECTION = {
+  id: 1,
+  workId: 1,
+  submittedAt: 1,
+  createdAt: 1,
+  date: 1,
+  submittedDateYmd: 1,
+  subjectId: 1,
+  categoryId: 1,
+  subjectNameEn: 1,
+  subjectNameTa: 1,
+  categoryNameEn: 1,
+  categoryNameTa: 1,
+  wardNumber: 1,
+  wardNo: 1,
+  streetName: 1,
+  tpId: 1,
+  districtId: 1,
+  zoneId: 1,
+  tpNameEn: 1,
+  tpNameTa: 1,
+  districtNameEn: 1,
+  districtNameTa: 1,
+  zoneNameEn: 1,
+  zoneNameTa: 1,
+  submittedByUserName: 1,
+  submittedByUserId: 1,
+  username: 1,
+  status: 1,
+  imageUrl: 1,
+} as const;
 
 // Fetch targeted inspection works directly using indexed MongoDB queries (<5ms)
 export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}): Promise<any[]> {
-  const { username, userId, tpId, tpNameEn, limit = 10000, todayOnly } = params;
+  const { username, userId, tpId, tpNameEn, limit = 80, todayOnly, lite } = params;
   try {
     const client = await getMongoClient();
     if (client) {
@@ -3802,12 +3835,9 @@ export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}
         query = Object.keys(query).length > 0 ? { $and: [query, dateCond] } : dateCond;
       }
 
-      const maxLim = limit > 0 ? limit : 100000;
-      const works = await col
-        .find(query)
-        .sort({ _id: -1 })
-        .limit(maxLim)
-        .toArray();
+      const maxLim = Math.min(Math.max(limit > 0 ? limit : 80, 1), 200);
+      const findCursor = col.find(query, lite ? { projection: MOBILE_LITE_WORK_PROJECTION } : undefined);
+      const works = await findCursor.sort({ _id: -1 }).limit(maxLim).toArray();
 
       return works.map((w: any) => ({ ...w, id: w.id || (w._id ? String(w._id) : '') }));
     }

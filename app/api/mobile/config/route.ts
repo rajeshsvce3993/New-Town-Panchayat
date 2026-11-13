@@ -62,8 +62,10 @@ export async function GET(req: NextRequest) {
     const rawIcon = settings?.mobileAppIconUrl || settings?.mobileAppConfig?.app_icon_url;
     const rawLogo = settings?.mobileLoginLogoUrl || settings?.mobileAppConfig?.login_logo_url;
 
-    const finalAppIconUrl = rawIcon ? toAbsolute(rawIcon) : `${baseUrl}/app_icon.png?v=default`;
-    const finalLoginLogoUrl = rawLogo ? toAbsolute(rawLogo) : `${baseUrl}/app_logo.png?v=default`;
+    // Empty when unset so the app uses its bundled icon/logo. Do not force a
+    // remote PNG on the login screen — that is what made launch wait on cache.
+    const finalAppIconUrl = rawIcon ? toAbsolute(rawIcon) : '';
+    const finalLoginLogoUrl = rawLogo ? toAbsolute(rawLogo) : '';
 
     const mobileConfig = {
       ...DEFAULT_MOBILE_CONFIG,

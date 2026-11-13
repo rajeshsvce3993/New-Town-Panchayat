@@ -65,8 +65,6 @@ export async function GET(req: NextRequest) {
       employees,
       inspectionRoles,
       inspectionDesignations,
-      notifications,
-      apkVersions,
       settings,
     ] = await Promise.all([
       getCollectionData('districts'),
@@ -80,8 +78,6 @@ export async function GET(req: NextRequest) {
       getEmployees(),
       getCollectionData('inspectionRoles'),
       getCollectionData('inspectionDesignations'),
-      getCollectionData('notifications'),
-      getCollectionData('apkVersions'),
       getAppSettings(),
     ]);
 
@@ -284,14 +280,15 @@ export async function GET(req: NextRequest) {
         userId: rawUser?.id,
         tpId: userTpId,
         tpNameEn: parentTp?.nameEn,
-        limit: 500,
+        limit: 80,
         todayOnly,
+        lite: true,
       });
     } else {
-      // For Admin/Director or unauthenticated sync, fetch recent works directly with MongoDB index
       fetchedWorks = await getTargetedInspectionWorks({
-        limit: todayOnly ? 500 : 10000,
+        limit: 80,
         todayOnly,
+        lite: true,
       });
     }
 
@@ -440,19 +437,32 @@ export async function GET(req: NextRequest) {
       inspectionFields: fields || [],
       wardsAndStreets: userSpecificWardsAndStreets,
       inspectionWorks: finalWorks,
-      inspectionUsers: (inspectionUsers || []).map((u: any) => {
-        const enr = enrichUserForApp(u, masters);
-        delete enr.password;
-        return enr;
-      }),
+      inspectionUsers: matchedUser
+        ? [
+            {
+              id: matchedUser.id,
+              username: matchedUser.username,
+              name: matchedUser.name || matchedUser.nameEn,
+              nameEn: matchedUser.nameEn,
+              nameTa: matchedUser.nameTa,
+              role: matchedUser.role,
+              tpId: matchedUser.tpId,
+              districtId: matchedUser.districtId,
+              zoneId: matchedUser.zoneId,
+            },
+          ]
+        : [],
       inspectionRoles: inspectionRoles || [],
       inspectionDesignations: inspectionDesignations || [],
       user: matchedUser || undefined,
       appIconUrl: appSettings.appIconUrl || null,
       loginLogoUrl: appSettings.loginLogoUrl || null,
-      apkVersions: apkVersions || [],
-      notifications: notifications || [],
-      settings: appSettings,
+      apkVersions: [],
+      notifications: [],
+      settings: {
+        currentLanguage: appSettings.currentLanguage,
+        theme: appSettings.theme,
+      },
     }, { headers: CORS_HEADERS });
   } catch (err: any) {
     console.error('Portal state error:', err);
