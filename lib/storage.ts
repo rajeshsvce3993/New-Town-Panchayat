@@ -9,7 +9,13 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { OFFICIAL_PF_INTEREST_RATES } from './pfInterestRatesData';
 import { getAppEnv, isLocalDevHost } from '@/lib/appEnvironment';
 import { isFallbackInspectionWork } from '@/lib/inspectionWorksQueryFilters';
-import { applyCanonicalDistrictNames, geoNamesEqual, stampWorkGeoFromMasters } from '@/lib/geoNameMatch';
+import {
+  applyCanonicalDistrictNames,
+  geoNamesEqual,
+  listTpNameCandidates,
+  stampWorkGeoFromMasters,
+  workHasMasterTpId,
+} from '@/lib/geoNameMatch';
 import { applyUserPasswordFields, mergeUserRecordPreservingPassword } from '@/lib/userCredentials';
 
 // Storage paths for local fallback
@@ -1246,6 +1252,7 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
     const db = await getActiveMongoDb(client);
     await Promise.allSettled([
       db.collection('inspectionUsers').createIndex({ username: 1 }, { background: true }),
+      db.collection('inspectionUsers').createIndex({ id: 1 }, { background: true }),
       db.collection('inspectionUsers').createIndex({ mobile: 1 }, { background: true }),
       db.collection('inspectionUsers').createIndex({ status: 1 }, { background: true }),
       db.collection('inspectionUsers').createIndex({ tpId: 1 }, { background: true }),
@@ -1269,6 +1276,10 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
       db.collection('inspectionWorks').createIndex({ submittedDateYmd: -1, tpId: 1, categoryId: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ submittedDateYmd: -1, districtId: 1, subjectId: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ submittedDateYmd: -1, zoneId: 1 }, { background: true }),
+      db.collection('inspectionWorks').createIndex(
+        { submittedDateYmd: 1, zoneId: 1, districtId: 1, tpId: 1 },
+        { background: true }
+      ),
       db.collection('inspectionWorks').createIndex(
         { submittedDateYmd: -1, submittedAt: -1, workId: -1 },
         { background: true }
@@ -3921,6 +3932,122 @@ export async function resolveInspectionWorkIdentity(
   return { ok: true, workId: `${generateUserWorkId(username, new Date())}${userSeq}`, userSeq, existing: null };
 }
 
+type InspectorGeoCacheEntry = { at: number; user: any | null };
+const inspectorGeoCache = new Map<string, InspectorGeoCacheEntry>();
+const INSPECTOR_GEO_TTL_MS = 5 * 60 * 1000;
+const INSPECTOR_GEO_CACHE_MAX = 200;
+
+async function findInspectorForGeoStamp(work: any): Promise<any | null> {
+  const keys = [work?.submittedByUserId, work?.submittedByUserName, work?.username, work?.userId]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  if (!keys.length) return null;
+  const cacheKey = keys.join('|').toLowerCase();
+  const cached = inspectorGeoCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < INSPECTOR_GEO_TTL_MS) return cached.user;
+  let user: any | null = null;
+  try {
+    const client = await getMongoClient();
+    if (client) {
+      const db = await getActiveMongoDb(client);
+      const col = await getCollectionWithAliases(db, 'inspectionUsers');
+      user = await col.findOne(
+        {
+          $or: [{ id: { $in: keys } }, { username: { $in: keys } }, { userName: { $in: keys } }, { mobile: { $in: keys } }],
+        },
+        {
+          projection: {
+            id: 1,
+            username: 1,
+            tpId: 1,
+            townPanchayatId: 1,
+            selectedTpIds: 1,
+            townPanchayatIds: 1,
+            districtId: 1,
+            zoneId: 1,
+            tpCode: 1,
+          },
+        }
+      );
+    }
+  } catch (err) {
+    console.warn('[geo-stamp] inspector lookup failed:', (err as any)?.message || err);
+  }
+  if (inspectorGeoCache.size >= INSPECTOR_GEO_CACHE_MAX) inspectorGeoCache.clear();
+  inspectorGeoCache.set(cacheKey, { at: Date.now(), user });
+  return user;
+}
+
+function placeKeyStreet(value: unknown) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '');
+}
+
+async function pickTpByWardStreet(candidates: any[], work: any): Promise<any | null> {
+  if (!candidates.length) return null;
+  const ward = String(work?.wardNumber ?? work?.wardNo ?? work?.ward ?? '').replace(/[^0-9]/g, '');
+  const streetKey = placeKeyStreet(work?.streetName || work?.street);
+  if (!ward && !streetKey) return null;
+  const ids = candidates.map((tp) => tp?.id).filter(Boolean);
+  if (!ids.length) return null;
+  try {
+    const client = await getMongoClient();
+    if (!client) return null;
+    const db = await getActiveMongoDb(client);
+    const col = await getCollectionWithAliases(db, 'wardsAndStreets');
+    const rows = await col
+      .find(
+        {
+          $and: [
+            { $or: [{ tpId: { $in: ids } }, { townPanchayatId: { $in: ids } }] },
+            ...(ward ? [{ $or: [{ wardNo: ward }, { wardNumber: ward }, { ward: ward }] }] : []),
+          ],
+        },
+        { projection: { tpId: 1, townPanchayatId: 1, streetName: 1, streetNameEn: 1, streetNameTa: 1, street: 1 } }
+      )
+      .limit(200)
+      .toArray();
+    const matchedIds = new Set<string>();
+    for (const row of rows) {
+      const rowStreet = placeKeyStreet(row.streetNameEn || row.streetName || row.streetNameTa || row.street);
+      if (streetKey && rowStreet && rowStreet !== streetKey) continue;
+      const tpId = String(row.tpId || row.townPanchayatId || '').trim();
+      if (tpId) matchedIds.add(tpId.toLowerCase());
+    }
+    const hits = candidates.filter((tp) => matchedIds.has(String(tp.id || '').toLowerCase()));
+    return hits.length === 1 ? hits[0] : null;
+  } catch (err) {
+    console.warn('[geo-stamp] ward/street lookup failed:', (err as any)?.message || err);
+    return null;
+  }
+}
+
+async function stampWorkGeoForSave(
+  work: any,
+  masters: { townPanchayats: any[]; districts: any[]; zones: any[] }
+): Promise<any> {
+  const canonical = applyCanonicalDistrictNames(work, masters.districts);
+  let next = stampWorkGeoFromMasters(canonical, masters);
+  if (workHasMasterTpId(next)) return next;
+
+  const inspector = await findInspectorForGeoStamp(next);
+  if (inspector) {
+    next = stampWorkGeoFromMasters(canonical, { ...masters, inspector });
+    if (workHasMasterTpId(next)) return next;
+  }
+
+  const candidates = listTpNameCandidates(next, masters);
+  if (candidates.length > 1) {
+    const picked = await pickTpByWardStreet(candidates, next);
+    if (picked?.id) {
+      next = stampWorkGeoFromMasters({ ...canonical, ...next, tpId: picked.id, townPanchayatId: picked.id }, masters);
+    }
+  }
+  return next;
+}
+
 // Save a single inspection work atomically to MongoDB and local cache
 export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
   let mongoSaved = false;
@@ -3931,11 +4058,7 @@ export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
     getCollectionData('zones').catch(() => []),
   ]);
   const indexedWork = attachInspectionWorkReportIndexFields(
-    stampWorkGeoFromMasters(applyCanonicalDistrictNames(newWork, districts), {
-      townPanchayats,
-      districts,
-      zones,
-    })
+    await stampWorkGeoForSave(newWork, { townPanchayats, districts, zones })
   );
   let previousWork: any | null = null;
   try {
@@ -4009,6 +4132,7 @@ export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
   if (mongoSaved) {
     invalidateInspectionDashboardStatsCache();
     void import('@/lib/inspectionWorksLiteLoader').then((m) => m.invalidateInspectionWorksLiteCache());
+    void import('@/lib/inspectionWorksReportsAggregate').then((m) => m.invalidateInspectionWorksAggregateCache());
     try {
       const { syncInspectionWorkReportRollupOnSave } = await import('@/lib/inspectionWorkReportRollups');
       await syncInspectionWorkReportRollupOnSave(previousWork, indexedWork);

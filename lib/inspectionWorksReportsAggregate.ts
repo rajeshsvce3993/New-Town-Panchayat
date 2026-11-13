@@ -30,7 +30,7 @@ const AGG_CACHE_TTL_MS = 120_000;
 const aggCache = new Map<string, { ts: number; data: unknown }>();
 
 function aggCacheKey(kind: string, filter: InspectionWorksFilterQuery, extra = ''): string {
-  return `named-street-live-1|${kind}|${JSON.stringify(filter)}|${extra}`;
+  return `named-street-live-geo-2|${kind}|${JSON.stringify(filter)}|${extra}`;
 }
 
 function readAggCache<T>(key: string): T | null {
@@ -56,9 +56,13 @@ export function reportsFiltersNeedFullDocumentScan(filter: InspectionWorksFilter
   return !!(filter.street?.trim() || filter.search?.trim() || filter.adminFieldId);
 }
 
-/** Street/search/admin already force a live scan. Prefer rollups for zone/district/TP/ward counts. */
-export function reportsFiltersNeedLiveGeoCounts(_filter?: InspectionWorksFilterQuery): boolean {
-  return false;
+/**
+ * Location-wise / Abstract counts for a date window come from live inspectionWorks
+ * via indexed $match + $group. That is not a Node collection scan.
+ * All-time (no from/to) still uses rollups.
+ */
+export function reportsFiltersNeedLiveGeoCounts(filter?: InspectionWorksFilterQuery): boolean {
+  return !!(filter?.fromDate || filter?.toDate);
 }
 
 function escapeRegex(value: string): string {
@@ -308,7 +312,7 @@ async function aggregateLiveReportCounts(
       count: { $sum: 1 },
     },
   });
-  const grouped = (await col.aggregate(pipeline, { allowDiskUse: true }).toArray()) as Array<{
+  const grouped = (await col.aggregate(pipeline, { allowDiskUse: true, maxTimeMS: 8000 }).toArray()) as Array<{
     _id: InspectionWorkReportDimensionRollup;
     count: number;
   }>;
@@ -352,7 +356,10 @@ export async function aggregateInspectionWorksReportCounts(
     if (cached) return cached;
 
     await ensureInspectionWorkReportIndexes();
-    if (!reportsFiltersNeedFullDocumentScan(filter) && !reportsFiltersNeedLiveGeoCounts(filter)) {
+    const preferLive =
+      reportsFiltersNeedFullDocumentScan(filter) || reportsFiltersNeedLiveGeoCounts(filter);
+
+    if (!preferLive) {
       const rollup = await queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: true });
       if (rollup) {
         const hasRows =
@@ -364,10 +371,26 @@ export async function aggregateInspectionWorksReportCounts(
       }
     }
 
-    const result = await aggregateLiveReportCounts(filter, masters);
-    if (!result) return emptyCountsResult('mongo-aggregate');
-    writeAggCache(cacheKey, result);
-    return result;
+    try {
+      const result = await aggregateLiveReportCounts(filter, masters);
+      if (result) {
+        writeAggCache(cacheKey, result);
+        return result;
+      }
+    } catch (liveErr) {
+      console.warn('[inspectionWorksReportsAggregate] live counts failed; using rollups:', liveErr);
+    }
+
+    const rollup = await queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: true });
+    if (rollup) {
+      const hasRows =
+        (rollup.dimensionRollups?.length || 0) > 0 ||
+        (rollup.subjectCategoryRollups?.length || 0) > 0 ||
+        (rollup.totalWithoutCategoryFilter || 0) > 0;
+      if (hasRows) writeAggCache(cacheKey, rollup);
+      return rollup;
+    }
+    return emptyCountsResult('mongo-aggregate');
   } catch (err) {
     console.warn('[inspectionWorksReportsAggregate] counts aggregate failed:', err);
     return null;

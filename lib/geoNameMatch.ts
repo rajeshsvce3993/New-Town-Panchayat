@@ -161,64 +161,37 @@ export function applyCanonicalDistrictNames(work: any, _districts: any[] = []): 
   return withCanonicalGeoFields(work);
 }
 
-function masterById(list: any[] | undefined, id: unknown) {
-  const n = String(id || '').trim().toLowerCase();
-  if (!n) return undefined;
-  return (list || []).find((item: any) => String(item?.id || '').trim().toLowerCase() === n);
+const stampWorkGeo = require('./stampWorkGeo.js') as {
+  stampWorkGeoFromMasters: (
+    work: any,
+    masters?: {
+      townPanchayats?: any[];
+      districts?: any[];
+      zones?: any[];
+      inspector?: any;
+    }
+  ) => any;
+  workHasMasterTpId: (work: any) => boolean;
+  listTpNameCandidates: (work: any, masters?: { townPanchayats?: any[]; zones?: any[] }) => any[];
+};
+
+export type GeoStampMasters = {
+  townPanchayats?: any[];
+  districts?: any[];
+  zones?: any[];
+  inspector?: any;
+};
+
+/** Copy zone/district/TP ids from masters. Names are used only when unique in the resolved zone. */
+export function stampWorkGeoFromMasters(work: any, masters: GeoStampMasters = {}): any {
+  return stampWorkGeo.stampWorkGeoFromMasters(work, masters);
 }
 
-function uniqueTpInZone(tps: any[] | undefined, name: unknown, zoneId: unknown) {
-  const n = String(name || '').trim().toLowerCase();
-  const z = String(zoneId || '').trim().toLowerCase();
-  if (!n || !z) return undefined;
-  const hits = (tps || []).filter(
-    (t) =>
-      String(t?.zoneId || '').trim().toLowerCase() === z &&
-      String(t?.nameEn || '').trim().toLowerCase() === n
-  );
-  return hits.length === 1 ? hits[0] : undefined;
+export function workHasMasterTpId(work: any): boolean {
+  return stampWorkGeo.workHasMasterTpId(work);
 }
 
-/** Copy zone/district/TP ids and names from master collections by id. Used on save so reports read stored ids. */
-export function stampWorkGeoFromMasters(
-  work: any,
-  masters: { townPanchayats?: any[]; districts?: any[]; zones?: any[] } = {}
-): any {
-  if (!work || typeof work !== 'object') return work;
-  const zoneFromId = masterById(masters.zones, work.zoneId);
-  let tp =
-    masterById(masters.townPanchayats, work.tpId || work.townPanchayatId) ||
-    uniqueTpInZone(masters.townPanchayats, work.tpNameEn || work.townPanchayat, zoneFromId?.id || work.zoneId);
-  const dist = masterById(masters.districts, tp?.districtId || work.districtId);
-  const zone = masterById(masters.zones, tp?.zoneId || dist?.zoneId || work.zoneId);
-  if (!tp && zone) {
-    tp = uniqueTpInZone(masters.townPanchayats, work.tpNameEn || work.townPanchayat, zone.id);
-  }
-  if (!tp && !dist && !zone) return work;
-  return {
-    ...work,
-    ...(tp?.id
-      ? {
-          tpId: tp.id,
-          townPanchayatId: tp.id,
-          tpNameEn: tp.nameEn || work.tpNameEn,
-          tpNameTa: tp.nameTa || work.tpNameTa,
-        }
-      : {}),
-    ...(dist?.id
-      ? {
-          districtId: dist.id,
-          districtNameEn: dist.nameEn || work.districtNameEn,
-          districtNameTa: dist.nameTa || work.districtNameTa,
-        }
-      : {}),
-    ...(zone?.id
-      ? {
-          zoneId: zone.id,
-          zoneNameEn: zone.nameEn || work.zoneNameEn,
-          zoneNameTa: zone.nameTa || work.zoneNameTa,
-        }
-      : {}),
-  };
+export function listTpNameCandidates(work: any, masters: GeoStampMasters = {}): any[] {
+  return stampWorkGeo.listTpNameCandidates(work, masters);
 }
 
