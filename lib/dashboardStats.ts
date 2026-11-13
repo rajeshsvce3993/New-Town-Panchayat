@@ -1,6 +1,5 @@
 import { tpIdsForDistrict, tpIdsForZone } from '@/lib/inspectionWorksMongoRepository';
 import { resolveInspectionFilterMasters } from '@/lib/inspectionWorksFilterMastersServer';
-import { loadInspectionWorksReportCounts } from '@/lib/inspectionWorksLiteLoader';
 import { queryInspectionWorkReportRollupCounts } from '@/lib/inspectionWorkReportRollups';
 import { aggregateSwmTotals } from '@/lib/swmReportsAggregate';
 import { getActiveMongoDb, getCollectionWithAliases, getMongoClient } from '@/lib/storage';
@@ -194,13 +193,8 @@ export async function loadDashboardStats(
     countInspectors(),
   ]);
 
-  let inspectionTotal = Number(rollup?.totalWithoutCategoryFilter) || 0;
-  let countsSource = rollup?.source || 'empty';
-  if (needInspection && !rollup) {
-    const counts = await loadInspectionWorksReportCounts(requestOrigin, allTime);
-    inspectionTotal = Number(counts.totalWithoutCategoryFilter) || 0;
-    countsSource = counts.source;
-  }
+  const inspectionTotal = Number(rollup?.totalWithoutCategoryFilter) || 0;
+  const countsSource = rollup?.source || 'empty';
 
   const data: DashboardStatsPayload = {
     inspection: {

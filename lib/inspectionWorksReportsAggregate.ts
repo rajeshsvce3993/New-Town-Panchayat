@@ -355,7 +355,11 @@ export async function aggregateInspectionWorksReportCounts(
     if (!reportsFiltersNeedFullDocumentScan(filter) && !reportsFiltersNeedLiveGeoCounts(filter)) {
       const rollup = await queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: true });
       if (rollup) {
-        writeAggCache(cacheKey, rollup);
+        const hasRows =
+          (rollup.dimensionRollups?.length || 0) > 0 ||
+          (rollup.subjectCategoryRollups?.length || 0) > 0 ||
+          (rollup.totalWithoutCategoryFilter || 0) > 0;
+        if (hasRows) writeAggCache(cacheKey, rollup);
         return rollup;
       }
     }
@@ -496,7 +500,12 @@ export async function aggregateInspectionWorksReportsBundle(
       total: counts ? totalFromCounts : pageResult?.total ?? rows.length,
     };
 
-    writeAggCache(cacheKey, result);
+    const hasRows =
+      (resolvedCounts.dimensionRollups?.length || 0) > 0 ||
+      (resolvedCounts.subjectCategoryRollups?.length || 0) > 0 ||
+      (resolvedCounts.totalWithoutCategoryFilter || 0) > 0 ||
+      rows.length > 0;
+    if (hasRows) writeAggCache(cacheKey, result);
     return result;
   } catch (err) {
     console.warn('[inspectionWorksReportsAggregate] bundle aggregate failed:', err);

@@ -2030,14 +2030,14 @@ select option {
 
 .portal-fis-columns {
   display: inline-flex;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   flex-direction: row;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 0.5rem;
   width: auto;
-  max-width: none;
+  max-width: 100%;
   margin-left: auto;
   padding: 0;
   border: none;

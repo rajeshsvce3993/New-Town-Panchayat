@@ -83,6 +83,7 @@ import {
 } from '@/lib/inspectionWorksQueryFilters';
 import { geoNamesEqual } from '@/lib/geoNameMatch';
 import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
+import { isNoAnswer, isYesAnswer } from '@/lib/yesNoAnswer';
 import MapViewReport from './MapViewReport';
 import ThemeSelect from './ThemeSelect';
 import { buildInspectionSlidesFile, renderInspectionSlideJpeg } from '@/lib/buildInspectionSlideDeck';
@@ -196,37 +197,6 @@ function getLocalizedStreetName(work: any, lang: string, streets: any[] = []): s
   if (storedEn && !TAMIL_SCRIPT_RE.test(storedEn)) return storedEn;
   if (raw && !TAMIL_SCRIPT_RE.test(raw)) return raw;
   return storedEn || raw || storedTa || '-';
-}
-
-function isYesAnswer(raw: any): boolean {
-  const v = String(raw || '').trim().toLowerCase();
-  if (!v) return false;
-  if (isNoAnswer(raw)) return false;
-  return (
-    v === 'yes' ||
-    v === 'y' ||
-    v === 'true' ||
-    v === '1' ||
-    v === 'ஆம்' ||
-    v.startsWith('yes') ||
-    v.startsWith('ஆம்') ||
-    v.includes('door locked') ||
-    v === 'locked'
-  );
-}
-
-function isNoAnswer(raw: any): boolean {
-  const v = String(raw || '').trim().toLowerCase();
-  if (!v) return false;
-  return (
-    v === 'no' ||
-    v === 'n' ||
-    v === 'false' ||
-    v === '0' ||
-    v === 'இல்லை' ||
-    v.startsWith('no') ||
-    v.startsWith('இல்லை')
-  );
 }
 
 const SWM_COL = {
@@ -1684,6 +1654,8 @@ export default function InspectionReportsView({
     Array<{ subjectId: string; categoryId: string; count: number }>
   >([]);
   const [apiDimensionRollups, setApiDimensionRollups] = useState<InspectionWorkReportDimensionRollup[]>([]);
+  const apiDimensionRollupsRef = React.useRef<InspectionWorkReportDimensionRollup[]>([]);
+  apiDimensionRollupsRef.current = apiDimensionRollups;
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<string>(() => new Date().toLocaleTimeString());
 
@@ -2086,8 +2058,16 @@ export default function InspectionReportsView({
       setApiTotalWithoutCategory(total);
     }
     if (Array.isArray(json?.dimensionRollups)) {
-      setApiDimensionRollups(json.dimensionRollups);
-      applied = true;
+      const next = json.dimensionRollups as InspectionWorkReportDimensionRollup[];
+      const keepPrevious =
+        next.length === 0 &&
+        apiDimensionRollupsRef.current.length > 0 &&
+        ((typeof json?.totalWithoutCategoryFilter === 'number' && json.totalWithoutCategoryFilter > 0) ||
+          (Array.isArray(json?.subjectCategoryRollups) && json.subjectCategoryRollups.length > 0));
+      if (!keepPrevious) {
+        setApiDimensionRollups(next);
+        applied = true;
+      }
     }
     return applied;
   }, [state.inspectionCategories]);
@@ -2124,13 +2104,11 @@ export default function InspectionReportsView({
     const rollups = buildSubjectCategoryRollupsFromDashboardStats(scoped);
     if (!rollups.length) {
       setApiSubjectRollups([]);
-      setApiDimensionRollups([]);
       setApiTotalWithoutCategory(0);
       setApiCategoryCounts({});
       return false;
     }
     setApiSubjectRollups(rollups);
-    setApiDimensionRollups([]);
     const total = rollups.reduce((s, r) => s + r.count, 0);
     setApiTotalWithoutCategory(total);
     setApiCategoryCounts(categoryCountsFromSubjectRollups(rollups, state.inspectionCategories || []));
@@ -2170,19 +2148,14 @@ export default function InspectionReportsView({
         if (typeof json.totalWithoutCategoryFilter === 'number') {
           setApiTotalWithoutCategory(json.totalWithoutCategoryFilter);
         }
-        if (Array.isArray(json.subjectCategoryRollups)) {
-          setApiSubjectRollups(json.subjectCategoryRollups);
-        }
-        if (Array.isArray(json.dimensionRollups)) {
-          setApiDimensionRollups(json.dimensionRollups);
-        }
+        applyCountsPayload(json);
         setLastRefreshed(new Date().toLocaleTimeString());
         if (seq === fetchSeqRef.current) setFetchError(null);
       } else if (!res.ok && seq === fetchSeqRef.current) {
         setFetchError(json?.message || (lang === 'ta' ? 'தரவு பெற முடியவில்லை' : 'Could not load inspection works'));
       }
     },
-    [buildInspectionWorksQueryParams, lang]
+    [applyCountsPayload, buildInspectionWorksQueryParams, lang]
   );
 
   const fetchRowsOnlyPage = React.useCallback(
@@ -2238,15 +2211,6 @@ export default function InspectionReportsView({
           }
         }
         applyCountsPayload(json);
-        if (Array.isArray(json.subjectCategoryRollups)) {
-          setApiSubjectRollups(json.subjectCategoryRollups);
-        }
-        if (typeof json.totalWithoutCategoryFilter === 'number') {
-          setApiTotalWithoutCategory(json.totalWithoutCategoryFilter);
-        }
-        if (Array.isArray(json.dimensionRollups)) {
-          setApiDimensionRollups(json.dimensionRollups);
-        }
         setLastRefreshed(new Date().toLocaleTimeString());
         if (seq === fetchSeqRef.current) setFetchError(null);
       } else if (!res.ok) {
@@ -3314,8 +3278,14 @@ export default function InspectionReportsView({
         byId(state.zones, tp?.zoneId) ||
         byId(state.zones, zoneId) ||
         byName(state.zones, zoneName);
+      const resolvedTpId = String(tp?.id || tpId || '').trim();
+      const resolvedDistrictId = String(dist?.id || tp?.districtId || districtId || '').trim();
+      const resolvedZoneId = String(zone?.id || dist?.zoneId || tp?.zoneId || zoneId || '').trim();
 
       return {
+        zoneId: resolvedZoneId,
+        districtId: resolvedDistrictId,
+        tpId: resolvedTpId,
         zoneNameEn: displayName(zone?.nameEn, zoneName),
         zoneNameTa: displayName(zone?.nameTa, zone?.nameEn, zoneName),
         districtNameEn: displayName(dist?.nameEn, distName),
@@ -3969,20 +3939,39 @@ export default function InspectionReportsView({
     const showSubj = locCols.subject;
     const showCat = locCols.category;
 
-    const locationGroupKey = (geo: {
-      zoneNameEn: string;
-      districtNameEn: string;
-      tpNameEn: string;
-      streetName?: string;
-    }, extra: { wardNumber?: string; streetName?: string; subjectId?: string; categoryId?: string; tpId?: string; districtId?: string }) => {
-      let key = `zone_${geo.zoneNameEn || '-'}`;
-      if (showDistrict) key += `|d_${geo.districtNameEn || extra.districtId || '-'}`;
-      if (showTp) key += `|tp_${geo.tpNameEn || extra.tpId || '-'}`;
-      if (showWard) key += `|ward_${extra.wardNumber || 'unknown'}`;
-      if (showStreet) key += `|street_${extra.streetName || geo.streetName || '-'}`;
-      if (showSubj) key += `|subj_${extra.subjectId || 'unknown'}`;
-      if (showCat) key += `|cat_${extra.categoryId || 'unknown'}`;
-      return key;
+    const idPart = (...values: Array<string | undefined>) => {
+      for (const value of values) {
+        const s = String(value || '').trim().toLowerCase();
+        if (s && s !== '-') return s;
+      }
+      return '_';
+    };
+
+    const locationGroupKey = (
+      geo: {
+        zoneId?: string;
+        districtId?: string;
+        tpId?: string;
+        streetName?: string;
+      },
+      extra: {
+        wardNumber?: string;
+        streetName?: string;
+        subjectId?: string;
+        categoryId?: string;
+        tpId?: string;
+        districtId?: string;
+        zoneId?: string;
+      }
+    ) => {
+      const parts = [`z_${idPart(geo.zoneId, extra.zoneId)}`];
+      if (showDistrict) parts.push(`d_${idPart(geo.districtId, extra.districtId)}`);
+      if (showTp) parts.push(`tp_${idPart(geo.tpId, extra.tpId)}`);
+      if (showWard) parts.push(`ward_${idPart(extra.wardNumber)}`);
+      if (showStreet) parts.push(`street_${idPart(extra.streetName, geo.streetName)}`);
+      if (showSubj) parts.push(`subj_${idPart(extra.subjectId)}`);
+      if (showCat) parts.push(`cat_${idPart(extra.categoryId)}`);
+      return parts.join('|');
     };
 
     if (worksFromApi) {
@@ -3994,6 +3983,7 @@ export default function InspectionReportsView({
           streetName,
           subjectId: row.subjectId,
           categoryId: row.categoryId,
+          zoneId: row.zoneId,
           tpId: row.tpId,
           districtId: row.districtId,
         });
@@ -4036,6 +4026,7 @@ export default function InspectionReportsView({
         streetName: geo.streetName,
         subjectId: w.subjectId,
         categoryId: w.categoryId,
+        zoneId: w.zoneId,
         tpId: w.tpId || w.townPanchayatId,
         districtId: w.districtId,
       });

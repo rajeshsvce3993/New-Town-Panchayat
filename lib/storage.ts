@@ -1205,6 +1205,11 @@ export async function getMongoClient(): Promise<MongoClient | null> {
         void ensureDatabaseIndexes(client).catch((err) => {
           console.warn('[MongoDB] ensureDatabaseIndexes failed:', err?.message || err);
         });
+        void import('@/lib/inspectionWorkReportRollups')
+          .then((m) => m.startInspectionReportRollupWorker())
+          .catch((err) => {
+            console.warn('[inspectionWorkReportRollups] worker start failed:', err?.message || err);
+          });
         return globalWithMongo._mongoClient;
       } catch (err: any) {
         lastError = err;
@@ -1293,18 +1298,13 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
       db.collection('user_activity').createIndex({ status: 1 }, { background: true }),
     ]);
     hasEnsuredIndexes = true;
-    void import('@/lib/canonicalizeDistrictSpellings')
-      .then((m) => m.canonicalizeThiruvallurDistrictSpellingsInBackground())
+    void import('@/lib/inspectionWorkReportRollups')
+      .then((m) => m.startInspectionReportRollupWorker())
       .catch((err) => {
-        console.warn('[canonicalize-district] could not start rewrite:', err?.message || err);
+        console.warn('[inspectionWorkReportRollups] worker start failed:', err?.message || err);
       });
   } catch (err: any) {
     console.warn('[MongoDB] ensureDatabaseIndexes failed:', err?.message || err);
-    void import('@/lib/canonicalizeDistrictSpellings')
-      .then((m) => m.canonicalizeThiruvallurDistrictSpellingsInBackground())
-      .catch((e) => {
-        console.warn('[canonicalize-district] could not start rewrite:', e?.message || e);
-      });
   }
 }
 
@@ -1974,7 +1974,7 @@ function lowerKey(v: unknown) {
   return String(v || '').trim().toLowerCase();
 }
 
-function buildEnrichMasterLookups(tps: any[], districts: any[], subjects: any[], categories: any[]) {
+function buildEnrichMasterLookups(tps: any[], districts: any[], zones: any[], subjects: any[], categories: any[]) {
   const tpById = new Map<string, any>();
   const tpByNameEn = new Map<string, any>();
   for (const t of tps) {
@@ -1987,6 +1987,11 @@ function buildEnrichMasterLookups(tps: any[], districts: any[], subjects: any[],
   for (const d of districts) {
     const id = lowerKey(d.id);
     if (id) districtById.set(id, d);
+  }
+  const zoneById = new Map<string, any>();
+  for (const z of zones) {
+    const id = lowerKey(z.id);
+    if (id) zoneById.set(id, z);
   }
   const subjectById = new Map<string, any>();
   const subjectByCode = new Map<string, any>();
@@ -2020,6 +2025,7 @@ function buildEnrichMasterLookups(tps: any[], districts: any[], subjects: any[],
     tpById,
     tpByNameEn,
     districtById,
+    zoneById,
     subjectById,
     subjectByCode,
     subjectByNameEn,
@@ -2036,9 +2042,10 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
   const localDb = masters ? null : readLocalDb();
   const tps = masters?.townPanchayats || localDb?.townPanchayats || INITIAL_DATA.townPanchayats || [];
   const districts = masters?.districts || localDb?.districts || INITIAL_DATA.districts || [];
+  const zones = masters?.zones || localDb?.zones || INITIAL_DATA.zones || [];
   const subjects = masters?.inspectionSubjects || localDb?.inspectionSubjects || INITIAL_DATA.inspectionSubjects || [];
   const categories = masters?.inspectionCategories || localDb?.inspectionCategories || INITIAL_DATA.inspectionCategories || [];
-  const lookups = buildEnrichMasterLookups(tps, districts, subjects, categories);
+  const lookups = buildEnrichMasterLookups(tps, districts, zones, subjects, categories);
 
   return (works || []).map((raw: any) => {
     const w = raw || {};
@@ -2050,6 +2057,8 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
       undefined;
     const distKey = lowerKey(tp?.districtId || w.districtId);
     const dist = distKey ? lookups.districtById.get(distKey) : undefined;
+    const zoneKey = lowerKey(dist?.zoneId || w.zoneId);
+    const zone = zoneKey ? lookups.zoneById.get(zoneKey) : undefined;
 
     const wCatId = lowerKey(w.categoryId);
     const wCatName = lowerKey(w.categoryNameEn || w.categoryName || w.category);
@@ -2103,7 +2112,7 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
 
     const resolvedTpId = String(tp?.id || w.tpId || w.townPanchayatId || '').trim();
     const resolvedDistrictId = String(tp?.districtId || dist?.id || w.districtId || '').trim();
-    const resolvedZoneId = String(dist?.zoneId || w.zoneId || '').trim();
+    const resolvedZoneId = String(zone?.id || dist?.zoneId || w.zoneId || '').trim();
 
     return {
       ...w,
@@ -2117,8 +2126,8 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
       tpNameTa: tp?.nameTa || w.tpNameTa || '',
       districtNameEn: dist?.nameEn || w.districtNameEn || '',
       districtNameTa: dist?.nameTa || w.districtNameTa || '',
-      zoneNameEn: dist?.zoneNameEn || w.zoneNameEn || '',
-      zoneNameTa: dist?.zoneNameTa || w.zoneNameTa || '',
+      zoneNameEn: zone?.nameEn || '',
+      zoneNameTa: zone?.nameTa || zone?.nameEn || '',
       subjectId: resolvedSubjectId,
       subjectNameEn: resolvedSubjectNameEn,
       subjectNameTa: resolvedSubjectNameTa,
@@ -2215,17 +2224,11 @@ export async function getInspectionWorksDashboardStats(): Promise<any[]> {
 
   try {
     const { fetchDashboardStatsFromRollups } = await import('@/lib/inspectionWorkReportRollups');
-    let stats = await fetchDashboardStatsFromRollups();
-    if (!stats?.length) {
-      const { fetchInspectionWorksDashboardStatsFromMongo } = await import(
-        '@/lib/inspectionWorksMongoRepository'
-      );
-      stats = await fetchInspectionWorksDashboardStatsFromMongo();
-    }
-    if (stats?.length) {
-      stats = stats.filter((row) => !isFallbackInspectionWork(row));
-      cachedDashboardInspectionStats = { rows: stats, timestamp: now, v: DASHBOARD_INSPECTION_STATS_CACHE_VERSION };
-      return stats;
+    const stats = await fetchDashboardStatsFromRollups();
+    if (stats) {
+      const rows = stats.filter((row) => !isFallbackInspectionWork(row));
+      cachedDashboardInspectionStats = { rows, timestamp: now, v: DASHBOARD_INSPECTION_STATS_CACHE_VERSION };
+      return rows;
     }
   } catch (e: any) {
     console.warn('Inspection works stats skipped:', e?.message || e);

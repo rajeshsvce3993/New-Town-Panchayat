@@ -73,7 +73,7 @@ function preloadImage(src: string): Promise<void> {
 
 /** Decorative images — prefetch only, never block the login form. */
 export function prefetchLoginDecor(logoSrc: string) {
-  const logo = logoSrc || '/app_logo.png';
+  const logo = logoSrc || '/app_icon.png';
   void preloadImage('/login-hero.jpg');
   void preloadImage('/login-skyline.png');
   void preloadImage(logo);

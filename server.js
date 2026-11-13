@@ -19,6 +19,49 @@ const port = parseInt(process.env.PORT || '3000', 10);
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
+const PUBLIC_DIRS = [
+  path.join(process.cwd(), 'public'),
+  path.join(__dirname, 'public'),
+];
+const PUBLIC_MIME = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+};
+
+function servePublicFile(req, res, pathname) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  if (!pathname || pathname.includes('..') || pathname.startsWith('/api') || pathname.startsWith('/_next')) {
+    return false;
+  }
+  const ext = path.extname(pathname).toLowerCase();
+  const mime = PUBLIC_MIME[ext];
+  if (!mime) return false;
+  const rel = pathname.replace(/^\/+/, '');
+  if (!rel) return false;
+  for (const dir of PUBLIC_DIRS) {
+    const filePath = path.join(dir, rel);
+    if (!filePath.startsWith(dir)) continue;
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) continue;
+    const body = fs.readFileSync(filePath);
+    res.writeHead(200, {
+      'Content-Type': mime,
+      'Content-Length': body.length,
+      'Cache-Control': 'public, max-age=86400',
+    });
+    if (req.method !== 'HEAD') res.end(body);
+    else res.end();
+    return true;
+  }
+  return false;
+}
+
 // Helper to mask sensitive connection strings in logs
 function maskUri(uri) {
   if (!uri) return 'not_configured';
@@ -139,10 +182,10 @@ async function runSystemDiagnostics() {
     }
 
     try {
-      const { canonicalizeTiruvallurSpellings } = require('./lib/canonicalizeTiruvallurMongo.js');
-      await canonicalizeTiruvallurSpellings(db);
+      const { canonicalizeTiruvallurMasters } = require('./lib/canonicalizeTiruvallurMongo.js');
+      await canonicalizeTiruvallurMasters(db);
     } catch (canonErr) {
-      console.warn(`[canonicalize-district] Startup rewrite failed: ${canonErr.message}`);
+      console.warn(`[canonicalize-district] Master rewrite failed: ${canonErr.message}`);
     }
 
     await client.close();
@@ -211,6 +254,7 @@ app.prepare().then(() => {
         });
       }
 
+      if (servePublicFile(req, res, parsedUrl.pathname)) return;
       await handle(req, res, customParsedUrl);
     } catch (err) {
       console.error('Error occurred handling', req.url, err);

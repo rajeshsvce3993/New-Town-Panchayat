@@ -1,6 +1,7 @@
 import type { InspectionWorksFilterMasters, InspectionWorksFilterQuery } from '@/lib/inspectionWorksQueryFilters';
 import { buildReportsMongoMatch } from '@/lib/inspectionWorksReportsAggregate';
 import { getActiveMongoDb, getCollectionWithAliases, getMongoClient } from '@/lib/storage';
+import { MONGO_NO_ANSWER_REGEX, MONGO_YES_ANSWER_REGEX } from '@/lib/yesNoAnswer';
 
 export type SwmSummaryGroup = {
   zoneId: string;
@@ -21,23 +22,65 @@ export type SwmSummaryGroup = {
   homeComposting: number;
 };
 
-const YES_ANSWERS = ['yes', 'true', '1', 'y', 'ஆம்'];
-const NO_ANSWERS = ['no', 'false', '0', 'n', 'இல்லை'];
-
 function mongoString(expr: unknown) {
   return { $convert: { input: expr, to: 'string', onError: '', onNull: '' } };
 }
 
+function unwrapFieldValue(expr: unknown) {
+  return {
+    $let: {
+      vars: { raw: expr },
+      in: {
+        $cond: [
+          { $eq: [{ $type: '$$raw' }, 'object'] },
+          {
+            $ifNull: [
+              { $getField: { field: 'value', input: '$$raw' } },
+              {
+                $ifNull: [
+                  { $getField: { field: 'label', input: '$$raw' } },
+                  { $ifNull: [{ $getField: { field: 'nameEn', input: '$$raw' } }, ''] },
+                ],
+              },
+            ],
+          },
+          { $ifNull: ['$$raw', ''] },
+        ],
+      },
+    },
+  };
+}
+
 function fieldValueExpr(key: string) {
-  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return `$fieldsData.${key}`;
-  return { $getField: { field: key, input: { $ifNull: ['$fieldsData', {}] } } };
+  const raw = /^[A-Za-z_][A-Za-z0-9_]*$/.test(key)
+    ? `$fieldsData.${key}`
+    : { $getField: { field: key, input: { $ifNull: ['$fieldsData', {}] } } };
+  return unwrapFieldValue(raw);
 }
 
 function firstFieldValue(keys: string[]) {
-  const unique = [...new Set(keys.map((k) => String(k || '').trim()).filter(Boolean))];
-  const ident = unique.filter((k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k)).slice(0, 3);
-  const spaced = unique.filter((k) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)).slice(0, 1);
-  return [...ident, ...spaced].reduceRight((acc: unknown, key) => ({ $ifNull: [fieldValueExpr(key), acc] }), '');
+  const unique = [...new Set(keys.map((k) => String(k || '').trim()).filter(Boolean))].slice(0, 8);
+  return unique.reduceRight((acc: unknown, key) => {
+    const expr = fieldValueExpr(key);
+    return {
+      $let: {
+        vars: { cur: expr },
+        in: {
+          $cond: [
+            {
+              $or: [
+                { $eq: ['$$cur', null] },
+                { $eq: ['$$cur', ''] },
+                { $eq: [{ $toString: { $ifNull: ['$$cur', ''] } }, ''] },
+              ],
+            },
+            acc,
+            '$$cur',
+          ],
+        },
+      },
+    };
+  }, '');
 }
 
 function collectIdentKeys(
@@ -51,10 +94,13 @@ function collectIdentKeys(
       .map((x) => String(x || '').toLowerCase())
       .join(' | ');
     if (!pred(blob)) continue;
-    const id = String(field?.id || '').trim();
-    const name = String(field?.fieldName || '').trim();
-    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(id)) keys.push(id);
-    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) keys.push(name);
+    keys.push(
+      String(field?.id || '').trim(),
+      String(field?.fieldKey || '').trim(),
+      String(field?.fieldName || '').trim(),
+      String(field?.nameEn || '').trim(),
+      String(field?.nameTa || '').trim()
+    );
   }
   return keys;
 }
@@ -63,6 +109,26 @@ function normalizedAnswer(expr: unknown) {
   return {
     $toLower: {
       $trim: { input: mongoString(expr) },
+    },
+  };
+}
+
+function mongoIsYes(expr: unknown) {
+  return {
+    $regexMatch: {
+      input: normalizedAnswer(expr),
+      regex: MONGO_YES_ANSWER_REGEX,
+      options: 'i',
+    },
+  };
+}
+
+function mongoIsNo(expr: unknown) {
+  return {
+    $regexMatch: {
+      input: normalizedAnswer(expr),
+      regex: MONGO_NO_ANSWER_REGEX,
+      options: 'i',
     },
   };
 }
@@ -105,7 +171,7 @@ function buildSwmPreparedPipeline(
           blob.includes('house locked') ||
           blob.includes('is_door_locked') ||
           blob.includes('வீடு பூட்ட'),
-        ['fld_is_door_locked__r98z', 'is_door_locked', 'Is house locked?']
+        ['fld_is_door_locked__r98z', 'is_door_locked', 'Is Door Locked?', 'Is house locked?', 'வீடு பூட்டப்பட்டுள்ளதா?']
       )
     )
   );
@@ -138,10 +204,10 @@ function buildSwmPreparedPipeline(
           $let: {
             vars: { locked: lockedRaw, seg: segregateRaw, compost: compostRaw },
             in: {
-              doorLocked: { $in: ['$$locked', YES_ANSWERS] },
-              segYes: { $in: ['$$seg', YES_ANSWERS] },
-              segNo: { $in: ['$$seg', NO_ANSWERS] },
-              compost: { $in: ['$$compost', YES_ANSWERS] },
+              doorLocked: mongoIsYes('$$locked'),
+              segYes: mongoIsYes('$$seg'),
+              segNo: mongoIsNo('$$seg'),
+              compost: mongoIsYes('$$compost'),
             },
           },
         },

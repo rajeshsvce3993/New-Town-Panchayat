@@ -792,7 +792,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     return (
       <LoginPortal
         lang={lang}
-        logoSrc="/app_logo.png"
+        logoSrc="/app_icon.png"
         username={loginUsername}
         password={loginPassword}
         error={loginError}
@@ -929,10 +929,6 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                   src="/app_icon.png"
                   alt=""
                   className="h-9 w-9 object-contain"
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = '/login-logo.png';
-                  }}
                 />
               </div>
             </div>
@@ -943,10 +939,6 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                   src="/app_icon.png"
                   alt=""
                   className="h-9 w-9 object-contain"
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = '/login-logo.png';
-                  }}
                 />
               </div>
               <div className="min-w-0 flex-1 leading-tight">

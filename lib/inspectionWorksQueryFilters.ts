@@ -1,5 +1,6 @@
 import { extractCalendarDateYMD, extractInspectionDateMs } from '@/lib/inspectionDate';
 import { geoNameKeys, geoNamesEqual, setHasGeoName } from '@/lib/geoNameMatch';
+import { scalarFieldAnswer } from '@/lib/yesNoAnswer';
 
 export type InspectionWorksFilterQuery = {
   fromDate?: string | null;
@@ -62,16 +63,7 @@ export function workMatchesDistrict(w: any, districtId: string, ctx: InspectionW
   const distNameTa = String(dist?.nameTa || '').trim();
 
   const tp = findWorkTownPanchayat(w, ctx);
-  if (tp) {
-    if (tp.districtId) return String(tp.districtId).toLowerCase() === distIdKey;
-    if (distName && (geoNamesEqual(tp.districtNameEn, distName) || geoNamesEqual(tp.districtNameTa, distName))) {
-      return true;
-    }
-    if (distNameTa && (geoNamesEqual(tp.districtNameEn, distNameTa) || geoNamesEqual(tp.districtNameTa, distNameTa))) {
-      return true;
-    }
-    return false;
-  }
+  if (tp?.districtId) return String(tp.districtId).toLowerCase() === distIdKey;
 
   const wDistId = String(w.districtId || '').toLowerCase();
   if (wDistId && (wDistId === sDist || wDistId === distIdKey)) return true;
@@ -80,7 +72,6 @@ export function workMatchesDistrict(w: any, districtId: string, ctx: InspectionW
   const wDistNameTa = String(w.districtNameTa || '').trim();
   if (distName && (geoNamesEqual(wDistName, distName) || geoNamesEqual(wDistNameTa, distName))) return true;
   if (distNameTa && (geoNamesEqual(wDistName, distNameTa) || geoNamesEqual(wDistNameTa, distNameTa))) return true;
-  if (geoNamesEqual(wDistName, districtId) || geoNamesEqual(wDistNameTa, districtId)) return true;
   return false;
 }
 
@@ -101,42 +92,26 @@ export function workMatchesZone(w: any, zoneId: string, ctx: InspectionWorksFilt
       geoNamesEqual(z.nameTa, zoneId)
   );
   const selectedIds = geoTokenSet(zoneId, zone?.id);
-  const selectedNames = geoTokenSet(zone?.nameEn, zone?.nameTa);
-  const selected = geoTokenSet(zoneId, zone?.id, zone?.nameEn, zone?.nameTa);
 
   const tp = findWorkTownPanchayat(w, ctx);
   if (tp) {
     const dist = (ctx.districts || []).find(
       (d: any) => !!tp.districtId && String(d.id || '').toLowerCase() === String(tp.districtId).toLowerCase()
     );
-    if (dist) return setHasGeo(selectedIds, dist.zoneId) || setHasGeo(selected, dist.zoneId, dist.zoneNameEn, dist.zoneNameTa);
+    if (dist?.zoneId) return setHasGeo(selectedIds, dist.zoneId);
     if (tp.zoneId) return setHasGeo(selectedIds, tp.zoneId);
     return false;
   }
 
   const wZoneId = String(w.zoneId || '').trim();
-  if (wZoneId && (setHasGeo(selectedIds, wZoneId) || setHasGeo(selectedNames, wZoneId))) return true;
-
-  const wZoneName = String(w.zoneNameEn || '').trim();
-  const wZoneNameTa = String(w.zoneNameTa || '').trim();
-  if ((wZoneName || wZoneNameTa) && selectedNames.size && setHasGeo(selectedNames, wZoneName, wZoneNameTa)) {
-    return true;
-  }
+  if (wZoneId) return setHasGeo(selectedIds, wZoneId);
 
   const wDistId = String(w.districtId || '').trim();
   if (wDistId) {
     const dist = (ctx.districts || []).find(
       (d: any) => String(d.id || '').toLowerCase() === wDistId.toLowerCase()
     );
-    if (dist) return setHasGeo(selected, dist.zoneId, dist.zoneNameEn, dist.zoneNameTa);
-  }
-
-  const wDistName = String(w.districtNameEn || '').trim();
-  if (wDistName) {
-    const distByName = (ctx.districts || []).find(
-      (d: any) => geoNamesEqual(d.nameEn, wDistName) || geoNamesEqual(d.nameTa, wDistName)
-    );
-    if (distByName) return setHasGeo(selected, distByName.zoneId, distByName.zoneNameEn, distByName.zoneNameTa);
+    if (dist?.zoneId) return setHasGeo(selectedIds, dist.zoneId);
   }
   return false;
 }
@@ -191,7 +166,7 @@ function geoEq(a?: string | null, b?: string | null): boolean {
   return geoNamesEqual(x, y);
 }
 
-/** Exact id/name match only — never infer another town panchayat, district, or zone. */
+/** Exact id match only. Zone and district can share the display name Tiruvallur. */
 export function rowMatchesRemoteGeoSelection(
   row: any,
   sel: {
@@ -203,20 +178,18 @@ export function rowMatchesRemoteGeoSelection(
     tpNameEn?: string | null;
   }
 ): boolean {
-  if (sel.tpId || sel.tpNameEn) {
+  if (sel.tpId) {
     const id = row?.tpId || row?.townPanchayatId || '';
+    if (!geoEq(id, sel.tpId)) return false;
+  } else if (sel.tpNameEn) {
     const name = row?.tpNameEn || row?.townPanchayat || '';
-    if (!(geoEq(id, sel.tpId) || geoEq(name, sel.tpNameEn) || geoEq(name, sel.tpId))) return false;
+    if (!geoEq(name, sel.tpNameEn)) return false;
   }
-  if (sel.districtId || sel.districtNameEn) {
-    const id = row?.districtId || '';
-    const name = row?.districtNameEn || '';
-    if (!(geoEq(id, sel.districtId) || geoEq(name, sel.districtNameEn) || geoEq(name, sel.districtId))) return false;
+  if (sel.districtId) {
+    if (!geoEq(row?.districtId, sel.districtId)) return false;
   }
-  if (sel.zoneId || sel.zoneNameEn) {
-    const id = row?.zoneId || '';
-    const name = row?.zoneNameEn || row?.zone || '';
-    if (!(geoEq(id, sel.zoneId) || geoEq(name, sel.zoneNameEn) || geoEq(name, sel.zoneId))) return false;
+  if (sel.zoneId) {
+    if (!geoEq(row?.zoneId, sel.zoneId)) return false;
   }
   return true;
 }
@@ -481,20 +454,18 @@ export function getWorkDynamicFieldValue(
   }
 
   for (const k of keys) {
-    const v = fd[k];
-    if (v !== undefined && v !== null && String(v).trim() !== '') {
-      return String(v);
-    }
+    const v = scalarFieldAnswer(fd[k]);
+    if (v) return v;
   }
 
-  const keysLower = new Map<string, string>();
+  const keysLower = new Map<string, unknown>();
   for (const [k, v] of Object.entries(fd)) {
     if (v === undefined || v === null) continue;
-    keysLower.set(String(k).toLowerCase(), String(v));
+    keysLower.set(String(k).toLowerCase(), v);
   }
   for (const k of keys) {
-    const hit = keysLower.get(k.toLowerCase());
-    if (hit !== undefined && hit.trim() !== '') return hit;
+    const hit = scalarFieldAnswer(keysLower.get(k.toLowerCase()));
+    if (hit) return hit;
   }
   return '';
 }

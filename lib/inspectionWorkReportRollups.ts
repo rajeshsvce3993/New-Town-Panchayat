@@ -14,6 +14,7 @@ import {
   wardFilterVariants,
 } from '@/lib/inspectionWorksMongoRepository';
 import { geoNamesEqual } from '@/lib/geoNameMatch';
+import os from 'node:os';
 
 export const INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION = 'inspectionWorkReportRollups';
 
@@ -42,9 +43,25 @@ type InspectionWorkReportRollupDoc = InspectionWorkReportRollupDims & {
 };
 
 const SEP = '\x1f';
+const LIVE_COLLECTION = INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION;
+const BUILD_COLLECTION = `${INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION}_build`;
+const PREV_COLLECTION = `${INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION}_prev`;
+const META_ID = 'inspection_work_report_rollups';
+const WORKS_GEO_REPAIR_META_ID = 'tiruvallur_works_geo_repair_v1';
+const ROLLUP_SCHEMA_VERSION = 3;
+const MONTH_AGG_MAX_MS = 180_000;
+const STALE_BUILD_MS = 10 * 60_000;
+const CATCHUP_DAYS = 3;
+const CATCHUP_MIN_INTERVAL_MS = 15 * 60 * 1000;
+const WORKER_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const BUILD_HINT_TTL_MS = 2_000;
+const QUERY_MAX_MS = 8_000;
+
 let indexesReady = false;
-let rollupsReady = false;
-let backfillInFlight: Promise<boolean> | null = null;
+let workerStarted = false;
+let workerInFlight: Promise<void> | null = null;
+let buildHint: { status: string; completedThroughYmd: string; schemaVersion: number } | null = null;
+let buildHintAt = 0;
 
 function norm(v: unknown): string {
   return String(v ?? '').trim();
@@ -64,8 +81,22 @@ function firstNonEmpty(...values: unknown[]): string {
   return '';
 }
 
-const ROLLUP_GEO_VERSION = 'rollups_geo_from_tp_v2';
-const ROLLUP_GEO_META_COLLECTION = 'appMeta';
+type RollupMetaDoc = {
+  _id: string;
+  schemaVersion: number;
+  status: 'ready' | 'building' | 'queued';
+  forceRebuild?: boolean;
+  lastCatchupAt?: Date;
+  build?: {
+    owner?: string;
+    heartbeatAt?: Date;
+    cursorMonth?: string;
+    minYmd?: string;
+    maxYmd?: string;
+    completedThroughYmd?: string;
+    startedAt?: Date;
+  };
+};
 
 export function inspectionWorkReportRollupDims(work: any): InspectionWorkReportRollupDims | null {
   const submittedDateYmd = deriveSubmittedDateYmd(work);
@@ -102,31 +133,36 @@ async function mongo() {
   const db = await getActiveMongoDb(client);
   return {
     db,
-    rollups: db.collection<InspectionWorkReportRollupDoc>(INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION),
+    rollups: db.collection<InspectionWorkReportRollupDoc>(LIVE_COLLECTION),
+    build: db.collection<InspectionWorkReportRollupDoc>(BUILD_COLLECTION),
+    meta: db.collection<RollupMetaDoc>('appMeta'),
+    works: db.collection('inspectionWorks'),
   };
+}
+
+type MongoCtx = NonNullable<Awaited<ReturnType<typeof mongo>>>;
+
+async function ensureRollupCollectionIndexes(col: { createIndex: Function }) {
+  await Promise.allSettled([
+    col.createIndex({ submittedDateYmd: 1, tpId: 1, subjectId: 1, categoryId: 1 }, { background: true }),
+    col.createIndex({ submittedDateYmd: 1, districtId: 1, subjectId: 1 }, { background: true }),
+    col.createIndex({ submittedDateYmd: 1, zoneId: 1 }, { background: true }),
+    col.createIndex({ submittedDateYmd: 1, wardNumber: 1 }, { background: true }),
+    col.createIndex({ submittedDateYmd: 1, submittedByUserName: 1 }, { background: true }),
+  ]);
 }
 
 export async function ensureInspectionWorkReportIndexes(): Promise<void> {
   if (indexesReady) return;
   const ctx = await mongo();
   if (!ctx) return;
-  const works = ctx.db.collection('inspectionWorks');
   await Promise.allSettled([
-    works.createIndex({ submittedDateYmd: -1, submittedAt: -1, workId: -1 }, { background: true }),
-    works.createIndex({ submittedDateYmd: -1, tpId: 1, submittedAt: -1, workId: -1 }, { background: true }),
-    works.createIndex({ streetName: 1, submittedDateYmd: -1 }, { background: true }),
-    works.createIndex({ workId: 1 }, { background: true }),
-    works.createIndex({ tpNameEn: 1, submittedDateYmd: -1 }, { background: true }),
-    works.createIndex({ districtNameEn: 1, submittedDateYmd: -1 }, { background: true }),
-    works.createIndex({ zoneNameEn: 1, submittedDateYmd: -1 }, { background: true }),
-    ctx.rollups.createIndex(
-      { submittedDateYmd: 1, tpId: 1, subjectId: 1, categoryId: 1 },
-      { background: true }
-    ),
-    ctx.rollups.createIndex({ submittedDateYmd: 1, districtId: 1, subjectId: 1 }, { background: true }),
-    ctx.rollups.createIndex({ submittedDateYmd: 1, zoneId: 1 }, { background: true }),
-    ctx.rollups.createIndex({ submittedDateYmd: 1, wardNumber: 1 }, { background: true }),
-    ctx.rollups.createIndex({ submittedDateYmd: 1, submittedByUserName: 1 }, { background: true }),
+    ctx.works.createIndex({ submittedDateYmd: -1, submittedAt: -1, workId: -1 }, { background: true }),
+    ctx.works.createIndex({ submittedDateYmd: -1, tpId: 1, submittedAt: -1, workId: -1 }, { background: true }),
+    ctx.works.createIndex({ submittedDateYmd: 1 }, { background: true }),
+    ctx.works.createIndex({ streetName: 1, submittedDateYmd: -1 }, { background: true }),
+    ctx.works.createIndex({ workId: 1 }, { background: true }),
+    ensureRollupCollectionIndexes(ctx.rollups),
   ]);
   indexesReady = true;
 }
@@ -172,7 +208,7 @@ function buildRollupMatch(
         geoNamesEqual(d.nameTa, scopeDistrict)
     );
     const or: Record<string, unknown>[] = [{ districtId: { $in: variants } }];
-    if (dist?.nameEn) or.push({ districtNameEn: dist.nameEn });
+    if (dist?.id) or.push({ districtId: dist.id });
     if (tpIds.length) or.push({ tpId: { $in: tpIds } });
     and.push({ $or: or });
   } else if (scopeZone) {
@@ -184,8 +220,9 @@ function buildRollupMatch(
         geoNamesEqual(z.nameEn, scopeZone) ||
         geoNamesEqual(z.nameTa, scopeZone)
     );
-    const or: Record<string, unknown>[] = [{ zoneId: { $in: idVariants(scopeZone) } }];
-    if (zone?.nameEn) or.push({ zoneNameEn: zone.nameEn });
+    const zoneIds = [...idVariants(scopeZone)];
+    if (zone?.id) zoneIds.push(norm(zone.id));
+    const or: Record<string, unknown>[] = [{ zoneId: { $in: [...new Set(zoneIds.filter(Boolean))] } }];
     if (districtIds.length) or.push({ districtId: { $in: districtIds } });
     if (tpIds.length) or.push({ tpId: { $in: tpIds } });
     and.push({ $or: or });
@@ -297,73 +334,162 @@ function categoryCountsFromRollupRows(
   return counts;
 }
 
-export async function backfillInspectionWorkReportRollups(): Promise<{ buckets: number }> {
-  const ctx = await mongo();
-  if (!ctx) return { buckets: 0 };
-  await ensureInspectionWorkReportIndexes();
+function emptyRollupCounts(): InspectionWorkReportRollupCounts {
+  return {
+    categoryCounts: {},
+    totalWithoutCategoryFilter: 0,
+    subjectCategoryRollups: [],
+    dimensionRollups: [],
+    source: 'mongo-rollup',
+  };
+}
 
-  const works = ctx.db.collection('inspectionWorks');
-  const pipeline: Record<string, unknown>[] = [
-    { $match: fallbackNorMatch() },
-    {
-      $addFields: {
-        submittedDateYmd: {
-          $let: {
-            vars: {
-              ymd: { $ifNull: ['$submittedDateYmd', ''] },
-            },
-            in: {
-              $cond: [
-                { $eq: [{ $strLenCP: '$$ymd' }, 10] },
-                '$$ymd',
-                {
-                  $let: {
-                    vars: {
-                      dt: {
-                        $convert: {
-                          input: { $ifNull: ['$submittedAt', { $ifNull: ['$createdAt', '$date'] }] },
-                          to: 'date',
-                          onError: null,
-                          onNull: null,
-                        },
-                      },
-                    },
-                    in: {
-                      $cond: [
-                        { $eq: ['$$dt', null] },
-                        '',
-                        {
-                          $dateToString: {
-                            format: '%Y-%m-%d',
-                            timezone: 'Asia/Kolkata',
-                            date: '$$dt',
-                          },
-                        },
-                      ],
+function isMissingNamespace(err: unknown): boolean {
+  const e = err as { code?: number; message?: string };
+  return e?.code === 26 || /ns not found|namespace.*not found/i.test(String(e?.message || ''));
+}
+
+function workerOwner(): string {
+  return `${os.hostname()}:${process.pid}`;
+}
+
+function isYmd(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function monthStart(ymd: string): string {
+  return `${ymd.slice(0, 7)}-01`;
+}
+
+function addMonths(monthStartYmd: string, n: number): string {
+  const y = Number(monthStartYmd.slice(0, 4));
+  const m = Number(monthStartYmd.slice(5, 7));
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  return d.toISOString().slice(0, 10);
+}
+
+function lastYmdOfMonth(monthStartYmd: string): string {
+  const y = Number(monthStartYmd.slice(0, 4));
+  const m = Number(monthStartYmd.slice(5, 7));
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}
+
+function addDays(ymd: string, n: number): string {
+  const d = new Date(`${ymd}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function istYmd(date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+function recentCatchupRange(days = CATCHUP_DAYS): { from: string; toExclusive: string } {
+  const today = istYmd();
+  const from = addDays(today, -(days - 1));
+  return { from, toExclusive: addDays(today, 1) };
+}
+
+function submittedDateYmdAddFields(): Record<string, unknown> {
+  return {
+    submittedDateYmd: {
+      $let: {
+        vars: { ymd: { $ifNull: ['$submittedDateYmd', ''] } },
+        in: {
+          $cond: [
+            { $eq: [{ $strLenCP: '$$ymd' }, 10] },
+            '$$ymd',
+            {
+              $let: {
+                vars: {
+                  dt: {
+                    $convert: {
+                      input: { $ifNull: ['$submittedAt', { $ifNull: ['$createdAt', '$date'] }] },
+                      to: 'date',
+                      onError: null,
+                      onNull: null,
                     },
                   },
                 },
-              ],
+                in: {
+                  $cond: [
+                    { $eq: ['$$dt', null] },
+                    '',
+                    {
+                      $dateToString: {
+                        format: '%Y-%m-%d',
+                        timezone: 'Asia/Kolkata',
+                        date: '$$dt',
+                      },
+                    },
+                  ],
+                },
+              },
             },
-          },
+          ],
         },
-        tpId: { $ifNull: [{ $ifNull: ['$tpId', '$townPanchayatId'] }, ''] },
-        wardNumber: {
-          $convert: {
-            input: { $ifNull: [{ $ifNull: ['$wardNumber', '$wardNo'] }, { $ifNull: ['$ward', ''] }] },
-            to: 'string',
-            onError: '',
-            onNull: '',
-          },
-        },
-        submittedByUserName: { $ifNull: [{ $ifNull: ['$submittedByUserName', '$username'] }, ''] },
-        zoneId: { $ifNull: ['$zoneId', ''] },
-        districtId: { $ifNull: ['$districtId', ''] },
-        subjectId: { $ifNull: ['$subjectId', 'unknown'] },
-        categoryId: { $ifNull: ['$categoryId', '_unknown'] },
       },
     },
-    { $match: { submittedDateYmd: { $type: 'string', $ne: '' } } },
+    tpId: { $ifNull: [{ $ifNull: ['$tpId', '$townPanchayatId'] }, ''] },
+    wardNumber: {
+      $convert: {
+        input: { $ifNull: [{ $ifNull: ['$wardNumber', '$wardNo'] }, { $ifNull: ['$ward', ''] }] },
+        to: 'string',
+        onError: '',
+        onNull: '',
+      },
+    },
+    submittedByUserName: { $ifNull: [{ $ifNull: ['$submittedByUserName', '$username'] }, ''] },
+    zoneId: { $ifNull: ['$zoneId', ''] },
+    districtId: { $ifNull: ['$districtId', ''] },
+    subjectId: { $ifNull: ['$subjectId', 'unknown'] },
+    categoryId: { $ifNull: ['$categoryId', '_unknown'] },
+  };
+}
+
+function monthMergePipeline(fromYmd: string, toYmdExclusive: string, into: string): Record<string, unknown>[] {
+  const start = new Date(`${fromYmd}T00:00:00+05:30`);
+  const end = new Date(`${toYmdExclusive}T00:00:00+05:30`);
+  return [
+    {
+      $match: {
+        $and: [
+          fallbackNorMatch(),
+          {
+            $or: [
+              { submittedDateYmd: { $gte: fromYmd, $lt: toYmdExclusive } },
+              {
+                $and: [
+                  { $or: [{ submittedDateYmd: { $exists: false } }, { submittedDateYmd: null }, { submittedDateYmd: '' }] },
+                  {
+                    $or: [
+                      { submittedAt: { $gte: start, $lt: end } },
+                      { createdAt: { $gte: start, $lt: end } },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+    { $addFields: submittedDateYmdAddFields() },
+    {
+      $match: {
+        submittedDateYmd: { $gte: fromYmd, $lt: toYmdExclusive },
+        $or: [
+          { tpId: { $nin: [null, ''] } },
+          { districtId: { $nin: [null, ''] } },
+          { zoneId: { $nin: [null, ''] } },
+        ],
+      },
+    },
     {
       $group: {
         _id: {
@@ -413,78 +539,397 @@ export async function backfillInspectionWorkReportRollups(): Promise<{ buckets: 
     },
     {
       $merge: {
-        into: INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION,
+        into,
         on: '_id',
         whenMatched: 'replace',
         whenNotMatched: 'insert',
       },
     },
   ];
-
-  await works.aggregate(pipeline, { allowDiskUse: true }).toArray();
-  await works.aggregate(pipeline, { allowDiskUse: true }).toArray();
-  const buckets = await ctx.rollups.estimatedDocumentCount();
-  return { buckets };
 }
 
-export async function rebuildInspectionWorkReportRollups(): Promise<{ buckets: number }> {
+async function collectionExists(ctx: MongoCtx, name: string): Promise<boolean> {
+  const found = await ctx.db.listCollections({ name }, { nameOnly: true }).toArray();
+  return found.length > 0;
+}
+
+async function mergeDateRange(ctx: MongoCtx, into: string, fromYmd: string, toYmdExclusive: string): Promise<void> {
+  await ctx.works
+    .aggregate(monthMergePipeline(fromYmd, toYmdExclusive, into), {
+      allowDiskUse: true,
+      maxTimeMS: MONTH_AGG_MAX_MS,
+    })
+    .toArray();
+}
+
+async function worksYmdBounds(ctx: MongoCtx): Promise<{ minYmd: string; maxYmd: string } | null> {
+  const ymdFilter = { submittedDateYmd: { $type: 'string', $regex: /^\d{4}-\d{2}-\d{2}$/ } };
+  const [minYmdDoc] = await ctx.works
+    .find(ymdFilter)
+    .sort({ submittedDateYmd: 1 })
+    .limit(1)
+    .project({ submittedDateYmd: 1 })
+    .toArray();
+  const [maxYmdDoc] = await ctx.works
+    .find(ymdFilter)
+    .sort({ submittedDateYmd: -1 })
+    .limit(1)
+    .project({ submittedDateYmd: 1 })
+    .toArray();
+  let minYmd = isYmd(minYmdDoc?.submittedDateYmd) ? minYmdDoc.submittedDateYmd : '';
+  let maxYmd = isYmd(maxYmdDoc?.submittedDateYmd) ? maxYmdDoc.submittedDateYmd : '';
+  if (!minYmd || !maxYmd) {
+    const [minAt] = await ctx.works
+      .find({ submittedAt: { $type: 'date' } })
+      .sort({ submittedAt: 1 })
+      .limit(1)
+      .project({ submittedAt: 1 })
+      .toArray();
+    const [maxAt] = await ctx.works
+      .find({ submittedAt: { $type: 'date' } })
+      .sort({ submittedAt: -1 })
+      .limit(1)
+      .project({ submittedAt: 1 })
+      .toArray();
+    if (minAt?.submittedAt) minYmd = minYmd || istYmd(new Date(minAt.submittedAt));
+    if (maxAt?.submittedAt) maxYmd = maxYmd || istYmd(new Date(maxAt.submittedAt));
+  }
+  if (!minYmd || !maxYmd) return null;
+  return { minYmd, maxYmd };
+}
+
+function invalidateBuildHint() {
+  buildHint = null;
+  buildHintAt = 0;
+}
+
+async function refreshBuildHint(ctx: MongoCtx): Promise<typeof buildHint> {
+  if (buildHint && Date.now() - buildHintAt < BUILD_HINT_TTL_MS) return buildHint;
+  const meta = (await ctx.meta.findOne({ _id: META_ID })) as RollupMetaDoc | null;
+  buildHint = {
+    status: meta?.status || 'ready',
+    completedThroughYmd: meta?.build?.completedThroughYmd || '',
+    schemaVersion: Number(meta?.schemaVersion) || 0,
+  };
+  buildHintAt = Date.now();
+  return buildHint;
+}
+
+async function heartbeatBuild(ctx: MongoCtx, owner: string, cursorMonth: string): Promise<boolean> {
+  const res = await ctx.meta.updateOne(
+    { _id: META_ID, status: 'building', 'build.owner': owner },
+    { $set: { 'build.heartbeatAt': new Date(), 'build.cursorMonth': cursorMonth } }
+  );
+  return res.matchedCount > 0;
+}
+
+async function markRollupsReady(ctx: MongoCtx): Promise<void> {
+  await ctx.meta.updateOne(
+    { _id: META_ID },
+    {
+      $set: {
+        schemaVersion: ROLLUP_SCHEMA_VERSION,
+        status: 'ready',
+        forceRebuild: false,
+        lastCatchupAt: new Date(),
+      },
+      $unset: { build: '' },
+    },
+    { upsert: true }
+  );
+  invalidateBuildHint();
+}
+
+async function promoteBuildToLive(ctx: MongoCtx): Promise<void> {
+  if (!(await collectionExists(ctx, BUILD_COLLECTION))) {
+    throw new Error('BUILD collection missing; abort swap');
+  }
+  if (await collectionExists(ctx, PREV_COLLECTION)) {
+    await ctx.db.collection(PREV_COLLECTION).drop();
+  }
+  if (await collectionExists(ctx, LIVE_COLLECTION)) {
+    await ctx.db.renameCollection(LIVE_COLLECTION, PREV_COLLECTION);
+  }
+  await ctx.db.renameCollection(BUILD_COLLECTION, LIVE_COLLECTION);
+  if (await collectionExists(ctx, PREV_COLLECTION)) {
+    await ctx.db.collection(PREV_COLLECTION).drop().catch(() => undefined);
+  }
+  indexesReady = false;
+  await ensureRollupCollectionIndexes(ctx.db.collection(LIVE_COLLECTION));
+  indexesReady = true;
+  try {
+    const { invalidateInspectionWorksAggregateCache } = await import('@/lib/inspectionWorksReportsAggregate');
+    invalidateInspectionWorksAggregateCache();
+  } catch (_) {}
+  try {
+    const { invalidateInspectionDashboardStatsCache } = await import('@/lib/storage');
+    invalidateInspectionDashboardStatsCache();
+  } catch (_) {}
+}
+
+async function catchupRecentDays(ctx: MongoCtx, into: string): Promise<void> {
+  const { from, toExclusive } = recentCatchupRange();
+  if (into === BUILD_COLLECTION) {
+    await ctx.build.deleteMany({ submittedDateYmd: { $gte: from, $lt: toExclusive } });
+  }
+  await mergeDateRange(ctx, into, from, toExclusive);
+  console.log(`[inspectionWorkReportRollups] catchup ${from}..${addDays(toExclusive, -1)} → ${into}`);
+}
+
+async function claimBuildLock(ctx: MongoCtx, owner: string, force: boolean): Promise<RollupMetaDoc | null> {
+  const staleBefore = new Date(Date.now() - STALE_BUILD_MS);
+  await ctx.meta.updateOne(
+    { _id: META_ID },
+    { $setOnInsert: { schemaVersion: ROLLUP_SCHEMA_VERSION, status: 'ready' } },
+    { upsert: true }
+  );
+  const current = (await ctx.meta.findOne({ _id: META_ID })) as RollupMetaDoc | null;
+  const resume =
+    !force &&
+    current?.status === 'building' &&
+    current.schemaVersion === ROLLUP_SCHEMA_VERSION &&
+    !!current.build?.cursorMonth;
+
+  const claimed = await ctx.meta.findOneAndUpdate(
+    {
+      _id: META_ID,
+      $or: [
+        { status: { $ne: 'building' } },
+        { 'build.owner': owner },
+        { 'build.heartbeatAt': { $lte: staleBefore } },
+        { 'build.heartbeatAt': { $exists: false } },
+      ],
+    },
+    {
+      $set: {
+        schemaVersion: ROLLUP_SCHEMA_VERSION,
+        status: 'building',
+        forceRebuild: false,
+        'build.owner': owner,
+        'build.heartbeatAt': new Date(),
+        'build.startedAt': resume ? current?.build?.startedAt || new Date() : new Date(),
+        'build.cursorMonth': resume ? current?.build?.cursorMonth || '' : '',
+        'build.completedThroughYmd': resume ? current?.build?.completedThroughYmd || '' : '',
+      },
+    },
+    { returnDocument: 'after' }
+  );
+  const doc = (claimed && typeof claimed === 'object' && 'value' in claimed ? (claimed as any).value : claimed) as
+    | RollupMetaDoc
+    | null;
+  if (!doc) return null;
+  if (force || !resume) {
+    if (await collectionExists(ctx, BUILD_COLLECTION)) {
+      await ctx.db.collection(BUILD_COLLECTION).drop().catch(() => undefined);
+    }
+  }
+  invalidateBuildHint();
+  return doc;
+}
+
+async function runFullBuild(ctx: MongoCtx, force: boolean): Promise<void> {
+  const owner = workerOwner();
+  const claimed = await claimBuildLock(ctx, owner, force);
+  if (!claimed) {
+    console.log('[inspectionWorkReportRollups] another process holds the build lock');
+    return;
+  }
+  await ensureRollupCollectionIndexes(ctx.build);
+  const bounds = await worksYmdBounds(ctx);
+  if (!bounds) {
+    await markRollupsReady(ctx);
+    console.log('[inspectionWorkReportRollups] no inspection works with dates; LIVE left unchanged');
+    return;
+  }
+  await ctx.meta.updateOne(
+    { _id: META_ID, 'build.owner': owner },
+    { $set: { 'build.minYmd': bounds.minYmd, 'build.maxYmd': bounds.maxYmd, 'build.heartbeatAt': new Date() } }
+  );
+
+  let month = claimed.build?.cursorMonth && isYmd(claimed.build.cursorMonth)
+    ? monthStart(claimed.build.cursorMonth)
+    : monthStart(bounds.minYmd);
+  if (month < monthStart(bounds.minYmd)) month = monthStart(bounds.minYmd);
+
+  while (month <= bounds.maxYmd) {
+    if (!(await heartbeatBuild(ctx, owner, month))) {
+      console.log('[inspectionWorkReportRollups] lost build lock; stopping');
+      return;
+    }
+    const next = addMonths(month, 1);
+    await ctx.build.deleteMany({ submittedDateYmd: { $gte: month, $lt: next } });
+    await mergeDateRange(ctx, BUILD_COLLECTION, month, next);
+    await ctx.meta.updateOne(
+      { _id: META_ID, 'build.owner': owner },
+      {
+        $set: {
+          'build.completedThroughYmd': lastYmdOfMonth(month),
+          'build.cursorMonth': next,
+          'build.heartbeatAt': new Date(),
+        },
+      }
+    );
+    invalidateBuildHint();
+    console.log(`[inspectionWorkReportRollups] merged ${month} .. ${lastYmdOfMonth(month)} into BUILD`);
+    month = next;
+  }
+
+  await catchupRecentDays(ctx, BUILD_COLLECTION);
+  await promoteBuildToLive(ctx);
+  await markRollupsReady(ctx);
+  const buckets = await ctx.db.collection(LIVE_COLLECTION).estimatedDocumentCount();
+  console.log(`[inspectionWorkReportRollups] BUILD promoted to LIVE (${buckets} buckets)`);
+}
+
+async function maybeRepairWorksGeoOnce(ctx: MongoCtx): Promise<void> {
+  const metaCol = ctx.db.collection('appMeta');
+  const existing = await metaCol.findOne({ _id: WORKS_GEO_REPAIR_META_ID });
+  if (existing?.done) return;
+  const claimed = await metaCol.findOneAndUpdate(
+    { _id: WORKS_GEO_REPAIR_META_ID, done: { $ne: true }, startedAt: { $exists: false } },
+    { $set: { startedAt: new Date(), owner: workerOwner() } },
+    { upsert: true, returnDocument: 'after' }
+  );
+  const doc = claimed && typeof claimed === 'object' && 'value' in claimed ? (claimed as any).value : claimed;
+  if (!doc || doc.done) return;
+  if (doc.owner && doc.owner !== workerOwner() && doc.startedAt) return;
+  try {
+    const { canonicalizeTiruvallurSpellings } = require('./canonicalizeTiruvallurMongo.js');
+    await canonicalizeTiruvallurSpellings(ctx.db);
+    await metaCol.updateOne(
+      { _id: WORKS_GEO_REPAIR_META_ID },
+      { $set: { done: true, finishedAt: new Date() } }
+    );
+  } catch (err) {
+    console.warn('[inspectionWorkReportRollups] one-time geo repair failed:', err);
+  }
+}
+
+function catchupIsFresh(meta: RollupMetaDoc | null): boolean {
+  if (!meta?.lastCatchupAt) return false;
+  const at = new Date(meta.lastCatchupAt).getTime();
+  return Number.isFinite(at) && Date.now() - at < CATCHUP_MIN_INTERVAL_MS;
+}
+
+async function runRollupWorker(): Promise<void> {
   const ctx = await mongo();
-  if (!ctx) return { buckets: 0 };
-  await ctx.rollups.deleteMany({});
-  rollupsReady = false;
-  const result = await backfillInspectionWorkReportRollups();
-  rollupsReady = result.buckets >= 0;
-  return result;
+  if (!ctx) return;
+  await ensureInspectionWorkReportIndexes();
+  const meta = (await ctx.meta.findOne({ _id: META_ID })) as RollupMetaDoc | null;
+  const liveCount = (await collectionExists(ctx, LIVE_COLLECTION))
+    ? await ctx.rollups.estimatedDocumentCount()
+    : 0;
+  const force = !!(meta?.forceRebuild || meta?.status === 'queued');
+  if (force) {
+    await runFullBuild(ctx, true);
+  } else if (liveCount === 0) {
+    if (meta?.status === 'building') {
+      console.log('[inspectionWorkReportRollups] LIVE empty during build; reports keep serving PREV/LIVE');
+    } else if (meta?.status === 'ready' || (await collectionExists(ctx, PREV_COLLECTION))) {
+      console.warn('[inspectionWorkReportRollups] LIVE empty while marked ready; skip auto rebuild (swap/restart window)');
+    } else {
+      await runFullBuild(ctx, true);
+    }
+  } else if (!catchupIsFresh(meta)) {
+    if (!meta || meta.schemaVersion !== ROLLUP_SCHEMA_VERSION || meta.status !== 'ready') {
+      await ctx.meta.updateOne(
+        { _id: META_ID },
+        { $set: { schemaVersion: ROLLUP_SCHEMA_VERSION, status: 'ready', forceRebuild: false } },
+        { upsert: true }
+      );
+    }
+    await catchupRecentDays(ctx, LIVE_COLLECTION);
+    await ctx.meta.updateOne({ _id: META_ID }, { $set: { lastCatchupAt: new Date() } }, { upsert: true });
+  }
+  await maybeRepairWorksGeoOnce(ctx);
+}
+
+function tickRollupWorker(): Promise<void> {
+  if (workerInFlight) return workerInFlight;
+  workerInFlight = runRollupWorker()
+    .catch((err) => {
+      console.warn('[inspectionWorkReportRollups] worker failed:', err);
+    })
+    .finally(() => {
+      workerInFlight = null;
+    });
+  return workerInFlight;
+}
+
+export function startInspectionReportRollupWorker(): void {
+  if (
+    process.env.NEXT_PHASE === 'phase-production-build' ||
+    process.env.BUILDING === 'true'
+  ) {
+    return;
+  }
+  if (workerStarted) return;
+  workerStarted = true;
+  void tickRollupWorker();
+  const timer = setInterval(() => {
+    void tickRollupWorker();
+  }, WORKER_INTERVAL_MS);
+  timer.unref?.();
+}
+
+export async function enqueueInspectionWorkReportRollupRebuild(): Promise<{ queued: true }> {
+  const ctx = await mongo();
+  if (ctx) {
+    await ctx.meta.updateOne(
+      { _id: META_ID },
+      { $set: { status: 'queued', forceRebuild: true } },
+      { upsert: true }
+    );
+    invalidateBuildHint();
+  }
+  startInspectionReportRollupWorker();
+  const pending = workerInFlight || Promise.resolve();
+  void pending.then(() => tickRollupWorker());
+  return { queued: true };
+}
+
+/** Compatibility: never deletes LIVE; enqueues a background BUILD→LIVE swap. */
+export async function backfillInspectionWorkReportRollups(): Promise<{ buckets: number; queued: true }> {
+  await enqueueInspectionWorkReportRollupRebuild();
+  const ctx = await mongo();
+  const buckets = ctx && (await collectionExists(ctx, LIVE_COLLECTION))
+    ? await ctx.rollups.estimatedDocumentCount()
+    : 0;
+  return { buckets, queued: true };
+}
+
+export async function rebuildInspectionWorkReportRollups(): Promise<{ buckets: number; queued: true }> {
+  return backfillInspectionWorkReportRollups();
 }
 
 export async function ensureInspectionWorkReportRollupsReady(): Promise<{
   ready: boolean;
   ranBackfill: boolean;
 }> {
-  if (rollupsReady) return { ready: true, ranBackfill: false };
-  if (backfillInFlight) {
-    const ran = await backfillInFlight;
-    return { ready: rollupsReady, ranBackfill: ran };
-  }
-  backfillInFlight = (async () => {
-    try {
-      const { canonicalizeThiruvallurDistrictSpellings } = await import('@/lib/canonicalizeDistrictSpellings');
-      await canonicalizeThiruvallurDistrictSpellings();
-    } catch (err) {
-      console.warn('[inspectionWorkReportRollups] canonicalize before rebuild failed:', err);
-    }
-    await ensureInspectionWorkReportIndexes();
-    const ctx = await mongo();
-    if (!ctx) return false;
-    const meta = ctx.db.collection(ROLLUP_GEO_META_COLLECTION);
-    const versionDoc = await meta.findOne({ _id: ROLLUP_GEO_VERSION as any });
-    const n = await ctx.rollups.estimatedDocumentCount();
-    if (n > 0 && versionDoc) {
-      rollupsReady = true;
-      return false;
-    }
-    if (n > 0) {
-      console.log(`[inspectionWorkReportRollups] Rebuilding rollups for ${ROLLUP_GEO_VERSION}`);
-      await ctx.rollups.deleteMany({});
-    }
-    await backfillInspectionWorkReportRollups();
-    await meta.updateOne(
-      { _id: ROLLUP_GEO_VERSION as any },
-      { $set: { _id: ROLLUP_GEO_VERSION, at: new Date() } },
+  startInspectionReportRollupWorker();
+  return { ready: true, ranBackfill: false };
+}
+
+async function applyDeltaToCollection(
+  col: MongoCtx['rollups'],
+  dims: InspectionWorkReportRollupDims,
+  delta: number
+): Promise<void> {
+  const _id = inspectionWorkReportRollupId(dims);
+  try {
+    await col.updateOne(
+      { _id },
+      {
+        $inc: { count: delta },
+        $setOnInsert: { ...dims, _id },
+      },
       { upsert: true }
     );
-    rollupsReady = true;
-    return true;
-  })();
-  try {
-    const ran = await backfillInFlight;
-    return { ready: rollupsReady, ranBackfill: ran };
+    if (delta < 0) {
+      await col.deleteMany({ _id, count: { $lte: 0 } });
+    }
   } catch (err) {
-    rollupsReady = false;
-    console.warn('[inspectionWorkReportRollups] backfill failed:', err);
-    return { ready: false, ranBackfill: false };
-  } finally {
-    backfillInFlight = null;
+    if (!isMissingNamespace(err)) throw err;
   }
 }
 
@@ -495,23 +940,20 @@ async function applyRollupDelta(work: any, delta: number): Promise<void> {
   if (!dims) return;
   const ctx = await mongo();
   if (!ctx) return;
-  const _id = inspectionWorkReportRollupId(dims);
-  await ctx.rollups.updateOne(
-    { _id },
-    {
-      $inc: { count: delta },
-      $setOnInsert: { ...dims, _id },
-    },
-    { upsert: true }
-  );
-  if (delta < 0) {
-    await ctx.rollups.deleteMany({ _id, count: { $lte: 0 } });
+  await applyDeltaToCollection(ctx.rollups, dims, delta);
+  const hint = await refreshBuildHint(ctx);
+  if (
+    hint &&
+    hint.status === 'building' &&
+    hint.completedThroughYmd &&
+    dims.submittedDateYmd <= hint.completedThroughYmd
+  ) {
+    await applyDeltaToCollection(ctx.build, dims, delta);
   }
 }
 
 export async function incrementInspectionWorkReportRollup(work: any, delta = 1): Promise<void> {
-  const { ranBackfill } = await ensureInspectionWorkReportRollupsReady();
-  if (ranBackfill && delta > 0) return;
+  startInspectionReportRollupWorker();
   await applyRollupDelta(work, delta);
 }
 
@@ -526,8 +968,6 @@ export async function syncInspectionWorkReportRollupOnSave(previous: any | null,
   const prevId = prevDims ? inspectionWorkReportRollupId(prevDims) : '';
   const nextId = nextDims ? inspectionWorkReportRollupId(nextDims) : '';
   if (prevId === nextId) return;
-  const { ranBackfill } = await ensureInspectionWorkReportRollupsReady();
-  if (ranBackfill) return;
   if (prevDims) await applyRollupDelta(previous, -1);
   if (nextDims) await applyRollupDelta(next, 1);
 }
@@ -542,11 +982,23 @@ function findMasterById(list: any[] | undefined, id: string) {
   return (list || []).find((item: any) => String(item?.id || '').trim().toLowerCase() === needle);
 }
 
+function findMasterByUniqueName(list: any[] | undefined, name: string) {
+  const needle = String(name || '').trim().toLowerCase();
+  if (!needle) return undefined;
+  const matches = (list || []).filter(
+    (item: any) => String(item?.nameEn || '').trim().toLowerCase() === needle
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 function attachMasterGeoNames(
   row: InspectionWorkReportDimensionRollup,
   masters: InspectionWorksFilterMasters
 ): InspectionWorkReportDimensionRollup {
-  const tp = findMasterById(masters.townPanchayats, row.tpId);
+  const tp =
+    findMasterById(masters.townPanchayats, row.tpId) ||
+    findMasterByUniqueName(masters.townPanchayats, row.tpId) ||
+    findMasterByUniqueName(masters.townPanchayats, row.tpNameEn || '');
   const dist =
     (tp?.districtId ? findMasterById(masters.districts, String(tp.districtId)) : undefined) ||
     findMasterById(masters.districts, row.districtId);
@@ -565,16 +1017,38 @@ function attachMasterGeoNames(
   };
 }
 
+async function aggregateLiveRollups(
+  ctx: MongoCtx,
+  pipeline: Record<string, unknown>[]
+): Promise<any[]> {
+  const run = async (col: MongoCtx['rollups']) =>
+    col.aggregate(pipeline, { maxTimeMS: QUERY_MAX_MS }).toArray();
+  try {
+    const rows = await run(ctx.rollups);
+    if (rows.length) return rows;
+    if (await collectionExists(ctx, PREV_COLLECTION)) {
+      const prev = await run(ctx.db.collection(PREV_COLLECTION));
+      if (prev.length) return prev;
+    }
+    return rows;
+  } catch (err) {
+    if (!isMissingNamespace(err)) throw err;
+    if (await collectionExists(ctx, PREV_COLLECTION)) {
+      return await run(ctx.db.collection(PREV_COLLECTION));
+    }
+    return [];
+  }
+}
+
 export async function queryInspectionWorkReportRollupCounts(
   filter: InspectionWorksFilterQuery,
   masters: InspectionWorksFilterMasters,
   opts?: { omitCategory?: boolean }
-): Promise<InspectionWorkReportRollupCounts | null> {
+): Promise<InspectionWorkReportRollupCounts> {
+  startInspectionReportRollupWorker();
   try {
-    const { ready } = await ensureInspectionWorkReportRollupsReady();
-    if (!ready) return null;
     const ctx = await mongo();
-    if (!ctx) return null;
+    if (!ctx) return emptyRollupCounts();
     const match = buildRollupMatch(filter, masters, { omitCategory: opts?.omitCategory !== false });
     const pipeline: Record<string, unknown>[] = [];
     if (Object.keys(match).length) pipeline.push({ $match: match });
@@ -592,7 +1066,7 @@ export async function queryInspectionWorkReportRollupCounts(
         count: { $sum: '$count' },
       },
     });
-    const grouped = (await ctx.rollups.aggregate(pipeline).toArray()) as Array<{
+    const grouped = (await aggregateLiveRollups(ctx, pipeline)) as Array<{
       _id: {
         zoneId: string;
         districtId: string;
@@ -634,64 +1108,52 @@ export async function queryInspectionWorkReportRollupCounts(
     };
   } catch (err) {
     console.warn('[inspectionWorkReportRollups] query failed:', err);
-    return null;
+    return emptyRollupCounts();
   }
 }
 
-/** Dashboard KPI rows from pre-aggregated rollups — not a scan of inspectionWorks. */
+/** Dashboard KPI rows from pre-aggregated rollups — never a scan of inspectionWorks. */
 export async function fetchDashboardStatsFromRollups(): Promise<any[] | null> {
+  startInspectionReportRollupWorker();
   try {
     const ctx = await mongo();
     if (!ctx) return null;
-    const n = await ctx.rollups.estimatedDocumentCount();
-    if (!n) return null;
-    const rows = await ctx.rollups
-      .aggregate(
-        [
-          {
-            $group: {
-              _id: {
-                subjectId: '$subjectId',
-                categoryId: '$categoryId',
-                zoneId: '$zoneId',
-                districtId: '$districtId',
-                tpId: '$tpId',
-              },
-              count: { $sum: '$count' },
-            },
+    const rows = await aggregateLiveRollups(ctx, [
+      {
+        $group: {
+          _id: {
+            subjectId: '$subjectId',
+            categoryId: '$categoryId',
+            zoneId: '$zoneId',
+            districtId: '$districtId',
+            tpId: '$tpId',
           },
-          {
-            $project: {
-              _id: 0,
-              subjectId: '$_id.subjectId',
-              categoryId: '$_id.categoryId',
-              zoneId: '$_id.zoneId',
-              districtId: '$_id.districtId',
-              tpId: '$_id.tpId',
-              count: 1,
-            },
-          },
-        ],
-        { maxTimeMS: 4000 }
-      )
-      .toArray();
-    return rows.length ? rows : null;
+          count: { $sum: '$count' },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          subjectId: '$_id.subjectId',
+          categoryId: '$_id.categoryId',
+          zoneId: '$_id.zoneId',
+          districtId: '$_id.districtId',
+          tpId: '$_id.tpId',
+          count: 1,
+        },
+      },
+    ]);
+    return rows;
   } catch (err) {
     console.warn('[inspectionWorkReportRollups] dashboard stats failed:', err);
-    return null;
+    return [];
   }
 }
 
 export async function queryInspectionWorkReportRollupTotal(
   filter: InspectionWorksFilterQuery,
   masters: InspectionWorksFilterMasters
-): Promise<number | null> {
-  try {
-    const counts = await queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: true });
-    if (!counts) return null;
-    return sumSubjectCategoryRollupsForFilter(counts.subjectCategoryRollups, filter, masters);
-  } catch (err) {
-    console.warn('[inspectionWorkReportRollups] total query failed:', err);
-    return null;
-  }
+): Promise<number> {
+  const counts = await queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: true });
+  return sumSubjectCategoryRollupsForFilter(counts.subjectCategoryRollups, filter, masters);
 }

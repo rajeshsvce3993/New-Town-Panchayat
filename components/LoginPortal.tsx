@@ -120,13 +120,6 @@ export function LoginPortal({
                 fetchPriority="high"
                 decoding="async"
                 className="mx-auto block h-auto w-[128px] max-w-[46vw] object-contain object-top"
-                onError={(e) => {
-                  const el = e.currentTarget;
-                  if (el.dataset.fallback === '1') return;
-                  el.dataset.fallback = '1';
-                  el.onerror = null;
-                  el.src = '/login-logo.png';
-                }}
               />
               <p className="mt-2 text-[13px] text-slate-400">
                 {ta ? 'நிர்வாக முகப்பு உள்நுழைவு' : 'Admin Portal Login'}

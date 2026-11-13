@@ -236,8 +236,6 @@ export function buildInspectionWorksMongoMatch(
     const or: Record<string, unknown>[] = [];
     for (const v of variants) or.push({ districtId: v });
     if (dist?.id) or.push({ districtId: dist.id });
-    if (dist?.nameEn) or.push({ districtNameEn: dist.nameEn });
-    if (dist?.nameTa) or.push({ districtNameTa: dist.nameTa });
     if (tpIds.length) or.push({ tpId: { $in: tpIds } }, { townPanchayatId: { $in: tpIds } });
     and.push({ $or: or });
   } else if (scopeZone) {
@@ -250,39 +248,12 @@ export function buildInspectionWorksMongoMatch(
     );
     const districtIds = districtIdsForZone(scopeZone, masters);
     const tpIds = tpIdsForZone(scopeZone, masters);
-    const nameOr: Record<string, unknown>[] = [];
-    if (zone?.nameEn) {
-      const escaped = zone.nameEn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      nameOr.push({ zoneNameEn: zone.nameEn });
-      nameOr.push({ zoneNameEn: { $regex: `^${escaped}$`, $options: 'i' } });
-    }
-    if (zone?.nameTa) nameOr.push({ zoneNameTa: zone.nameTa });
-    const idOr: Record<string, unknown>[] = [{ zoneId: { $in: zoneVariants } }];
-    if (zone?.id) idOr.push({ zoneId: zone.id });
-    const emptyNameOr: Record<string, unknown>[] = [
-      { zoneNameEn: { $exists: false } },
-      { zoneNameEn: null },
-      { zoneNameEn: '' },
-      ...nameOr,
-    ];
-    const identityOr: Record<string, unknown>[] = [
-      ...nameOr,
-      { $and: [{ $or: idOr }, { $or: emptyNameOr }] },
-    ];
-    const childOr: Record<string, unknown>[] = [];
-    if (districtIds.length) childOr.push({ districtId: { $in: districtIds } });
-    if (tpIds.length) childOr.push({ tpId: { $in: tpIds } }, { townPanchayatId: { $in: tpIds } });
-    const zoneOr = [...identityOr];
-    if (childOr.length) {
-      zoneOr.push({
-        $and: [
-          { $or: [{ zoneId: { $exists: false } }, { zoneId: null }, { zoneId: '' }] },
-          { $or: [{ zoneNameEn: { $exists: false } }, { zoneNameEn: null }, { zoneNameEn: '' }] },
-          { $or: childOr },
-        ],
-      });
-    }
-    and.push({ $or: zoneOr });
+    const zoneIds = [...zoneVariants];
+    if (zone?.id) zoneIds.push(zone.id);
+    const or: Record<string, unknown>[] = [{ zoneId: { $in: [...new Set(zoneIds.filter(Boolean))] } }];
+    if (districtIds.length) or.push({ districtId: { $in: districtIds } });
+    if (tpIds.length) or.push({ tpId: { $in: tpIds } }, { townPanchayatId: { $in: tpIds } });
+    and.push({ $or: or });
   }
 
   if (filter.ward) {
