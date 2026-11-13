@@ -167,15 +167,33 @@ function masterById(list: any[] | undefined, id: unknown) {
   return (list || []).find((item: any) => String(item?.id || '').trim().toLowerCase() === n);
 }
 
+function uniqueTpInZone(tps: any[] | undefined, name: unknown, zoneId: unknown) {
+  const n = String(name || '').trim().toLowerCase();
+  const z = String(zoneId || '').trim().toLowerCase();
+  if (!n || !z) return undefined;
+  const hits = (tps || []).filter(
+    (t) =>
+      String(t?.zoneId || '').trim().toLowerCase() === z &&
+      String(t?.nameEn || '').trim().toLowerCase() === n
+  );
+  return hits.length === 1 ? hits[0] : undefined;
+}
+
 /** Copy zone/district/TP ids and names from master collections by id. Used on save so reports read stored ids. */
 export function stampWorkGeoFromMasters(
   work: any,
   masters: { townPanchayats?: any[]; districts?: any[]; zones?: any[] } = {}
 ): any {
   if (!work || typeof work !== 'object') return work;
-  const tp = masterById(masters.townPanchayats, work.tpId || work.townPanchayatId);
+  const zoneFromId = masterById(masters.zones, work.zoneId);
+  let tp =
+    masterById(masters.townPanchayats, work.tpId || work.townPanchayatId) ||
+    uniqueTpInZone(masters.townPanchayats, work.tpNameEn || work.townPanchayat, zoneFromId?.id || work.zoneId);
   const dist = masterById(masters.districts, tp?.districtId || work.districtId);
   const zone = masterById(masters.zones, tp?.zoneId || dist?.zoneId || work.zoneId);
+  if (!tp && zone) {
+    tp = uniqueTpInZone(masters.townPanchayats, work.tpNameEn || work.townPanchayat, zone.id);
+  }
   if (!tp && !dist && !zone) return work;
   return {
     ...work,
