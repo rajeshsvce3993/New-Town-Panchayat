@@ -3217,12 +3217,35 @@ export default function InspectionReportsView({
         zoneId: resolvedZoneId,
         districtId: resolvedDistrictId,
         tpId: resolvedTpId,
-        zoneNameEn: displayName(zone?.nameEn, zoneName),
-        zoneNameTa: displayName(zone?.nameTa, zone?.nameEn, zoneName),
-        districtNameEn: displayName(dist?.nameEn, distName),
-        districtNameTa: displayName(dist?.nameTa, dist?.nameEn, distName),
-        tpNameEn: displayName(tp?.nameEn, tpName),
-        tpNameTa: displayName(tp?.nameTa, tp?.nameEn, tpName),
+        zoneNameEn: displayName(
+          zone?.nameEn,
+          zoneName,
+          /^(z|d|tp|iu)_/i.test(zoneId) ? '' : zoneId
+        ),
+        zoneNameTa: displayName(
+          zone?.nameTa,
+          zone?.nameEn,
+          zoneName,
+          /^(z|d|tp|iu)_/i.test(zoneId) ? '' : zoneId
+        ),
+        districtNameEn: displayName(
+          dist?.nameEn,
+          distName,
+          /^(z|d|tp|iu)_/i.test(districtId) ? '' : districtId
+        ),
+        districtNameTa: displayName(
+          dist?.nameTa,
+          dist?.nameEn,
+          distName,
+          /^(z|d|tp|iu)_/i.test(districtId) ? '' : districtId
+        ),
+        tpNameEn: displayName(tp?.nameEn, tpName, /^(z|d|tp|iu)_/i.test(tpId) ? '' : tpId),
+        tpNameTa: displayName(
+          tp?.nameTa,
+          tp?.nameEn,
+          tpName,
+          /^(z|d|tp|iu)_/i.test(tpId) ? '' : tpId
+        ),
         streetName: streetName || '-',
       };
     },

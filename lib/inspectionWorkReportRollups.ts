@@ -46,7 +46,7 @@ const LIVE_COLLECTION = INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION;
 const BUILD_COLLECTION = `${INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION}_build`;
 const PREV_COLLECTION = `${INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION}_prev`;
 const META_ID = 'inspection_work_report_rollups';
-const WORKS_GEO_REPAIR_META_ID = 'geo_hierarchy_repair_v2';
+const WORKS_GEO_REPAIR_META_ID = 'geo_hierarchy_repair_v3';
 const ROLLUP_SCHEMA_VERSION = 3;
 const MONTH_AGG_MAX_MS = 180_000;
 const STALE_BUILD_MS = 10 * 60_000;
@@ -100,11 +100,15 @@ type RollupMetaDoc = {
 export function inspectionWorkReportRollupDims(work: any): InspectionWorkReportRollupDims | null {
   const submittedDateYmd = deriveSubmittedDateYmd(work);
   if (!submittedDateYmd) return null;
+  const zoneId = norm(work.zoneId);
+  const districtId = norm(work.districtId);
+  const tpId = firstNonEmpty(work.tpId, work.townPanchayatId);
+  if (!zoneId && !districtId && !tpId) return null;
   return {
     submittedDateYmd,
-    zoneId: norm(work.zoneId),
-    districtId: norm(work.districtId),
-    tpId: firstNonEmpty(work.tpId, work.townPanchayatId),
+    zoneId,
+    districtId,
+    tpId,
     wardNumber: norm(work.wardNumber ?? work.wardNo ?? work.ward),
     submittedByUserName: norm(work.submittedByUserName || work.username),
     subjectId: norm(work.subjectId) || 'unknown',
@@ -867,7 +871,7 @@ async function maybeRepairWorksGeoOnce(ctx: MongoCtx): Promise<void> {
       }
     );
     console.log(
-      `[geo-hierarchy] One-time collection repair finished on "${result?.dbName || ctx.db.databaseName}" modified=${result?.modified || 0} remaps=${(result?.remaps || []).length} rollups=${remapped}`
+      `[geo-hierarchy] One-time collection repair finished on "${result?.dbName || ctx.db.databaseName}" modified=${result?.modified || 0} remaps=${(result?.remaps || []).length} rollups=${remapped} emptyFilled=${result?.emptyGeo?.filled || 0} emptyUnresolved=${result?.emptyGeo?.unresolved || 0} emptyByZoneDistrict=${JSON.stringify(result?.emptyGeo?.byZone || {})}`
     );
   } catch (err) {
     console.warn('[geo-hierarchy] one-time geo repair failed:', err);
