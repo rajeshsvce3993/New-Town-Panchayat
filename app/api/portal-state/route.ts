@@ -370,14 +370,15 @@ export async function GET(req: NextRequest) {
       }
       const fieldsData = { ...(w.fieldsData || {}) };
       for (const [key, val] of Object.entries(fieldsData)) {
-        if (typeof val === 'string') {
-          if (val.startsWith('/uploads')) {
-            fieldsData[key] = `${origin}${val}`;
-          } else if (val.startsWith('inspection/')) {
-            fieldsData[key] = `https://tms-2026.s3.ap-south-1.amazonaws.com/${val}`;
-          } else if (val.startsWith('/data/') || val.startsWith('/storage/') || val.includes('offline_images') || val.includes('raw_uploads')) {
-            fieldsData[key] = '';
-          }
+        if (typeof val !== 'string') continue;
+        if (val.startsWith('data:')) {
+          fieldsData[key] = '';
+        } else if (val.startsWith('/uploads')) {
+          fieldsData[key] = `${origin}${val}`;
+        } else if (val.startsWith('inspection/')) {
+          fieldsData[key] = `https://tms-2026.s3.ap-south-1.amazonaws.com/${val}`;
+        } else if (val.startsWith('/data/') || val.startsWith('/storage/') || val.includes('offline_images') || val.includes('raw_uploads')) {
+          fieldsData[key] = '';
         }
       }
 

@@ -3719,7 +3719,9 @@ const MOBILE_LITE_WORK_PROJECTION = {
   categoryNameTa: 1,
   wardNumber: 1,
   wardNo: 1,
+  ward: 1,
   streetName: 1,
+  street: 1,
   tpId: 1,
   districtId: 1,
   zoneId: 1,
@@ -3734,6 +3736,11 @@ const MOBILE_LITE_WORK_PROJECTION = {
   username: 1,
   status: 1,
   imageUrl: 1,
+  imageCaption: 1,
+  documentUrl: 1,
+  fieldsData: 1,
+  latitude: 1,
+  longitude: 1,
 } as const;
 
 // Fetch targeted inspection works directly using indexed MongoDB queries (<5ms)
