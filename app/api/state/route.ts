@@ -304,7 +304,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, message: `${key} item deleted` }, { headers: CORS_HEADERS });
     }
 
-    if (key === 'settings') {
+    if (op === 'saveSettings' || key === 'settings') {
       await saveAppSettings(data);
       logServerProcess({
         category: 'MASTER_UPDATE',

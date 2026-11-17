@@ -83,7 +83,7 @@
             "buildArchs": [
               "arm64-v8a"
             ],
-            "extraProguardRules": "-keep class fr.greweb.reactnativeviewshot.** { *; }\n-keep class com.reactnativecommunity.webview.** { *; }\n",
+            "extraProguardRules": "-keep class fr.greweb.reactnativeviewshot.** { *; }\n-keep class com.reactnativecommunity.webview.** { *; }\n-keep class expo.modules.sharewithcaption.** { *; }\n",
             "packagingOptions": {
               "exclude": [
                 "lib/x86/**",

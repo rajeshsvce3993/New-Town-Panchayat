@@ -48,6 +48,21 @@ function attr(raw: string, name: string) {
   return match?.[2] || match?.[3] || '';
 }
 
+export function htmlToPlain(raw: string): string {
+  return String(raw || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function templateToHtml(raw: string): string {
   const text = String(raw || '');
   if (!text.trim()) return '';

@@ -1,0 +1,16 @@
+{
+  "name": "share-with-caption",
+  "version": "1.0.0",
+  "description": "Share a local image with a text caption on Android and iOS.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "keywords": ["react-native", "expo"],
+  "license": "UNLICENSED",
+  "homepage": "https://townpanchayat.com",
+  "author": "Town Panchayat EMS",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

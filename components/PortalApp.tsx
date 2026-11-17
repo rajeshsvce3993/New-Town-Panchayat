@@ -523,7 +523,11 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     }
 
     const updatedSettings = { ...state.settings, currentLanguage: nextLang };
-    await handleSaveSettings(updatedSettings);
+    try {
+      await handleSaveSettings(updatedSettings);
+    } catch (err) {
+      console.error('Error saving language', err);
+    }
   };
 
   const toggleLanguage = async () => {
@@ -537,7 +541,11 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
       localStorage.setItem(`theme_user_${currentUser.id || currentUser.employeeId}`, nextTheme);
     }
     const updatedSettings = { ...state.settings, theme: nextTheme };
-    await handleSaveSettings(updatedSettings);
+    try {
+      await handleSaveSettings(updatedSettings);
+    } catch (err) {
+      console.error('Error saving theme', err);
+    }
   };
 
   // Master Collection Save
@@ -649,19 +657,16 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
 
   // Webapp Settings save
   const handleSaveSettings = async (settingsObj: any) => {
-    try {
-      const res = await fetch('/api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operation: 'saveSettings', data: settingsObj })
-      });
-      const resJson = await res.json();
-      if (resJson.success) {
-        setState((prev: any) => ({ ...prev, settings: settingsObj }));
-      }
-    } catch (err) {
-      console.error('Error saving webapp settings:', err);
+    const res = await fetch('/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operation: 'saveSettings', key: 'settings', data: settingsObj })
+    });
+    const resJson = await res.json().catch(() => ({ success: false }));
+    if (!res.ok || !resJson.success) {
+      throw new Error(resJson.message || 'Settings save failed');
     }
+    setState((prev: any) => ({ ...prev, settings: settingsObj }));
   };
 
   // Instant User Logout

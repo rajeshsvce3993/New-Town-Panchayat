@@ -58,7 +58,7 @@ function SharePreview({
       <div className="border-b border-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">{title}</div>
       <div
         className="px-3 py-2.5 text-center text-[11px] font-semibold text-white"
-        style={{ backgroundImage: 'linear-gradient(180deg, #4CB86A, #288C46, #1B6B34)' }}
+        style={{ backgroundImage: `linear-gradient(180deg, ${theme.headerFrom}, ${theme.headerMid}, ${theme.headerTo})` }}
       >
         Existing report header
       </div>
@@ -143,6 +143,9 @@ export default function ReportShareSettingsView({
         },
       });
       setSaved(true);
+    } catch (err) {
+      console.error('Report share settings save failed', err);
+      setSaved(false);
     } finally {
       setSaving(false);
     }
@@ -208,7 +211,7 @@ export default function ReportShareSettingsView({
                       </span>
                       {ta ? 'அறிக்கை தீம்' : 'Report theme'}
                     </h3>
-                    <p>{ta ? 'தலைப்பு மாறாது. தீம் பொத்தான், அட்டவணை மற்றும் செய்திக்கு பயன்படும்' : 'The report header stays as it is. The theme colors the buttons, table, and template message'}</p>
+                    <p>{ta ? 'தேர்ந்தெடுத்த தீம் அறிக்கை தலைப்பு, அட்டவணை, பொத்தான் மற்றும் பகிர்வு பக்கத்தில் தெரியும்' : 'The selected theme is applied to the report header, table, buttons, and shared page'}</p>
                   </div>
                   {selectedName ? <span className="portal-dash-pill is-active">{selectedName}</span> : null}
                 </div>

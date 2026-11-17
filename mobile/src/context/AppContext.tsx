@@ -43,7 +43,24 @@ async function isLoginSessionExpired(): Promise<boolean> {
   return !loginDate || loginDate !== today;
 }
 
-function hydratePortalFromScope(scope: UserScopeData): PortalState {
+function pickReportSettings(raw?: Record<string, unknown> | null) {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Record<string, unknown> = {};
+  if (raw.currentLanguage != null) out.currentLanguage = raw.currentLanguage;
+  if (raw.googleMapsApiKey != null) out.googleMapsApiKey = raw.googleMapsApiKey;
+  if (raw.theme != null) out.theme = raw.theme;
+  if (raw.customColors != null) out.customColors = raw.customColors;
+  if (raw.reportShare != null) out.reportShare = raw.reportShare;
+  return out;
+}
+
+async function withLiveSettings(portal: PortalState): Promise<PortalState> {
+  const settings = pickReportSettings(await api.getAppSettings());
+  if (!Object.keys(settings).length) return portal;
+  return { ...portal, settings: { ...portal.settings, ...settings } };
+}
+
+function hydratePortalFromScope(scope: UserScopeData, prev?: PortalState | null): PortalState {
   const sTp = scope.townPanchayat;
   return {
     ...emptyPortal(),
@@ -59,6 +76,7 @@ function hydratePortalFromScope(scope: UserScopeData): PortalState {
     categories: scope.categories || [],
     fields: scope.fields || [],
     works: [],
+    settings: prev?.settings,
   };
 }
 
@@ -274,8 +292,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const remote = await api.getPortalState(current.username);
       if (sid !== sessionIdRef.current || !userRef.current) return;
-      setPortal(remote);
-      await prefs.setPortal(remote);
+      const liveSettings = pickReportSettings(await api.getAppSettings());
+      const nextPortal: PortalState = {
+        ...remote,
+        settings: {
+          ...pickReportSettings(remote.settings as Record<string, unknown> | undefined),
+          ...liveSettings,
+        },
+      };
+      setPortal(nextPortal);
+      await prefs.setPortal(nextPortal);
       if (sid !== sessionIdRef.current || !userRef.current) return;
       const remoteWorks = filterUserWorks(portalWorks(remote), current, 'reports').filter((w) =>
         isAssignedWorkId(w.workId)
@@ -498,7 +524,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (res.userScope) {
           await prefs.setUserScope(res.userScope);
           await prefs.setScopeVersionInt(res.scopeVersion || 1);
-          const immediate = hydratePortalFromScope(res.userScope);
+          const immediate = await withLiveSettings(hydratePortalFromScope(res.userScope));
           await prefs.setPortal(immediate);
           setPortal(immediate);
         }
@@ -528,7 +554,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (scopeResp.success && scopeResp.scope) {
           await prefs.setUserScope(scopeResp.scope);
           await prefs.setScopeVersionInt(scopeResp.scopeVersion || 1);
-          const st = hydratePortalFromScope(scopeResp.scope);
+          const st = await withLiveSettings(hydratePortalFromScope(scopeResp.scope));
           await prefs.setPortal(st);
           setPortal(st);
         }

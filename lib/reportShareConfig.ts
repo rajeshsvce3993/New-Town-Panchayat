@@ -47,6 +47,7 @@ export const DEFAULT_REPORT_THEME = {
   headerMid: '#288C46',
   headerTo: '#1B6B34',
   accent: '#1A3D66',
+  highlight: '#FBBF24',
   tableHeader: '#FBBF24',
   tableHeaderText: '#1A3D66',
   pageBackground: '#EEF2F6',
@@ -88,13 +89,28 @@ export function reportThemeForId(themeId: string, custom?: Partial<CustomThemeCo
   const conf = themesConfig[id];
   const colors = { ...defaultCustomThemeColors, ...(custom || {}) };
   const accent = id === 'custom' ? colors.primaryColor : conf.accentColor;
-  const headerFrom = DEFAULT_REPORT_THEME.headerFrom;
-  const headerTo = DEFAULT_REPORT_THEME.headerTo;
+  const from =
+    id === 'custom'
+      ? colors.sidebarFrom
+      : id === 'dark'
+        ? '#475569'
+        : id === 'light'
+          ? '#334155'
+          : conf.chartGradient?.[0] || accent;
+  const to =
+    id === 'custom'
+      ? colors.sidebarTo
+      : id === 'dark'
+        ? '#020617'
+        : id === 'light'
+          ? '#0f172a'
+          : conf.chartGradient?.[1] || accent;
   return {
-    headerFrom,
-    headerMid: DEFAULT_REPORT_THEME.headerMid,
-    headerTo,
+    headerFrom: mix(from, '#FFFFFF', 0.16),
+    headerMid: mix(from, to, 0.42),
+    headerTo: to,
     accent,
+    highlight: mix(accent, '#FDE68A', 0.58),
     tableHeader: accent,
     tableHeaderText: luminance(accent) > 0.62 ? '#1A3D66' : '#FFFFFF',
     pageBackground: '#EEF2F6',

@@ -154,7 +154,23 @@ export const api = {
     const url = username ? `${baseUrl}/api/portal-state?username=${encodeURIComponent(username)}` : `${baseUrl}/api/portal-state`;
     const response = await fetchWithTimeout(url, { headers: { 'Cache-Control': 'no-cache, no-store' } });
     if (!response.ok) throw new Error(`Server returned non-successful response: ${response.status}`);
-    return (await response.json()) as PortalState;
+    const json = (await response.json()) as PortalState & { data?: PortalState };
+    return (json?.data && typeof json.data === 'object' && !Array.isArray(json.data) ? { ...json, ...json.data } : json) as PortalState;
+  },
+
+  async getAppSettings(): Promise<Record<string, unknown>> {
+    try {
+      const response = await fetchWithTimeout(
+        `${baseUrl}/api/state?key=settings`,
+        { headers: { 'Cache-Control': 'no-cache, no-store' } },
+        BOOTSTRAP_API_TIMEOUT_MS,
+      );
+      if (!response.ok) return {};
+      const json = (await response.json()) as { data?: Record<string, unknown> };
+      return json?.data && typeof json.data === 'object' && !Array.isArray(json.data) ? json.data : {};
+    } catch {
+      return {};
+    }
   },
 
   async uploadFile(opts: {

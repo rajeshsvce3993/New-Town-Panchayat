@@ -13,6 +13,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   ToastAndroid,
@@ -20,20 +21,28 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ViewShot, { captureRef, type ViewShotRef } from 'react-native-view-shot';
-import { getApiBaseUrl, isLocalPhotoPath, resolveMediaUrl, resolveProfilePhotoUrl } from '../api/client';
+import { api, getApiBaseUrl, isLocalPhotoPath, resolveMediaUrl, resolveProfilePhotoUrl } from '../api/client';
 import { SAMPLE_PHOTO } from '../constants/config';
 import { useApp } from '../context/AppContext';
 import { profilePhotoFile } from '../storage/preferences';
 import { BrandImage } from './BrandImage';
 import { type AppPalette } from '../theme/palettes';
+import { reportThemeFromId } from '../theme/reportThemes';
 import type { FieldDefinition, InspectionWork, PortalState } from '../types/models';
 import { effectivePhotoUrl, portalFields, resolveOfficerDesignation } from '../types/models';
 import { formatTo12Hr } from '../utils/dates';
 import { fieldOrderIndex } from '../utils/fieldVisibility';
-import { ShareHtmlText } from '../utils/shareHtml';
+import { htmlToPlain } from '../utils/shareHtml';
+import { isShareWithCaptionAvailable, shareFileWithCaption } from 'share-with-caption';
 
 const EXPORT_W = Math.max(960, Math.round(Dimensions.get('window').width * 1.7));
 const EXPORT_FIT_SCALE = Math.min(1, Dimensions.get('window').width / EXPORT_W);
+const SCREEN_W = Dimensions.get('window').width;
+const SCREEN_H = Dimensions.get('window').height;
+const PORTRAIT_W = Math.round(Math.max(SCREEN_W, 360) * 3);
+const PORTRAIT_H = Math.round(Math.max(SCREEN_H, 640) * 2.65);
+const PORTRAIT_FIT_SCALE = Math.min(1, SCREEN_W / PORTRAIT_W);
+const PORTRAIT_PHOTO_GAP = 6;
 const GOOGLE_STATIC_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 
 function mapFileUri(path: string) {
@@ -255,6 +264,7 @@ type ReportThemeColors = {
   headerMid: string;
   headerTo: string;
   accent: string;
+  highlight: string;
   tableHeader: string;
   tableHeaderText: string;
   pageBackground: string;
@@ -268,6 +278,7 @@ const FALLBACK_REPORT_THEME: ReportThemeColors = {
   headerMid: REPORT_HEADER_GRADIENT[1],
   headerTo: REPORT_HEADER_GRADIENT[2],
   accent: SUMMARY_NAVY,
+  highlight: REPORT_AMBER,
   tableHeader: REPORT_AMBER,
   tableHeaderText: SUMMARY_NAVY,
   pageBackground: '#EEF2F6',
@@ -281,7 +292,8 @@ function themeStops(theme: ReportThemeColors): [string, string, string] {
 }
 
 function reportShareConfig(portal: PortalState) {
-  const saved = (portal.settings as {
+  const settings = portal.settings as {
+    theme?: string;
     reportShare?: {
       enabled?: boolean;
       template?: string;
@@ -294,7 +306,9 @@ function reportShareConfig(portal: PortalState) {
       themeId?: string;
       theme?: Partial<ReportThemeColors>;
     };
-  } | undefined)?.reportShare;
+  } | undefined;
+  const saved = settings?.reportShare;
+  const themeId = String(saved?.themeId || settings?.theme || '').trim();
   const legacy = String(saved?.template || '');
   const isHeaderLine = (text: string) => {
     const t = String(text || '').trim();
@@ -317,9 +331,9 @@ function reportShareConfig(portal: PortalState) {
     theme: {
       ...FALLBACK_REPORT_THEME,
       ...(saved?.theme || {}),
-      headerFrom: FALLBACK_REPORT_THEME.headerFrom,
-      headerMid: FALLBACK_REPORT_THEME.headerMid,
-      headerTo: FALLBACK_REPORT_THEME.headerTo,
+      ...(reportThemeFromId(themeId) || {}),
+      ...(saved?.theme?.messageBackground ? { messageBackground: saved.theme.messageBackground } : {}),
+      ...(saved?.theme?.messageText ? { messageText: saved.theme.messageText } : {}),
     },
   };
 }
@@ -583,7 +597,7 @@ async function copyToExports(uri: string, filename: string) {
   return dest;
 }
 
-async function shareOrSave(uri: string, mimeType: string, filename: string, save: boolean, isTamil: boolean) {
+async function shareOrSave(uri: string, mimeType: string, filename: string, save: boolean, isTamil: boolean, caption?: string) {
   if (save) {
     const result = await saveToGallery(uri);
     if (result === 'saved') {
@@ -598,20 +612,50 @@ async function shareOrSave(uri: string, mimeType: string, filename: string, save
     toast(isTamil ? `பதிவிறக்கம் சேமிக்கப்பட்டது: ${filename}` : `Downloaded: ${filename}`);
     return;
   }
+  const fileUri = mapFileUri(uri);
+  const note = String(caption || '').trim();
+
+  if (note && isShareWithCaptionAvailable()) {
+    await shareFileWithCaption({
+      uri: fileUri,
+      mimeType: mimeType || 'image/jpeg',
+      caption: note,
+      dialogTitle: filename,
+    });
+    return;
+  }
+
+  if (Platform.OS === 'ios') {
+    await Share.share({
+      title: filename,
+      url: fileUri,
+      ...(note ? { message: note } : {}),
+    });
+    return;
+  }
+
   if (!(await Sharing.isAvailableAsync())) {
     toast(isTamil ? 'பகிர்வு இந்த சாதனத்தில் இல்லை' : 'Sharing is not available on this device');
     return;
   }
-  await Sharing.shareAsync(uri, {
-    mimeType,
+  await Sharing.shareAsync(fileUri, {
+    mimeType: mimeType || 'image/jpeg',
     dialogTitle: filename,
     UTI: mimeType === 'image/png' ? 'public.png' : 'public.jpeg',
   });
 }
 
-function ImageCaption({ label, count }: { label: string; count?: string }) {
+function ImageCaption({
+  label,
+  count,
+  highlight,
+}: {
+  label: string;
+  count?: string;
+  highlight: string;
+}) {
   return (
-    <View style={styles.captionBar}>
+    <View style={[styles.captionBar, { backgroundColor: highlight, borderTopColor: highlight }]}>
       <Text style={styles.captionText} numberOfLines={2}>
         {count ? `${label}  ${count}` : label}
       </Text>
@@ -625,12 +669,14 @@ function ExportPhotoTile({
   imageCount,
   index,
   onImageLoad,
+  highlight,
 }: {
   item: { url: string; name: string; fieldKey: string };
   captionHeight: number;
   imageCount: number;
   index: number;
   onImageLoad: () => void;
+  highlight: string;
 }) {
   return (
     <View style={styles.exportTile}>
@@ -645,7 +691,7 @@ function ExportPhotoTile({
           onError={onImageLoad}
         />
       </View>
-      <View style={[styles.exportTileCaption, { height: captionHeight }]}>
+      <View style={[styles.exportTileCaption, { height: captionHeight, backgroundColor: highlight, borderTopColor: highlight }]}>
         <Text style={styles.exportTileCaptionTxt} numberOfLines={1}>
           {imageCount > 1 ? `${item.name}  ${index + 1}/${imageCount}` : item.name}
         </Text>
@@ -661,6 +707,7 @@ function ExportPhotoRow({
   onImageLoad,
   captionHeight,
   centerSingle,
+  highlight,
 }: {
   items: { url: string; name: string; fieldKey: string }[];
   startIndex: number;
@@ -668,6 +715,7 @@ function ExportPhotoRow({
   onImageLoad: () => void;
   captionHeight: number;
   centerSingle?: boolean;
+  highlight: string;
 }) {
   if (items.length === 1 && centerSingle) {
     return (
@@ -680,6 +728,7 @@ function ExportPhotoRow({
             imageCount={imageCount}
             captionHeight={captionHeight}
             onImageLoad={onImageLoad}
+            highlight={highlight}
           />
         </View>
         <View style={styles.exportRowSide} />
@@ -697,6 +746,7 @@ function ExportPhotoRow({
             imageCount={imageCount}
             captionHeight={captionHeight}
             onImageLoad={onImageLoad}
+            highlight={highlight}
           />
         </View>
       ))}
@@ -710,11 +760,13 @@ function ExportPhotoFrame({
   isTamil,
   onImageLoad,
   height,
+  highlight,
 }: {
   images: { url: string; name: string; fieldKey: string }[];
   isTamil: boolean;
   onImageLoad: () => void;
   height: number;
+  highlight: string;
 }) {
   const frameStyle = [styles.exportPhotoFrame, { height, minHeight: height }];
   if (!images.length) {
@@ -730,7 +782,7 @@ function ExportPhotoFrame({
   if (images.length === 1) {
     return (
       <View style={frameStyle}>
-        <ExportPhotoTile item={images[0]} index={0} imageCount={1} captionHeight={captionH} onImageLoad={onImageLoad} />
+        <ExportPhotoTile item={images[0]} index={0} imageCount={1} captionHeight={captionH} onImageLoad={onImageLoad} highlight={highlight} />
       </View>
     );
   }
@@ -738,7 +790,7 @@ function ExportPhotoFrame({
   if (images.length === 2) {
     return (
       <View style={frameStyle}>
-        <ExportPhotoRow items={images} startIndex={0} imageCount={2} captionHeight={captionH} onImageLoad={onImageLoad} />
+        <ExportPhotoRow items={images} startIndex={0} imageCount={2} captionHeight={captionH} onImageLoad={onImageLoad} highlight={highlight} />
       </View>
     );
   }
@@ -753,6 +805,7 @@ function ExportPhotoFrame({
             imageCount={3}
             captionHeight={captionH}
             onImageLoad={onImageLoad}
+            highlight={highlight}
           />
           <ExportPhotoRow
             items={[images[2]]}
@@ -760,6 +813,7 @@ function ExportPhotoFrame({
             imageCount={3}
             captionHeight={captionH}
             onImageLoad={onImageLoad}
+            highlight={highlight}
             centerSingle
           />
         </View>
@@ -783,6 +837,7 @@ function ExportPhotoFrame({
             imageCount={images.length}
             captionHeight={captionH}
             onImageLoad={onImageLoad}
+            highlight={highlight}
             centerSingle={row.length === 1}
           />
         ))}
@@ -801,6 +856,7 @@ function DetailSummaryBody({
   submitted,
   gps,
   variant = 'screen',
+  highlight = REPORT_AMBER,
 }: {
   isTamil: boolean;
   place: string;
@@ -811,6 +867,7 @@ function DetailSummaryBody({
   submitted: string;
   gps: string;
   variant?: 'screen' | 'brandHeader';
+  highlight?: string;
 }) {
   const isBrandHeader = variant === 'brandHeader';
   const wardLabel = formatWardLabel(isTamil, wardNumber);
@@ -836,7 +893,7 @@ function DetailSummaryBody({
           </Text>
         )}
         {!!place && (
-          <Text style={headerRow(2)} numberOfLines={1}>
+          <Text style={[headerRow(2), { color: highlight }]} numberOfLines={1}>
             {place}
           </Text>
         )}
@@ -876,21 +933,26 @@ function DetailSummaryBody({
 function ExportLocationMapThumb({
   mapUri,
   onLoad,
+  width,
+  height,
 }: {
   mapUri?: string | null;
   onLoad: () => void;
+  width?: number;
+  height?: number;
 }) {
   useEffect(() => {
     if (!mapUri) onLoad();
   }, [mapUri, onLoad]);
+  const sizeStyle = width && height ? { width, height } : undefined;
 
   return (
-    <View style={styles.exportHeaderMapWrap} collapsable={false}>
+    <View style={[styles.exportHeaderMapWrap, sizeStyle]} collapsable={false}>
       {mapUri ? (
         <>
           <Image
             source={{ uri: mapUri }}
-            style={styles.exportHeaderMapImg}
+            style={[styles.exportHeaderMapImg, sizeStyle]}
             resizeMode="cover"
             fadeDuration={0}
             onLoad={onLoad}
@@ -906,7 +968,7 @@ function ExportLocationMapThumb({
           locations={[0, 0.38, 0.7, 1]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.exportHeaderMapImg}
+          style={[styles.exportHeaderMapImg, sizeStyle]}
         >
           <View style={styles.exportMapRoadH} />
           <View style={styles.exportMapRoadV} />
@@ -964,7 +1026,7 @@ function ExportReportHeader({
   const dateGpsLine = [submitted, `${latText}, ${lonText}`].filter(Boolean).join('  ·  ');
 
   return (
-    <ExportReportHeaderSurface style={styles.exportSummaryHeader} defaultHeight={76} theme={theme}>
+    <ExportReportHeaderSurface style={[styles.exportSummaryHeader, { borderBottomColor: theme.highlight }]} defaultHeight={76} theme={theme}>
       <View style={styles.exportHeaderRow} collapsable={false}>
         <View style={styles.exportHeaderLogoPlate} collapsable={false}>
           <BrandImage kind="logo" style={styles.exportHeaderLogo} />
@@ -976,7 +1038,7 @@ function ExportReportHeader({
             </Text>
           )}
           {!!place && (
-            <Text style={styles.exportHeadLine2} numberOfLines={2}>
+            <Text style={[styles.exportHeadLine2, { color: theme.highlight }]} numberOfLines={2}>
               {place}
             </Text>
           )}
@@ -993,10 +1055,185 @@ function ExportReportHeader({
             name={officerName}
             designation={officerDesignation}
             onLoad={onOfficerLoad}
+            highlight={theme.highlight}
           />
         </View>
       </View>
     </ExportReportHeaderSurface>
+  );
+}
+
+function ExportPortraitHeader({
+  isTamil,
+  place,
+  wardNumber,
+  streetLabel,
+  subjectName,
+  categoryName,
+  submitted,
+  latitude,
+  longitude,
+  theme,
+}: {
+  isTamil: boolean;
+  place: string;
+  wardNumber: number | string;
+  streetLabel: string;
+  subjectName: string;
+  categoryName: string;
+  submitted: string;
+  latitude: number;
+  longitude: number;
+  theme: ReportThemeColors;
+}) {
+  const wardLabel = formatWardLabel(isTamil, wardNumber);
+  const street = streetLabel?.trim() || '';
+  const subjectCategory = [subjectName?.trim(), categoryName?.trim()].filter(Boolean).join(' · ');
+  const wardLine = street ? `${wardLabel} · ${street}` : wardLabel;
+  const dateGpsLine = [submitted, `${Number(latitude || 0).toFixed(5)}, ${Number(longitude || 0).toFixed(5)}`].filter(Boolean).join('  ·  ');
+
+  return (
+    <ExportReportHeaderSurface style={[styles.portraitHeader, { borderBottomColor: theme.highlight }]} defaultHeight={150} theme={theme}>
+      <View style={styles.portraitHeaderCenter} collapsable={false}>
+        {!!subjectCategory && (
+          <Text style={styles.portraitHeadTitle} numberOfLines={1}>
+            {subjectCategory}
+          </Text>
+        )}
+        {!!place && (
+          <Text style={[styles.portraitHeadPlace, { color: theme.highlight }]} numberOfLines={2}>
+            {place}
+          </Text>
+        )}
+        <Text style={styles.portraitHeadWard} numberOfLines={1}>
+          {wardLine}
+          {!!dateGpsLine && <Text style={styles.portraitHeadMeta}>{`  ·  ${dateGpsLine}`}</Text>}
+        </Text>
+      </View>
+    </ExportReportHeaderSurface>
+  );
+}
+
+function ExportPortraitFooter({
+  isTamil,
+  officerPhotoUri,
+  officerName,
+  officerDesignation,
+  mapUri,
+  onOfficerLoad,
+  onMapLoad,
+  theme,
+}: {
+  isTamil: boolean;
+  officerPhotoUri?: string | null;
+  officerName: string;
+  officerDesignation: string;
+  mapUri?: string | null;
+  onOfficerLoad: () => void;
+  onMapLoad: () => void;
+  theme: ReportThemeColors;
+}) {
+  const [failed, setFailed] = useState(false);
+  const showPhoto = !!officerPhotoUri && !failed;
+  const letter = (officerName || 'U').trim().slice(0, 1).toUpperCase() || 'U';
+
+  useEffect(() => {
+    if (!officerPhotoUri) onOfficerLoad();
+  }, [officerPhotoUri, onOfficerLoad]);
+
+  return (
+    <ExportReportHeaderSurface
+      style={[styles.portraitFooter, { borderTopColor: theme.highlight }]}
+      defaultHeight={132}
+      theme={theme}
+    >
+      <View style={styles.portraitFooterRow} collapsable={false}>
+        <View style={styles.portraitFooterOfficer} collapsable={false}>
+          {showPhoto ? (
+            <Image
+              source={{ uri: officerPhotoUri }}
+              style={[styles.portraitFooterAvatar, { borderColor: theme.highlight }]}
+              onLoad={onOfficerLoad}
+              onError={() => {
+                setFailed(true);
+                onOfficerLoad();
+              }}
+            />
+          ) : (
+            <View style={[styles.portraitFooterAvatarFallback, { borderColor: theme.highlight }]}>
+              <Text style={styles.portraitFooterAvatarLetter} onLayout={onOfficerLoad}>
+                {letter}
+              </Text>
+            </View>
+          )}
+          <View style={styles.portraitFooterOfficerText}>
+            <Text style={styles.portraitFooterKicker} numberOfLines={1}>
+              {isTamil ? 'கள அலுவலர்' : 'FIELD OFFICER'}
+            </Text>
+            <Text style={[styles.portraitFooterName, { color: theme.highlight }]} numberOfLines={1}>
+              {officerName}
+            </Text>
+            <Text style={styles.portraitFooterRole} numberOfLines={2}>
+              {officerDesignation}
+            </Text>
+          </View>
+        </View>
+        <View style={[styles.portraitFooterMapFrame, { borderColor: theme.highlight }]} collapsable={false}>
+          <ExportLocationMapThumb mapUri={mapUri} onLoad={onMapLoad} width={156} height={92} />
+        </View>
+      </View>
+    </ExportReportHeaderSurface>
+  );
+}
+
+function PortraitPhotoGrid({
+  images,
+  onLoad,
+  highlight,
+}: {
+  images: { url: string; name: string; fieldKey: string }[];
+  onLoad: () => void;
+  highlight: string;
+}) {
+  const tile = (img: { url: string; name: string; fieldKey: string }, key: string) => (
+    <Image
+      key={key}
+      source={{ uri: displayImageUri(img.url, img.fieldKey) }}
+      style={styles.portraitPhotoFill}
+      resizeMode="cover"
+      fadeDuration={0}
+      onLoad={onLoad}
+      onError={onLoad}
+    />
+  );
+
+  if (!images.length) {
+    return <View style={[styles.portraitPhotoStage, { backgroundColor: highlight }]} />;
+  }
+
+  if (images.length === 1) {
+    return <View style={[styles.portraitPhotoStage, { backgroundColor: highlight }]}>{tile(images[0], 'one')}</View>;
+  }
+
+  const rows: { url: string; name: string; fieldKey: string }[][] = [];
+  for (let i = 0; i < images.length; i += 2) rows.push(images.slice(i, i + 2));
+
+  return (
+    <View style={[styles.portraitPhotoStage, { backgroundColor: highlight }]}>
+      {rows.map((row, ri) => (
+        <View key={`row-${ri}`} style={[styles.portraitPhotoRow, ri > 0 && { marginTop: PORTRAIT_PHOTO_GAP, borderTopWidth: PORTRAIT_PHOTO_GAP, borderTopColor: highlight }]}>
+          {row.length === 1 ? (
+            tile(row[0], `full-${row[0].fieldKey}`)
+          ) : (
+            <>
+              <View style={styles.portraitPhotoHalf}>{tile(row[0], row[0].fieldKey)}</View>
+              <View style={{ width: PORTRAIT_PHOTO_GAP, backgroundColor: highlight }} />
+              <View style={styles.portraitPhotoHalf}>{tile(row[1], row[1].fieldKey)}</View>
+            </>
+          )}
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -1006,12 +1243,14 @@ function ExportOfficerBlock({
   name,
   designation,
   onLoad,
+  highlight = REPORT_AMBER,
 }: {
   isTamil?: boolean;
   photoUri?: string | null;
   name: string;
   designation: string;
   onLoad: () => void;
+  highlight?: string;
 }) {
   const [failed, setFailed] = useState(false);
   const showPhoto = !!photoUri && !failed;
@@ -1048,7 +1287,7 @@ function ExportOfficerBlock({
       <Text style={styles.exportOfficerName} numberOfLines={1}>
         {name}
       </Text>
-      <Text style={styles.exportOfficerRole} numberOfLines={1}>
+      <Text style={[styles.exportOfficerRole, { color: highlight }]} numberOfLines={1}>
         {designation || (isTamil ? 'களப் பணியாளர்' : 'Field worker')}
       </Text>
     </View>
@@ -1069,53 +1308,66 @@ function ReportFooterBar({
   onShareImages: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const stops = themeStops(theme);
+  const softBg = lerpHex(theme.accent, '#FFFFFF', 0.88);
 
   return (
-    <View style={[styles.reportFooter, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+    <View style={[styles.reportFooter, { paddingBottom: Math.max(insets.bottom, 8) }]}>
       <Pressable
         onPress={onShareDetailed}
-        style={({ pressed }) => [
-          styles.reportFooterBtn,
-          styles.reportFooterBtnOutline,
-          { borderColor: theme.accent },
-          pressed && styles.reportFooterBtnPressed,
-        ]}
+        style={({ pressed }) => [styles.reportShareCard, pressed && styles.reportFooterBtnPressed]}
         disabled={!!busy}
       >
-        {busy === 'report' ? (
-          <ActivityIndicator size="small" color={theme.accent} />
-        ) : (
-          <>
-            <Ionicons name="share-outline" size={14} color={theme.accent} />
-            <Text
-              style={[styles.reportFooterBtnTextOutline, { color: theme.accent }, isTamil && styles.reportFooterBtnTextTa]}
-              numberOfLines={1}
-            >
-              {isTamil ? 'விரிவான அறிக்கை பகிர்வு' : 'Share detailed report'}
-            </Text>
-          </>
-        )}
+        <View style={[styles.reportShareCardInner, styles.reportShareCardDetailed, { backgroundColor: softBg, borderColor: theme.accent }]}>
+          {busy === 'report' ? (
+            <ActivityIndicator size="small" color={theme.accent} />
+          ) : (
+            <>
+              <View style={[styles.reportShareIconWrap, { backgroundColor: theme.accent }]}>
+                <Ionicons name="document-text" size={16} color="#fff" />
+              </View>
+              <View style={styles.reportShareCopy}>
+                <Text style={[styles.reportShareTitle, { color: theme.headerTo }]} numberOfLines={1}>
+                  {isTamil ? 'விரிவான அறிக்கை பகிர்வு' : 'Share detailed report'}
+                </Text>
+                <Text style={styles.reportShareHint} numberOfLines={1}>
+                  {isTamil ? 'படங்கள் + விவரங்கள்' : 'Images + Details'}
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
       </Pressable>
       <Pressable
         onPress={onShareImages}
-        style={({ pressed }) => [
-          styles.reportFooterBtn,
-          styles.reportFooterBtnPrimary,
-          { backgroundColor: theme.accent },
-          pressed && styles.reportFooterBtnPressed,
-        ]}
+        style={({ pressed }) => [styles.reportShareCard, pressed && styles.reportFooterBtnPressed]}
         disabled={!!busy}
       >
-        {busy === 'images' ? (
-          <ActivityIndicator size="small" color="#fff" />
-        ) : (
-          <>
-            <Ionicons name="images-outline" size={14} color="#fff" />
-            <Text style={[styles.reportFooterBtnTextPrimary, isTamil && styles.reportFooterBtnTextTa]} numberOfLines={1}>
-              {isTamil ? 'அறிக்கை பகிர்வு' : 'Share report'}
-            </Text>
-          </>
-        )}
+        <LinearGradient
+          colors={stops}
+          locations={[0, 0.52, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.reportShareCardInner, styles.reportShareCardImages]}
+        >
+          {busy === 'images' ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <View style={[styles.reportShareIconWrap, { backgroundColor: theme.highlight }]}>
+                <Ionicons name="images" size={16} color={SUMMARY_NAVY} />
+              </View>
+              <View style={styles.reportShareCopy}>
+                <Text style={styles.reportShareTitleLight} numberOfLines={1}>
+                  {isTamil ? 'அறிக்கை பகிர்வு' : 'Share report'}
+                </Text>
+                <Text style={styles.reportShareHintLight} numberOfLines={1}>
+                  {isTamil ? 'படங்கள் மட்டும்' : 'Images only'}
+                </Text>
+              </View>
+            </>
+          )}
+        </LinearGradient>
       </Pressable>
     </View>
   );
@@ -1137,6 +1389,7 @@ export function WorkDetailModal({
 }) {
   const { user } = useApp();
   const insets = useSafeAreaInsets();
+  const [liveSettings, setLiveSettings] = useState(portal.settings);
   const exportRef = useRef<ViewShotRef>(null);
   const exportLoadedCount = useRef(0);
   const exportLaidOut = useRef<(() => void) | null>(null);
@@ -1250,7 +1503,24 @@ export function WorkDetailModal({
     };
   }, [user?.id, user?.profilePhotoUrl, user?.avatarUrl, user?.profileImage]);
 
-  const shareConfig = reportShareConfig(portal);
+  useEffect(() => {
+    let alive = true;
+    void api.getAppSettings().then((raw) => {
+      if (!alive || !raw) return;
+      setLiveSettings({
+        ...portal.settings,
+        ...(raw.theme != null ? { theme: raw.theme } : {}),
+        ...(raw.customColors != null ? { customColors: raw.customColors } : {}),
+        ...(raw.googleMapsApiKey != null ? { googleMapsApiKey: raw.googleMapsApiKey } : {}),
+        ...(raw.reportShare != null ? { reportShare: raw.reportShare } : {}),
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [portal.settings]);
+
+  const shareConfig = reportShareConfig({ ...portal, settings: liveSettings || portal.settings });
   const reportTheme = shareConfig.theme;
   const shareValues = {
     Zone_EN: String(work.zoneNameEn || ''),
@@ -1329,7 +1599,7 @@ export function WorkDetailModal({
           quality: 0.95,
           result: 'tmpfile',
           fileName: `inspection_${stamp}`,
-          width: EXPORT_W,
+          width: portrait ? PORTRAIT_W : EXPORT_W,
         });
       } finally {
         exportLaidOut.current = null;
@@ -1340,8 +1610,9 @@ export function WorkDetailModal({
       const exists = await FileSystem.getInfoAsync(dest);
       if (exists.exists) await FileSystem.deleteAsync(dest, { idempotent: true });
       await FileSystem.copyAsync({ from: captured, to: dest });
-      await shareOrSave(dest, 'image/jpeg', filename, save, isTamil);
-    } catch {
+      await shareOrSave(dest, 'image/jpeg', filename, save, isTamil, htmlToPlain(shareMessage));
+    } catch (error) {
+      console.warn('Report share failed', error);
       toast(isTamil ? 'செயல் தோல்வியுற்றது. மீண்டும் முயலவும்.' : 'Could not complete that action. Please try again.');
     } finally {
       setBusy(null);
@@ -1367,7 +1638,7 @@ export function WorkDetailModal({
           automaticallyAdjustContentInsets={false}
         >
           <View style={styles.sheet}>
-            <ReportHeaderSurface theme={reportTheme} style={[styles.detailHeader, { paddingTop: insets.top }]}>
+            <ReportHeaderSurface theme={reportTheme} style={[styles.detailHeader, { paddingTop: insets.top, borderBottomColor: reportTheme.highlight }]}>
               <DetailSummaryBody
                 variant="brandHeader"
                 isTamil={isTamil}
@@ -1378,6 +1649,7 @@ export function WorkDetailModal({
                 categoryName={categoryName || ''}
                 submitted={submitted}
                 gps={gps}
+                highlight={reportTheme.highlight}
               />
             </ReportHeaderSurface>
 
@@ -1401,7 +1673,7 @@ export function WorkDetailModal({
                     <View style={styles.photoActions}>
                       <Pressable
                         onPress={() => void run('image', true)}
-                        style={styles.photoActionBtn}
+                        style={[styles.photoActionBtn, { backgroundColor: reportTheme.highlight }]}
                         disabled={!!busy}
                         hitSlop={6}
                       >
@@ -1413,7 +1685,7 @@ export function WorkDetailModal({
                       </Pressable>
                       <Pressable
                         onPress={() => void run('image', false)}
-                        style={styles.photoActionBtn}
+                        style={[styles.photoActionBtn, { backgroundColor: reportTheme.highlight }]}
                         disabled={!!busy}
                         hitSlop={6}
                       >
@@ -1445,6 +1717,7 @@ export function WorkDetailModal({
                     <ImageCaption
                       label={photoLabel}
                       count={images.length > 1 ? `${idx + 1}/${images.length}` : undefined}
+                      highlight={reportTheme.highlight}
                     />
                   </View>
                 </View>
@@ -1497,99 +1770,99 @@ export function WorkDetailModal({
               <ViewShot
                 ref={exportRef}
                 options={{ format: 'jpg', quality: 0.95 }}
-                style={styles.landscapeSheet}
+                style={exportKind === 'images' ? styles.portraitSheet : styles.landscapeSheet}
               >
           <View
             collapsable={false}
-            style={styles.exportSheet}
+            style={exportKind === 'images' ? styles.exportSheet : styles.landscapeExportInner}
             removeClippedSubviews={false}
             onLayout={() => {
               exportLaidOut.current?.();
               exportLaidOut.current = null;
             }}
           >
-            <ExportReportHeader
-              key={`export-header-${work.id}-${resolvedStreet}`}
-              isTamil={isTamil}
-              place={headerPlace}
-              wardNumber={work.wardNumber}
-              streetLabel={resolvedStreet}
-              subjectName={subjectName || ''}
-              categoryName={categoryName || ''}
-              submitted={submitted}
-              latitude={Number(work.latitude || 0)}
-              longitude={Number(work.longitude || 0)}
-              mapUri={exportMapUri}
-              onMapLoad={markExportImageLoaded}
-              officerPhotoUri={exportOfficerUri}
-              officerName={officerName}
-              officerDesignation={officerDesignation}
-              onOfficerLoad={markExportImageLoaded}
-              theme={reportTheme}
-            />
             {exportKind === 'images' ? (
               <>
-                <View style={[styles.landPhotoExport, { height: EXPORT_PHOTO_H, width: '100%' }]} collapsable={false}>
-                  <ExportPhotoFrame
-                    images={images}
-                    isTamil={isTamil}
-                    height={EXPORT_PHOTO_H}
-                    onImageLoad={markExportImageLoaded}
-                  />
-                </View>
-                {shareConfig.enabled && shareMessage.trim() ? (
-                  <ShareHtmlText html={shareMessage} style={[styles.shareMessage, { color: reportTheme.messageText, backgroundColor: reportTheme.messageBackground }]} />
-                ) : null}
+                <ExportPortraitHeader
+                  isTamil={isTamil}
+                  place={headerPlace}
+                  wardNumber={work.wardNumber}
+                  streetLabel={resolvedStreet}
+                  subjectName={subjectName || ''}
+                  categoryName={categoryName || ''}
+                  submitted={submitted}
+                  latitude={Number(work.latitude || 0)}
+                  longitude={Number(work.longitude || 0)}
+                  theme={reportTheme}
+                />
+                <PortraitPhotoGrid images={images} onLoad={markExportImageLoaded} highlight={reportTheme.highlight} />
+                <ExportPortraitFooter
+                  isTamil={isTamil}
+                  officerPhotoUri={exportOfficerUri}
+                  officerName={officerName}
+                  officerDesignation={officerDesignation}
+                  mapUri={exportMapUri}
+                  onOfficerLoad={markExportImageLoaded}
+                  onMapLoad={markExportImageLoaded}
+                  theme={reportTheme}
+                />
               </>
             ) : (
-            <>
-            <View style={styles.landBody}>
-              <View style={[styles.landPhotoExport, { height: exportColH }]} collapsable={false}>
-                <ExportPhotoFrame
-                  images={images}
+              <>
+                <ExportReportHeader
                   isTamil={isTamil}
-                  height={exportColH}
-                  onImageLoad={markExportImageLoaded}
+                  place={headerPlace}
+                  wardNumber={work.wardNumber}
+                  streetLabel={resolvedStreet}
+                  subjectName={subjectName || ''}
+                  categoryName={categoryName || ''}
+                  submitted={submitted}
+                  latitude={Number(work.latitude || 0)}
+                  longitude={Number(work.longitude || 0)}
+                  mapUri={exportMapUri}
+                  onMapLoad={markExportImageLoaded}
+                  officerPhotoUri={exportOfficerUri}
+                  officerName={officerName}
+                  officerDesignation={officerDesignation}
+                  onOfficerLoad={markExportImageLoaded}
+                  theme={reportTheme}
                 />
-              </View>
-              <View style={[styles.exportSplit, { height: exportColH }]} collapsable={false} />
-              <View style={[styles.landTable, { height: exportColH }]} collapsable={false}>
-                <View
-                  collapsable={false}
-                  onLayout={(e) => {
-                    const h = Math.ceil(e.nativeEvent.layout.height);
-                    setExportColH((prev) => Math.max(EXPORT_PHOTO_H, prev, h));
-                  }}
-                >
-                  <Text style={styles.tableTitle}>{isTamil ? 'விவரங்கள் அட்டவணை' : 'DETAILS TABLE'}</Text>
-                  <View style={styles.table}>
-                    <View style={[styles.thead, { backgroundColor: reportTheme.tableHeader, borderBottomColor: reportTheme.caption }]}>
-                      <Text style={[styles.th, { flex: 1.65, color: reportTheme.tableHeaderText }]}>{isTamil ? 'தலைப்புகள்' : 'HEADINGS'}</Text>
-                      <View style={styles.colSplit} />
-                      <Text style={[styles.th, { flex: 1, color: reportTheme.tableHeaderText }]}>{isTamil ? 'விவரங்கள்' : 'DETAILS'}</Text>
+                <View style={styles.landBody} collapsable={false}>
+                  <View style={styles.landPhotoExport} collapsable={false}>
+                    <ExportPhotoFrame
+                      images={images}
+                      isTamil={isTamil}
+                      onImageLoad={markExportImageLoaded}
+                      height={exportColH}
+                      highlight={reportTheme.highlight}
+                    />
+                  </View>
+                  <View style={[styles.exportSplit, { backgroundColor: reportTheme.highlight }]} />
+                  <View style={styles.landTable} collapsable={false}>
+                    <Text style={styles.tableTitle}>{isTamil ? 'விவரங்கள் அட்டவணை' : 'DETAILS TABLE'}</Text>
+                    <View style={styles.table}>
+                      <View style={[styles.thead, { backgroundColor: reportTheme.tableHeader, borderBottomColor: reportTheme.caption }]}>
+                        <Text style={[styles.th, { flex: 1.65, color: reportTheme.tableHeaderText }]}>{isTamil ? 'தலைப்புகள்' : 'HEADINGS'}</Text>
+                        <View style={styles.colSplit} />
+                        <Text style={[styles.th, { flex: 1, color: reportTheme.tableHeaderText }]}>{isTamil ? 'விவரங்கள்' : 'DETAILS'}</Text>
+                      </View>
+                      {fieldRows.length ? (
+                        fieldRows.map((r, i) => (
+                          <View key={`ex-${r.key}`} style={[styles.tr, i % 2 === 1 && styles.trAlt]}>
+                            <Text style={[styles.tdL, { flex: 1.65 }]}>{r.label}</Text>
+                            <View style={styles.colSplit} />
+                            <Text style={[styles.tdR, { flex: 1 }]}>{r.value}</Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.emptyTxt}>
+                          {isTamil ? 'புலங்களின் தகவல்கள் எதுவும் பதிவு செய்யப்படவில்லை' : 'No custom field inputs recorded'}
+                        </Text>
+                      )}
                     </View>
-                    {fieldRows.length ? (
-                      fieldRows.map((r, i) => (
-                        <View key={`ex-${r.key}`} style={[styles.tr, i % 2 === 1 && styles.trAlt]}>
-                          <Text style={[styles.tdL, { flex: 1.65 }]}>{r.label}</Text>
-                          <View style={styles.colSplit} />
-                          <Text style={[styles.tdR, { flex: 1 }]}>{r.value}</Text>
-                        </View>
-                      ))
-                    ) : (
-                      <Text style={styles.emptyTxt}>
-                        {isTamil ? 'புலங்களின் தகவல்கள் எதுவும் பதிவு செய்யப்படவில்லை' : 'No custom field inputs recorded'}
-                      </Text>
-                    )}
                   </View>
                 </View>
-              </View>
-            </View>
-            <View style={styles.exportFooterRule} collapsable={false} />
-            {shareConfig.enabled && shareMessage.trim() ? (
-              <ShareHtmlText html={shareMessage} style={[styles.shareMessage, { color: reportTheme.messageText, backgroundColor: reportTheme.messageBackground }]} />
-            ) : null}
-            </>
+              </>
             )}
           </View>
               </ViewShot>
@@ -1625,51 +1898,73 @@ const styles = StyleSheet.create({
   },
   reportFooter: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'stretch',
+    gap: 10,
     paddingHorizontal: 12,
-    paddingTop: 6,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
     backgroundColor: '#fff',
     zIndex: 20,
     elevation: 12,
   },
-  reportFooterBtn: {
+  reportShareCard: {
     flex: 1,
     minWidth: 0,
+  },
+  reportShareCardInner: {
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 7,
-    paddingHorizontal: 8,
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+  },
+  reportShareCardDetailed: {
+    borderWidth: 1.5,
+  },
+  reportShareCardImages: {
+    borderWidth: 0,
+  },
+  reportShareIconWrap: {
+    width: 28,
+    height: 28,
     borderRadius: 8,
-    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  reportFooterBtnPressed: { opacity: 0.88 },
-  reportFooterBtnOutline: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
+  reportShareCopy: {
+    flex: 1,
+    minWidth: 0,
   },
-  reportFooterBtnPrimary: {},
-  reportFooterBtnTextOutline: {
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'center',
-    flexShrink: 1,
+  reportShareTitle: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '800',
   },
-  reportFooterBtnTextPrimary: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#fff',
-    textAlign: 'center',
-    flexShrink: 1,
-  },
-  reportFooterBtnTextTa: {
+  reportShareHint: {
+    marginTop: 2,
     fontSize: 10,
     lineHeight: 13,
+    fontWeight: '600',
+    color: '#64748B',
   },
+  reportShareTitleLight: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  reportShareHintLight: {
+    marginTop: 2,
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.86)',
+  },
+  reportFooterBtnPressed: { opacity: 0.88 },
   sheet: {
     backgroundColor: '#fff',
     overflow: 'hidden',
@@ -1679,6 +1974,164 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     transformOrigin: 'top left',
     transform: [{ scale: EXPORT_FIT_SCALE }],
+  },
+  portraitSheet: {
+    width: PORTRAIT_W,
+    height: PORTRAIT_H,
+    backgroundColor: '#fff',
+    transformOrigin: 'top left',
+    transform: [{ scale: PORTRAIT_FIT_SCALE }],
+  },
+  portraitHeader: {
+    width: '100%',
+    paddingTop: 18,
+    paddingBottom: 12,
+    paddingHorizontal: 24,
+    borderBottomWidth: 6,
+    borderBottomColor: CAPTION_BORDER,
+  },
+  portraitHeaderCenter: {
+    zIndex: 1,
+    alignItems: 'center',
+    width: '100%',
+  },
+  portraitHeadTitle: {
+    width: '100%',
+    textAlign: 'center',
+    color: '#fff',
+    fontSize: 33,
+    lineHeight: 39,
+    fontWeight: '900',
+  },
+  portraitHeadPlace: {
+    width: '100%',
+    marginTop: 3,
+    textAlign: 'center',
+    color: REPORT_AMBER,
+    fontSize: 42,
+    lineHeight: 51,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    textShadowColor: 'rgba(0,0,0,0.28)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  portraitHeadWard: {
+    width: '100%',
+    marginTop: 3,
+    textAlign: 'center',
+    color: '#fff',
+    fontSize: 33,
+    lineHeight: 39,
+    fontWeight: '900',
+  },
+  portraitHeadMeta: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.88)',
+  },
+  portraitFooter: {
+    width: '100%',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderTopWidth: 5,
+    borderTopColor: REPORT_AMBER,
+  },
+  portraitFooterRow: {
+    zIndex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  portraitFooterOfficer: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 10,
+  },
+  portraitFooterAvatar: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#E2E8F0',
+    borderWidth: 4,
+    borderColor: REPORT_AMBER,
+  },
+  portraitFooterAvatarFallback: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#1A3D66',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: REPORT_AMBER,
+  },
+  portraitFooterAvatarLetter: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '800',
+  },
+  portraitFooterOfficerText: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 14,
+  },
+  portraitFooterKicker: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginBottom: 2,
+  },
+  portraitFooterName: {
+    color: REPORT_AMBER,
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '900',
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  portraitFooterRole: {
+    marginTop: 3,
+    color: '#fff',
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '700',
+  },
+  portraitFooterMapFrame: {
+    borderWidth: 3,
+    borderColor: REPORT_AMBER,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  portraitPhotoStage: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: REPORT_AMBER,
+  },
+  portraitPhotoRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  portraitPhotoHalf: {
+    flex: 1,
+  },
+  portraitPhotoFill: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#0F172A',
+  },
+  portraitTableWrap: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 6,
+    backgroundColor: '#fff',
   },
   exportCaptureStage: {
     position: 'absolute',
@@ -1700,16 +2153,13 @@ const styles = StyleSheet.create({
   },
   exportSheet: {
     width: '100%',
+    height: '100%',
+    flexDirection: 'column',
     backgroundColor: '#fff',
   },
-  shareMessage: {
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 16,
-    textAlign: 'left',
-    fontSize: 14,
-    lineHeight: 22,
-    fontWeight: '500',
+  landscapeExportInner: {
+    width: '100%',
+    backgroundColor: '#fff',
   },
   exportSummaryHeader: {
     position: 'relative',
