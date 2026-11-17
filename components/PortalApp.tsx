@@ -26,6 +26,7 @@ import {
   UserCheck,
   FileSpreadsheet,
   Bell,
+  Share2,
   RefreshCw,
   CheckCircle2
 } from 'lucide-react';
@@ -114,6 +115,7 @@ const InspectionReportsView = dynamic(() => import('@/components/InspectionRepor
 const EmployeeManagementView = dynamic(() => import('@/components/EmployeeManagementView'), { ssr: false, loading: TabLoading });
 const ReportsView = dynamic(() => import('@/components/ReportsView'), { ssr: false, loading: TabLoading });
 const WebappSettingsView = dynamic(() => import('@/components/WebappSettingsView'), { ssr: false, loading: TabLoading });
+const ReportShareSettingsView = dynamic(() => import('@/components/ReportShareSettingsView'), { ssr: false, loading: TabLoading });
 const UserSettingsView = dynamic(() => import('@/components/UserSettingsView'), { ssr: false, loading: TabLoading });
 const PendingIssuesView = dynamic(() => import('@/components/PendingIssuesView'), { ssr: false, loading: TabLoading });
 const PfManagementView = dynamic(() => import('@/components/PfManagementView'), { ssr: false, loading: TabLoading });
@@ -820,6 +822,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     { id: 'pendingIssues', label: t('pendingIssues'), navLabel: nav('Issues', 'பிரச்சினைகள்'), icon: AlertTriangle, view: PendingIssuesView, roles: ['admin', 'ad', 'eo', 'zonal'] },
     { id: 'appManagement', label: lang === 'ta' ? 'அறிவிப்பு மேலாண்மை' : 'Notifications', navLabel: nav('Notifications', 'அறிவிப்புகள்'), icon: Bell, view: NotificationApkManagementView, roles: ['admin'] },
     { id: 'userSettings', label: t('userSettings'), navLabel: nav('Profile', 'சுயவிவரம்'), icon: UserCircle, view: UserSettingsView, roles: ['admin', 'ad', 'eo', 'zonal'] },
+    { id: 'reportShareSettings', label: lang === 'ta' ? 'அறிக்கை பகிர்வு' : 'Report share', navLabel: nav('Report share', 'அறிக்கை பகிர்வு'), icon: Share2, view: ReportShareSettingsView, roles: ['admin'] },
     { id: 'webappSettings', label: t('webappSettings'), navLabel: nav('Settings', 'அமைப்புகள்'), icon: Settings, view: WebappSettingsView, roles: ['admin'] }
   ];
 
@@ -835,7 +838,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     userRole = 'admin'; // Self-healing fallback for web portal administrative sessions
   }
   const activeMenuItems = (currentUser.isEmployee ? employeeMenuItems : adminMenuItems)
-    .filter(item => allowedPageIds.includes(item.id))
+    .filter(item => allowedPageIds.includes(item.id) || (item.id === 'reportShareSettings' && userRole.includes('admin')))
     .filter((item) => {
       if (item.id === 'employees' || item.id === 'employeeManagement') {
         return state.settings?.enableEmployeeManagement !== false;
@@ -847,7 +850,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     { id: 'overview', labelEn: 'Overview', labelTa: 'கண்ணோட்டம்', ids: ['dashboard'] },
     { id: 'field', labelEn: 'Field operations', labelTa: 'களப் பணிகள்', ids: ['inspectionModules', 'inspectionEmployees', 'inspectionReports', 'pendingIssues'] },
     { id: 'admin', labelEn: 'Administration', labelTa: 'நிர்வாகம்', ids: ['masters', 'users', 'modules', 'employees', 'employeeManagement', 'transferCounseling', 'pfManagement'] },
-    { id: 'system', labelEn: 'System', labelTa: 'அமைப்பு', ids: ['appManagement', 'userSettings', 'webappSettings'] },
+    { id: 'system', labelEn: 'System', labelTa: 'அமைப்பு', ids: ['appManagement', 'reportShareSettings', 'userSettings', 'webappSettings'] },
   ];
   const userDisplayName = tObj(currentUser) || currentUser.username || 'User';
   const userRoleLabel = currentUser.designationNameEn || currentUser.designation || currentUser.role || currentUser.roleId || 'Admin';
@@ -875,6 +878,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     pfManagement: { en: 'Provident fund', ta: 'வருங்கால வைப்பு', subEn: 'PF accounts and reports', subTa: 'வருங்கால வைப்பு கணக்குகள்' },
     appManagement: { en: 'Notifications', ta: 'அறிவிப்புகள்', subEn: 'Alerts and mobile app', subTa: 'அறிவிப்புகள் மற்றும் செயலி' },
     userSettings: { en: 'Profile', ta: 'சுயவிவரம்', subEn: 'Your account settings', subTa: 'உங்கள் கணக்கு அமைப்புகள்' },
+    reportShareSettings: { en: 'Report share', ta: 'அறிக்கை பகிர்வு', subEn: 'Mobile report theme and message', subTa: 'மொபைல் அறிக்கை நிறம் மற்றும் செய்தி' },
     webappSettings: { en: 'Settings', ta: 'அமைப்புகள்', subEn: 'Portal configuration', subTa: 'முகப்பு அமைப்புகள்' },
   };
   const currentPageCopy = headerPageCopy[activeTab] || headerPageCopy.dashboard;
@@ -1317,6 +1321,13 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                   state={state} 
                   lang={lang} 
                   onSaveCollection={handleSaveCollection} 
+                />
+              )}
+              {activeTab === 'reportShareSettings' && (
+                <ReportShareSettingsView
+                  state={state}
+                  lang={lang}
+                  onSaveSettings={handleSaveSettings}
                 />
               )}
               {activeTab === 'webappSettings' && (

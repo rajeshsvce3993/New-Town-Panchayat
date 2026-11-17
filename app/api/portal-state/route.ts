@@ -13,6 +13,7 @@ import {
 import { getScopeVersionMeta } from '@/lib/userScopeCache';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { isHodLikeUser } from '@/lib/userScope';
+import { resolveReportShare } from '@/lib/reportShareConfig';
 
 export const dynamic = 'force-dynamic';
 
@@ -462,7 +463,8 @@ export async function GET(req: NextRequest) {
       notifications: [],
       settings: {
         currentLanguage: appSettings.currentLanguage,
-        theme: appSettings.theme,
+        googleMapsApiKey: appSettings.googleMapsApiKey || '',
+        reportShare: resolveReportShare(appSettings),
       },
     }, { headers: CORS_HEADERS });
   } catch (err: any) {

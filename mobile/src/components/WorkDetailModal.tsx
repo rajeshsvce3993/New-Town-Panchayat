@@ -25,11 +25,12 @@ import { SAMPLE_PHOTO } from '../constants/config';
 import { useApp } from '../context/AppContext';
 import { profilePhotoFile } from '../storage/preferences';
 import { BrandImage } from './BrandImage';
-import { DEFAULT_PALETTE_ID, getPaletteById, type AppPalette } from '../theme/palettes';
+import { type AppPalette } from '../theme/palettes';
 import type { FieldDefinition, InspectionWork, PortalState } from '../types/models';
 import { effectivePhotoUrl, portalFields, resolveOfficerDesignation } from '../types/models';
 import { formatTo12Hr } from '../utils/dates';
 import { fieldOrderIndex } from '../utils/fieldVisibility';
+import { ShareHtmlText } from '../utils/shareHtml';
 
 const EXPORT_W = Math.max(960, Math.round(Dimensions.get('window').width * 1.7));
 const EXPORT_FIT_SCALE = Math.min(1, Dimensions.get('window').width / EXPORT_W);
@@ -232,8 +233,10 @@ function lerpHex(a: string, b: string, t: number) {
   return rgbToHex(A.r + (B.r - A.r) * t, A.g + (B.g - A.g) * t, A.b + (B.b - A.b) * t);
 }
 
-function reportHeaderGradientColor(t: number) {
-  const stops = REPORT_HEADER_GRADIENT;
+function reportHeaderGradientColor(
+  t: number,
+  stops: readonly [string, string, string] = REPORT_HEADER_GRADIENT,
+) {
   const locs = REPORT_HEADER_GRADIENT_LOCATIONS;
   if (t <= locs[0]) return stops[0];
   if (t >= locs[locs.length - 1]) return stops[stops.length - 1];
@@ -247,27 +250,104 @@ function reportHeaderGradientColor(t: number) {
   return stops[stops.length - 1];
 }
 
-const REPORT_HEADER_STRIPE_COLORS = Array.from({ length: REPORT_HEADER_STRIPE_COUNT }, (_, i) =>
-  reportHeaderGradientColor((i + 0.5) / REPORT_HEADER_STRIPE_COUNT),
-);
+type ReportThemeColors = {
+  headerFrom: string;
+  headerMid: string;
+  headerTo: string;
+  accent: string;
+  tableHeader: string;
+  tableHeaderText: string;
+  pageBackground: string;
+  messageBackground: string;
+  messageText: string;
+  caption: string;
+};
+
+const FALLBACK_REPORT_THEME: ReportThemeColors = {
+  headerFrom: REPORT_HEADER_GRADIENT[0],
+  headerMid: REPORT_HEADER_GRADIENT[1],
+  headerTo: REPORT_HEADER_GRADIENT[2],
+  accent: SUMMARY_NAVY,
+  tableHeader: REPORT_AMBER,
+  tableHeaderText: SUMMARY_NAVY,
+  pageBackground: '#EEF2F6',
+  messageBackground: '#F8D4C6',
+  messageText: '#3F2A28',
+  caption: CAPTION_BROWN,
+};
+
+function themeStops(theme: ReportThemeColors): [string, string, string] {
+  return [theme.headerFrom, theme.headerMid, theme.headerTo];
+}
+
+function reportShareConfig(portal: PortalState) {
+  const saved = (portal.settings as {
+    reportShare?: {
+      enabled?: boolean;
+      template?: string;
+      imagesTemplateEn?: string;
+      imagesTemplateTa?: string;
+      captionTemplateEn?: string;
+      captionTemplateTa?: string;
+      detailedTemplateEn?: string;
+      detailedTemplateTa?: string;
+      themeId?: string;
+      theme?: Partial<ReportThemeColors>;
+    };
+  } | undefined)?.reportShare;
+  const legacy = String(saved?.template || '');
+  const isHeaderLine = (text: string) => {
+    const t = String(text || '').trim();
+    return !t || (t.includes('{DateTime}') && t.includes('{Gps}') && t.split('\n').length <= 6);
+  };
+  const firstLetter = (...candidates: string[]) => {
+    for (const candidate of candidates) {
+      if (!isHeaderLine(candidate)) return candidate;
+    }
+    return '';
+  };
+  const templateEn = firstLetter(saved?.captionTemplateEn || '', saved?.detailedTemplateEn || '', saved?.imagesTemplateEn || '');
+  const templateTa = firstLetter(saved?.captionTemplateTa || '', saved?.detailedTemplateTa || '', saved?.imagesTemplateTa || '', legacy);
+  return {
+    enabled: saved?.enabled !== false,
+    imagesTemplateEn: templateEn,
+    imagesTemplateTa: templateTa,
+    detailedTemplateEn: templateEn,
+    detailedTemplateTa: templateTa,
+    theme: {
+      ...FALLBACK_REPORT_THEME,
+      ...(saved?.theme || {}),
+      headerFrom: FALLBACK_REPORT_THEME.headerFrom,
+      headerMid: FALLBACK_REPORT_THEME.headerMid,
+      headerTo: FALLBACK_REPORT_THEME.headerTo,
+    },
+  };
+}
+
+function fillShareTemplate(template: string, values: Record<string, string>) {
+  return template.replace(/\{([A-Za-z_]+)\}/g, (token, key) => values[key] || '');
+}
 
 /** On-screen report detail header + table header only. */
 function ReportHeaderSurface({
   style,
   children,
+  theme,
 }: {
   style?: object;
   children: ReactNode;
+  theme: ReportThemeColors;
 }) {
+  const stops = themeStops(theme);
   return (
     <View style={[styles.reportHeaderSurface, style]}>
       <View style={styles.reportHeaderBands} pointerEvents="none">
-        <View style={[styles.reportHeaderBand, { backgroundColor: REPORT_HEADER_GRADIENT[0] }]} />
-        <View style={[styles.reportHeaderBand, { backgroundColor: REPORT_HEADER_GRADIENT[1] }]} />
-        <View style={[styles.reportHeaderBand, { backgroundColor: REPORT_HEADER_GRADIENT[2] }]} />
+        <View style={[styles.reportHeaderBand, { backgroundColor: stops[0] }]} />
+        <View style={[styles.reportHeaderBand, { backgroundColor: stops[1] }]} />
+        <View style={[styles.reportHeaderBand, { backgroundColor: stops[2] }]} />
       </View>
       <LinearGradient
-        colors={[...REPORT_HEADER_GRADIENT]}
+        colors={stops}
         locations={[0, 0.52, 1]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
@@ -284,13 +364,19 @@ function ExportReportHeaderSurface({
   style,
   defaultHeight,
   children,
+  theme,
 }: {
   style?: object;
   defaultHeight: number;
   children: ReactNode;
+  theme: ReportThemeColors;
 }) {
   const [height, setHeight] = useState(defaultHeight);
   const stripeHeight = height / REPORT_HEADER_STRIPE_COUNT;
+  const stops = themeStops(theme);
+  const stripes = Array.from({ length: REPORT_HEADER_STRIPE_COUNT }, (_, i) =>
+    reportHeaderGradientColor((i + 0.5) / REPORT_HEADER_STRIPE_COUNT, stops),
+  );
 
   return (
     <View
@@ -307,7 +393,7 @@ function ExportReportHeaderSurface({
         pointerEvents="none"
         style={[styles.exportHeaderStripeWrap, { height }]}
       >
-        {REPORT_HEADER_STRIPE_COLORS.map((color, i) => (
+        {stripes.map((color, i) => (
           <View
             key={`export-header-stripe-${i}`}
             collapsable={false}
@@ -850,6 +936,7 @@ function ExportReportHeader({
   officerName,
   officerDesignation,
   onOfficerLoad,
+  theme,
 }: {
   isTamil: boolean;
   place: string;
@@ -866,6 +953,7 @@ function ExportReportHeader({
   officerName: string;
   officerDesignation: string;
   onOfficerLoad: () => void;
+  theme: ReportThemeColors;
 }) {
   const wardLabel = formatWardLabel(isTamil, wardNumber);
   const street = streetLabel?.trim() || '';
@@ -876,7 +964,7 @@ function ExportReportHeader({
   const dateGpsLine = [submitted, `${latText}, ${lonText}`].filter(Boolean).join('  ·  ');
 
   return (
-    <ExportReportHeaderSurface style={styles.exportSummaryHeader} defaultHeight={76}>
+    <ExportReportHeaderSurface style={styles.exportSummaryHeader} defaultHeight={76} theme={theme}>
       <View style={styles.exportHeaderRow} collapsable={false}>
         <View style={styles.exportHeaderLogoPlate} collapsable={false}>
           <BrandImage kind="logo" style={styles.exportHeaderLogo} />
@@ -970,59 +1058,64 @@ function ExportOfficerBlock({
 function ReportFooterBar({
   isTamil,
   busy,
-  palette,
-  onDownload,
-  onShare,
+  theme,
+  onShareDetailed,
+  onShareImages,
 }: {
   isTamil: boolean;
-  busy: 'image' | 'report' | null;
-  palette?: AppPalette;
-  onDownload: () => void;
-  onShare: () => void;
+  busy: 'image' | 'report' | 'images' | null;
+  theme: ReportThemeColors;
+  onShareDetailed: () => void;
+  onShareImages: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const theme = (palette ?? getPaletteById(DEFAULT_PALETTE_ID)).primary;
 
   return (
     <View style={[styles.reportFooter, { paddingBottom: Math.max(insets.bottom, 6) }]}>
       <Pressable
-        onPress={onDownload}
+        onPress={onShareDetailed}
         style={({ pressed }) => [
           styles.reportFooterBtn,
           styles.reportFooterBtnOutline,
-          { borderColor: theme },
+          { borderColor: theme.accent },
           pressed && styles.reportFooterBtnPressed,
         ]}
         disabled={!!busy}
       >
         {busy === 'report' ? (
-          <ActivityIndicator size="small" color={theme} />
+          <ActivityIndicator size="small" color={theme.accent} />
         ) : (
           <>
-            <Ionicons name="download-outline" size={14} color={theme} />
+            <Ionicons name="share-outline" size={14} color={theme.accent} />
             <Text
-              style={[styles.reportFooterBtnTextOutline, { color: theme }, isTamil && styles.reportFooterBtnTextTa]}
+              style={[styles.reportFooterBtnTextOutline, { color: theme.accent }, isTamil && styles.reportFooterBtnTextTa]}
               numberOfLines={1}
             >
-              {isTamil ? 'அறிக்கை பதிவிறக்கம்' : 'Download report'}
+              {isTamil ? 'விரிவான அறிக்கை பகிர்வு' : 'Share detailed report'}
             </Text>
           </>
         )}
       </Pressable>
       <Pressable
-        onPress={onShare}
+        onPress={onShareImages}
         style={({ pressed }) => [
           styles.reportFooterBtn,
           styles.reportFooterBtnPrimary,
-          { backgroundColor: theme },
+          { backgroundColor: theme.accent },
           pressed && styles.reportFooterBtnPressed,
         ]}
         disabled={!!busy}
       >
-        <Ionicons name="share-outline" size={14} color="#fff" />
-        <Text style={[styles.reportFooterBtnTextPrimary, isTamil && styles.reportFooterBtnTextTa]} numberOfLines={1}>
-          {isTamil ? 'அறிக்கை பகிர்வு' : 'Share report'}
-        </Text>
+        {busy === 'images' ? (
+          <ActivityIndicator size="small" color="#fff" />
+        ) : (
+          <>
+            <Ionicons name="images-outline" size={14} color="#fff" />
+            <Text style={[styles.reportFooterBtnTextPrimary, isTamil && styles.reportFooterBtnTextTa]} numberOfLines={1}>
+              {isTamil ? 'அறிக்கை பகிர்வு' : 'Share report'}
+            </Text>
+          </>
+        )}
       </Pressable>
     </View>
   );
@@ -1032,7 +1125,6 @@ export function WorkDetailModal({
   work,
   portal,
   isTamil,
-  palette,
   streetLabel,
   onClose,
 }: {
@@ -1044,12 +1136,12 @@ export function WorkDetailModal({
   onClose: () => void;
 }) {
   const { user } = useApp();
-  const resolvedPalette = palette ?? getPaletteById(DEFAULT_PALETTE_ID);
   const insets = useSafeAreaInsets();
   const exportRef = useRef<ViewShotRef>(null);
   const exportLoadedCount = useRef(0);
   const exportLaidOut = useRef<(() => void) | null>(null);
-  const [busy, setBusy] = useState<'image' | 'report' | null>(null);
+  const [busy, setBusy] = useState<'image' | 'report' | 'images' | null>(null);
+  const [exportKind, setExportKind] = useState<'detailed' | 'images'>('detailed');
   const [idx, setIdx] = useState(0);
   const [photoReady, setPhotoReady] = useState(false);
   const [exportReady, setExportReady] = useState(false);
@@ -1158,7 +1250,35 @@ export function WorkDetailModal({
     };
   }, [user?.id, user?.profilePhotoUrl, user?.avatarUrl, user?.profileImage]);
 
-  const run = async (kind: 'image' | 'report', save: boolean) => {
+  const shareConfig = reportShareConfig(portal);
+  const reportTheme = shareConfig.theme;
+  const shareValues = {
+    Zone_EN: String(work.zoneNameEn || ''),
+    Zone_TA: String(work.zoneNameTa || work.zoneNameEn || ''),
+    District_EN: String(work.districtNameEn || ''),
+    District_TA: String(work.districtNameTa || work.districtNameEn || ''),
+    TownPanchayat_EN: String(work.tpNameEn || ''),
+    TownPanchayat_TA: String(work.tpNameTa || work.tpNameEn || ''),
+    Ward_No: String(work.wardNumber || ''),
+    Street_Name: String(resolvedStreet || work.streetName || ''),
+    CategoryNameEn: String(work.categoryNameEn || work.subjectNameEn || ''),
+    CategoryNameTa: String(work.categoryNameTa || work.categoryNameEn || ''),
+    EmployeeName_EN: String(user?.nameEn || user?.name || work.submittedByUserName || ''),
+    EmployeeName_TA: String(user?.nameTa || user?.name || work.submittedByUserName || ''),
+    Designation_EN: resolveOfficerDesignation(user, portal, false) || '',
+    Designation_TA: resolveOfficerDesignation(user, portal, true) || '',
+    DateTime: submitted,
+    Gps: gps,
+  };
+  const pickTemplate = (primary: string, fallback: string) => (isTamil ? primary || fallback : fallback || primary);
+  const letterEn = `Respected Sir/Madam,\n\nA field inspection on {CategoryNameEn} was carried out at Ward {Ward_No}, {Street_Name}, {TownPanchayat_EN} Town Panchayat, {District_EN} District, {Zone_EN} Zone. This is submitted for your kind information.\n\n{EmployeeName_EN}\n{Designation_EN}\n{TownPanchayat_EN} Town Panchayat\n{District_EN} District`;
+  const letterTa = `மதிப்பிற்குரிய அம்மையீர்/ஐயா வணக்கம்,\n\n{Zone_TA} மண்டலம், {District_TA} மாவட்டம், {TownPanchayat_TA} பேரூராட்சி வார்டு எண்.{Ward_No}, {Street_Name} பகுதியில் {CategoryNameTa} தொடர்பாக கள ஆய்வு மேற்கொள்ளப்பட்டது என்ற விவரம் பணிந்து சமர்ப்பிக்கப்படுகிறது.\n\n{EmployeeName_TA}\n{Designation_TA}\n{TownPanchayat_TA} பேரூராட்சி\n{District_TA} மாவட்டம்`;
+  const shareMessage = fillShareTemplate(
+    pickTemplate(shareConfig.imagesTemplateTa || letterTa, shareConfig.imagesTemplateEn || letterEn),
+    shareValues
+  );
+
+  const run = async (kind: 'image' | 'report' | 'images', save: boolean) => {
     try {
       setBusy(kind);
       if (kind === 'image') {
@@ -1173,8 +1293,10 @@ export function WorkDetailModal({
         return;
       }
 
+      const portrait = kind === 'images';
       const stamp = Date.now();
       exportLoadedCount.current = 0;
+      setExportKind(portrait ? 'images' : 'detailed');
       setExportColH(EXPORT_PHOTO_H);
       let mapUri = exportMapUri;
       if (!mapUri) {
@@ -1213,7 +1335,7 @@ export function WorkDetailModal({
         exportLaidOut.current = null;
         setExportCapturing(false);
       }
-      const filename = `inspection_${safeFilePart(workRef)}_${stamp}.jpg`;
+      const filename = `inspection_${safeFilePart(workRef)}_${portrait ? 'images_' : ''}${stamp}.jpg`;
       const dest = `${FileSystem.cacheDirectory}${filename}`;
       const exists = await FileSystem.getInfoAsync(dest);
       if (exists.exists) await FileSystem.deleteAsync(dest, { idempotent: true });
@@ -1234,7 +1356,7 @@ export function WorkDetailModal({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <View style={styles.screen}>
+      <View style={[styles.screen, { backgroundColor: reportTheme.pageBackground }]}>
         <StatusBar style="dark" />
         <ScrollView
           style={styles.scroll}
@@ -1245,7 +1367,7 @@ export function WorkDetailModal({
           automaticallyAdjustContentInsets={false}
         >
           <View style={styles.sheet}>
-            <ReportHeaderSurface style={[styles.detailHeader, { paddingTop: insets.top }]}>
+            <ReportHeaderSurface theme={reportTheme} style={[styles.detailHeader, { paddingTop: insets.top }]}>
               <DetailSummaryBody
                 variant="brandHeader"
                 isTamil={isTamil}
@@ -1339,10 +1461,10 @@ export function WorkDetailModal({
             <View style={styles.tablePad}>
               <Text style={styles.tableTitle}>{isTamil ? 'விவரங்கள் அட்டவணை' : 'DETAILS TABLE'}</Text>
               <View style={styles.table}>
-                <View style={styles.thead}>
-                  <Text style={[styles.th, { flex: 1.65 }]}>{isTamil ? 'தலைப்புகள்' : 'HEADINGS'}</Text>
+                <View style={[styles.thead, { backgroundColor: reportTheme.tableHeader, borderBottomColor: reportTheme.caption }]}>
+                  <Text style={[styles.th, { flex: 1.65, color: reportTheme.tableHeaderText }]}>{isTamil ? 'தலைப்புகள்' : 'HEADINGS'}</Text>
                   <View style={styles.colSplit} />
-                  <Text style={[styles.th, { flex: 1 }]}>{isTamil ? 'விவரங்கள்' : 'DETAILS'}</Text>
+                  <Text style={[styles.th, { flex: 1, color: reportTheme.tableHeaderText }]}>{isTamil ? 'விவரங்கள்' : 'DETAILS'}</Text>
                 </View>
                 {fieldRows.length ? (
                   fieldRows.map((r, i) => (
@@ -1364,9 +1486,9 @@ export function WorkDetailModal({
         <ReportFooterBar
           isTamil={isTamil}
           busy={busy}
-          palette={resolvedPalette}
-          onDownload={() => void run('report', true)}
-          onShare={() => void run('report', false)}
+          theme={reportTheme}
+          onShareDetailed={() => void run('report', false)}
+          onShareImages={() => void run('images', false)}
         />
         {exportCapturing ? (
           <>
@@ -1403,7 +1525,24 @@ export function WorkDetailModal({
               officerName={officerName}
               officerDesignation={officerDesignation}
               onOfficerLoad={markExportImageLoaded}
+              theme={reportTheme}
             />
+            {exportKind === 'images' ? (
+              <>
+                <View style={[styles.landPhotoExport, { height: EXPORT_PHOTO_H, width: '100%' }]} collapsable={false}>
+                  <ExportPhotoFrame
+                    images={images}
+                    isTamil={isTamil}
+                    height={EXPORT_PHOTO_H}
+                    onImageLoad={markExportImageLoaded}
+                  />
+                </View>
+                {shareConfig.enabled && shareMessage.trim() ? (
+                  <ShareHtmlText html={shareMessage} style={[styles.shareMessage, { color: reportTheme.messageText, backgroundColor: reportTheme.messageBackground }]} />
+                ) : null}
+              </>
+            ) : (
+            <>
             <View style={styles.landBody}>
               <View style={[styles.landPhotoExport, { height: exportColH }]} collapsable={false}>
                 <ExportPhotoFrame
@@ -1424,10 +1563,10 @@ export function WorkDetailModal({
                 >
                   <Text style={styles.tableTitle}>{isTamil ? 'விவரங்கள் அட்டவணை' : 'DETAILS TABLE'}</Text>
                   <View style={styles.table}>
-                    <View style={styles.thead}>
-                      <Text style={[styles.th, { flex: 1.65 }]}>{isTamil ? 'தலைப்புகள்' : 'HEADINGS'}</Text>
+                    <View style={[styles.thead, { backgroundColor: reportTheme.tableHeader, borderBottomColor: reportTheme.caption }]}>
+                      <Text style={[styles.th, { flex: 1.65, color: reportTheme.tableHeaderText }]}>{isTamil ? 'தலைப்புகள்' : 'HEADINGS'}</Text>
                       <View style={styles.colSplit} />
-                      <Text style={[styles.th, { flex: 1 }]}>{isTamil ? 'விவரங்கள்' : 'DETAILS'}</Text>
+                      <Text style={[styles.th, { flex: 1, color: reportTheme.tableHeaderText }]}>{isTamil ? 'விவரங்கள்' : 'DETAILS'}</Text>
                     </View>
                     {fieldRows.length ? (
                       fieldRows.map((r, i) => (
@@ -1447,6 +1586,11 @@ export function WorkDetailModal({
               </View>
             </View>
             <View style={styles.exportFooterRule} collapsable={false} />
+            {shareConfig.enabled && shareMessage.trim() ? (
+              <ShareHtmlText html={shareMessage} style={[styles.shareMessage, { color: reportTheme.messageText, backgroundColor: reportTheme.messageBackground }]} />
+            ) : null}
+            </>
+            )}
           </View>
               </ViewShot>
             </View>
@@ -1557,6 +1701,15 @@ const styles = StyleSheet.create({
   exportSheet: {
     width: '100%',
     backgroundColor: '#fff',
+  },
+  shareMessage: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 16,
+    textAlign: 'left',
+    fontSize: 14,
+    lineHeight: 22,
+    fontWeight: '500',
   },
   exportSummaryHeader: {
     position: 'relative',

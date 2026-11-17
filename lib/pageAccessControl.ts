@@ -12,7 +12,8 @@ import {
   Bell, 
   UserCircle, 
   Settings,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Share2
 } from 'lucide-react';
 
 export interface SystemPage {
@@ -170,6 +171,17 @@ export const SYSTEM_PAGES: SystemPage[] = [
     categoryEn: 'System Administration',
     categoryTa: 'கணினி நிர்வாகம்',
     icon: Settings,
+    isCoreAdmin: true
+  },
+  {
+    id: 'reportShareSettings',
+    nameEn: 'Report Share Template',
+    nameTa: 'அறிக்கை பகிர்வு வார்ப்புரு',
+    descriptionEn: 'Mobile detailed-report theme and Tamil image-share message',
+    descriptionTa: 'மொபைல் விரிவான அறிக்கை நிறம் மற்றும் படப் பகிர்வு செய்தி',
+    categoryEn: 'System Administration',
+    categoryTa: 'கணினி நிர்வாகம்',
+    icon: Share2,
     isCoreAdmin: true
   }
 ];
