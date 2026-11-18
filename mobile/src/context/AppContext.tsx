@@ -123,7 +123,7 @@ const Ctx = createContext<AppCtx | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [palette, setPalette] = useState(getPaletteById(DEFAULT_PALETTE_ID));
-  const [isTamil, setIsTamil] = useState(false);
+  const [isTamil, setIsTamil] = useState(true);
   const [user, setUser] = useState<AppUser | null>(null);
   const [portal, setPortal] = useState<PortalState>(emptyPortal());
   const [works, setWorks] = useState<InspectionWork[]>([]);

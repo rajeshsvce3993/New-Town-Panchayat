@@ -288,7 +288,7 @@ export default function DashboardScreen() {
               </Text>
             </View>
             <View style={styles.heroActions}>
-              <HeaderActions showLogout />
+              <HeaderActions />
               {isAdmin && (
                 <Pressable
                   onPress={() => {

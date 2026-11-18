@@ -17,7 +17,7 @@ export type ShareCardPaint = {
   photoGap: string;
 };
 
-export const DEFAULT_SHARE_CARD_THEME_ID = 'flat_maroon_gold';
+export const DEFAULT_SHARE_CARD_THEME_ID = 'dark_royal_maroon';
 
 export const SHARE_CARD_GROUPS: { id: ShareCardPaint['group'] | 'all'; labelEn: string; labelTa: string }[] = [
   { id: 'all', labelEn: 'All', labelTa: 'அனைத்தும்' },

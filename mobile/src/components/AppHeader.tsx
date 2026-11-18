@@ -45,7 +45,7 @@ export function HeaderBell({ inline = false }: { inline?: boolean }) {
   );
 }
 
-export function HeaderActions({ showLogout = false }: { showLogout?: boolean }) {
+export function HeaderActions({ showLogout = true }: { showLogout?: boolean }) {
   const { logout, isTamil, palette } = useApp();
   const [loggingOut, setLoggingOut] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);

@@ -21,7 +21,7 @@ import {
   View,
 } from 'react-native';
 import { api } from '../../src/api/client';
-import { HeaderBell } from '../../src/components/AppHeader';
+import { HeaderActions } from '../../src/components/AppHeader';
 import {
   FormPhotoField,
   FormPickerSheet,
@@ -627,13 +627,16 @@ export default function AddWorkScreen() {
             <Text style={styles.kicker}>{isTamil ? 'புதிய ஆய்வு' : 'NEW INSPECTION'}</Text>
             <Text style={styles.heroTitle}>{isTamil ? 'பணி பதிவு' : 'Add field work'}</Text>
           </View>
-          <HeaderBell />
+          <HeaderActions />
         </View>
       </LinearGradient>
 
       <View style={styles.sheet}>
         <View style={styles.stepBar}>
-          <Pressable style={styles.step} onPress={() => setStep(1)}>
+          <Pressable
+            style={[styles.step, step === 1 && [styles.stepActive, { backgroundColor: palette.primaryContainer, borderColor: palette.primary }]]}
+            onPress={() => setStep(1)}
+          >
             <View style={[styles.num, { backgroundColor: step === 1 ? palette.primary : step > 1 ? '#0F766E' : '#E2E8F0' }]}>
               <Text style={{ color: step >= 1 ? '#fff' : '#64748B', fontWeight: '700', fontSize: 12 }}>{step > 1 ? '✓' : '1'}</Text>
             </View>
@@ -646,7 +649,7 @@ export default function AddWorkScreen() {
           </Pressable>
           <View style={styles.stepLine} />
           <Pressable
-            style={styles.step}
+            style={[styles.step, step === 2 && [styles.stepActive, { backgroundColor: palette.primaryContainer, borderColor: palette.primary }]]}
             onPress={() => {
               ensureDraftClientWorkId();
               setStep(2);
@@ -943,7 +946,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E8EEF4',
   },
-  step: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  step: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1, borderColor: 'transparent' },
+  stepActive: { borderWidth: 1 },
   stepLine: { width: 12, height: 2, backgroundColor: '#E2E8F0', marginHorizontal: 4, borderRadius: 1 },
   num: { width: 24, height: 24, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   stepSmall: { fontSize: 9, color: '#94A3B8', fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },

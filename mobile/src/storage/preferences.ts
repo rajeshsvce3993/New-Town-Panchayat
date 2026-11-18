@@ -88,13 +88,17 @@ export const prefs = {
     await setStr(K.theme, id);
   },
   async getShareCardThemeId() {
-    return (await getStr(K.shareCardTheme)) || '';
+    const stored = (await getStr(K.shareCardTheme)) || '';
+    if (!stored || stored === 'flat_maroon_gold') return 'dark_royal_maroon';
+    return stored;
   },
   async setShareCardThemeId(id: string) {
     await setStr(K.shareCardTheme, id);
   },
   async getIsTamil() {
-    return (await getStr(K.tamil)) === 'true';
+    const stored = await getStr(K.tamil);
+    if (stored === null || stored === undefined || stored === '') return true;
+    return stored === 'true';
   },
   async setIsTamil(v: boolean) {
     await setStr(K.tamil, v ? 'true' : 'false');

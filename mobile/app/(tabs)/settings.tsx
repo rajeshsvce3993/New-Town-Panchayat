@@ -18,7 +18,7 @@ import {
   View,
 } from 'react-native';
 import { api, isRemotePhotoUrl, resolveProfilePhotoUrl } from '../../src/api/client';
-import { HeaderBell } from '../../src/components/AppHeader';
+import { HeaderActions } from '../../src/components/AppHeader';
 import { HeaderBrand } from '../../src/components/HeaderBrand';
 import { PhotoSourceDialog } from '../../src/components/PhotoSourceDialog';
 import { APP_VERSION_CODE, APP_VERSION_NAME, PACKAGE_NAME } from '../../src/constants/config';
@@ -170,7 +170,7 @@ export default function SettingsScreen() {
             <Text style={styles.kicker}>{isTamil ? 'கணக்கு' : 'ACCOUNT'}</Text>
             <Text style={styles.heroTitle}>{isTamil ? 'அமைப்புகள்' : 'Settings'}</Text>
           </View>
-          <HeaderBell />
+          <HeaderActions />
         </View>
       </LinearGradient>
     <ScrollView style={{ flex: 1, marginTop: -14 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 12, paddingBottom: 40 }}>

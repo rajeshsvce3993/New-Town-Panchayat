@@ -48,7 +48,8 @@ const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
 const PORTRAIT_W = Math.round(Math.max(SCREEN_W, 360));
 const PORTRAIT_H = Math.round(Math.max(SCREEN_H * 0.9, PORTRAIT_W * 1.7));
-const PORTRAIT_HEADER_H = 148;
+const PORTRAIT_HEADER_MIN_H = 148;
+const PORTRAIT_HEADER_H = PORTRAIT_HEADER_MIN_H;
 const PORTRAIT_FOOTER_H = 76;
 const PORTRAIT_RIBBON_H = 3;
 const PORTRAIT_PHOTO_AREA_H = PORTRAIT_H - PORTRAIT_HEADER_H - PORTRAIT_FOOTER_H - PORTRAIT_RIBBON_H * 2;
@@ -219,11 +220,58 @@ async function downloadOfficerPhoto(raw?: string | null): Promise<string | null>
   return ok ? mapFileUri(dest) : null;
 }
 
-const EXPORT_PHOTO_H = 440;
-const EXPORT_PHOTO_PAD = 10;
 const EXPORT_PHOTO_GAP = 8;
+const LAND_EXPORT_PAD = 10;
+/** Title line + marginBottom under FIELD PHOTOS / DETAILS TABLE */
+const LAND_PANE_TITLE_H = 16;
 const EXPORT_CAPTION_H = 28;
 const EXPORT_CAPTION_H_SINGLE = 34;
+const EXPORT_TILE_WELL_MIN = 132;
+/** Minimum data rows to show when the table is short (balanced photo + table band). */
+const LAND_BODY_MIN_DATA_ROWS = 6;
+const LAND_TABLE_HEAD_H = 36;
+const LAND_TABLE_DATA_ROW_H = 34;
+const LAND_TABLE_CHROME_H = 4;
+
+function estimateLandTableDataHeight(fieldRows: { label: string; value: string }[]): number {
+  const lineH = 15;
+  const rowPad = 18;
+  let rows = 0;
+  for (const r of fieldRows) {
+    const lines = Math.max(1, Math.ceil(r.label.length / 18), Math.ceil(r.value.length / 16));
+    rows += lines * lineH + rowPad;
+  }
+  if (!fieldRows.length) rows = LAND_TABLE_DATA_ROW_H;
+  return rows;
+}
+
+function estimateLandTablePaneHeight(fieldRows: { label: string; value: string }[]): number {
+  return (
+    LAND_EXPORT_PAD * 2 +
+    LAND_PANE_TITLE_H +
+    LAND_TABLE_HEAD_H +
+    estimateLandTableDataHeight(fieldRows) +
+    LAND_TABLE_CHROME_H
+  );
+}
+
+function estimateLandBodyMinPaneHeight(): number {
+  return (
+    LAND_EXPORT_PAD * 2 +
+    LAND_PANE_TITLE_H +
+    LAND_TABLE_HEAD_H +
+    LAND_BODY_MIN_DATA_ROWS * LAND_TABLE_DATA_ROW_H +
+    LAND_TABLE_CHROME_H
+  );
+}
+
+function resolveExportLandBodyHeight(fieldRows: { label: string; value: string }[], measuredPaneH: number): number {
+  return Math.max(measuredPaneH, estimateLandTablePaneHeight(fieldRows), estimateLandBodyMinPaneHeight());
+}
+
+function estimatePortraitPhotoAreaHeight(headerHeight: number): number {
+  return Math.max(120, PORTRAIT_H - headerHeight - PORTRAIT_FOOTER_H - PORTRAIT_RIBBON_H * 2);
+}
 const REPORT_AMBER = '#FBBF24';
 const CAPTION_BORDER = '#F59E0B';
 const CAPTION_BROWN = '#800000';
@@ -468,41 +516,38 @@ function ThemeRibbon({ paint }: { paint: ShareCardPaint }) {
   return <View collapsable={false} style={{ width: PORTRAIT_W, height: PORTRAIT_RIBBON_H, backgroundColor: paint.accent }} />;
 }
 
-function ShadedThemeTitle({ text, paint }: { text: string; paint: ShareCardPaint }) {
-  const [boxH, setBoxH] = useState(23);
-  const light = lerpHex(paint.title, '#FFFFFF', 0.55);
-  const dark = lerpHex(paint.title, '#111111', 0.28);
-  const steps = 7;
-  const noShadow = { textShadowColor: 'transparent' as const, textShadowRadius: 0 };
-  const titleStyle = styles.portraitHeadTitle;
+function PortraitActivityTitle({
+  text,
+  paint,
+  isTamil,
+  onHeight,
+}: {
+  text: string;
+  paint: ShareCardPaint;
+  isTamil?: boolean;
+  onHeight?: (h: number) => void;
+}) {
+  const shadow = paintTextShadow(paint.textShadow);
+  const long = text.length > (isTamil ? 22 : 32);
+  const fontSize = long ? (isTamil ? 16 : 17) : isTamil ? 18 : 20;
+  const lineHeight = fontSize + (long ? 3 : 4);
   return (
-    <View collapsable={false} style={{ width: '100%', height: boxH }}>
-      <Text
-        style={[titleStyle, { color: dark }, noShadow]}
-        numberOfLines={2}
-        onLayout={(e) => {
-          const next = Math.ceil(e.nativeEvent.layout.height);
-          if (next > 0 && next !== boxH) setBoxH(next);
-        }}
-      >
-        {text}
-      </Text>
-      {Array.from({ length: steps }, (_, i) => {
-        const t = (i + 1) / steps;
-        const clipH = Math.max(2, Math.round(boxH * (1 - t * 0.62)));
-        return (
-          <View
-            key={`shade-${i}`}
-            collapsable={false}
-            style={{ position: 'absolute', left: 0, right: 0, top: 0, height: clipH, overflow: 'hidden' }}
-          >
-            <Text style={[titleStyle, { color: lerpHex(dark, light, t) }, noShadow]} numberOfLines={2}>
-              {text}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
+    <Text
+      style={[
+        styles.portraitHeadTitle,
+        { color: paint.title, fontSize, lineHeight },
+        shadow,
+      ]}
+      numberOfLines={2}
+      adjustsFontSizeToFit
+      minimumFontScale={0.7}
+      onLayout={(e) => {
+        const next = Math.ceil(e.nativeEvent.layout.height);
+        if (next > 0) onHeight?.(next);
+      }}
+    >
+      {text}
+    </Text>
   );
 }
 
@@ -808,6 +853,9 @@ function ExportPhotoTile({
   index,
   onImageLoad,
   highlight,
+  wellMinHeight = EXPORT_TILE_WELL_MIN,
+  fillColumn = false,
+  style,
 }: {
   item: { url: string; name: string; fieldKey: string };
   captionHeight: number;
@@ -815,15 +863,21 @@ function ExportPhotoTile({
   index: number;
   onImageLoad: () => void;
   highlight: string;
+  wellMinHeight?: number;
+  fillColumn?: boolean;
+  style?: object;
 }) {
+  const wellStyle = fillColumn
+    ? [styles.exportTileWell, styles.exportTileWellFill, { minHeight: wellMinHeight }]
+    : [styles.exportTileWell, { minHeight: wellMinHeight }];
   return (
-    <View style={styles.exportTile}>
-      <View style={styles.exportTileWell}>
+    <View style={[styles.exportTile, fillColumn && styles.exportTileFill, style]}>
+      <View style={wellStyle}>
         <Image
           key={`tile-${item.fieldKey}-${mediaFingerprint(item.url)}`}
           source={{ uri: displayImageUri(item.url, item.fieldKey) }}
-          style={styles.exportTileImg}
-          resizeMode="contain"
+          style={fillColumn ? styles.exportTileImgCover : [styles.exportTileImg, { height: Math.max(96, wellMinHeight - 12) }]}
+          resizeMode={fillColumn ? 'cover' : 'contain'}
           fadeDuration={0}
           onLoad={onImageLoad}
           onError={onImageLoad}
@@ -846,6 +900,8 @@ function ExportPhotoRow({
   captionHeight,
   centerSingle,
   highlight,
+  fillColumn = false,
+  rowStyle,
 }: {
   items: { url: string; name: string; fieldKey: string }[];
   startIndex: number;
@@ -854,12 +910,15 @@ function ExportPhotoRow({
   captionHeight: number;
   centerSingle?: boolean;
   highlight: string;
+  fillColumn?: boolean;
+  rowStyle?: object;
 }) {
+  const rowSx = [styles.exportRow, fillColumn && styles.exportRowFill, rowStyle];
   if (items.length === 1 && centerSingle) {
     return (
-      <View style={styles.exportRow}>
+      <View style={rowSx}>
         <View style={styles.exportRowSide} />
-        <View style={styles.exportRowMain}>
+        <View style={[styles.exportRowMain, fillColumn && styles.exportRowSlotFill]}>
           <ExportPhotoTile
             item={items[0]}
             index={startIndex}
@@ -867,6 +926,7 @@ function ExportPhotoRow({
             captionHeight={captionHeight}
             onImageLoad={onImageLoad}
             highlight={highlight}
+            fillColumn={fillColumn}
           />
         </View>
         <View style={styles.exportRowSide} />
@@ -875,9 +935,9 @@ function ExportPhotoRow({
   }
 
   return (
-    <View style={styles.exportRow}>
+    <View style={rowSx}>
       {items.map((item, i) => (
-        <View key={`export-${item.fieldKey}-${startIndex + i}`} style={styles.exportRowSlot}>
+        <View key={`export-${item.fieldKey}-${startIndex + i}`} style={[styles.exportRowSlot, fillColumn && styles.exportRowSlotFill]}>
           <ExportPhotoTile
             item={item}
             index={startIndex + i}
@@ -885,6 +945,7 @@ function ExportPhotoRow({
             captionHeight={captionHeight}
             onImageLoad={onImageLoad}
             highlight={highlight}
+            fillColumn={fillColumn}
           />
         </View>
       ))}
@@ -892,21 +953,26 @@ function ExportPhotoRow({
   );
 }
 
-/** Download/share report only — photo grid fills the same height as the details table. */
+/** Download/share report — photo grid sizes to content; stretches with table row via flex. */
 function ExportPhotoFrame({
   images,
   isTamil,
   onImageLoad,
-  height,
   highlight,
+  bodyHeight,
 }: {
   images: { url: string; name: string; fieldKey: string }[];
   isTamil: boolean;
   onImageLoad: () => void;
-  height: number;
   highlight: string;
+  bodyHeight?: number;
 }) {
-  const frameStyle = [styles.exportPhotoFrame, { height, minHeight: height }];
+  const sized =
+    bodyHeight != null && bodyHeight > 0 ? { height: bodyHeight, minHeight: bodyHeight, flexGrow: 1, flexShrink: 0 } : null;
+  const frameStyle = [styles.exportPhotoFrame, styles.exportPhotoFrameFlex, sized];
+  const fill = true;
+  const wellMin = Math.max(EXPORT_TILE_WELL_MIN, 96);
+
   if (!images.length) {
     return (
       <View style={[frameStyle, styles.exportPhotoFrameEmpty]}>
@@ -916,11 +982,25 @@ function ExportPhotoFrame({
   }
 
   const captionH = images.length === 1 ? EXPORT_CAPTION_H_SINGLE : EXPORT_CAPTION_H;
+  const tileSized =
+    bodyHeight != null && bodyHeight > 0
+      ? { height: bodyHeight, minHeight: bodyHeight, flex: 1 as const }
+      : styles.exportTileSingleFill;
 
   if (images.length === 1) {
     return (
       <View style={frameStyle}>
-        <ExportPhotoTile item={images[0]} index={0} imageCount={1} captionHeight={captionH} onImageLoad={onImageLoad} highlight={highlight} />
+        <ExportPhotoTile
+          item={images[0]}
+          index={0}
+          imageCount={1}
+          captionHeight={captionH}
+          onImageLoad={onImageLoad}
+          highlight={highlight}
+          wellMinHeight={wellMin}
+          fillColumn={fill}
+          style={tileSized}
+        />
       </View>
     );
   }
@@ -928,7 +1008,16 @@ function ExportPhotoFrame({
   if (images.length === 2) {
     return (
       <View style={frameStyle}>
-        <ExportPhotoRow items={images} startIndex={0} imageCount={2} captionHeight={captionH} onImageLoad={onImageLoad} highlight={highlight} />
+        <ExportPhotoRow
+          items={images}
+          startIndex={0}
+          imageCount={2}
+          captionHeight={captionH}
+          onImageLoad={onImageLoad}
+          highlight={highlight}
+          fillColumn={fill}
+          rowStyle={styles.exportRowOnly}
+        />
       </View>
     );
   }
@@ -936,7 +1025,7 @@ function ExportPhotoFrame({
   if (images.length === 3) {
     return (
       <View style={frameStyle}>
-        <View style={styles.exportStack}>
+        <View style={[styles.exportStack, styles.exportStackFill]}>
           <ExportPhotoRow
             items={[images[0], images[1]]}
             startIndex={0}
@@ -944,6 +1033,7 @@ function ExportPhotoFrame({
             captionHeight={captionH}
             onImageLoad={onImageLoad}
             highlight={highlight}
+            fillColumn={fill}
           />
           <ExportPhotoRow
             items={[images[2]]}
@@ -953,6 +1043,7 @@ function ExportPhotoFrame({
             onImageLoad={onImageLoad}
             highlight={highlight}
             centerSingle
+            fillColumn={fill}
           />
         </View>
       </View>
@@ -966,7 +1057,7 @@ function ExportPhotoFrame({
 
   return (
     <View style={frameStyle}>
-      <View style={styles.exportStack}>
+      <View style={[styles.exportStack, styles.exportStackFill]}>
         {pairs.map((row, ri) => (
           <ExportPhotoRow
             key={`export-pair-${row.map((x) => x.fieldKey).join('-')}`}
@@ -977,6 +1068,7 @@ function ExportPhotoFrame({
             onImageLoad={onImageLoad}
             highlight={highlight}
             centerSingle={row.length === 1}
+            fillColumn={fill}
           />
         ))}
       </View>
@@ -1171,7 +1263,7 @@ function ExportReportHeader({
   const dateGpsLine = [submitted, formatGpsWithLabels(latitude, longitude)].filter(Boolean).join('  ·  ');
 
   return (
-    <ExportReportHeaderSurface style={[styles.exportSummaryHeader, { borderBottomColor: theme.accent }]} defaultHeight={76} theme={theme}>
+    <ExportReportHeaderSurface style={[styles.exportSummaryHeader, { borderBottomColor: theme.accent }]} defaultHeight={96} theme={theme}>
       <View style={styles.exportHeaderRow} collapsable={false}>
         <View style={styles.exportHeaderLogoPlate} collapsable={false}>
           <BrandImage kind="logo" style={styles.exportHeaderLogo} />
@@ -1221,6 +1313,7 @@ function ExportPortraitHeader({
   latitude,
   longitude,
   paint,
+  onHeaderHeight,
 }: {
   isTamil: boolean;
   tpName: string;
@@ -1233,6 +1326,7 @@ function ExportPortraitHeader({
   latitude: number;
   longitude: number;
   paint: ShareCardPaint;
+  onHeaderHeight?: (height: number) => void;
 }) {
   const wardLabel = formatWardLabel(isTamil, wardNumber);
   const street = streetLabel?.trim() || '';
@@ -1256,11 +1350,20 @@ function ExportPortraitHeader({
     <PortraitPaintSurface
       paint={paint}
       colors={paint.header}
-      defaultHeight={PORTRAIT_HEADER_H}
-      style={[styles.portraitHeader, { borderBottomWidth: 0, height: PORTRAIT_HEADER_H }]}
+      defaultHeight={PORTRAIT_HEADER_MIN_H}
+      style={[styles.portraitHeader, { borderBottomWidth: 0, minHeight: PORTRAIT_HEADER_MIN_H }]}
     >
-      <View style={styles.portraitHeaderCenter} collapsable={false}>
-        {!!activityName && <ShadedThemeTitle text={activityName} paint={paint} />}
+      <View
+        style={styles.portraitHeaderCenter}
+        collapsable={false}
+        onLayout={(e) => {
+          const block = Math.ceil(e.nativeEvent.layout.height) + 14;
+          onHeaderHeight?.(Math.max(PORTRAIT_HEADER_MIN_H, block));
+        }}
+      >
+        {!!activityName && (
+          <PortraitActivityTitle text={activityName} paint={paint} isTamil={isTamil} onHeight={() => undefined} />
+        )}
         {!!tpLine && (
           <Text style={[styles.portraitHeadPlace, { color: paint.primary }, shadow]} numberOfLines={2}>
             {tpLine}
@@ -1359,7 +1462,7 @@ function ExportPortraitFooter({
           </View>
         </View>
         <View style={[styles.portraitFooterMapFrame, { borderColor: paint.accent }]} collapsable={false}>
-          <ExportLocationMapThumb mapUri={mapUri} onLoad={onMapLoad} width={92} height={54} framed={false} />
+          <ExportLocationMapThumb mapUri={mapUri} onLoad={onMapLoad} width={82} height={48} framed={false} />
         </View>
       </View>
     </PortraitPaintSurface>
@@ -1370,10 +1473,12 @@ function PortraitPhotoGrid({
   images,
   onLoad,
   paint,
+  areaHeight,
 }: {
   images: { url: string; name: string; fieldKey: string }[];
   onLoad: () => void;
   paint: ShareCardPaint;
+  areaHeight: number;
 }) {
   const border = 1;
   const rows: { url: string; name: string; fieldKey: string }[][] = [];
@@ -1383,8 +1488,8 @@ function PortraitPhotoGrid({
     for (let i = 0; i < images.length; i += 2) rows.push(images.slice(i, i + 2));
   }
   const rowCount = Math.max(rows.length, 1);
-  const baseH = Math.max(1, Math.floor(PORTRAIT_PHOTO_AREA_H / rowCount));
-  const lastH = PORTRAIT_PHOTO_AREA_H - baseH * (rowCount - 1);
+  const baseH = Math.max(1, Math.floor(areaHeight / rowCount));
+  const lastH = areaHeight - baseH * (rowCount - 1);
   const colW = Math.floor(PORTRAIT_W / 2);
   const lastW = PORTRAIT_W - colW;
 
@@ -1426,7 +1531,7 @@ function PortraitPhotoGrid({
   return (
     <View
       collapsable={false}
-      style={{ width: PORTRAIT_W, height: PORTRAIT_PHOTO_AREA_H, backgroundColor: paint.photoGap }}
+      style={{ width: PORTRAIT_W, height: areaHeight, backgroundColor: paint.photoGap }}
     >
       {rows.map((row, ri) => {
         const height = ri === rowCount - 1 ? lastH : baseH;
@@ -1497,10 +1602,10 @@ function ExportOfficerBlock({
           <Text style={styles.exportOfficerLetterTxt}>{letter}</Text>
         </LinearGradient>
       )}
-      <Text style={[styles.exportOfficerName, nameColor ? { color: nameColor } : null]} numberOfLines={1}>
+      <Text style={[styles.exportOfficerName, nameColor ? { color: nameColor } : null]}>
         {name}
       </Text>
-      <Text style={[styles.exportOfficerRole, { color: highlight }]} numberOfLines={1}>
+      <Text style={[styles.exportOfficerRole, { color: highlight }]}>
         {designation || (isTamil ? 'களப் பணியாளர்' : 'Field worker')}
       </Text>
     </View>
@@ -1623,7 +1728,11 @@ export function WorkDetailModal({
   const [photoReady, setPhotoReady] = useState(false);
   const [exportReady, setExportReady] = useState(false);
   const [exportCapturing, setExportCapturing] = useState(false);
-  const [exportColH, setExportColH] = useState(EXPORT_PHOTO_H);
+  const [exportLandBodyH, setExportLandBodyH] = useState(0);
+  const exportLandBodyHRef = useRef(0);
+  const exportPhotoPaneHRef = useRef(0);
+  const exportTablePaneHRef = useRef(0);
+  const [portraitHeaderH, setPortraitHeaderH] = useState(PORTRAIT_HEADER_MIN_H);
   const [exportMapUri, setExportMapUri] = useState<string | null>(null);
   const [exportOfficerUri, setExportOfficerUri] = useState<string | null>(null);
   const [shareThemeId, setShareThemeId] = useState(DEFAULT_SHARE_CARD_THEME_ID);
@@ -1675,6 +1784,11 @@ export function WorkDetailModal({
       .map(({ key, label, value }) => ({ key, label, value }));
   }, [work, portal, isTamil]);
 
+  const portraitPhotoAreaH = useMemo(
+    () => estimatePortraitPhotoAreaHeight(portraitHeaderH),
+    [portraitHeaderH],
+  );
+
   const current = images[idx];
   const locTp = isTamil ? work.tpNameTa || work.tpNameEn : work.tpNameEn;
   const locZone = isTamil ? work.zoneNameTa || work.zoneNameEn : work.zoneNameEn;
@@ -1692,6 +1806,37 @@ export function WorkDetailModal({
     exportLoadedCount.current += 1;
     if (exportLoadedCount.current >= images.length) setExportReady(true);
   }, [images.length]);
+
+  const measureExportLandPane = useCallback(
+    (pane: 'photo' | 'table', height: number) => {
+      const h = Math.ceil(height);
+      if (pane === 'photo') exportPhotoPaneHRef.current = h;
+      else exportTablePaneHRef.current = h;
+      const merged = Math.max(exportPhotoPaneHRef.current, exportTablePaneHRef.current);
+      const target = resolveExportLandBodyHeight(fieldRows, merged);
+      if (target !== exportLandBodyHRef.current) {
+        exportLandBodyHRef.current = target;
+        setExportLandBodyH(target);
+      }
+    },
+    [fieldRows],
+  );
+
+  const exportPhotoBodyH = useMemo(() => {
+    if (exportLandBodyH <= 0) return undefined;
+    return Math.max(exportLandBodyH - LAND_EXPORT_PAD * 2 - LAND_PANE_TITLE_H, EXPORT_TILE_WELL_MIN);
+  }, [exportLandBodyH]);
+
+  useEffect(() => {
+    if (exportCapturing && exportKind === 'detailed') {
+      exportPhotoPaneHRef.current = 0;
+      exportTablePaneHRef.current = 0;
+      const guess = resolveExportLandBodyHeight(fieldRows, 0);
+      exportLandBodyHRef.current = guess;
+      exportTablePaneHRef.current = guess;
+      setExportLandBodyH(guess);
+    }
+  }, [exportCapturing, exportKind, fieldRows]);
 
   useEffect(() => {
     exportLoadedCount.current = 0;
@@ -1733,8 +1878,11 @@ export function WorkDetailModal({
     let alive = true;
     void prefs.getShareCardThemeId().then((id) => {
       if (!alive) return;
-      const next = String(id || '').trim();
-      if (next) setShareThemeId(resolveShareCardPaint(next).id);
+      const resolved = resolveShareCardPaint(id || DEFAULT_SHARE_CARD_THEME_ID);
+      setShareThemeId(resolved.id);
+      if ((id || '').trim() === 'flat_maroon_gold' || !(id || '').trim()) {
+        void prefs.setShareCardThemeId(resolved.id);
+      }
     });
     return () => {
       alive = false;
@@ -1811,7 +1959,9 @@ export function WorkDetailModal({
       const stamp = Date.now();
       exportLoadedCount.current = 0;
       setExportKind(portrait ? 'images' : 'detailed');
-      setExportColH(EXPORT_PHOTO_H);
+      if (portrait) {
+        setPortraitHeaderH(PORTRAIT_HEADER_MIN_H);
+      }
       let mapUri = exportMapUri;
       if (!mapUri) {
         mapUri = await downloadLocationMap(Number(work.latitude || 0), Number(work.longitude || 0), mapsApiKey);
@@ -1827,6 +1977,18 @@ export function WorkDetailModal({
       });
       setExportCapturing(true);
       await Promise.race([laidOut, new Promise<void>((r) => setTimeout(r, 900))]);
+      if (!portrait) {
+        await new Promise<void>((r) => setTimeout(r, 80));
+        const layoutStart = Date.now();
+        while (exportTablePaneHRef.current < 1 && Date.now() - layoutStart < 1200) {
+          await new Promise<void>((r) => setTimeout(r, 40));
+        }
+        const syncStart = Date.now();
+        while (exportLandBodyHRef.current < exportTablePaneHRef.current && Date.now() - syncStart < 600) {
+          await new Promise<void>((r) => setTimeout(r, 40));
+        }
+        await new Promise<void>((r) => setTimeout(r, 280));
+      }
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       {
         const needed = images.length + 2;
@@ -1848,6 +2010,10 @@ export function WorkDetailModal({
       } finally {
         exportLaidOut.current = null;
         setExportCapturing(false);
+        setExportLandBodyH(0);
+        exportLandBodyHRef.current = 0;
+        exportPhotoPaneHRef.current = 0;
+        exportTablePaneHRef.current = 0;
       }
       const filename = `inspection_${safeFilePart(workRef)}_${portrait ? 'images_' : ''}${stamp}.jpg`;
       const dest = `${FileSystem.cacheDirectory}${filename}`;
@@ -2052,13 +2218,14 @@ export function WorkDetailModal({
                   latitude={Number(work.latitude || 0)}
                   longitude={Number(work.longitude || 0)}
                   paint={sharePaint}
+                  onHeaderHeight={setPortraitHeaderH}
                 />
                 <ThemeRibbon paint={sharePaint} />
                 <View
                   collapsable={false}
-                  style={{ width: PORTRAIT_W, height: PORTRAIT_PHOTO_AREA_H, backgroundColor: sharePaint.photoGap }}
+                  style={{ width: PORTRAIT_W, height: portraitPhotoAreaH, backgroundColor: sharePaint.photoGap }}
                 >
-                  <PortraitPhotoGrid images={images} onLoad={markExportImageLoaded} paint={sharePaint} />
+                  <PortraitPhotoGrid images={images} onLoad={markExportImageLoaded} paint={sharePaint} areaHeight={portraitPhotoAreaH} />
                 </View>
                 <ThemeRibbon paint={sharePaint} />
                 <ExportPortraitFooter
@@ -2093,20 +2260,37 @@ export function WorkDetailModal({
                   theme={reportTheme}
                   paint={sharePaint}
                 />
-                <View style={styles.landBody} collapsable={false}>
-                  <View style={styles.landPhotoExport} collapsable={false}>
+                <View
+                  style={[
+                    styles.landBody,
+                    { borderBottomColor: reportTheme.caption, borderBottomWidth: 2 },
+                    exportLandBodyH > 0 ? { height: exportLandBodyH } : null,
+                  ]}
+                  collapsable={false}
+                >
+                  <View
+                    style={[styles.landPhotoExport, exportLandBodyH > 0 ? { height: exportLandBodyH } : null]}
+                    collapsable={false}
+                    onLayout={(e) => measureExportLandPane('photo', e.nativeEvent.layout.height)}
+                  >
+                    <Text style={styles.landPaneTitle}>{isTamil ? 'புகைப்படங்கள்' : 'FIELD PHOTOS'}</Text>
                     <ExportPhotoFrame
                       images={images}
                       isTamil={isTamil}
                       onImageLoad={markExportImageLoaded}
-                      height={exportColH}
                       highlight={reportTheme.highlight}
+                      bodyHeight={exportPhotoBodyH}
                     />
                   </View>
                   <View style={[styles.exportSplit, { backgroundColor: reportTheme.highlight }]} />
-                  <View style={styles.landTable} collapsable={false}>
-                    <Text style={styles.tableTitle}>{isTamil ? 'விவரங்கள் அட்டவணை' : 'DETAILS TABLE'}</Text>
-                    <View style={styles.table}>
+                  <View
+                    style={[styles.landTable, exportLandBodyH > 0 ? { height: exportLandBodyH } : null]}
+                    collapsable={false}
+                    onLayout={(e) => measureExportLandPane('table', e.nativeEvent.layout.height)}
+                  >
+                    <Text style={styles.landPaneTitle}>{isTamil ? 'விவரங்கள் அட்டவணை' : 'DETAILS TABLE'}</Text>
+                    <View style={styles.landPaneBody} collapsable={false}>
+                    <View style={styles.table} collapsable={false}>
                       <View style={[styles.thead, { backgroundColor: reportTheme.tableHeader, borderBottomColor: reportTheme.caption }]}>
                         <Text style={[styles.th, { flex: 1.65, color: reportTheme.tableHeaderText }]}>{isTamil ? 'தலைப்புகள்' : 'HEADINGS'}</Text>
                         <View style={styles.colSplit} />
@@ -2114,7 +2298,7 @@ export function WorkDetailModal({
                       </View>
                       {fieldRows.length ? (
                         fieldRows.map((r, i) => (
-                          <View key={`ex-${r.key}`} style={[styles.tr, i % 2 === 1 && styles.trAlt]}>
+                          <View key={`ex-${r.key}`} style={[styles.tr, styles.trExport, i % 2 === 1 && styles.trAlt]}>
                             <Text style={[styles.tdL, { flex: 1.65 }]}>{r.label}</Text>
                             <View style={styles.colSplit} />
                             <Text style={[styles.tdR, { flex: 1 }]}>{r.value}</Text>
@@ -2125,6 +2309,7 @@ export function WorkDetailModal({
                           {isTamil ? 'புலங்களின் தகவல்கள் எதுவும் பதிவு செய்யப்படவில்லை' : 'No custom field inputs recorded'}
                         </Text>
                       )}
+                    </View>
                     </View>
                   </View>
                 </View>
@@ -2252,7 +2437,6 @@ const styles = StyleSheet.create({
   },
   portraitHeader: {
     width: '100%',
-    height: PORTRAIT_HEADER_H,
     flexGrow: 0,
     flexShrink: 0,
     justifyContent: 'center',
@@ -2381,8 +2565,8 @@ const styles = StyleSheet.create({
   },
   portraitFooterName: {
     color: REPORT_AMBER,
-    fontSize: 15,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 15,
     fontWeight: '900',
     textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowOffset: { width: 0, height: 1 },
@@ -2481,8 +2665,8 @@ const styles = StyleSheet.create({
   },
   exportHeadLine1: {
     width: '100%',
-    fontSize: 12,
-    lineHeight: 15,
+    fontSize: 13,
+    lineHeight: 16,
     fontWeight: '900',
     color: '#fff',
     letterSpacing: 0.2,
@@ -2528,11 +2712,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   exportOfficerInner: {
-    width: 56,
+    width: 78,
+    maxWidth: 86,
     alignItems: 'center',
     justifyContent: 'flex-start',
     backgroundColor: 'transparent',
-    paddingHorizontal: 1,
+    paddingHorizontal: 2,
   },
   exportOfficerImg: {
     width: 44,
@@ -2557,18 +2742,18 @@ const styles = StyleSheet.create({
   },
   exportOfficerName: {
     width: '100%',
-    marginTop: 1,
+    marginTop: 2,
     fontSize: 8,
-    lineHeight: 10,
+    lineHeight: 11,
     fontWeight: '800',
     color: '#fff',
     textAlign: 'center',
   },
   exportOfficerRole: {
     width: '100%',
-    marginTop: 0,
+    marginTop: 1,
     fontSize: 7,
-    lineHeight: 9,
+    lineHeight: 10,
     fontWeight: '700',
     color: REPORT_AMBER,
     textAlign: 'center',
@@ -2626,18 +2811,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     backgroundColor: '#fff',
-    minHeight: EXPORT_PHOTO_H,
+    width: '100%',
+    overflow: 'hidden',
   },
   landPhotoExport: {
     width: '58%',
-    minHeight: EXPORT_PHOTO_H,
     alignSelf: 'stretch',
-    overflow: 'hidden',
+    flexDirection: 'column',
+    padding: LAND_EXPORT_PAD,
     backgroundColor: '#fff',
   },
+  landPaneTitle: { fontSize: 10, fontWeight: '800', color: '#334155', letterSpacing: 0.5, marginBottom: 6 },
+  landPaneBody: { flex: 1, width: '100%', minHeight: 0 },
   exportSplit: {
     width: 3,
+    alignSelf: 'stretch',
     backgroundColor: REPORT_GREEN,
+    flexShrink: 0,
   },
   exportFooterRule: {
     width: '100%',
@@ -2646,36 +2836,51 @@ const styles = StyleSheet.create({
   },
   exportPhotoFrame: {
     width: '100%',
-    padding: EXPORT_PHOTO_PAD,
     backgroundColor: '#fff',
     flexDirection: 'column',
+    flex: 1,
+    minHeight: 0,
+  },
+  exportPhotoFrameFlex: {
+    flex: 1,
+    alignSelf: 'stretch',
+    minHeight: 0,
   },
   exportPhotoFrameEmpty: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 120,
   },
-  exportStack: { flex: 1, gap: EXPORT_PHOTO_GAP },
-  exportRow: { flex: 1, flexDirection: 'row', gap: EXPORT_PHOTO_GAP, alignItems: 'stretch' },
+  exportStack: { width: '100%', gap: EXPORT_PHOTO_GAP },
+  exportStackFill: { flex: 1, minHeight: 0 },
+  exportRow: { flexDirection: 'row', gap: EXPORT_PHOTO_GAP, alignItems: 'stretch', width: '100%' },
+  exportRowFill: { flex: 1, minHeight: 0 },
+  exportRowOnly: { flex: 1, minHeight: 0 },
+  exportRowSlotFill: { flex: 1, minHeight: 0 },
   exportRowSlot: { flex: 1, minWidth: 0 },
   exportRowSide: { flex: 0.5, minWidth: 0 },
   exportRowMain: { flex: 2, minWidth: 0 },
   exportTile: {
-    flex: 1,
     borderRadius: 8,
     overflow: 'hidden',
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#CBD5E1',
   },
+  exportTileFill: { flex: 1, minHeight: 0, alignSelf: 'stretch' },
+  exportTileSingleFill: { flex: 1, width: '100%', minHeight: 0 },
   exportTileWell: {
-    flex: 1,
     backgroundColor: '#0F172A',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 6,
-    minHeight: 0,
+    width: '100%',
+    overflow: 'hidden',
   },
-  exportTileImg: { width: '100%', height: '100%' },
+  exportTileWellFill: { flex: 1, minHeight: 0, alignSelf: 'stretch', position: 'relative' },
+  exportTileImg: { width: '100%', minHeight: 96 },
+  exportTileImgCover: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
   exportTileCaption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2695,8 +2900,10 @@ const styles = StyleSheet.create({
   },
   landTable: {
     width: '42%',
-    padding: 10,
+    padding: LAND_EXPORT_PAD,
     backgroundColor: '#F8FAFC',
+    alignSelf: 'stretch',
+    flexDirection: 'column',
   },
   sumPlace: {
     width: '100%',
@@ -2856,8 +3063,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
   },
+  trExport: {
+    alignItems: 'flex-start',
+  },
   trAlt: { backgroundColor: '#F8FAFC' },
-  tdL: { fontSize: 12, fontWeight: '700', color: '#1E3A5F', paddingHorizontal: 8 },
-  tdR: { fontSize: 12, fontWeight: '700', color: '#0F172A', paddingHorizontal: 8 },
+  tdL: { fontSize: 12, fontWeight: '700', color: '#1E3A5F', paddingHorizontal: 8, flexShrink: 1 },
+  tdR: { fontSize: 12, fontWeight: '700', color: '#0F172A', paddingHorizontal: 8, flexShrink: 1 },
 });
 

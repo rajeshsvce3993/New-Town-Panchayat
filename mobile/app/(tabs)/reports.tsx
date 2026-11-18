@@ -5,7 +5,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { HeaderBell } from '../../src/components/AppHeader';
+import { HeaderActions } from '../../src/components/AppHeader';
 import { HeaderBrand } from '../../src/components/HeaderBrand';
 import { WorkDetailModal } from '../../src/components/WorkDetailModal';
 import { useApp } from '../../src/context/AppContext';
@@ -189,7 +189,7 @@ export default function ReportsScreen() {
             <Text style={styles.kicker}>{isTamil ? 'ஆய்வு பதிவுகள்' : 'INSPECTION RECORDS'}</Text>
             <Text style={styles.heroTitle}>{isTamil ? 'அறிக்கைகள்' : 'Reports'}</Text>
           </View>
-          <HeaderBell />
+          <HeaderActions />
         </View>
       </LinearGradient>
 
