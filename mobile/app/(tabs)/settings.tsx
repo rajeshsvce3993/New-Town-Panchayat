@@ -30,10 +30,10 @@ import { prefs, profilePhotoFile } from '../../src/storage/preferences';
 import { palettes } from '../../src/theme/palettes';
 import {
   effectivePhotoUrl,
-  effectiveSubjectIds,
   effectiveWards,
   resolveOfficerDesignation,
   resolveUserDisplayName,
+  resolveUserTownPanchayatLabel,
 } from '../../src/types/models';
 
 function toast(msg: string) {
@@ -94,15 +94,15 @@ export default function SettingsScreen() {
 
   const tones = [
     ['default', isTamil ? 'இயல்புநிலை ஒலி' : 'Default Sound', isTamil ? 'நிலையான கணினி அறிவிப்பு ஒலி' : 'Standard system notification alert'],
-    ['high_alert', isTamil ? 'உயர் எச்சரிக்கை (முக்கியம்)' : 'High Alert (Urgent)', isTamil ? 'தொடர் அதிர்வு மற்றும் உடனடி ஒலி' : 'Urgent repetitive pulse & priority sound'],
-    ['chime', isTamil ? 'மணி ஒலி (Chime)' : 'Chime Tone', isTamil ? 'இனிமையான மணி ஒலி அறிவிப்பு' : 'Gentle bell chime alert'],
+    ['high_alert', isTamil ? 'உயர் எச்சரிக்கை' : 'High Alert', isTamil ? 'தொடர் அதிர்வு மற்றும் உடனடி ஒலி' : 'Urgent repetitive pulse and priority sound'],
+    ['chime', isTamil ? 'மணி ஒலி' : 'Chime tone', isTamil ? 'இனிமையான மணி ஒலி அறிவிப்பு' : 'Gentle bell chime alert'],
     ['gentle', isTamil ? 'மென்மையான ஒலி' : 'Gentle Tone', isTamil ? 'குறைந்த தொந்தரவு கொண்ட மென்மையான ஒலி' : 'Subtle unobtrusive notification'],
     ['vibrate', isTamil ? 'அதிர்வு மட்டும்' : 'Vibrate Only', isTamil ? 'சத்தமின்றி அதிர்வு மட்டும் செயல்படும்' : 'Silent with vibration pulse only'],
   ] as const;
 
   const photoUri = resolveProfilePhotoUrl(photo);
   const wards = effectiveWards(user);
-  const subjects = user?.assignedSubjectNames?.length ? user.assignedSubjectNames : effectiveSubjectIds(user);
+  const tpDisplay = resolveUserTownPanchayatLabel(user, isTamil);
   const designationLabel = resolveOfficerDesignation(user, portal, isTamil);
   const versionName = APP_VERSION_NAME;
   const versionCode = String(APP_VERSION_CODE);
@@ -217,7 +217,7 @@ export default function SettingsScreen() {
         <View style={styles.detailGrid}>
           <View style={styles.detailCol}>
             <Text style={styles.miniLbl}>{isTamil ? 'பேரூராட்சி' : 'TP'}</Text>
-            <Text style={styles.miniVal} numberOfLines={2}>{user?.townPanchayat || '—'}</Text>
+            <Text style={styles.miniVal} numberOfLines={2}>{tpDisplay}</Text>
           </View>
           <View style={styles.detailCol}>
             <Text style={styles.miniLbl}>{isTamil ? 'வார்டுகள்' : 'Wards'}</Text>
@@ -226,15 +226,10 @@ export default function SettingsScreen() {
           <View style={[styles.detailCol, { borderRightWidth: 0 }]}>
             <Text style={styles.miniLbl}>{isTamil ? 'பதவி' : 'Designation'}</Text>
             <Text style={styles.miniVal} numberOfLines={2}>
-              {[designationLabel, user?.mobile].filter(Boolean).join('  ·  ') || '—'}
+              {designationLabel || '—'}
             </Text>
           </View>
         </View>
-        {!!subjects.length && (
-          <Text style={{ fontSize: 11, color: '#64748B', marginTop: 8 }} numberOfLines={2}>
-            {isTamil ? 'பொருட்கள்' : 'Subjects'}: {subjects.join(', ')}
-          </Text>
-        )}
       </View>
 
       <View style={styles.card}>
@@ -291,7 +286,7 @@ export default function SettingsScreen() {
           <View style={{ marginTop: 16, gap: 12 }}>
             <View style={styles.hr} />
             {pwField(cur, setCur, showCur, setShowCur, isTamil ? 'தற்போதைய கடவுச்சொல்' : 'Current Password', isTamil ? 'தற்போதைய கடவுச்சொல்லை உள்ளிடவும்' : 'Enter current password', 'lock-open')}
-            {pwField(nw, setNw, showNw, setShowNw, isTamil ? 'புதிய கடவுச்சொல் (குறைந்தது 6 எழுத்துகள்)' : 'New Password (min 6 chars)', isTamil ? 'புதிய கடவுச்சொல்லை உள்ளிடவும்' : 'Enter new password', 'key')}
+            {pwField(nw, setNw, showNw, setShowNw, isTamil ? 'புதிய கடவுச்சொல் — குறைந்தது 6 எழுத்துகள்' : 'New password — at least 6 characters', isTamil ? 'புதிய கடவுச்சொல்லை உள்ளிடவும்' : 'Enter new password', 'key')}
             {pwField(cf, setCf, showCf, setShowCf, isTamil ? 'புதிய கடவுச்சொல்லை உறுதிசெய்க' : 'Confirm New Password', isTamil ? 'மீண்டும் புதிய கடவுச்சொல்லை உள்ளிடவும்' : 'Re-enter new password', 'shield-checkmark')}
             {!!pwErr && (
               <View style={styles.errBox}>
@@ -390,7 +385,7 @@ export default function SettingsScreen() {
             </View>
             <View style={{ marginLeft: 10 }}>
               <Text style={styles.cardTitle}>{isTamil ? 'மொழி' : 'Language'}</Text>
-              <Text style={styles.cardSub}>{isTamil ? 'தமிழ் இயக்கத்தில்' : 'English active'}</Text>
+              <Text style={styles.cardSub}>{isTamil ? 'தமிழ்' : 'English'}</Text>
             </View>
           </View>
           <Switch value={isTamil} onValueChange={(v) => void setLanguage(v)} trackColor={{ true: palette.primaryContainer }} thumbColor={isTamil ? palette.primary : undefined} />
@@ -447,19 +442,21 @@ export default function SettingsScreen() {
         </View>
         <View style={styles.verBox}>
           <View style={styles.verRow}>
-            <Text style={styles.verK}>{isTamil ? 'பதிப்பு பெயர் (Version Name)' : 'Version Name'}</Text>
+            <Text style={styles.verK}>{isTamil ? 'பதிப்பு பெயர்' : 'Version name'}</Text>
             <View style={{ backgroundColor: palette.primaryContainer, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
               <Text style={{ fontWeight: '700', fontSize: 12, color: palette.primary }}>v{versionName}</Text>
             </View>
           </View>
           <View style={styles.verRow}>
-            <Text style={styles.verK}>{isTamil ? 'பதிப்பு எண் (Version Code)' : 'Version Code'}</Text>
+            <Text style={styles.verK}>{isTamil ? 'பதிப்பு எண்' : 'Version code'}</Text>
             <View style={{ backgroundColor: '#E2E8F0', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
-              <Text style={{ fontWeight: '700', fontSize: 12, color: '#1E293B' }}>Build {versionCode}</Text>
+              <Text style={{ fontWeight: '700', fontSize: 12, color: '#1E293B' }}>
+                {isTamil ? `வெளியீடு ${versionCode}` : `Build ${versionCode}`}
+              </Text>
             </View>
           </View>
           <View style={styles.verRow}>
-            <Text style={styles.verK}>{isTamil ? 'தொகுப்பு பெயர் (Package)' : 'Package Name'}</Text>
+            <Text style={styles.verK}>{isTamil ? 'தொகுப்பு பெயர்' : 'Package name'}</Text>
             <Text style={{ fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', color: '#475569' }}>{pkg}</Text>
           </View>
         </View>
@@ -482,7 +479,9 @@ export default function SettingsScreen() {
           </>
         )}
       </Pressable>
-      <Text style={{ textAlign: 'center', fontSize: 11, color: '#94A3B8' }}>Town Panchayats Management System</Text>
+      <Text style={{ textAlign: 'center', fontSize: 11, color: '#94A3B8' }}>
+        {isTamil ? 'பேரூராட்சி மேலாண்மை அமைப்பு' : 'Town Panchayats Management System'}
+      </Text>
 
       <PhotoSourceDialog
         visible={photoDlg}

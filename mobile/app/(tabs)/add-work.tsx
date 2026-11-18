@@ -611,8 +611,6 @@ export default function AddWorkScreen() {
     );
   };
 
-  const assignedWards = effectiveWards(user);
-
   return (
     <View style={{ flex: 1, backgroundColor: '#F3F4F8' }}>
       <LinearGradient
@@ -705,32 +703,6 @@ export default function AddWorkScreen() {
                 </Pressable>
               </View>
             )}
-
-            <View style={styles.card}>
-              <View style={styles.sectionHead}>
-                <View style={[styles.sectionIcon, { backgroundColor: palette.primaryContainer }]}>
-                  <Ionicons name="person-outline" size={15} color={palette.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.sectionTitle}>{isTamil ? 'அலுவலர் விவரங்கள்' : 'Officer details'}</Text>
-                  <Text style={styles.sectionSub}>
-                    {user?.name || 'Officer'} · {user?.role || user?.designation || 'Inspector'}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.detailGrid}>
-                <View style={styles.detailCol}>
-                  <Text style={styles.miniLbl}>{isTamil ? 'பேரூராட்சி' : 'TP'}</Text>
-                  <Text style={styles.miniVal} numberOfLines={2}>{user?.townPanchayat || '—'}</Text>
-                </View>
-                <View style={[styles.detailCol, { borderRightWidth: 0 }]}>
-                  <Text style={styles.miniLbl}>{isTamil ? 'வார்டுகள்' : 'Wards'}</Text>
-                  <Text style={styles.miniVal} numberOfLines={2}>
-                    {!assignedWards.length ? (isTamil ? 'அனைத்தும்' : 'All') : assignedWards.join(', ')}
-                  </Text>
-                </View>
-              </View>
-            </View>
 
             <View style={styles.card}>
             <View style={styles.sectionHead}>

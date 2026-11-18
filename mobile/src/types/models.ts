@@ -136,6 +136,126 @@ export function effectiveSubjectIds(user?: AppUser | null): string[] {
   return (user.subjectIds?.length ? user.subjectIds : user.assignedSubjects) || [];
 }
 
+function hasTamilScript(value: string): boolean {
+  return /[\u0B80-\u0BFF]/.test(value);
+}
+
+/** One language per label — splits "English / Tamil" style combined strings. */
+export function pickSingleLanguageLabel(raw: string, isTamil: boolean): string {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+  const parts = text
+    .split(/\s*[/|·•]\s*|\s+-\s+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length <= 1) return text;
+  const tamilParts = parts.filter(hasTamilScript);
+  const latinParts = parts.filter((p) => !hasTamilScript(p));
+  if (isTamil) return tamilParts[0] || latinParts[0] || parts[parts.length - 1] || text;
+  return latinParts[0] || tamilParts[0] || parts[0] || text;
+}
+
+export function localizedCatalogName(
+  nameTa: string | null | undefined,
+  nameEn: string | null | undefined,
+  isTamil: boolean,
+  fallback = '',
+): string {
+  const ta = pickSingleLanguageLabel(String(nameTa || ''), true);
+  const en = pickSingleLanguageLabel(String(nameEn || ''), false);
+  const picked = isTamil ? ta || en : en || ta;
+  return pickSingleLanguageLabel(picked || fallback, isTamil);
+}
+
+function catalogKey(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function uniqueAssignmentKeys(keys: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of keys) {
+    const key = String(raw || '').trim();
+    if (!key) continue;
+    const norm = catalogKey(key);
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    out.push(key);
+  }
+  return out;
+}
+
+function findSubjectMatch(catalog: Subject[], key: string): Subject | undefined {
+  const norm = catalogKey(key);
+  if (!norm) return undefined;
+  return catalog.find((s) =>
+    [s.id, s.code, s.nameEn, s.nameTa].some((field) => catalogKey(field) === norm),
+  );
+}
+
+function findCategoryMatch(catalog: Category[], key: string): Category | undefined {
+  const norm = catalogKey(key);
+  if (!norm) return undefined;
+  return catalog.find((c) =>
+    [c.id, c.code, c.nameEn, c.nameTa].some((field) => catalogKey(field) === norm),
+  );
+}
+
+function resolveCatalogLabels<T extends { id: string; nameEn: string; nameTa: string; code?: string | null }>(
+  keys: string[],
+  catalog: T[],
+  findMatch: (list: T[], key: string) => T | undefined,
+  isTamil: boolean,
+): string[] {
+  const labels: string[] = [];
+  const seenLabel = new Set<string>();
+  for (const key of uniqueAssignmentKeys(keys)) {
+    const match = findMatch(catalog, key);
+    const label = match
+      ? localizedCatalogName(match.nameTa, match.nameEn, isTamil, key)
+      : pickSingleLanguageLabel(key, isTamil);
+    const norm = catalogKey(label);
+    if (!norm || seenLabel.has(norm)) continue;
+    seenLabel.add(norm);
+    labels.push(label);
+  }
+  return labels;
+}
+
+export function resolveAssignedSubjectLabels(
+  user: AppUser | null | undefined,
+  portal: PortalState | null | undefined,
+  isTamil: boolean,
+): string[] {
+  const catalog = portal ? portalSubjects(portal) : [];
+  const idKeys = effectiveSubjectIds(user);
+  if (idKeys.length) {
+    return resolveCatalogLabels(idKeys, catalog, findSubjectMatch, isTamil);
+  }
+  const names = user?.assignedSubjectNames || [];
+  return resolveCatalogLabels(names, catalog, findSubjectMatch, isTamil);
+}
+
+export function resolveAssignedCategoryLabels(
+  user: AppUser | null | undefined,
+  portal: PortalState | null | undefined,
+  isTamil: boolean,
+): string[] {
+  const catalog = portal ? portalCategories(portal) : [];
+  const idKeys = effectiveCategoryIds(user);
+  if (idKeys.length) {
+    return resolveCatalogLabels(idKeys, catalog, findCategoryMatch, isTamil);
+  }
+  const names = user?.assignedCategoryNames || [];
+  return resolveCatalogLabels(names, catalog, findCategoryMatch, isTamil);
+}
+
+export function resolveUserTownPanchayatLabel(user?: AppUser | null, isTamil = false): string {
+  if (!user) return '—';
+  if (isTamil) return String(user.townPanchayatTa || user.townPanchayat || '—').trim() || '—';
+  return String(user.townPanchayat || user.townPanchayatTa || '—').trim() || '—';
+}
+
 export function effectiveCategoryIds(user?: AppUser | null): string[] {
   if (!user) return [];
   return (user.categoryIds?.length ? user.categoryIds : user.assignedCategories) || [];

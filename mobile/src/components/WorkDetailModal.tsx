@@ -228,7 +228,7 @@ const EXPORT_CAPTION_H = 28;
 const EXPORT_CAPTION_H_SINGLE = 34;
 const EXPORT_TILE_WELL_MIN = 132;
 /** Minimum data rows to show when the table is short (balanced photo + table band). */
-const LAND_BODY_MIN_DATA_ROWS = 6;
+const LAND_BODY_MIN_DATA_ROWS = 8;
 const LAND_TABLE_HEAD_H = 36;
 const LAND_TABLE_DATA_ROW_H = 34;
 const LAND_TABLE_CHROME_H = 4;
@@ -265,8 +265,40 @@ function estimateLandBodyMinPaneHeight(): number {
   );
 }
 
-function resolveExportLandBodyHeight(fieldRows: { label: string; value: string }[], measuredPaneH: number): number {
-  return Math.max(measuredPaneH, estimateLandTablePaneHeight(fieldRows), estimateLandBodyMinPaneHeight());
+function landExportPhotoColWidth(): number {
+  return Math.round(EXPORT_W * 0.58) - LAND_EXPORT_PAD * 2;
+}
+
+function wellHeightFromAspect(slotWidth: number, imgW: number, imgH: number, minH: number): number {
+  if (!slotWidth || !imgW || !imgH) return minH;
+  return Math.max(minH, Math.ceil(slotWidth * (imgH / imgW)));
+}
+
+/** Conservative photo band height before image dimensions are known (contain, no crop). */
+function estimateLandPhotoPaneHeight(imageCount: number): number {
+  const colW = landExportPhotoColWidth();
+  const cap = imageCount === 1 ? EXPORT_CAPTION_H_SINGLE : EXPORT_CAPTION_H;
+  const pad = LAND_EXPORT_PAD * 2 + LAND_PANE_TITLE_H;
+  if (imageCount <= 0) return pad + 120;
+  if (imageCount === 1) return pad + Math.round(colW * 1.05) + cap + 4;
+  const slotW = (colW - EXPORT_PHOTO_GAP) / 2;
+  const well = Math.round(slotW * 1.05);
+  if (imageCount === 2) return pad + well + cap + 4;
+  const rows = Math.ceil(imageCount / 2);
+  return pad + rows * (well + cap) + Math.max(0, rows - 1) * EXPORT_PHOTO_GAP + 4;
+}
+
+function resolveExportLandBodyHeight(
+  fieldRows: { label: string; value: string }[],
+  measuredPaneH: number,
+  imageCount: number,
+): number {
+  return Math.max(
+    measuredPaneH,
+    estimateLandTablePaneHeight(fieldRows),
+    estimateLandBodyMinPaneHeight(),
+    estimateLandPhotoPaneHeight(imageCount),
+  );
 }
 
 function estimatePortraitPhotoAreaHeight(headerHeight: number): number {
@@ -854,8 +886,8 @@ function ExportPhotoTile({
   onImageLoad,
   highlight,
   wellMinHeight = EXPORT_TILE_WELL_MIN,
-  fillColumn = false,
-  style,
+  slotWidth,
+  onWellHeight,
 }: {
   item: { url: string; name: string; fieldKey: string };
   captionHeight: number;
@@ -864,22 +896,32 @@ function ExportPhotoTile({
   onImageLoad: () => void;
   highlight: string;
   wellMinHeight?: number;
-  fillColumn?: boolean;
-  style?: object;
+  slotWidth: number;
+  onWellHeight?: (height: number) => void;
 }) {
-  const wellStyle = fillColumn
-    ? [styles.exportTileWell, styles.exportTileWellFill, { minHeight: wellMinHeight }]
-    : [styles.exportTileWell, { minHeight: wellMinHeight }];
+  const [wellH, setWellH] = useState(wellMinHeight);
+
+  const applyWellHeight = (next: number) => {
+    const h = Math.max(wellMinHeight, Math.ceil(next));
+    setWellH((prev) => (prev !== h ? h : prev));
+    onWellHeight?.(h);
+  };
+
   return (
-    <View style={[styles.exportTile, fillColumn && styles.exportTileFill, style]}>
-      <View style={wellStyle}>
+    <View style={styles.exportTile}>
+      <View style={[styles.exportTileWell, { height: wellH, minHeight: wellMinHeight }]}>
         <Image
           key={`tile-${item.fieldKey}-${mediaFingerprint(item.url)}`}
           source={{ uri: displayImageUri(item.url, item.fieldKey) }}
-          style={fillColumn ? styles.exportTileImgCover : [styles.exportTileImg, { height: Math.max(96, wellMinHeight - 12) }]}
-          resizeMode={fillColumn ? 'cover' : 'contain'}
+          style={styles.exportTileImgContain}
+          resizeMode="contain"
           fadeDuration={0}
-          onLoad={onImageLoad}
+          onLoad={(e) => {
+            const iw = e.nativeEvent.source.width;
+            const ih = e.nativeEvent.source.height;
+            applyWellHeight(wellHeightFromAspect(slotWidth, iw, ih, wellMinHeight));
+            onImageLoad();
+          }}
           onError={onImageLoad}
         />
       </View>
@@ -900,8 +942,9 @@ function ExportPhotoRow({
   captionHeight,
   centerSingle,
   highlight,
-  fillColumn = false,
-  rowStyle,
+  slotWidth,
+  slotWidthCenter,
+  onWellHeight,
 }: {
   items: { url: string; name: string; fieldKey: string }[];
   startIndex: number;
@@ -910,15 +953,15 @@ function ExportPhotoRow({
   captionHeight: number;
   centerSingle?: boolean;
   highlight: string;
-  fillColumn?: boolean;
-  rowStyle?: object;
+  slotWidth: number;
+  slotWidthCenter: number;
+  onWellHeight?: (index: number, height: number) => void;
 }) {
-  const rowSx = [styles.exportRow, fillColumn && styles.exportRowFill, rowStyle];
   if (items.length === 1 && centerSingle) {
     return (
-      <View style={rowSx}>
+      <View style={styles.exportRow}>
         <View style={styles.exportRowSide} />
-        <View style={[styles.exportRowMain, fillColumn && styles.exportRowSlotFill]}>
+        <View style={styles.exportRowMain}>
           <ExportPhotoTile
             item={items[0]}
             index={startIndex}
@@ -926,7 +969,8 @@ function ExportPhotoRow({
             captionHeight={captionHeight}
             onImageLoad={onImageLoad}
             highlight={highlight}
-            fillColumn={fillColumn}
+            slotWidth={slotWidthCenter}
+            onWellHeight={(h) => onWellHeight?.(startIndex, h)}
           />
         </View>
         <View style={styles.exportRowSide} />
@@ -935,9 +979,9 @@ function ExportPhotoRow({
   }
 
   return (
-    <View style={rowSx}>
+    <View style={styles.exportRow}>
       {items.map((item, i) => (
-        <View key={`export-${item.fieldKey}-${startIndex + i}`} style={[styles.exportRowSlot, fillColumn && styles.exportRowSlotFill]}>
+        <View key={`export-${item.fieldKey}-${startIndex + i}`} style={styles.exportRowSlot}>
           <ExportPhotoTile
             item={item}
             index={startIndex + i}
@@ -945,7 +989,8 @@ function ExportPhotoRow({
             captionHeight={captionHeight}
             onImageLoad={onImageLoad}
             highlight={highlight}
-            fillColumn={fillColumn}
+            slotWidth={slotWidth}
+            onWellHeight={(h) => onWellHeight?.(startIndex + i, h)}
           />
         </View>
       ))}
@@ -953,25 +998,65 @@ function ExportPhotoRow({
   );
 }
 
-/** Download/share report — photo grid sizes to content; stretches with table row via flex. */
+/** Download/share report — photos use contain; row height grows to fit full image. */
 function ExportPhotoFrame({
   images,
   isTamil,
   onImageLoad,
   highlight,
-  bodyHeight,
+  photoColWidth,
+  onFrameContentHeight,
 }: {
   images: { url: string; name: string; fieldKey: string }[];
   isTamil: boolean;
   onImageLoad: () => void;
   highlight: string;
-  bodyHeight?: number;
+  photoColWidth: number;
+  onFrameContentHeight?: (contentHeight: number) => void;
 }) {
-  const sized =
-    bodyHeight != null && bodyHeight > 0 ? { height: bodyHeight, minHeight: bodyHeight, flexGrow: 1, flexShrink: 0 } : null;
-  const frameStyle = [styles.exportPhotoFrame, styles.exportPhotoFrameFlex, sized];
-  const fill = true;
+  const wellsRef = useRef<Record<number, number>>({});
+  const frameStyle = [styles.exportPhotoFrame, styles.exportPhotoFrameNatural];
   const wellMin = Math.max(EXPORT_TILE_WELL_MIN, 96);
+  const slotHalf = Math.max(80, (photoColWidth - EXPORT_PHOTO_GAP) / 2);
+  const slotFull = photoColWidth;
+  const slotCenter = Math.max(96, photoColWidth * (2 / 3));
+
+  const reportFrameHeight = useCallback(() => {
+    const n = images.length;
+    if (!n) return;
+    if (Object.keys(wellsRef.current).length < n) return;
+    const wells = Array.from({ length: n }, (_, i) => wellsRef.current[i] || wellMin);
+    const cap = n === 1 ? EXPORT_CAPTION_H_SINGLE : EXPORT_CAPTION_H;
+    let content = 0;
+    if (n === 1) {
+      content = wells[0] + cap;
+    } else if (n === 2) {
+      content = Math.max(wells[0], wells[1]) + cap;
+    } else if (n === 3) {
+      content = Math.max(wells[0], wells[1]) + cap + EXPORT_PHOTO_GAP + wells[2] + cap;
+    } else {
+      const rowCount = Math.ceil(n / 2);
+      for (let r = 0; r < rowCount; r++) {
+        const a = wells[r * 2] || 0;
+        const b = wells[r * 2 + 1];
+        content += Math.max(a, b ?? a) + cap;
+        if (r < rowCount - 1) content += EXPORT_PHOTO_GAP;
+      }
+    }
+    onFrameContentHeight?.(content);
+  }, [images.length, onFrameContentHeight, wellMin]);
+
+  const onWellHeight = useCallback(
+    (index: number, h: number) => {
+      wellsRef.current[index] = h;
+      reportFrameHeight();
+    },
+    [reportFrameHeight],
+  );
+
+  useEffect(() => {
+    wellsRef.current = {};
+  }, [images]);
 
   if (!images.length) {
     return (
@@ -982,10 +1067,6 @@ function ExportPhotoFrame({
   }
 
   const captionH = images.length === 1 ? EXPORT_CAPTION_H_SINGLE : EXPORT_CAPTION_H;
-  const tileSized =
-    bodyHeight != null && bodyHeight > 0
-      ? { height: bodyHeight, minHeight: bodyHeight, flex: 1 as const }
-      : styles.exportTileSingleFill;
 
   if (images.length === 1) {
     return (
@@ -998,8 +1079,8 @@ function ExportPhotoFrame({
           onImageLoad={onImageLoad}
           highlight={highlight}
           wellMinHeight={wellMin}
-          fillColumn={fill}
-          style={tileSized}
+          slotWidth={slotFull}
+          onWellHeight={(h) => onWellHeight(0, h)}
         />
       </View>
     );
@@ -1015,8 +1096,9 @@ function ExportPhotoFrame({
           captionHeight={captionH}
           onImageLoad={onImageLoad}
           highlight={highlight}
-          fillColumn={fill}
-          rowStyle={styles.exportRowOnly}
+          slotWidth={slotHalf}
+          slotWidthCenter={slotCenter}
+          onWellHeight={onWellHeight}
         />
       </View>
     );
@@ -1025,7 +1107,7 @@ function ExportPhotoFrame({
   if (images.length === 3) {
     return (
       <View style={frameStyle}>
-        <View style={[styles.exportStack, styles.exportStackFill]}>
+        <View style={styles.exportStack}>
           <ExportPhotoRow
             items={[images[0], images[1]]}
             startIndex={0}
@@ -1033,7 +1115,9 @@ function ExportPhotoFrame({
             captionHeight={captionH}
             onImageLoad={onImageLoad}
             highlight={highlight}
-            fillColumn={fill}
+            slotWidth={slotHalf}
+            slotWidthCenter={slotCenter}
+            onWellHeight={onWellHeight}
           />
           <ExportPhotoRow
             items={[images[2]]}
@@ -1043,7 +1127,9 @@ function ExportPhotoFrame({
             onImageLoad={onImageLoad}
             highlight={highlight}
             centerSingle
-            fillColumn={fill}
+            slotWidth={slotHalf}
+            slotWidthCenter={slotCenter}
+            onWellHeight={onWellHeight}
           />
         </View>
       </View>
@@ -1057,7 +1143,7 @@ function ExportPhotoFrame({
 
   return (
     <View style={frameStyle}>
-      <View style={[styles.exportStack, styles.exportStackFill]}>
+      <View style={styles.exportStack}>
         {pairs.map((row, ri) => (
           <ExportPhotoRow
             key={`export-pair-${row.map((x) => x.fieldKey).join('-')}`}
@@ -1068,7 +1154,9 @@ function ExportPhotoFrame({
             onImageLoad={onImageLoad}
             highlight={highlight}
             centerSingle={row.length === 1}
-            fillColumn={fill}
+            slotWidth={slotHalf}
+            slotWidthCenter={slotCenter}
+            onWellHeight={onWellHeight}
           />
         ))}
       </View>
@@ -1813,30 +1901,41 @@ export function WorkDetailModal({
       if (pane === 'photo') exportPhotoPaneHRef.current = h;
       else exportTablePaneHRef.current = h;
       const merged = Math.max(exportPhotoPaneHRef.current, exportTablePaneHRef.current);
-      const target = resolveExportLandBodyHeight(fieldRows, merged);
+      const target = resolveExportLandBodyHeight(fieldRows, merged, images.length);
       if (target !== exportLandBodyHRef.current) {
         exportLandBodyHRef.current = target;
         setExportLandBodyH(target);
       }
     },
-    [fieldRows],
+    [fieldRows, images.length],
   );
 
-  const exportPhotoBodyH = useMemo(() => {
-    if (exportLandBodyH <= 0) return undefined;
-    return Math.max(exportLandBodyH - LAND_EXPORT_PAD * 2 - LAND_PANE_TITLE_H, EXPORT_TILE_WELL_MIN);
-  }, [exportLandBodyH]);
+  const landPhotoColWidth = useMemo(() => landExportPhotoColWidth(), []);
+
+  const syncPhotoFrameHeight = useCallback(
+    (frameContentH: number) => {
+      const paneH = LAND_EXPORT_PAD * 2 + LAND_PANE_TITLE_H + Math.ceil(frameContentH);
+      exportPhotoPaneHRef.current = Math.max(exportPhotoPaneHRef.current, paneH);
+      const merged = Math.max(exportPhotoPaneHRef.current, exportTablePaneHRef.current);
+      const target = resolveExportLandBodyHeight(fieldRows, merged, images.length);
+      if (target !== exportLandBodyHRef.current) {
+        exportLandBodyHRef.current = target;
+        setExportLandBodyH(target);
+      }
+    },
+    [fieldRows, images.length],
+  );
 
   useEffect(() => {
     if (exportCapturing && exportKind === 'detailed') {
       exportPhotoPaneHRef.current = 0;
       exportTablePaneHRef.current = 0;
-      const guess = resolveExportLandBodyHeight(fieldRows, 0);
+      const guess = resolveExportLandBodyHeight(fieldRows, 0, images.length);
       exportLandBodyHRef.current = guess;
       exportTablePaneHRef.current = guess;
       setExportLandBodyH(guess);
     }
-  }, [exportCapturing, exportKind, fieldRows]);
+  }, [exportCapturing, exportKind, fieldRows, images.length]);
 
   useEffect(() => {
     exportLoadedCount.current = 0;
@@ -2279,7 +2378,8 @@ export function WorkDetailModal({
                       isTamil={isTamil}
                       onImageLoad={markExportImageLoaded}
                       highlight={reportTheme.highlight}
-                      bodyHeight={exportPhotoBodyH}
+                      photoColWidth={landPhotoColWidth}
+                      onFrameContentHeight={syncPhotoFrameHeight}
                     />
                   </View>
                   <View style={[styles.exportSplit, { backgroundColor: reportTheme.highlight }]} />
@@ -2820,6 +2920,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     padding: LAND_EXPORT_PAD,
     backgroundColor: '#fff',
+    justifyContent: 'flex-start',
   },
   landPaneTitle: { fontSize: 10, fontWeight: '800', color: '#334155', letterSpacing: 0.5, marginBottom: 6 },
   landPaneBody: { flex: 1, width: '100%', minHeight: 0 },
@@ -2838,13 +2939,11 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: '#fff',
     flexDirection: 'column',
-    flex: 1,
-    minHeight: 0,
   },
-  exportPhotoFrameFlex: {
-    flex: 1,
+  exportPhotoFrameNatural: {
+    flexGrow: 0,
+    flexShrink: 0,
     alignSelf: 'stretch',
-    minHeight: 0,
   },
   exportPhotoFrameEmpty: {
     flex: 1,
@@ -2853,11 +2952,7 @@ const styles = StyleSheet.create({
     minHeight: 120,
   },
   exportStack: { width: '100%', gap: EXPORT_PHOTO_GAP },
-  exportStackFill: { flex: 1, minHeight: 0 },
-  exportRow: { flexDirection: 'row', gap: EXPORT_PHOTO_GAP, alignItems: 'stretch', width: '100%' },
-  exportRowFill: { flex: 1, minHeight: 0 },
-  exportRowOnly: { flex: 1, minHeight: 0 },
-  exportRowSlotFill: { flex: 1, minHeight: 0 },
+  exportRow: { flexDirection: 'row', gap: EXPORT_PHOTO_GAP, alignItems: 'flex-start', width: '100%' },
   exportRowSlot: { flex: 1, minWidth: 0 },
   exportRowSide: { flex: 0.5, minWidth: 0 },
   exportRowMain: { flex: 2, minWidth: 0 },
@@ -2868,8 +2963,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#CBD5E1',
   },
-  exportTileFill: { flex: 1, minHeight: 0, alignSelf: 'stretch' },
-  exportTileSingleFill: { flex: 1, width: '100%', minHeight: 0 },
   exportTileWell: {
     backgroundColor: '#0F172A',
     alignItems: 'center',
@@ -2878,9 +2971,8 @@ const styles = StyleSheet.create({
     width: '100%',
     overflow: 'hidden',
   },
-  exportTileWellFill: { flex: 1, minHeight: 0, alignSelf: 'stretch', position: 'relative' },
+  exportTileImgContain: { width: '100%', height: '100%' },
   exportTileImg: { width: '100%', minHeight: 96 },
-  exportTileImgCover: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
   exportTileCaption: {
     flexDirection: 'row',
     alignItems: 'center',
