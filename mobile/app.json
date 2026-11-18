@@ -3,13 +3,14 @@
     "name": "Town Panchayat Management System",
     "slug": "town-panchayat-ems",
     "scheme": "tpems",
-    "version": "2.0.6",
+    "version": "2.0.8",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.tn.townpanchayat.ems",
+      "buildNumber": "108",
       "infoPlist": {
         "NSCameraUsageDescription": "Camera is used to capture inspection evidence and profile photos.",
         "NSLocationWhenInUseUsageDescription": "GPS is required to geotag field inspection works.",
@@ -23,7 +24,7 @@
     },
     "android": {
       "package": "com.tn.townpanchayat.ems",
-      "versionCode": 106,
+      "versionCode": 108,
       "adaptiveIcon": {
         "backgroundColor": "#1A3D66",
         "foregroundImage": "./assets/android-icon-foreground.png",

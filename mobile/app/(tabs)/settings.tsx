@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Application from 'expo-application';
 import * as FileSystem from 'expo-file-system/legacy';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useState } from 'react';
@@ -29,7 +28,13 @@ import { pickAndUploadProfile } from '../../src/services/profilePhoto';
 import { sweepLeftoverOfflineCache } from '../../src/storage/offlineQueueStore';
 import { prefs, profilePhotoFile } from '../../src/storage/preferences';
 import { palettes } from '../../src/theme/palettes';
-import { effectivePhotoUrl, effectiveSubjectIds, effectiveWards, resolveOfficerDesignation } from '../../src/types/models';
+import {
+  effectivePhotoUrl,
+  effectiveSubjectIds,
+  effectiveWards,
+  resolveOfficerDesignation,
+  resolveUserDisplayName,
+} from '../../src/types/models';
 
 function toast(msg: string) {
   if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.LONG);
@@ -99,9 +104,9 @@ export default function SettingsScreen() {
   const wards = effectiveWards(user);
   const subjects = user?.assignedSubjectNames?.length ? user.assignedSubjectNames : effectiveSubjectIds(user);
   const designationLabel = resolveOfficerDesignation(user, portal, isTamil);
-  const versionName = Application.nativeApplicationVersion || APP_VERSION_NAME;
-  const versionCode = Application.nativeBuildVersion || String(APP_VERSION_CODE);
-  const pkg = Application.applicationId || PACKAGE_NAME;
+  const versionName = APP_VERSION_NAME;
+  const versionCode = String(APP_VERSION_CODE);
+  const pkg = PACKAGE_NAME;
   const rows: (typeof palettes)[] = [];
   for (let i = 0; i < palettes.length; i += 3) rows.push(palettes.slice(i, i + 3));
 
@@ -196,7 +201,7 @@ export default function SettingsScreen() {
             </View>
           </Pressable>
           <View style={{ marginLeft: 10, flex: 1 }}>
-            <Text style={{ fontWeight: '800', fontSize: 14, color: '#0F172A' }}>{user?.name || 'Officer'}</Text>
+            <Text style={{ fontWeight: '800', fontSize: 14, color: '#0F172A' }}>{resolveUserDisplayName(user, isTamil)}</Text>
             {(!!designationLabel || !!user?.mobile) && (
               <Text style={{ fontSize: 12, fontWeight: '600', color: '#475569', marginTop: 2 }} numberOfLines={1}>
                 {[designationLabel, user?.mobile].filter(Boolean).join('  ·  ')}

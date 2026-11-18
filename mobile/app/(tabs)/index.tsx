@@ -26,6 +26,7 @@ import {
   effectiveWards,
   queuedDisplayStatus,
   resolveOfficerDesignation,
+  resolveUserDisplayName,
   type QueuedWorkEntry,
 } from '../../src/types/models';
 import { formatTo12Hr, todayDdMmYyyy } from '../../src/utils/dates';
@@ -319,12 +320,16 @@ export default function DashboardScreen() {
                 />
               ) : (
                 <LinearGradient colors={[palette.primary, palette.secondary]} style={styles.avatarImg}>
-                  <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>{(user?.name || 'A').slice(0, 1).toUpperCase()}</Text>
+                  <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>
+                    {resolveUserDisplayName(user, isTamil).slice(0, 1).toUpperCase()}
+                  </Text>
                 </LinearGradient>
               )}
             </View>
             <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.officerName} numberOfLines={1}>{user?.name || 'Officer'}</Text>
+              <Text style={styles.officerName} numberOfLines={1}>
+                {resolveUserDisplayName(user, isTamil)}
+              </Text>
               {(!!designationLabel || !!user?.mobile) && (
                 <Text style={styles.officerDesig} numberOfLines={1}>
                   {[designationLabel, user?.mobile].filter(Boolean).join('  ·  ')}

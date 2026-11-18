@@ -118,6 +118,14 @@ export function resolveOfficerDesignation(
   );
 }
 
+export function resolveUserDisplayName(user?: AppUser | null, isTamil = false): string {
+  if (!user) return isTamil ? 'அதிகாரி' : 'Officer';
+  if (isTamil) {
+    return String(user.nameTa || user.name || user.nameEn || 'அதிகாரி').trim() || 'அதிகாரி';
+  }
+  return String(user.nameEn || user.name || user.nameTa || 'Officer').trim() || 'Officer';
+}
+
 export function effectiveWards(user?: AppUser | null): string[] {
   if (!user) return [];
   return (user.assignedWards?.length ? user.assignedWards : user.selectedWards) || [];

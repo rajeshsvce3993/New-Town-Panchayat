@@ -24,10 +24,17 @@ import ViewShot, { captureRef, type ViewShotRef } from 'react-native-view-shot';
 import { api, getApiBaseUrl, isLocalPhotoPath, resolveMediaUrl, resolveProfilePhotoUrl } from '../api/client';
 import { SAMPLE_PHOTO } from '../constants/config';
 import { useApp } from '../context/AppContext';
-import { profilePhotoFile } from '../storage/preferences';
+import { prefs, profilePhotoFile } from '../storage/preferences';
 import { BrandImage } from './BrandImage';
+import { ShareCardThemePicker } from './ShareCardThemePicker';
 import { type AppPalette } from '../theme/palettes';
 import { reportThemeFromId } from '../theme/reportThemes';
+import {
+  DEFAULT_SHARE_CARD_THEME_ID,
+  resolveShareCardPaint,
+  shareCardGradient,
+  type ShareCardPaint,
+} from '../theme/shareCardThemes';
 import type { FieldDefinition, InspectionWork, PortalState } from '../types/models';
 import { effectivePhotoUrl, portalFields, resolveOfficerDesignation } from '../types/models';
 import { formatTo12Hr } from '../utils/dates';
@@ -39,10 +46,12 @@ const EXPORT_W = Math.max(960, Math.round(Dimensions.get('window').width * 1.7))
 const EXPORT_FIT_SCALE = Math.min(1, Dimensions.get('window').width / EXPORT_W);
 const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
-const PORTRAIT_W = Math.round(Math.max(SCREEN_W, 360) * 3);
-const PORTRAIT_H = Math.round(Math.max(SCREEN_H, 640) * 2.65);
-const PORTRAIT_FIT_SCALE = Math.min(1, SCREEN_W / PORTRAIT_W);
-const PORTRAIT_PHOTO_GAP = 6;
+const PORTRAIT_W = Math.round(Math.max(SCREEN_W, 360));
+const PORTRAIT_H = Math.round(Math.max(SCREEN_H * 0.9, PORTRAIT_W * 1.7));
+const PORTRAIT_HEADER_H = 148;
+const PORTRAIT_FOOTER_H = 76;
+const PORTRAIT_RIBBON_H = 3;
+const PORTRAIT_PHOTO_AREA_H = PORTRAIT_H - PORTRAIT_HEADER_H - PORTRAIT_FOOTER_H - PORTRAIT_RIBBON_H * 2;
 const GOOGLE_STATIC_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 
 function mapFileUri(path: string) {
@@ -242,6 +251,27 @@ function lerpHex(a: string, b: string, t: number) {
   return rgbToHex(A.r + (B.r - A.r) * t, A.g + (B.g - A.g) * t, A.b + (B.b - A.b) * t);
 }
 
+function paintStripeColors(colors: string[], count = REPORT_HEADER_STRIPE_COUNT) {
+  const from = colors[0] || '#1A1A1A';
+  const to = colors[colors.length - 1] || from;
+  if (from.toLowerCase() === to.toLowerCase()) return Array.from({ length: count }, () => from);
+  return Array.from({ length: count }, (_, i) => lerpHex(from, to, (i + 0.5) / count));
+}
+
+function paintTextShadow(enabled: boolean) {
+  return enabled
+    ? {
+        textShadowColor: 'rgba(0,0,0,0.45)',
+        textShadowOffset: { width: 0, height: 1 } as const,
+        textShadowRadius: 3,
+      }
+    : {
+        textShadowColor: 'transparent',
+        textShadowOffset: { width: 0, height: 0 } as const,
+        textShadowRadius: 0,
+      };
+}
+
 function reportHeaderGradientColor(
   t: number,
   stops: readonly [string, string, string] = REPORT_HEADER_GRADIENT,
@@ -354,12 +384,7 @@ function ReportHeaderSurface({
 }) {
   const stops = themeStops(theme);
   return (
-    <View style={[styles.reportHeaderSurface, style]}>
-      <View style={styles.reportHeaderBands} pointerEvents="none">
-        <View style={[styles.reportHeaderBand, { backgroundColor: stops[0] }]} />
-        <View style={[styles.reportHeaderBand, { backgroundColor: stops[1] }]} />
-        <View style={[styles.reportHeaderBand, { backgroundColor: stops[2] }]} />
-      </View>
+    <View style={[styles.reportHeaderSurface, style, { borderBottomColor: theme.accent }]}>
       <LinearGradient
         colors={stops}
         locations={[0, 0.52, 1]}
@@ -368,12 +393,12 @@ function ReportHeaderSurface({
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
-      {children}
+      <View style={styles.surfaceForeground}>{children}</View>
     </View>
   );
 }
 
-/** Download/share JPEG only — pixel stripes so ViewShot captures the same light→dark header. */
+/** Download/share JPEG — smooth gradient (no stripe bands). */
 function ExportReportHeaderSurface({
   style,
   defaultHeight,
@@ -385,40 +410,147 @@ function ExportReportHeaderSurface({
   children: ReactNode;
   theme: ReportThemeColors;
 }) {
-  const [height, setHeight] = useState(defaultHeight);
-  const stripeHeight = height / REPORT_HEADER_STRIPE_COUNT;
   const stops = themeStops(theme);
-  const stripes = Array.from({ length: REPORT_HEADER_STRIPE_COUNT }, (_, i) =>
-    reportHeaderGradientColor((i + 0.5) / REPORT_HEADER_STRIPE_COUNT, stops),
+  return (
+    <View
+      collapsable={false}
+      removeClippedSubviews={false}
+      style={[styles.reportHeaderSurface, style, { borderBottomColor: theme.accent, minHeight: defaultHeight }]}
+    >
+      <LinearGradient
+        colors={stops}
+        locations={[0, 0.52, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      <View collapsable={false} style={styles.surfaceForeground}>
+        {children}
+      </View>
+    </View>
   );
+}
+
+function hexAlpha(hex: string, a: number) {
+  const { r, g, b } = hexToRgb(hex || '#FFFFFF');
+  return `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a))})`;
+}
+
+function isLightHex(hex: string) {
+  const { r, g, b } = hexToRgb(hex || '#000000');
+  return (r * 299 + g * 587 + b * 114) / 1000 > 168;
+}
+
+function sharePaintToReportTheme(paint: ShareCardPaint): ReportThemeColors {
+  const from = paint.header[0] || '#1A1A1A';
+  const to = paint.header[paint.header.length - 1] || from;
+  const mid =
+    paint.header.length >= 2 ? paint.header[Math.floor((paint.header.length - 1) / 2)] || to : lerpHex(from, to, 0.45);
+  const tableHeader = paint.accent;
+  return {
+    headerFrom: from,
+    headerMid: mid,
+    headerTo: to,
+    accent: paint.accent,
+    highlight: paint.title,
+    tableHeader,
+    tableHeaderText: isLightHex(tableHeader) ? '#1A1A1A' : '#FFFFFF',
+    pageBackground:
+      paint.group === 'premium_light' || paint.photoGap.toLowerCase() === '#ffffff' ? '#F3F4F8' : lerpHex(from, '#F3F4F8', 0.9),
+    messageBackground: lerpHex(paint.accent, '#FFFFFF', 0.88),
+    messageText: paint.primary,
+    caption: paint.accent,
+  };
+}
+
+function ThemeRibbon({ paint }: { paint: ShareCardPaint }) {
+  return <View collapsable={false} style={{ width: PORTRAIT_W, height: PORTRAIT_RIBBON_H, backgroundColor: paint.accent }} />;
+}
+
+function ShadedThemeTitle({ text, paint }: { text: string; paint: ShareCardPaint }) {
+  const [boxH, setBoxH] = useState(23);
+  const light = lerpHex(paint.title, '#FFFFFF', 0.55);
+  const dark = lerpHex(paint.title, '#111111', 0.28);
+  const steps = 7;
+  const noShadow = { textShadowColor: 'transparent' as const, textShadowRadius: 0 };
+  const titleStyle = styles.portraitHeadTitle;
+  return (
+    <View collapsable={false} style={{ width: '100%', height: boxH }}>
+      <Text
+        style={[titleStyle, { color: dark }, noShadow]}
+        numberOfLines={2}
+        onLayout={(e) => {
+          const next = Math.ceil(e.nativeEvent.layout.height);
+          if (next > 0 && next !== boxH) setBoxH(next);
+        }}
+      >
+        {text}
+      </Text>
+      {Array.from({ length: steps }, (_, i) => {
+        const t = (i + 1) / steps;
+        const clipH = Math.max(2, Math.round(boxH * (1 - t * 0.62)));
+        return (
+          <View
+            key={`shade-${i}`}
+            collapsable={false}
+            style={{ position: 'absolute', left: 0, right: 0, top: 0, height: clipH, overflow: 'hidden' }}
+          >
+            <Text style={[titleStyle, { color: lerpHex(dark, light, t) }, noShadow]} numberOfLines={2}>
+              {text}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function portraitGradientLocations(count: number): number[] | undefined {
+  if (count <= 1) return undefined;
+  if (count === 2) return [0, 1];
+  if (count === 3) return [0, 0.52, 1];
+  return Array.from({ length: count }, (_, i) => i / (count - 1));
+}
+
+function PortraitPaintSurface({
+  paint,
+  colors,
+  defaultHeight,
+  style,
+  children,
+}: {
+  paint: ShareCardPaint;
+  colors: string[];
+  defaultHeight: number;
+  style?: object;
+  children: ReactNode;
+}) {
+  const stops = shareCardGradient(colors);
+  const locations = portraitGradientLocations(stops.length);
+  const fill = colors[0] || '#1A1A1A';
 
   return (
     <View
       collapsable={false}
       removeClippedSubviews={false}
-      style={[styles.reportHeaderSurface, style]}
-      onLayout={(e) => {
-        const next = Math.ceil(e.nativeEvent.layout.height);
-        if (next > 0 && next !== height) setHeight(next);
-      }}
+      style={[styles.reportHeaderSurface, { backgroundColor: fill }, style, { borderColor: paint.accent }]}
     >
-      <View
-        collapsable={false}
+      <LinearGradient
+        colors={stops}
+        locations={locations}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
         pointerEvents="none"
-        style={[styles.exportHeaderStripeWrap, { height }]}
-      >
-        {stripes.map((color, i) => (
-          <View
-            key={`export-header-stripe-${i}`}
-            collapsable={false}
-            style={{ height: stripeHeight, width: '100%', backgroundColor: color }}
-          />
-        ))}
+      />
+      <View collapsable={false} style={styles.surfaceForeground}>
+        {children}
       </View>
-      {children}
     </View>
   );
 }
+
 const SUMMARY_TEXT = '#475569';
 const SUMMARY_MUTED = '#64748B';
 
@@ -528,6 +660,12 @@ function formatWardLabel(isTamil: boolean, wardNumber: string | number) {
     .trim();
   const num = stripped || raw;
   return isTamil ? `வார்டு ${num}` : `Ward ${num}`;
+}
+
+function formatGpsWithLabels(latitude: number, longitude: number) {
+  const lat = Number(latitude || 0).toFixed(5);
+  const lng = Number(longitude || 0).toFixed(5);
+  return `Lat ${lat}, Lng ${lng}`;
 }
 
 function safeFilePart(raw: string) {
@@ -857,6 +995,7 @@ function DetailSummaryBody({
   gps,
   variant = 'screen',
   highlight = REPORT_AMBER,
+  paint,
 }: {
   isTamil: boolean;
   place: string;
@@ -868,6 +1007,7 @@ function DetailSummaryBody({
   gps: string;
   variant?: 'screen' | 'brandHeader';
   highlight?: string;
+  paint?: ShareCardPaint;
 }) {
   const isBrandHeader = variant === 'brandHeader';
   const wardLabel = formatWardLabel(isTamil, wardNumber);
@@ -875,6 +1015,9 @@ function DetailSummaryBody({
   const subjectCategory = [subjectName?.trim(), categoryName?.trim()].filter(Boolean).join(' · ');
   const wardLine = street ? `${wardLabel} · ${street}` : wardLabel;
   const metaLine = `${submitted} · ${gps}`;
+  const titleColor = paint?.title || highlight;
+  const primaryColor = paint?.primary || '#FFFFFF';
+  const secondaryColor = paint?.secondary || 'rgba(255,255,255,0.92)';
 
   const headerRow = (line: 1 | 2 | 3 | 4) => {
     if (!isBrandHeader) return undefined;
@@ -888,18 +1031,18 @@ function DetailSummaryBody({
     return (
       <View style={[styles.detailSummaryBody, styles.detailSummaryBodyTight]}>
         {!!subjectCategory && (
-          <Text style={headerRow(1)} numberOfLines={1}>
+          <Text style={[headerRow(1), { color: titleColor }]} numberOfLines={1}>
             {subjectCategory}
           </Text>
         )}
         {!!place && (
-          <Text style={[headerRow(2), { color: highlight }]} numberOfLines={1}>
+          <Text style={[headerRow(2), { color: primaryColor }]} numberOfLines={1}>
             {place}
           </Text>
         )}
-        <Text style={headerRow(3)} numberOfLines={1}>
+        <Text style={[headerRow(3), { color: secondaryColor }]} numberOfLines={1}>
           {wardLine}
-          {!!metaLine && <Text style={headerRow(4)}>{`  ·  ${metaLine}`}</Text>}
+          {!!metaLine && <Text style={[headerRow(4), { color: titleColor }]}>{`  ·  ${metaLine}`}</Text>}
         </Text>
       </View>
     );
@@ -935,11 +1078,13 @@ function ExportLocationMapThumb({
   onLoad,
   width,
   height,
+  framed = true,
 }: {
   mapUri?: string | null;
   onLoad: () => void;
   width?: number;
   height?: number;
+  framed?: boolean;
 }) {
   useEffect(() => {
     if (!mapUri) onLoad();
@@ -947,7 +1092,7 @@ function ExportLocationMapThumb({
   const sizeStyle = width && height ? { width, height } : undefined;
 
   return (
-    <View style={[styles.exportHeaderMapWrap, sizeStyle]} collapsable={false}>
+    <View style={[styles.exportHeaderMapWrap, sizeStyle, !framed && { borderWidth: 0 }]} collapsable={false}>
       {mapUri ? (
         <>
           <Image
@@ -999,6 +1144,7 @@ function ExportReportHeader({
   officerDesignation,
   onOfficerLoad,
   theme,
+  paint,
 }: {
   isTamil: boolean;
   place: string;
@@ -1016,35 +1162,34 @@ function ExportReportHeader({
   officerDesignation: string;
   onOfficerLoad: () => void;
   theme: ReportThemeColors;
+  paint: ShareCardPaint;
 }) {
   const wardLabel = formatWardLabel(isTamil, wardNumber);
   const street = streetLabel?.trim() || '';
   const wardLine = street ? `${wardLabel} · ${street}` : wardLabel;
   const subjectCategory = [subjectName?.trim(), categoryName?.trim()].filter(Boolean).join(' · ');
-  const latText = Number(latitude || 0).toFixed(5);
-  const lonText = Number(longitude || 0).toFixed(5);
-  const dateGpsLine = [submitted, `${latText}, ${lonText}`].filter(Boolean).join('  ·  ');
+  const dateGpsLine = [submitted, formatGpsWithLabels(latitude, longitude)].filter(Boolean).join('  ·  ');
 
   return (
-    <ExportReportHeaderSurface style={[styles.exportSummaryHeader, { borderBottomColor: theme.highlight }]} defaultHeight={76} theme={theme}>
+    <ExportReportHeaderSurface style={[styles.exportSummaryHeader, { borderBottomColor: theme.accent }]} defaultHeight={76} theme={theme}>
       <View style={styles.exportHeaderRow} collapsable={false}>
         <View style={styles.exportHeaderLogoPlate} collapsable={false}>
           <BrandImage kind="logo" style={styles.exportHeaderLogo} />
         </View>
         <View style={styles.exportHeaderContentCentered} collapsable={false}>
           {!!subjectCategory && (
-            <Text style={styles.exportHeadLine1} numberOfLines={2}>
+            <Text style={[styles.exportHeadLine1, { color: paint.title }]} numberOfLines={2}>
               {subjectCategory}
             </Text>
           )}
           {!!place && (
-            <Text style={[styles.exportHeadLine2, { color: theme.highlight }]} numberOfLines={2}>
+            <Text style={[styles.exportHeadLine2, { color: paint.primary }]} numberOfLines={2}>
               {place}
             </Text>
           )}
-          <Text style={styles.exportHeadLine3} numberOfLines={1}>
+          <Text style={[styles.exportHeadLine3, { color: paint.secondary }]} numberOfLines={1}>
             {wardLine}
-            {!!dateGpsLine && <Text style={styles.exportHeadLine4}>{`  ·  ${dateGpsLine}`}</Text>}
+            {!!dateGpsLine && <Text style={[styles.exportHeadLine4, { color: paint.title }]}>{`  ·  ${dateGpsLine}`}</Text>}
           </Text>
         </View>
         <View style={styles.exportHeaderRight} collapsable={false}>
@@ -1055,7 +1200,8 @@ function ExportReportHeader({
             name={officerName}
             designation={officerDesignation}
             onLoad={onOfficerLoad}
-            highlight={theme.highlight}
+            highlight={paint.title}
+            nameColor={paint.primary}
           />
         </View>
       </View>
@@ -1065,52 +1211,82 @@ function ExportReportHeader({
 
 function ExportPortraitHeader({
   isTamil,
-  place,
+  tpName,
+  districtName,
+  zoneName,
   wardNumber,
   streetLabel,
-  subjectName,
-  categoryName,
+  activityName,
   submitted,
   latitude,
   longitude,
-  theme,
+  paint,
 }: {
   isTamil: boolean;
-  place: string;
+  tpName: string;
+  districtName: string;
+  zoneName: string;
   wardNumber: number | string;
   streetLabel: string;
-  subjectName: string;
-  categoryName: string;
+  activityName: string;
   submitted: string;
   latitude: number;
   longitude: number;
-  theme: ReportThemeColors;
+  paint: ShareCardPaint;
 }) {
   const wardLabel = formatWardLabel(isTamil, wardNumber);
   const street = streetLabel?.trim() || '';
-  const subjectCategory = [subjectName?.trim(), categoryName?.trim()].filter(Boolean).join(' · ');
-  const wardLine = street ? `${wardLabel} · ${street}` : wardLabel;
-  const dateGpsLine = [submitted, `${Number(latitude || 0).toFixed(5)}, ${Number(longitude || 0).toFixed(5)}`].filter(Boolean).join('  ·  ');
+  const tpSuffix = isTamil ? 'பேரூராட்சி' : 'Town Panchayat';
+  const tpLine = (() => {
+    const name = String(tpName || '').trim();
+    if (!name) return '';
+    const compact = name.replace(/\s+/g, '').toLowerCase();
+    const alreadyHas =
+      compact.includes('townpanchayat') ||
+      compact.includes('பேரூராட்சி') ||
+      compact.includes('பேருராட்சி');
+    return alreadyHas ? name : `${name} ${tpSuffix}`;
+  })();
+  const districtLine = districtName ? `${districtName} ${isTamil ? 'மாவட்டம்' : 'District'}` : '';
+  const zoneLine = zoneName ? `${zoneName} ${isTamil ? 'மண்டலம்' : 'Zone'}` : '';
+  const gps = formatGpsWithLabels(latitude, longitude);
+  const shadow = paintTextShadow(paint.textShadow);
 
   return (
-    <ExportReportHeaderSurface style={[styles.portraitHeader, { borderBottomColor: theme.highlight }]} defaultHeight={150} theme={theme}>
+    <PortraitPaintSurface
+      paint={paint}
+      colors={paint.header}
+      defaultHeight={PORTRAIT_HEADER_H}
+      style={[styles.portraitHeader, { borderBottomWidth: 0, height: PORTRAIT_HEADER_H }]}
+    >
       <View style={styles.portraitHeaderCenter} collapsable={false}>
-        {!!subjectCategory && (
-          <Text style={styles.portraitHeadTitle} numberOfLines={1}>
-            {subjectCategory}
+        {!!activityName && <ShadedThemeTitle text={activityName} paint={paint} />}
+        {!!tpLine && (
+          <Text style={[styles.portraitHeadPlace, { color: paint.primary }, shadow]} numberOfLines={2}>
+            {tpLine}
           </Text>
         )}
-        {!!place && (
-          <Text style={[styles.portraitHeadPlace, { color: theme.highlight }]} numberOfLines={2}>
-            {place}
+        {!!districtLine && (
+          <Text style={[styles.portraitHeadWard, { color: paint.secondary }, shadow]} numberOfLines={1}>
+            {districtLine}
           </Text>
         )}
-        <Text style={styles.portraitHeadWard} numberOfLines={1}>
-          {wardLine}
-          {!!dateGpsLine && <Text style={styles.portraitHeadMeta}>{`  ·  ${dateGpsLine}`}</Text>}
+        {!!zoneLine && (
+          <Text style={[styles.portraitHeadWard, { color: paint.secondary }, shadow]} numberOfLines={1}>
+            {zoneLine}
+          </Text>
+        )}
+        <Text
+          style={[styles.portraitHeadWard, styles.portraitHeadWardStreet, isTamil && styles.portraitHeadWardStreetTa, { color: paint.secondary }, shadow]}
+          numberOfLines={1}
+        >
+          {street ? `${wardLabel}  ·  ${street}` : wardLabel}
+        </Text>
+        <Text style={[styles.portraitHeadMeta, { color: paint.title }, shadow]} numberOfLines={1}>
+          {submitted}   |   {gps}
         </Text>
       </View>
-    </ExportReportHeaderSurface>
+    </PortraitPaintSurface>
   );
 }
 
@@ -1122,7 +1298,7 @@ function ExportPortraitFooter({
   mapUri,
   onOfficerLoad,
   onMapLoad,
-  theme,
+  paint,
 }: {
   isTamil: boolean;
   officerPhotoUri?: string | null;
@@ -1131,28 +1307,30 @@ function ExportPortraitFooter({
   mapUri?: string | null;
   onOfficerLoad: () => void;
   onMapLoad: () => void;
-  theme: ReportThemeColors;
+  paint: ShareCardPaint;
 }) {
   const [failed, setFailed] = useState(false);
   const showPhoto = !!officerPhotoUri && !failed;
   const letter = (officerName || 'U').trim().slice(0, 1).toUpperCase() || 'U';
+  const shadow = paintTextShadow(paint.textShadow);
 
   useEffect(() => {
     if (!officerPhotoUri) onOfficerLoad();
   }, [officerPhotoUri, onOfficerLoad]);
 
   return (
-    <ExportReportHeaderSurface
-      style={[styles.portraitFooter, { borderTopColor: theme.highlight }]}
-      defaultHeight={132}
-      theme={theme}
+    <PortraitPaintSurface
+      paint={paint}
+      colors={paint.footer}
+      defaultHeight={PORTRAIT_FOOTER_H}
+      style={[styles.portraitFooter, { borderTopWidth: 0, height: PORTRAIT_FOOTER_H }]}
     >
       <View style={styles.portraitFooterRow} collapsable={false}>
         <View style={styles.portraitFooterOfficer} collapsable={false}>
           {showPhoto ? (
             <Image
               source={{ uri: officerPhotoUri }}
-              style={[styles.portraitFooterAvatar, { borderColor: theme.highlight }]}
+              style={[styles.portraitFooterAvatar, { borderColor: paint.avatarRing }]}
               onLoad={onOfficerLoad}
               onError={() => {
                 setFailed(true);
@@ -1160,79 +1338,112 @@ function ExportPortraitFooter({
               }}
             />
           ) : (
-            <View style={[styles.portraitFooterAvatarFallback, { borderColor: theme.highlight }]}>
-              <Text style={styles.portraitFooterAvatarLetter} onLayout={onOfficerLoad}>
+            <View
+              style={[
+                styles.portraitFooterAvatarFallback,
+                { backgroundColor: paint.avatarFill[0] || paint.footer[0], borderColor: paint.avatarRing },
+              ]}
+            >
+              <Text style={[styles.portraitFooterAvatarLetter, { color: paint.avatarLetter }]} onLayout={onOfficerLoad}>
                 {letter}
               </Text>
             </View>
           )}
           <View style={styles.portraitFooterOfficerText}>
-            <Text style={styles.portraitFooterKicker} numberOfLines={1}>
-              {isTamil ? 'கள அலுவலர்' : 'FIELD OFFICER'}
-            </Text>
-            <Text style={[styles.portraitFooterName, { color: theme.highlight }]} numberOfLines={1}>
+            <Text style={[styles.portraitFooterName, { color: paint.footerName }, shadow]} numberOfLines={1}>
               {officerName}
             </Text>
-            <Text style={styles.portraitFooterRole} numberOfLines={2}>
+            <Text style={[styles.portraitFooterRole, { color: paint.footerRole }]} numberOfLines={1}>
               {officerDesignation}
             </Text>
           </View>
         </View>
-        <View style={[styles.portraitFooterMapFrame, { borderColor: theme.highlight }]} collapsable={false}>
-          <ExportLocationMapThumb mapUri={mapUri} onLoad={onMapLoad} width={156} height={92} />
+        <View style={[styles.portraitFooterMapFrame, { borderColor: paint.accent }]} collapsable={false}>
+          <ExportLocationMapThumb mapUri={mapUri} onLoad={onMapLoad} width={92} height={54} framed={false} />
         </View>
       </View>
-    </ExportReportHeaderSurface>
+    </PortraitPaintSurface>
   );
 }
 
 function PortraitPhotoGrid({
   images,
   onLoad,
-  highlight,
+  paint,
 }: {
   images: { url: string; name: string; fieldKey: string }[];
   onLoad: () => void;
-  highlight: string;
+  paint: ShareCardPaint;
 }) {
-  const tile = (img: { url: string; name: string; fieldKey: string }, key: string) => (
-    <Image
-      key={key}
-      source={{ uri: displayImageUri(img.url, img.fieldKey) }}
-      style={styles.portraitPhotoFill}
-      resizeMode="cover"
-      fadeDuration={0}
-      onLoad={onLoad}
-      onError={onLoad}
-    />
+  const border = 1;
+  const rows: { url: string; name: string; fieldKey: string }[][] = [];
+  if (images.length === 1) {
+    rows.push(images);
+  } else {
+    for (let i = 0; i < images.length; i += 2) rows.push(images.slice(i, i + 2));
+  }
+  const rowCount = Math.max(rows.length, 1);
+  const baseH = Math.max(1, Math.floor(PORTRAIT_PHOTO_AREA_H / rowCount));
+  const lastH = PORTRAIT_PHOTO_AREA_H - baseH * (rowCount - 1);
+  const colW = Math.floor(PORTRAIT_W / 2);
+  const lastW = PORTRAIT_W - colW;
+
+  const tile = (
+    img: { url: string; name: string; fieldKey: string },
+    width: number,
+    height: number,
+    edges: { top?: boolean; bottom?: boolean; left?: boolean; right?: boolean },
+  ) => (
+    <View
+      key={img.fieldKey}
+      collapsable={false}
+      style={{
+        width,
+        height,
+        borderColor: paint.accent,
+        borderTopWidth: edges.top ? border : 0,
+        borderBottomWidth: edges.bottom ? border : 0,
+        borderLeftWidth: edges.left ? border : 0,
+        borderRightWidth: edges.right ? border : 0,
+        backgroundColor: paint.photoGap,
+      }}
+    >
+      <Image
+        source={{ uri: displayImageUri(img.url, img.fieldKey) }}
+        style={{
+          width: Math.max(1, width - border * 2),
+          height: Math.max(1, height - border * 2),
+          backgroundColor: paint.photoGap,
+        }}
+        resizeMode="contain"
+        fadeDuration={0}
+        onLoad={onLoad}
+        onError={onLoad}
+      />
+    </View>
   );
 
-  if (!images.length) {
-    return <View style={[styles.portraitPhotoStage, { backgroundColor: highlight }]} />;
-  }
-
-  if (images.length === 1) {
-    return <View style={[styles.portraitPhotoStage, { backgroundColor: highlight }]}>{tile(images[0], 'one')}</View>;
-  }
-
-  const rows: { url: string; name: string; fieldKey: string }[][] = [];
-  for (let i = 0; i < images.length; i += 2) rows.push(images.slice(i, i + 2));
-
   return (
-    <View style={[styles.portraitPhotoStage, { backgroundColor: highlight }]}>
-      {rows.map((row, ri) => (
-        <View key={`row-${ri}`} style={[styles.portraitPhotoRow, ri > 0 && { marginTop: PORTRAIT_PHOTO_GAP, borderTopWidth: PORTRAIT_PHOTO_GAP, borderTopColor: highlight }]}>
-          {row.length === 1 ? (
-            tile(row[0], `full-${row[0].fieldKey}`)
-          ) : (
-            <>
-              <View style={styles.portraitPhotoHalf}>{tile(row[0], row[0].fieldKey)}</View>
-              <View style={{ width: PORTRAIT_PHOTO_GAP, backgroundColor: highlight }} />
-              <View style={styles.portraitPhotoHalf}>{tile(row[1], row[1].fieldKey)}</View>
-            </>
-          )}
-        </View>
-      ))}
+    <View
+      collapsable={false}
+      style={{ width: PORTRAIT_W, height: PORTRAIT_PHOTO_AREA_H, backgroundColor: paint.photoGap }}
+    >
+      {rows.map((row, ri) => {
+        const height = ri === rowCount - 1 ? lastH : baseH;
+        const full = row.length === 1;
+        return (
+          <View key={`row-${ri}`} collapsable={false} style={{ flexDirection: 'row', width: PORTRAIT_W, height }}>
+            {row.map((img, ii) =>
+              tile(img, full ? PORTRAIT_W : ii === 0 ? colW : lastW, height, {
+                top: ri > 0,
+                bottom: ri < rowCount - 1,
+                left: true,
+                right: true,
+              }),
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -1244,6 +1455,7 @@ function ExportOfficerBlock({
   designation,
   onLoad,
   highlight = REPORT_AMBER,
+  nameColor,
 }: {
   isTamil?: boolean;
   photoUri?: string | null;
@@ -1251,6 +1463,7 @@ function ExportOfficerBlock({
   designation: string;
   onLoad: () => void;
   highlight?: string;
+  nameColor?: string;
 }) {
   const [failed, setFailed] = useState(false);
   const showPhoto = !!photoUri && !failed;
@@ -1284,7 +1497,7 @@ function ExportOfficerBlock({
           <Text style={styles.exportOfficerLetterTxt}>{letter}</Text>
         </LinearGradient>
       )}
-      <Text style={styles.exportOfficerName} numberOfLines={1}>
+      <Text style={[styles.exportOfficerName, nameColor ? { color: nameColor } : null]} numberOfLines={1}>
         {name}
       </Text>
       <Text style={[styles.exportOfficerRole, { color: highlight }]} numberOfLines={1}>
@@ -1298,77 +1511,88 @@ function ReportFooterBar({
   isTamil,
   busy,
   theme,
+  paint,
+  selectedThemeId,
+  onSelectTheme,
   onShareDetailed,
   onShareImages,
 }: {
   isTamil: boolean;
   busy: 'image' | 'report' | 'images' | null;
   theme: ReportThemeColors;
+  paint: ShareCardPaint;
+  selectedThemeId: string;
+  onSelectTheme: (id: string) => void;
   onShareDetailed: () => void;
   onShareImages: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const stops = themeStops(theme);
   const softBg = lerpHex(theme.accent, '#FFFFFF', 0.88);
+  const shareStops = shareCardGradient(paint.header);
+  const lightShare = paint.group === 'premium_light' || paint.header[0]?.toLowerCase() === '#ffffff';
+  const shareTitleColor = lightShare ? paint.title : '#FFFFFF';
+  const shareHintColor = lightShare ? paint.secondary : 'rgba(255,255,255,0.86)';
 
   return (
-    <View style={[styles.reportFooter, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-      <Pressable
-        onPress={onShareDetailed}
-        style={({ pressed }) => [styles.reportShareCard, pressed && styles.reportFooterBtnPressed]}
-        disabled={!!busy}
-      >
-        <View style={[styles.reportShareCardInner, styles.reportShareCardDetailed, { backgroundColor: softBg, borderColor: theme.accent }]}>
-          {busy === 'report' ? (
-            <ActivityIndicator size="small" color={theme.accent} />
-          ) : (
-            <>
-              <View style={[styles.reportShareIconWrap, { backgroundColor: theme.accent }]}>
-                <Ionicons name="document-text" size={16} color="#fff" />
-              </View>
-              <View style={styles.reportShareCopy}>
-                <Text style={[styles.reportShareTitle, { color: theme.headerTo }]} numberOfLines={1}>
-                  {isTamil ? 'விரிவான அறிக்கை பகிர்வு' : 'Share detailed report'}
-                </Text>
-                <Text style={styles.reportShareHint} numberOfLines={1}>
-                  {isTamil ? 'படங்கள் + விவரங்கள்' : 'Images + Details'}
-                </Text>
-              </View>
-            </>
-          )}
-        </View>
-      </Pressable>
-      <Pressable
-        onPress={onShareImages}
-        style={({ pressed }) => [styles.reportShareCard, pressed && styles.reportFooterBtnPressed]}
-        disabled={!!busy}
-      >
-        <LinearGradient
-          colors={stops}
-          locations={[0, 0.52, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.reportShareCardInner, styles.reportShareCardImages]}
+    <View style={[styles.reportFooterWrap, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+      <ShareCardThemePicker isTamil={isTamil} selectedId={selectedThemeId} onSelect={onSelectTheme} />
+      <View style={styles.reportFooter}>
+        <Pressable
+          onPress={onShareDetailed}
+          style={({ pressed }) => [styles.reportShareCard, pressed && styles.reportFooterBtnPressed]}
+          disabled={!!busy}
         >
-          {busy === 'images' ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
-              <View style={[styles.reportShareIconWrap, { backgroundColor: theme.highlight }]}>
-                <Ionicons name="images" size={16} color={SUMMARY_NAVY} />
-              </View>
-              <View style={styles.reportShareCopy}>
-                <Text style={styles.reportShareTitleLight} numberOfLines={1}>
-                  {isTamil ? 'அறிக்கை பகிர்வு' : 'Share report'}
-                </Text>
-                <Text style={styles.reportShareHintLight} numberOfLines={1}>
-                  {isTamil ? 'படங்கள் மட்டும்' : 'Images only'}
-                </Text>
-              </View>
-            </>
-          )}
-        </LinearGradient>
-      </Pressable>
+          <View style={[styles.reportShareCardInner, styles.reportShareCardDetailed, { backgroundColor: softBg, borderColor: theme.accent }]}>
+            {busy === 'report' ? (
+              <ActivityIndicator size="small" color={theme.accent} />
+            ) : (
+              <>
+                <View style={[styles.reportShareIconWrap, { backgroundColor: theme.accent }]}>
+                  <Ionicons name="document-text" size={16} color="#fff" />
+                </View>
+                <View style={styles.reportShareCopy}>
+                  <Text style={[styles.reportShareTitle, { color: theme.headerTo }]} numberOfLines={1}>
+                    {isTamil ? 'விரிவான அறிக்கை பகிர்வு' : 'Share detailed report'}
+                  </Text>
+                  <Text style={styles.reportShareHint} numberOfLines={1}>
+                    {isTamil ? 'படங்கள் + விவரங்கள்' : 'Images + Details'}
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
+        </Pressable>
+        <Pressable
+          onPress={onShareImages}
+          style={({ pressed }) => [styles.reportShareCard, pressed && styles.reportFooterBtnPressed]}
+          disabled={!!busy}
+        >
+          <LinearGradient
+            colors={shareStops}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.reportShareCardInner, styles.reportShareCardImages]}
+          >
+            {busy === 'images' ? (
+              <ActivityIndicator size="small" color={shareTitleColor} />
+            ) : (
+              <>
+                <View style={[styles.reportShareIconWrap, { backgroundColor: paint.accent }]}>
+                  <Ionicons name="images" size={16} color={lightShare ? paint.avatarLetter : SUMMARY_NAVY} />
+                </View>
+                <View style={styles.reportShareCopy}>
+                  <Text style={[styles.reportShareTitleLight, { color: shareTitleColor }]} numberOfLines={1}>
+                    {isTamil ? 'அறிக்கை பகிர்வு' : 'Share report'}
+                  </Text>
+                  <Text style={[styles.reportShareHintLight, { color: shareHintColor }]} numberOfLines={1}>
+                    {isTamil ? 'படங்கள் மட்டும்' : 'Images only'}
+                  </Text>
+                </View>
+              </>
+            )}
+          </LinearGradient>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -1402,6 +1626,8 @@ export function WorkDetailModal({
   const [exportColH, setExportColH] = useState(EXPORT_PHOTO_H);
   const [exportMapUri, setExportMapUri] = useState<string | null>(null);
   const [exportOfficerUri, setExportOfficerUri] = useState<string | null>(null);
+  const [shareThemeId, setShareThemeId] = useState(DEFAULT_SHARE_CARD_THEME_ID);
+  const sharePaint = resolveShareCardPaint(shareThemeId);
 
   const images = useMemo(() => {
     const list: { url: string; name: string; fieldKey: string }[] = [];
@@ -1456,7 +1682,7 @@ export function WorkDetailModal({
   const subjectName = isTamil ? work.subjectNameTa || work.subjectNameEn : work.subjectNameEn;
   const categoryName = isTamil ? work.categoryNameTa || work.categoryNameEn : work.categoryNameEn;
   const submitted = formatTo12Hr(work.submittedAt);
-  const gps = `${Number(work.latitude || 0).toFixed(5)}, ${Number(work.longitude || 0).toFixed(5)}`;
+  const gps = formatGpsWithLabels(Number(work.latitude || 0), Number(work.longitude || 0));
   const workRef = work.workId || work.id;
   const photoLabel = current?.name || (isTamil ? 'கள ஆய்வு புகைப்படம்' : 'Field photo');
   const headerPlace = [locTp, locZone, locDistrict].filter(Boolean).join(' · ');
@@ -1505,6 +1731,24 @@ export function WorkDetailModal({
 
   useEffect(() => {
     let alive = true;
+    void prefs.getShareCardThemeId().then((id) => {
+      if (!alive) return;
+      const next = String(id || '').trim();
+      if (next) setShareThemeId(resolveShareCardPaint(next).id);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const selectShareTheme = useCallback((id: string) => {
+    const next = resolveShareCardPaint(id);
+    setShareThemeId(next.id);
+    void prefs.setShareCardThemeId(next.id);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
     void api.getAppSettings().then((raw) => {
       if (!alive || !raw) return;
       setLiveSettings({
@@ -1521,7 +1765,7 @@ export function WorkDetailModal({
   }, [portal.settings]);
 
   const shareConfig = reportShareConfig({ ...portal, settings: liveSettings || portal.settings });
-  const reportTheme = shareConfig.theme;
+  const reportTheme = useMemo(() => sharePaintToReportTheme(sharePaint), [sharePaint]);
   const shareValues = {
     Zone_EN: String(work.zoneNameEn || ''),
     Zone_TA: String(work.zoneNameTa || work.zoneNameEn || ''),
@@ -1591,7 +1835,7 @@ export function WorkDetailModal({
           await new Promise((r) => setTimeout(r, 80));
         }
       }
-      await new Promise((r) => setTimeout(r, 280));
+      await new Promise((r) => setTimeout(r, 400));
       let captured: string;
       try {
         captured = await captureRef(exportRef, {
@@ -1599,7 +1843,7 @@ export function WorkDetailModal({
           quality: 0.95,
           result: 'tmpfile',
           fileName: `inspection_${stamp}`,
-          width: portrait ? PORTRAIT_W : EXPORT_W,
+          ...(portrait ? { pixelRatio: 3 } : { width: EXPORT_W }),
         });
       } finally {
         exportLaidOut.current = null;
@@ -1638,7 +1882,7 @@ export function WorkDetailModal({
           automaticallyAdjustContentInsets={false}
         >
           <View style={styles.sheet}>
-            <ReportHeaderSurface theme={reportTheme} style={[styles.detailHeader, { paddingTop: insets.top, borderBottomColor: reportTheme.highlight }]}>
+            <ReportHeaderSurface theme={reportTheme} style={[styles.detailHeader, { paddingTop: insets.top, borderBottomColor: reportTheme.accent }]}>
               <DetailSummaryBody
                 variant="brandHeader"
                 isTamil={isTamil}
@@ -1650,6 +1894,7 @@ export function WorkDetailModal({
                 submitted={submitted}
                 gps={gps}
                 highlight={reportTheme.highlight}
+                paint={sharePaint}
               />
             </ReportHeaderSurface>
 
@@ -1760,6 +2005,9 @@ export function WorkDetailModal({
           isTamil={isTamil}
           busy={busy}
           theme={reportTheme}
+          paint={sharePaint}
+          selectedThemeId={sharePaint.id}
+          onSelectTheme={selectShareTheme}
           onShareDetailed={() => void run('report', false)}
           onShareImages={() => void run('images', false)}
         />
@@ -1769,12 +2017,21 @@ export function WorkDetailModal({
             <View pointerEvents="none" style={styles.exportCaptureStage}>
               <ViewShot
                 ref={exportRef}
+                collapsable={false}
                 options={{ format: 'jpg', quality: 0.95 }}
-                style={exportKind === 'images' ? styles.portraitSheet : styles.landscapeSheet}
+                style={
+                  exportKind === 'images'
+                    ? [styles.portraitSheet, { backgroundColor: sharePaint.photoGap }]
+                    : styles.landscapeSheet
+                }
               >
           <View
             collapsable={false}
-            style={exportKind === 'images' ? styles.exportSheet : styles.landscapeExportInner}
+            style={
+              exportKind === 'images'
+                ? [styles.exportSheet, { backgroundColor: sharePaint.photoGap }]
+                : styles.landscapeExportInner
+            }
             removeClippedSubviews={false}
             onLayout={() => {
               exportLaidOut.current?.();
@@ -1785,17 +2042,25 @@ export function WorkDetailModal({
               <>
                 <ExportPortraitHeader
                   isTamil={isTamil}
-                  place={headerPlace}
+                  tpName={String(locTp || '')}
+                  districtName={String(locDistrict || '')}
+                  zoneName={String(locZone || '')}
                   wardNumber={work.wardNumber}
                   streetLabel={resolvedStreet}
-                  subjectName={subjectName || ''}
-                  categoryName={categoryName || ''}
+                  activityName={categoryName || subjectName || ''}
                   submitted={submitted}
                   latitude={Number(work.latitude || 0)}
                   longitude={Number(work.longitude || 0)}
-                  theme={reportTheme}
+                  paint={sharePaint}
                 />
-                <PortraitPhotoGrid images={images} onLoad={markExportImageLoaded} highlight={reportTheme.highlight} />
+                <ThemeRibbon paint={sharePaint} />
+                <View
+                  collapsable={false}
+                  style={{ width: PORTRAIT_W, height: PORTRAIT_PHOTO_AREA_H, backgroundColor: sharePaint.photoGap }}
+                >
+                  <PortraitPhotoGrid images={images} onLoad={markExportImageLoaded} paint={sharePaint} />
+                </View>
+                <ThemeRibbon paint={sharePaint} />
                 <ExportPortraitFooter
                   isTamil={isTamil}
                   officerPhotoUri={exportOfficerUri}
@@ -1804,7 +2069,7 @@ export function WorkDetailModal({
                   mapUri={exportMapUri}
                   onOfficerLoad={markExportImageLoaded}
                   onMapLoad={markExportImageLoaded}
-                  theme={reportTheme}
+                  paint={sharePaint}
                 />
               </>
             ) : (
@@ -1826,6 +2091,7 @@ export function WorkDetailModal({
                   officerDesignation={officerDesignation}
                   onOfficerLoad={markExportImageLoaded}
                   theme={reportTheme}
+                  paint={sharePaint}
                 />
                 <View style={styles.landBody} collapsable={false}>
                   <View style={styles.landPhotoExport} collapsable={false}>
@@ -1880,6 +2146,7 @@ const styles = StyleSheet.create({
   reportHeaderSurface: { overflow: 'hidden', position: 'relative' },
   reportHeaderBands: { ...StyleSheet.absoluteFill, flexDirection: 'column' },
   reportHeaderBand: { flex: 1 },
+  surfaceForeground: { zIndex: 2, position: 'relative', width: '100%' },
   detailHeader: {
     paddingHorizontal: 8,
     paddingBottom: 4,
@@ -1896,17 +2163,19 @@ const styles = StyleSheet.create({
     gap: 0,
     paddingHorizontal: 0,
   },
-  reportFooter: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingTop: 8,
+  reportFooterWrap: {
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
     backgroundColor: '#fff',
     zIndex: 20,
     elevation: 12,
+  },
+  reportFooter: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingTop: 6,
   },
   reportShareCard: {
     flex: 1,
@@ -1979,67 +2248,90 @@ const styles = StyleSheet.create({
     width: PORTRAIT_W,
     height: PORTRAIT_H,
     backgroundColor: '#fff',
-    transformOrigin: 'top left',
-    transform: [{ scale: PORTRAIT_FIT_SCALE }],
+    overflow: 'hidden',
   },
   portraitHeader: {
     width: '100%',
-    paddingTop: 18,
-    paddingBottom: 12,
-    paddingHorizontal: 24,
-    borderBottomWidth: 6,
-    borderBottomColor: CAPTION_BORDER,
+    height: PORTRAIT_HEADER_H,
+    flexGrow: 0,
+    flexShrink: 0,
+    justifyContent: 'center',
+    paddingTop: 8,
+    paddingBottom: 8,
+    paddingHorizontal: 12,
   },
   portraitHeaderCenter: {
-    zIndex: 1,
+    zIndex: 2,
     alignItems: 'center',
     width: '100%',
   },
   portraitHeadTitle: {
     width: '100%',
     textAlign: 'center',
-    color: '#fff',
-    fontSize: 33,
-    lineHeight: 39,
+    color: '#FFE566',
+    fontSize: 20,
+    lineHeight: 23,
     fontWeight: '900',
+    letterSpacing: 0.3,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   portraitHeadPlace: {
     width: '100%',
-    marginTop: 3,
+    marginTop: 2,
     textAlign: 'center',
-    color: REPORT_AMBER,
-    fontSize: 42,
-    lineHeight: 51,
+    color: '#FFFFFF',
+    fontSize: 18,
+    lineHeight: 22,
     fontWeight: '900',
-    letterSpacing: 0.6,
-    textShadowColor: 'rgba(0,0,0,0.28)',
+    textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
   portraitHeadWard: {
     width: '100%',
-    marginTop: 3,
+    marginTop: 1,
     textAlign: 'center',
-    color: '#fff',
-    fontSize: 33,
-    lineHeight: 39,
-    fontWeight: '900',
+    color: '#FFFFFF',
+    fontSize: 14,
+    lineHeight: 17,
+    fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.28)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  portraitHeadWardStreet: {
+    fontSize: 12,
+    lineHeight: 15,
+  },
+  portraitHeadWardStreetTa: {
+    fontSize: 10,
+    lineHeight: 13,
   },
   portraitHeadMeta: {
-    fontSize: 24,
-    lineHeight: 30,
+    width: '100%',
+    marginTop: 2,
+    textAlign: 'center',
+    color: '#FFE566',
+    fontSize: 13,
+    lineHeight: 16,
     fontWeight: '800',
-    color: 'rgba(255,255,255,0.88)',
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   portraitFooter: {
     width: '100%',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderTopWidth: 5,
-    borderTopColor: REPORT_AMBER,
+    height: PORTRAIT_FOOTER_H,
+    flexGrow: 0,
+    flexShrink: 0,
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   portraitFooterRow: {
-    zIndex: 1,
+    zIndex: 2,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -2052,32 +2344,32 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   portraitFooterAvatar: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#E2E8F0',
-    borderWidth: 4,
+    borderWidth: 3,
     borderColor: REPORT_AMBER,
   },
   portraitFooterAvatarFallback: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#1A3D66',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 4,
+    borderWidth: 3,
     borderColor: REPORT_AMBER,
   },
   portraitFooterAvatarLetter: {
     color: '#fff',
-    fontSize: 28,
+    fontSize: 18,
     fontWeight: '800',
   },
   portraitFooterOfficerText: {
     flex: 1,
     minWidth: 0,
-    marginLeft: 14,
+    marginLeft: 10,
   },
   portraitFooterKicker: {
     color: 'rgba(255,255,255,0.82)',
@@ -2089,43 +2381,29 @@ const styles = StyleSheet.create({
   },
   portraitFooterName: {
     color: REPORT_AMBER,
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 15,
+    lineHeight: 18,
     fontWeight: '900',
     textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
   portraitFooterRole: {
-    marginTop: 3,
+    marginTop: 1,
     color: '#fff',
-    fontSize: 18,
-    lineHeight: 22,
+    fontSize: 11,
+    lineHeight: 14,
     fontWeight: '700',
   },
   portraitFooterMapFrame: {
-    borderWidth: 3,
+    borderWidth: 1.5,
     borderColor: REPORT_AMBER,
-    borderRadius: 10,
+    borderRadius: 6,
     overflow: 'hidden',
   },
-  portraitPhotoStage: {
-    flex: 1,
-    width: '100%',
-    backgroundColor: REPORT_AMBER,
-  },
-  portraitPhotoRow: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  portraitPhotoHalf: {
-    flex: 1,
-  },
-  portraitPhotoFill: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#0F172A',
+  portraitPhotoHost: {
+    width: PORTRAIT_W,
+    height: PORTRAIT_PHOTO_AREA_H,
   },
   portraitTableWrap: {
     paddingHorizontal: 12,
@@ -2152,8 +2430,8 @@ const styles = StyleSheet.create({
     zIndex: 0,
   },
   exportSheet: {
-    width: '100%',
-    height: '100%',
+    width: PORTRAIT_W,
+    height: PORTRAIT_H,
     flexDirection: 'column',
     backgroundColor: '#fff',
   },

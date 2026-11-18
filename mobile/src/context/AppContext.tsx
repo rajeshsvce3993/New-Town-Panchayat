@@ -23,7 +23,7 @@ import { filterUserWorks } from '../utils/workFilters';
 import { prefs, profilePhotoFile } from '../storage/preferences';
 import { DEFAULT_PALETTE_ID, getPaletteById, type AppPalette } from '../theme/palettes';
 import type { AppUser, InspectionWork, LoginRequest, LoginResponse, PortalState, UserScopeData } from '../types/models';
-import { emptyPortal, isInspectionUser, portalWorks } from '../types/models';
+import { emptyPortal, portalWorks } from '../types/models';
 import { isAssignedWorkId } from '../utils/workSaveResult';
 import { currentLoginSessionPeriod, todayYyyyMmDd } from '../utils/dates';
 

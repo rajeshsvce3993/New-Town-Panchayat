@@ -18,6 +18,7 @@ import {
 
 const K = {
   theme: 'theme_id',
+  shareCardTheme: 'share_card_theme_id',
   tamil: 'is_tamil',
   server: 'server_url',
   user: 'current_user',
@@ -85,6 +86,12 @@ export const prefs = {
   },
   async setThemeId(id: string) {
     await setStr(K.theme, id);
+  },
+  async getShareCardThemeId() {
+    return (await getStr(K.shareCardTheme)) || '';
+  },
+  async setShareCardThemeId(id: string) {
+    await setStr(K.shareCardTheme, id);
   },
   async getIsTamil() {
     return (await getStr(K.tamil)) === 'true';
