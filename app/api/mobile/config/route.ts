@@ -6,13 +6,13 @@ export const dynamic = 'force-dynamic';
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client, X-App-Version, X-App-Build, X-App-Language',
 };
 
 const DEFAULT_MOBILE_CONFIG = {
   apiBaseUrl: '',
-  appVersion: '1.2.0',
-  buildNumber: 102,
+  appVersion: '2.0.9',
+  buildNumber: 109,
   minSupportedVersion: '1.0.0',
   forceUpdate: false,
   maintenanceMode: false,

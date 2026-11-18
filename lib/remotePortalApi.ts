@@ -111,7 +111,8 @@ export async function postRemotePortalJson(
   pathWithQuery: string,
   requestOrigin: string | undefined,
   body: unknown,
-  timeoutMs = 60000
+  timeoutMs = 60000,
+  forwardHeaders?: Record<string, string>
 ): Promise<{ status: number; data: any }> {
   if (!shouldUseRemotePortalApi(requestOrigin)) {
     return {
@@ -123,9 +124,15 @@ export async function postRemotePortalJson(
   const path = pathWithQuery.startsWith('/') ? pathWithQuery : `/${pathWithQuery}`;
   const url = `${base}${path}`;
   try {
+    const extra: Record<string, string> = {};
+    if (forwardHeaders) {
+      for (const [k, v] of Object.entries(forwardHeaders)) {
+        if (v) extra[k] = v;
+      }
+    }
     const res = await fetch(url, {
       method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...extra },
       body: JSON.stringify(body),
       cache: 'no-store',
       signal: AbortSignal.timeout(timeoutMs),

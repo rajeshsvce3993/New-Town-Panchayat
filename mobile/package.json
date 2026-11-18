@@ -1,6 +1,6 @@
 {
   "name": "town-panchayat-ems",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",
@@ -33,6 +33,7 @@
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.4",
     "expo-task-manager": "~57.0.21",
+    "expo-updates": "~57.0.0",
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-safe-area-context": "~5.7.0",

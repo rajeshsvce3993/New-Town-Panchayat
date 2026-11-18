@@ -1,5 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import {
+  APP_VERSION_CODE,
+  APP_VERSION_NAME,
   BOOTSTRAP_API_TIMEOUT_MS,
   DEFAULT_SERVER_URL,
   FCM_APP_VERSION_LABEL,
@@ -25,6 +27,21 @@ import type {
 import { activeNotifications, emptyPortal } from '../types/models';
 
 let baseUrl = DEFAULT_SERVER_URL;
+let appLanguageHeader = 'en';
+
+export function setMobileApiLanguage(isTamil: boolean) {
+  appLanguageHeader = isTamil ? 'ta' : 'en';
+}
+
+export function mobileClientHeaders(extra?: Record<string, string>): Record<string, string> {
+  return {
+    'X-Client': 'mobile',
+    'X-App-Version': APP_VERSION_NAME,
+    'X-App-Build': String(APP_VERSION_CODE),
+    'X-App-Language': appLanguageHeader,
+    ...(extra || {}),
+  };
+}
 
 export function setApiBaseUrl(url: string) {
   baseUrl = url.trim().replace(/\/$/, '');
@@ -107,8 +124,8 @@ export const api = {
     try {
       const response = await fetchWithTimeout(`${baseUrl}/api/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req),
+        headers: { 'Content-Type': 'application/json', ...mobileClientHeaders() },
+        body: JSON.stringify({ ...req, client: 'mobile' }),
       });
       const resBody = await response.text();
       const parse = (): LoginResponse | null => {

@@ -3,14 +3,14 @@
     "name": "Town Panchayat Management System",
     "slug": "town-panchayat-ems",
     "scheme": "tpems",
-    "version": "2.0.8",
+    "version": "2.0.9",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.tn.townpanchayat.ems",
-      "buildNumber": "108",
+      "buildNumber": "109",
       "infoPlist": {
         "NSCameraUsageDescription": "Camera is used to capture inspection evidence and profile photos.",
         "NSLocationWhenInUseUsageDescription": "GPS is required to geotag field inspection works.",
@@ -24,7 +24,7 @@
     },
     "android": {
       "package": "com.tn.townpanchayat.ems",
-      "versionCode": 108,
+      "versionCode": 109,
       "adaptiveIcon": {
         "backgroundColor": "#1A3D66",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -48,6 +48,14 @@
         "android.permission.READ_MEDIA_AUDIO"
       ],
       "predictiveBackGestureEnabled": false
+    },
+    "updates": {
+      "url": "https://u.expo.dev/dd738221-b5cf-48ef-badb-97ebccff73c3",
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     },
     "extra": {
       "router": {},
@@ -128,6 +136,7 @@
       "expo-task-manager",
       "expo-document-picker",
       "expo-asset",
+      "expo-updates",
       "./plugins/withApkSize"
     ],
     "owner": "aifiportal"

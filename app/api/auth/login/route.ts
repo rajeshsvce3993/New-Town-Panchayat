@@ -5,13 +5,14 @@ import { recordUserLogin } from '@/lib/userActivity';
 import { logServerProcess } from '@/lib/serverLogger';
 import { postRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { isHodLikeUser } from '@/lib/userScope';
+import { isMobileClientRequest, mobileLoginDeniedMessage, userMayUseMobileApp } from '@/lib/mobileAppAuth';
 
 export const dynamic = 'force-dynamic';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client, X-App-Version, X-App-Build',
 };
 
 export async function OPTIONS() {
@@ -24,6 +25,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { username, password } = body;
     const cleanUsername = (username || '').trim().toLowerCase();
+    const mobileClient = isMobileClientRequest(req, body);
+    const preferTamil = String(req.headers.get('x-app-language') || body?.language || '')
+      .toLowerCase()
+      .startsWith('ta');
 
     if (!cleanUsername) {
       return NextResponse.json(
@@ -34,9 +39,12 @@ export async function POST(req: NextRequest) {
 
     // Dev / thin client: authenticate only against live portal (server MongoDB), never local cache.
     if (shouldUseRemotePortalApi(req.nextUrl.origin)) {
-      const { status, data } = await postRemotePortalJson('/api/auth/login', req.nextUrl.origin, {
-        username,
-        password,
+      const forwardBody = { username, password, ...(mobileClient ? { client: 'mobile' } : {}) };
+      const { status, data } = await postRemotePortalJson('/api/auth/login', req.nextUrl.origin, forwardBody, 60000, {
+        'X-Client': mobileClient ? 'mobile' : req.headers.get('x-client') || '',
+        'X-App-Version': req.headers.get('x-app-version') || '',
+        'X-App-Build': req.headers.get('x-app-build') || '',
+        'X-App-Language': req.headers.get('x-app-language') || '',
       });
       const duration = Date.now() - startTime;
       if (data?.success) {
@@ -157,8 +165,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const userScope =
+    let userScope =
       sourceCollection === 'inspectionUsers' ? await getUserScopeDetails(userDoc.username || cleanUsername) : null;
+    if (mobileClient && !userScope) {
+      userScope = await getUserScopeDetails(userDoc.username || cleanUsername);
+    }
 
     let designationNameEn = String(userDoc.designationNameEn || '').trim();
     let designationNameTa = String(userDoc.designationNameTa || '').trim();
@@ -222,6 +233,23 @@ export async function POST(req: NextRequest) {
     if (isHodLikeUser(returnUser)) {
       returnUser.scopeType = 'HOD';
       returnUser.scopeId = 'all';
+    }
+
+    if (mobileClient && !userMayUseMobileApp(returnUser, sourceCollection)) {
+      logServerProcess({
+        category: 'LOGIN',
+        action: 'LOGIN_MOBILE_DENIED',
+        username: cleanUsername,
+        status: 'FAILED',
+        details: `Mobile login denied for role "${returnUser.role}"`,
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          message: mobileLoginDeniedMessage(preferTamil),
+        },
+        { status: 403, headers: CORS_HEADERS }
+      );
     }
 
     void recordUserLogin(returnUser, req).catch((err) => {

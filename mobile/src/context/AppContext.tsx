@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, BackHandler, Linking, Platform, ToastAndroid } from 'react-native';
-import { api, getApiBaseUrl, isRemotePhotoUrl, setApiBaseUrl } from '../api/client';
+import { api, getApiBaseUrl, isRemotePhotoUrl, setApiBaseUrl, setMobileApiLanguage } from '../api/client';
 import {
   APP_VERSION_CODE,
   INACTIVITY_MS,
@@ -11,6 +11,7 @@ import {
 } from '../constants/config';
 import { isUsableLogoUrl } from '../components/BrandImage';
 import { registerBackgroundSync } from '../services/backgroundTasks';
+import { checkAndApplyOtaUpdate } from '../services/otaUpdates';
 import {
   createNotificationChannel,
   requestNotificationPermission,
@@ -201,6 +202,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (isUsableLogoUrl(icon)) setAppIcon(icon);
 
       setReady(true);
+      setMobileApiLanguage(tamil);
+
+      void checkAndApplyOtaUpdate();
 
       void createNotificationChannel(tone).catch(() => undefined);
       void registerBackgroundSync();
@@ -509,17 +513,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     async (req: LoginRequest): Promise<LoginResponse> => {
       const res = await api.login(req);
       if (res.success && res.user) {
-        const allowed = isInspectionUser(res.user) || (res.user.role || '').toLowerCase().includes('admin');
-        if (!allowed) {
-          return {
-            success: false,
-            token: null,
-            user: null,
-            message: isTamil
-              ? 'அணுகல் மறுக்கப்பட்டது: நிர்வாகிகள் அல்லது கள ஆய்வு பணியாளர்கள் மட்டுமே உள்நுழைய முடியும்.'
-              : 'Access Denied: Only Admins or Field Inspection Officers are permitted to log in.',
-          };
-        }
         await prefs.setAuthToken(res.token || null);
         if (res.userScope) {
           await prefs.setUserScope(res.userScope);
@@ -532,7 +525,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       return res;
     },
-    [isTamil]
+    []
   );
 
   const onLoginSuccess = useCallback(async (u: AppUser) => {
@@ -626,6 +619,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setPendingMedia,
       setLanguage: async (ta) => {
         setIsTamil(ta);
+        setMobileApiLanguage(ta);
         await prefs.setIsTamil(ta);
       },
       setThemeId: async (id) => {

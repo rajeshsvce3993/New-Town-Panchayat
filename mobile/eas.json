@@ -21,10 +21,14 @@
     },
     "production-apk": {
       "distribution": "internal",
+      "channel": "production-apk",
       "android": { "buildType": "apk" },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "prod"
       }
     }
+  },
+  "submit": {
+    "production": {}
   }
 }
