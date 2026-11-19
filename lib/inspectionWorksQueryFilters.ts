@@ -89,7 +89,13 @@ export function workMatchesZone(w: any, zoneId: string, ctx: InspectionWorksFilt
   const ids = [w?.zoneId, tp?.zoneId, dist?.zoneId]
     .map((v) => String(v || '').trim().toLowerCase())
     .filter(Boolean);
-  return ids.includes(selectedId);
+  if (ids.includes(selectedId) || ids.includes(sZone.toLowerCase())) return true;
+  const wZoneName = String(w.zoneNameEn || w.zone || '').trim().toLowerCase();
+  const zName = String(selected?.nameEn || '').trim().toLowerCase();
+  if (wZoneName && (wZoneName === selectedId || wZoneName === sZone.toLowerCase() || (zName && wZoneName === zName))) {
+    return true;
+  }
+  return false;
 }
 
 export function findWorkTownPanchayat(w: any, ctx: InspectionWorksFilterMasters): any | undefined {
@@ -105,7 +111,11 @@ export function workMatchesTp(w: any, tpId: string, ctx: InspectionWorksFilterMa
   const tp = findMasterById(ctx.townPanchayats, sTp);
   const selectedId = String(tp?.id || sTp).trim().toLowerCase();
   const wTp = String(w.tpId || w.townPanchayatId || '').trim().toLowerCase();
-  return !!wTp && wTp === selectedId;
+  if (wTp && (wTp === selectedId || wTp === sTp.toLowerCase())) return true;
+  const wName = String(w.tpNameEn || w.townPanchayatName || w.townPanchayat || '').trim().toLowerCase();
+  const tpName = String(tp?.nameEn || '').trim().toLowerCase();
+  if (wName && (wName === selectedId || wName === sTp.toLowerCase() || (tpName && wName === tpName))) return true;
+  return false;
 }
 
 function geoEq(a?: string | null, b?: string | null): boolean {
@@ -466,16 +476,16 @@ function workMatchesAdminField(
 export function workMatchesUserScope(w: any, query: InspectionWorksFilterQuery, ctx: InspectionWorksFilterMasters): boolean {
   const { scopeTpId, scopeZoneId, scopeDistrictId } = query;
   if (scopeTpId) {
+    if (workMatchesTp(w, scopeTpId, ctx)) return true;
     if ((ctx.townPanchayats || []).length > 0) {
-      if (workMatchesTp(w, scopeTpId, ctx)) return true;
       const scopedTp = (ctx.townPanchayats || []).find(
         (t: any) =>
           String(t.id || '').toLowerCase() === String(scopeTpId).toLowerCase() ||
           String(t.nameEn || '').trim().toLowerCase() === String(scopeTpId).toLowerCase()
       );
       if (scopedTp?.nameEn && workMatchesTp(w, scopedTp.nameEn, ctx)) return true;
-      return false;
     }
+    return false;
   } else if (scopeZoneId) {
     const uZone = String(scopeZoneId).toLowerCase();
     const zones = ctx.zones || [];

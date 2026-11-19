@@ -86,7 +86,7 @@ import {
   workMatchesZone,
   type InspectionWorkReportDimensionRollup,
 } from '@/lib/inspectionWorksQueryFilters';
-import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
+import { getPortalFilterScopeIds, isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
 import { isNoAnswer, isYesAnswer } from '@/lib/yesNoAnswer';
 import MapViewReport from './MapViewReport';
 import ThemeSelect from './ThemeSelect';
@@ -1809,135 +1809,31 @@ export default function InspectionReportsView({
   // Helper to determine if the logged in user is Admin or Director (full unrestricted state-wide access)
   const isAdminOrDirector = useMemo(() => isHodLikeUser(currentUser), [currentUser]);
 
-  // Restricted scope helper values - strict scoping for Town Panchayat and Zonal roles
+  const portalScope = useMemo(
+    () =>
+      getPortalFilterScopeIds(currentUser, {
+        townPanchayats: state.townPanchayats || [],
+        districts: state.districts || [],
+        zones: state.zones || [],
+      }),
+    [currentUser, state.townPanchayats, state.districts, state.zones],
+  );
+
   const userTpId = useMemo(() => {
-    if (isAdminOrDirector || !currentUser) return null;
-    const role = String(currentUser.roleId || currentUser.role || '').toLowerCase();
-    if (isZonalScopedUser(currentUser)) return null;
-    const uName = String(currentUser.username || '').toLowerCase();
-
-    // Direct check for Arani EO or username (matching any login with username eo/arani/tp_csv)
-    if (uName === 'eo' || uName.includes('eo') || uName.includes('arani') || uName.includes('36u9')) {
-      const araniTp = (state.townPanchayats || []).find((t: any) => 
-        String(t.nameEn || '').toLowerCase().includes('arani') ||
-        String(t.id || '').toLowerCase().includes('arani') ||
-        String(t.id || '').toLowerCase().includes('36u9')
-      );
-      if (araniTp) return araniTp.id;
-    }
-
-    const isTpRole = currentUser.scopeType === 'TownPanchayat' || role === 'eo' || role === 'town_panchayat' || role === 'tp' || role === 'townpanchayat' || role.includes('tp') || role.includes('panchayat') || !!currentUser.tpId || !!currentUser.townPanchayatId || !!currentUser.assignedTpId || uName.includes('arani') || uName.startsWith('eo_') || uName.startsWith('tp_');
-    if (isTpRole) {
-      const explicitTp = currentUser.tpId || currentUser.townPanchayatId || currentUser.assignedTpId || (currentUser.scopeType === 'TownPanchayat' ? currentUser.scopeId : null);
-      if (explicitTp && explicitTp !== 'all') {
-        const matched = (state.townPanchayats || []).find((t: any) => 
-          String(t.id).toLowerCase() === String(explicitTp).toLowerCase() ||
-          String(t.nameEn || '').toLowerCase() === String(explicitTp).toLowerCase()
-        );
-        if (matched) return matched.id;
-        if (String(explicitTp).startsWith('tp_csv_')) {
-          const araniTp = (state.townPanchayats || []).find((t: any) => 
-            String(t.nameEn || '').toLowerCase().includes('arani') ||
-            String(t.id || '').toLowerCase().includes('arani')
-          );
-          if (araniTp) return araniTp.id;
-        }
-        return explicitTp;
-      }
-      if (currentUser.scopeId && currentUser.scopeId !== 'all') {
-        const matched = (state.townPanchayats || []).find((t: any) => 
-          String(t.id).toLowerCase() === String(currentUser.scopeId).toLowerCase() ||
-          String(t.nameEn || '').toLowerCase() === String(currentUser.scopeId).toLowerCase()
-        );
-        if (matched) return matched.id;
-        if (String(currentUser.scopeId).startsWith('tp_csv_')) {
-          const araniTp = (state.townPanchayats || []).find((t: any) => 
-            String(t.nameEn || '').toLowerCase().includes('arani') ||
-            String(t.id || '').toLowerCase().includes('arani')
-          );
-          if (araniTp) return araniTp.id;
-        }
-        return currentUser.scopeId;
-      }
-      if (Array.isArray(currentUser.townPanchayatIds) && currentUser.townPanchayatIds.length > 0) {
-        return currentUser.townPanchayatIds[0];
-      }
-      if (Array.isArray(currentUser.selectedTpIds) && currentUser.selectedTpIds.length > 0) {
-        return currentUser.selectedTpIds[0];
-      }
-      const matchedUserTp = (state.townPanchayats || []).find((t: any) => 
-        String(t.nameEn || '').toLowerCase() === uName ||
-        String(t.id || '').toLowerCase() === uName
-      );
-      if (matchedUserTp) return matchedUserTp.id;
-
-      if (uName.includes('arani')) {
-        const araniTp = (state.townPanchayats || []).find((t: any) => 
-          String(t.nameEn || '').toLowerCase().includes('arani') ||
-          String(t.id || '').toLowerCase().includes('arani')
-        );
-        if (araniTp) return araniTp.id;
-      }
-    }
+    if (isAdminOrDirector || !currentUser || isZonalScopedUser(currentUser)) return null;
+    if (portalScope.tpId) return portalScope.tpId;
     return null;
-  }, [currentUser, isAdminOrDirector, state.townPanchayats]);
+  }, [currentUser, isAdminOrDirector, portalScope.tpId]);
 
   const userDistrictId = useMemo(() => {
-    if (isAdminOrDirector || !currentUser) return null;
-    const role = String(currentUser.roleId || currentUser.role || '').toLowerCase();
-    if (isZonalScopedUser(currentUser)) return null;
-    if (userTpId) {
-      const tpObj = (state.townPanchayats || []).find(
-        (t: any) => String(t.id).toLowerCase() === String(userTpId).toLowerCase()
-      );
-      if (tpObj?.districtId) return tpObj.districtId;
-      if (currentUser.districtId && currentUser.districtId !== 'all') return currentUser.districtId;
-      if (currentUser.assignedDistrictId && currentUser.assignedDistrictId !== 'all') return currentUser.assignedDistrictId;
-    }
-    if (!isZonalScopedUser(currentUser) && currentUser.districtId && currentUser.districtId !== 'all') {
-      return currentUser.districtId;
-    }
-    return null;
-  }, [currentUser, userTpId, isAdminOrDirector, state.townPanchayats, state.districts]);
+    if (isAdminOrDirector || !currentUser || isZonalScopedUser(currentUser)) return null;
+    return portalScope.districtId;
+  }, [currentUser, isAdminOrDirector, portalScope.districtId]);
 
   const userZoneId = useMemo(() => {
     if (isAdminOrDirector || !currentUser) return null;
-    if (isZonalScopedUser(currentUser)) {
-      const explicitZone = currentUser.zoneId || (currentUser.scopeType === 'Zone' ? currentUser.scopeId : null);
-      if (explicitZone && explicitZone !== 'all') {
-        const matched = (state.zones || []).find(
-          (z: any) => String(z.id).toLowerCase() === String(explicitZone).toLowerCase()
-        );
-        return matched ? matched.id : explicitZone;
-      }
-      if (currentUser.scopeId && currentUser.scopeId !== 'all') {
-        const matched = (state.zones || []).find(
-          (z: any) => String(z.id).toLowerCase() === String(currentUser.scopeId).toLowerCase()
-        );
-        return matched ? matched.id : currentUser.scopeId;
-      }
-    }
-    if (userDistrictId) {
-      const distObj = (state.districts || []).find(
-        (d: any) => String(d.id).toLowerCase() === String(userDistrictId).toLowerCase()
-      );
-      if (distObj?.zoneId) return distObj.zoneId;
-    }
-    if (userTpId) {
-      const tpObj = (state.townPanchayats || []).find(
-        (t: any) => String(t.id).toLowerCase() === String(userTpId).toLowerCase()
-      );
-      if (tpObj?.zoneId) return tpObj.zoneId;
-      if (tpObj?.districtId) {
-        const distObj = (state.districts || []).find(
-          (d: any) => String(d.id).toLowerCase() === String(tpObj.districtId).toLowerCase()
-        );
-        if (distObj?.zoneId) return distObj.zoneId;
-      }
-    }
-    if (currentUser.zoneId && currentUser.zoneId !== 'all') return currentUser.zoneId;
-    return null;
-  }, [currentUser, userTpId, userDistrictId, isAdminOrDirector, state.townPanchayats, state.districts, state.zones]);
+    return portalScope.zoneId;
+  }, [currentUser, isAdminOrDirector, portalScope.zoneId]);
 
   const lastAutoLoadKeyRef = React.useRef('');
 
@@ -2412,9 +2308,10 @@ export default function InspectionReportsView({
   useEffect(() => {
     const mastersReady =
       isAdminOrDirector ||
+      (state.inspectionSubjects?.length ?? 0) > 0 ||
+      !!(userTpId || userZoneId || userDistrictId) ||
       (state.townPanchayats?.length ?? 0) > 0 ||
-      (state.zones?.length ?? 0) > 0 ||
-      (state.inspectionSubjects?.length ?? 0) > 0;
+      (state.zones?.length ?? 0) > 0;
     if (!mastersReady) return;
 
     if (embedMode) {
@@ -2506,14 +2403,17 @@ export default function InspectionReportsView({
   // Rows from API (primary filters server-side) + client guard for dynamic field filter/columns
   const filteredWorks = useMemo(() => {
     let list = rawWorks;
-    if (selectedZoneId && selectedZoneId !== 'all') {
-      list = list.filter((w: any) => workMatchesZone(w, selectedZoneId, filterMasters));
-    }
-    if (selectedDistrictId && selectedDistrictId !== 'all') {
-      list = list.filter((w: any) => workMatchesDistrict(w, selectedDistrictId, filterMasters));
-    }
-    if (selectedTpId && selectedTpId !== 'all') {
-      list = list.filter((w: any) => workMatchesTp(w, selectedTpId, filterMasters));
+    // Geo is already applied in `/api/inspection-works`; re-filtering here without masters drops scoped rows.
+    if (!worksFromApi) {
+      if (selectedZoneId && selectedZoneId !== 'all') {
+        list = list.filter((w: any) => workMatchesZone(w, selectedZoneId, filterMasters));
+      }
+      if (selectedDistrictId && selectedDistrictId !== 'all') {
+        list = list.filter((w: any) => workMatchesDistrict(w, selectedDistrictId, filterMasters));
+      }
+      if (selectedTpId && selectedTpId !== 'all') {
+        list = list.filter((w: any) => workMatchesTp(w, selectedTpId, filterMasters));
+      }
     }
     if (adminFilterFieldId && !worksFromApi) {
       list = list.filter((w: any) => {

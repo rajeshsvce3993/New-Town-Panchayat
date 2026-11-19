@@ -178,7 +178,8 @@ export async function POST(req: NextRequest) {
     }
 
     const scopeKey = userDoc.username || cleanUsername;
-    const needsInspectionScope = mobileClient || sourceCollection === 'inspectionUsers';
+    const needsInspectionScope =
+      mobileClient || sourceCollection === 'inspectionUsers' || (webPortal && sourceCollection === 'users');
     if (needsInspectionScope) {
       if (isLiveDataOnly()) {
         userScope = await buildLiveUserScope(scopeKey, mobileClient ? 6_000 : 10_000);
