@@ -86,6 +86,7 @@ TLS: point domain `townpanchayat.com` to EC2; use certbot/Let’s Encrypt. Nginx
    APP_ENV=prod
    NODE_ENV=production
    PORT=5000
+   CANONICAL_PROD_SERVER=1
    LIVE_DATA_ONLY=1
    DISABLE_BOOTSTRAP_CACHE=1
    SLIM_CORE_MASTERS=1

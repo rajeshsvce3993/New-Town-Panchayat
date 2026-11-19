@@ -773,7 +773,9 @@ function safeParseDate(dateStr: any): Date | null {
 
 function toStableMediaSrc(raw: string) {
   if (!raw) return '';
-  if (raw.startsWith('data:image') || raw.startsWith('blob:') || raw.startsWith('/api/media')) return raw;
+  const trimmed = String(raw).trim();
+  if (/^\d+\/api\/media/i.test(trimmed)) return '';
+  if (trimmed.startsWith('data:image') || trimmed.startsWith('blob:') || trimmed.startsWith('/api/media')) return trimmed;
   try {
     let key = raw;
     if (/^https?:\/\//i.test(raw)) {
@@ -1092,13 +1094,7 @@ export default function InspectionReportsView({
       if (!raw || typeof raw !== 'string') return '';
       const trimmed = raw.trim();
       if (!trimmed) return '';
-      if (trimmed.startsWith('inspection/') || trimmed.startsWith('profiles/')) {
-        return toMediaProxyPath(trimmed) || trimmed;
-      }
-      if (trimmed.includes('amazonaws.com') || trimmed.includes('s3.')) {
-        return toMediaProxyPath(trimmed) || trimmed;
-      }
-      return trimmed;
+      return toStableMediaSrc(trimmed) || toMediaProxyPath(trimmed) || trimmed;
     };
 
     // 1. Process Photos in fieldsData first to get specific field names
@@ -3238,13 +3234,20 @@ export default function InspectionReportsView({
     if (
       work &&
       slideWorkFields &&
-      (slideWorkFields.id === work.id || slideWorkFields.workId === work.workId) &&
-      slideWorkFields.fieldsData
+      (slideWorkFields.id === work.id || slideWorkFields.workId === work.workId)
     ) {
-      work = { ...work, fieldsData: slideWorkFields.fieldsData };
+      work = {
+        ...work,
+        ...slideWorkFields,
+        fieldsData: slideWorkFields.fieldsData || work.fieldsData,
+        imageUrl: slideWorkFields.imageUrl || work.imageUrl,
+      };
     }
     if (work) lastSlideWorkRef.current = work;
-    return work || lastSlideWorkRef.current;
+    // Avoid showing the previous slide's work while the next API page is loading.
+    if (work) return work;
+    if (!worksFromApi) return lastSlideWorkRef.current;
+    return null;
   }, [
     worksFromApi,
     filteredWorks,
@@ -3272,6 +3275,8 @@ export default function InspectionReportsView({
   const goToSlideIndex = React.useCallback(
     (nextIndex: number) => {
       const max = Math.max(0, slideRecordTotal - 1);
+      setSlideWorkFields(null);
+      lastSlideWorkRef.current = null;
       setDetailedSlideIndex(Math.min(Math.max(nextIndex, 0), max));
     },
     [slideRecordTotal]
@@ -6127,40 +6132,46 @@ export default function InspectionReportsView({
   }, [isDetailedSlideOpen]);
 
   // Preload adjacent slide photos (current, next 5 slides, and previous 2) into browser cache
+  const resolveWorkAtSlideIndex = React.useCallback(
+    (globalIdx: number) => {
+      const pageSize = REPORTS_SERVER_PAGE_SIZE;
+      if (globalIdx < 0) return null;
+      if (!worksFromApi) return filteredWorks[globalIdx] || null;
+      const page = Math.floor(globalIdx / pageSize) + 1;
+      const local = globalIdx % pageSize;
+      const cached = slidePageCacheRef.current.get(page);
+      if (cached?.[local]) return cached[local];
+      if (page === detailedPage) return filteredWorks[local] || null;
+      return null;
+    },
+    [worksFromApi, filteredWorks, detailedPage]
+  );
+
   useEffect(() => {
-    if (!isDetailedSlideOpen || filteredWorks.length === 0) return;
+    if (!isDetailedSlideOpen) return;
+    const maxIdx = worksFromApi ? slideRecordTotal - 1 : filteredWorks.length - 1;
+    if (maxIdx < 0) return;
     const preloadIndices = [
       detailedSlideIndex,
       detailedSlideIndex + 1,
       detailedSlideIndex + 2,
       detailedSlideIndex + 3,
-      detailedSlideIndex + 4,
-      detailedSlideIndex + 5,
-      detailedSlideIndex + 6,
-      detailedSlideIndex + 7,
-      detailedSlideIndex + 8,
-      detailedSlideIndex + 9,
-      detailedSlideIndex + 10,
       detailedSlideIndex - 1,
       detailedSlideIndex - 2,
-      detailedSlideIndex - 3,
-      detailedSlideIndex - 4,
-      detailedSlideIndex - 5
     ];
-    preloadIndices.forEach(idx => {
-      if (idx >= 0 && idx < filteredWorks.length) {
-        const w = filteredWorks[idx];
-        const photos = getWorkPhotos(w);
-        photos.forEach(p => {
-          if (p.url) {
-            const img = new Image();
-            img.referrerPolicy = 'no-referrer';
-            img.src = p.url;
-          }
-        });
-      }
+    preloadIndices.forEach((idx) => {
+      if (idx < 0 || idx > maxIdx) return;
+      const w = resolveWorkAtSlideIndex(idx);
+      if (!w) return;
+      getWorkPhotos(w).forEach((p) => {
+        if (!p.url) return;
+        const src = toStableMediaSrc(p.url) || p.url;
+        const img = new Image();
+        img.referrerPolicy = 'no-referrer';
+        img.src = src;
+      });
     });
-  }, [isDetailedSlideOpen, detailedSlideIndex, filteredWorks]);
+  }, [isDetailedSlideOpen, detailedSlideIndex, filteredWorks, worksFromApi, slideRecordTotal, resolveWorkAtSlideIndex]);
 
   // Slide-only page cache: walk all filtered records without changing the table page.
   useEffect(() => {
@@ -6190,10 +6201,17 @@ export default function InspectionReportsView({
   ]);
 
   useEffect(() => {
-    if (!isDetailedSlideOpen || !currentSlideWork) return;
-    const fd = currentSlideWork.fieldsData;
-    if (fd && typeof fd === 'object' && Object.keys(fd).length > 0) return;
-    const id = currentSlideWork.id || currentSlideWork.workId;
+    if (!isDetailedSlideOpen) return;
+    const slideWork = currentSlideWork;
+    if (!slideWork) return;
+    const fd = slideWork.fieldsData;
+    const hasFieldPhotos =
+      fd &&
+      typeof fd === 'object' &&
+      Object.keys(fd).length > 0 &&
+      getWorkPhotos(slideWork).length > 0;
+    if (hasFieldPhotos) return;
+    const id = slideWork.id || slideWork.workId;
     if (!id) return;
     let cancelled = false;
     fetch(`/api/inspection-works?lookupId=${encodeURIComponent(String(id))}`, { cache: 'no-store' })
@@ -6201,15 +6219,14 @@ export default function InspectionReportsView({
       .then((json) => {
         if (cancelled) return;
         const work = json?.work;
-        if (work?.fieldsData && typeof work.fieldsData === 'object') {
-          setSlideWorkFields(work);
-        }
+        if (!work) return;
+        setSlideWorkFields(work);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [isDetailedSlideOpen, currentSlideWork]);
+  }, [isDetailedSlideOpen, detailedSlideIndex, currentSlideWork?.id, currentSlideWork?.workId]);
 
   // Inspector profile matching for slide view top header
   const slideInspector = useMemo(() => {
@@ -8520,7 +8537,7 @@ export default function InspectionReportsView({
                                   title={lang === 'ta' ? 'பெரிதாக்க கிளிக் செய்க' : 'Click to preview'}
                                 >
                                   <img 
-                                    src={val} 
+                                    src={toStableMediaSrc(String(val)) || String(val)} 
                                     alt={col.nameEn}
                                     width={16}
                                     height={16}
@@ -8528,7 +8545,8 @@ export default function InspectionReportsView({
                                     onError={(e) => {
                                       if (!e.currentTarget.dataset.retried) {
                                         e.currentTarget.dataset.retried = 'true';
-                                        e.currentTarget.src = toStableMediaSrc(val);
+                                        const proxied = toStableMediaSrc(String(val));
+                                        if (proxied) e.currentTarget.src = proxied;
                                       }
                                     }}
                                   />
@@ -8805,7 +8823,7 @@ export default function InspectionReportsView({
                 <div className="relative rounded-2xl overflow-hidden border border-amber-300 dark:border-amber-700/60 shadow-lg bg-black">
                   <div className="relative">
                     <img
-                      src={selectedWorkModal.imageUrl}
+                      src={toStableMediaSrc(selectedWorkModal.imageUrl) || selectedWorkModal.imageUrl}
                       onError={(e) => {
                         if (!e.currentTarget.dataset.retried && selectedWorkModal.imageUrl) {
                           e.currentTarget.dataset.retried = 'true';
@@ -8888,18 +8906,19 @@ export default function InspectionReportsView({
                         <div key={key} className="col-span-2 relative rounded-2xl overflow-hidden border border-amber-300 dark:border-amber-700/60 shadow-lg bg-black mt-2">
                           <div className="relative">
                             <img
-                              src={val}
+                              src={toStableMediaSrc(String(val)) || String(val)}
                               onError={(e) => {
                                 if (!e.currentTarget.dataset.retried) {
                                   e.currentTarget.dataset.retried = 'true';
-                                  e.currentTarget.src = toStableMediaSrc(val);
+                                  const proxied = toStableMediaSrc(String(val));
+                                  if (proxied) e.currentTarget.src = proxied;
                                 }
                               }}
                               alt={key}
                               className="w-full max-h-80 object-contain bg-slate-950 block"
                             />
                             <a
-                              href={val}
+                              href={toStableMediaSrc(String(val)) || String(val)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="absolute top-3 right-3 bg-black/70 hover:bg-black text-white text-[11px] px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1 transition shadow-md"
@@ -9242,6 +9261,16 @@ export default function InspectionReportsView({
       {/* DETAILED WORK FULLSCREEN SLIDEVIEW (60% PHOTOS / 40% DETAILS)             */}
       {/* ========================================================================= */}
       <AnimatePresence>
+        {isDetailedSlideOpen && !currentSlideWork && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90"
+          >
+            <Loader2 className="h-10 w-10 animate-spin text-amber-400" />
+          </motion.div>
+        )}
         {isDetailedSlideOpen && currentSlideWork && (
           <motion.div
             ref={slideContainerRef}

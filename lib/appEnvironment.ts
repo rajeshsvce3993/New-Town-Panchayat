@@ -48,13 +48,14 @@ export function isLocalDevHost(requestOrigin?: string): boolean {
 }
 
 /**
- * APP_ENV=prod on this laptop → call https://townpanchayat.com (server Mongo).
- * APP_ENV=prod on townpanchayat.com → use that machine's Mongo (no HTTP loop).
+ * APP_ENV=prod on a dev machine (localhost/LAN) → call https://townpanchayat.com.
+ * APP_ENV=prod on townpanchayat.com OR canonical EC2 (`CANONICAL_PROD_SERVER=1`) → local Mongo (no HTTP loop).
  */
 export function shouldUseRemotePortalApi(requestOrigin?: string): boolean {
   if (getAppEnv() !== 'prod') return false;
+  if (process.env.CANONICAL_PROD_SERVER === '1') return false;
   if (isProductionPortalHost(requestOrigin)) return false;
-  return true;
+  return isLocalDevHost(requestOrigin);
 }
 
 /** MongoDB (server-side). */
