@@ -9,6 +9,10 @@ import {
 import { deriveSubmittedDateYmd } from '@/lib/inspectionWorkReportIndex';
 import {
   districtIdsForZone,
+  idVariants,
+  mongoTpScopeOrClause,
+  resolveTpMasterIds,
+  resolveZoneMasterKey,
   tpIdsForDistrict,
   tpIdsForZone,
   wardFilterVariants,
@@ -249,28 +253,28 @@ function buildRollupMatch(
   const scopeZone = filter.tpId || filter.districtId ? null : filter.zoneId || filter.scopeZoneId;
 
   if (scopeTp) {
-    const variants = idVariants(scopeTp);
-    const tp = (masters.townPanchayats || []).find((t) => variants.includes(norm(t.id).toLowerCase()));
-    const ids = [...variants];
-    if (tp?.id) ids.push(norm(tp.id));
-    and.push({ tpId: { $in: [...new Set(ids.filter(Boolean))] } });
+    const tpClause = mongoTpScopeOrClause(resolveTpMasterIds(scopeTp, masters));
+    if (tpClause) and.push(tpClause);
   } else if (scopeDistrict) {
     const variants = idVariants(scopeDistrict);
     const tpIds = tpIdsForDistrict(scopeDistrict, masters);
     const dist = (masters.districts || []).find((d) => variants.includes(norm(d.id).toLowerCase()));
     const or: Record<string, unknown>[] = [{ districtId: { $in: variants } }];
     if (dist?.id) or.push({ districtId: dist.id });
-    if (tpIds.length) or.push({ tpId: { $in: tpIds } });
+    if (tpIds.length) {
+      const tpClause = mongoTpScopeOrClause(tpIds);
+      if (tpClause) or.push(tpClause);
+    }
     and.push({ $or: or });
   } else if (scopeZone) {
     const districtIds = districtIdsForZone(scopeZone, masters);
     const tpIds = tpIdsForZone(scopeZone, masters);
-    const zone = (masters.zones || []).find((z) => idVariants(scopeZone).includes(norm(z.id).toLowerCase()));
-    const zoneIds = [...idVariants(scopeZone)];
-    if (zone?.id) zoneIds.push(norm(zone.id));
-    const or: Record<string, unknown>[] = [{ zoneId: { $in: [...new Set(zoneIds.filter(Boolean))] } }];
+    const zoneKey = resolveZoneMasterKey(scopeZone, masters);
+    const zoneIds = [...new Set([...idVariants(scopeZone), ...idVariants(zoneKey)].filter(Boolean))];
+    const or: Record<string, unknown>[] = [{ zoneId: { $in: zoneIds } }];
     if (districtIds.length) or.push({ districtId: { $in: districtIds } });
-    if (tpIds.length) or.push({ tpId: { $in: tpIds } });
+    const tpClause = tpIds.length ? mongoTpScopeOrClause(tpIds) : null;
+    if (tpClause) or.push(tpClause);
     and.push({ $or: or });
   }
 

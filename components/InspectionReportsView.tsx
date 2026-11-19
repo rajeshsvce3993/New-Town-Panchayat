@@ -1337,8 +1337,9 @@ export default function InspectionReportsView({
   const [selectedTpId, setSelectedTpId] = useState<string>('all');
   const [selectedWard, setSelectedWard] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [fromDate, setFromDate] = useState<string>(() => getTodayYmd());
-  const [toDate, setToDate] = useState<string>(() => getTodayYmd());
+  /** Empty = all time (same as dashboard KPIs); today-only hid historical rows for scoped users. */
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
 
   // Admin dynamic field filter states
   const [adminFilterFieldId, setAdminFilterFieldId] = useState<string>('');
@@ -1861,9 +1862,20 @@ export default function InspectionReportsView({
     (extra?: { countsOnly?: boolean; rowsOnly?: boolean; reportsBundle?: boolean; page?: number; pageSize?: number }) => {
       const p = filterQueryRef.current;
       const qParams = new URLSearchParams();
-      if (p.fromDate) qParams.set('fromDate', p.fromDate);
-      if (p.toDate) qParams.set('toDate', p.toDate);
-      if (!p.fromDate && !p.toDate) qParams.set('allTime', '1');
+      const today = getTodayYmd();
+      const scopedReportsUser =
+        !isAdminOrDirector && !!(p.scopeTpId || p.scopeZoneId || p.scopeDistrictId);
+      // Scoped users: dashboard KPIs are all-time; "today only" often shows 0 in one TP/zone while admin (statewide) still sees rows.
+      const useAllTimeForScoped =
+        scopedReportsUser &&
+        (!p.fromDate || !p.toDate || (p.fromDate === today && p.toDate === today));
+      if (useAllTimeForScoped) {
+        qParams.set('allTime', '1');
+      } else {
+        if (p.fromDate) qParams.set('fromDate', p.fromDate);
+        if (p.toDate) qParams.set('toDate', p.toDate);
+        if (!p.fromDate && !p.toDate) qParams.set('allTime', '1');
+      }
       const allowUiGeoDrill = isAdminOrDirector;
       if (allowUiGeoDrill && p.selectedTpId && p.selectedTpId !== 'all') {
         qParams.set('tpId', p.selectedTpId);
@@ -2170,8 +2182,8 @@ export default function InspectionReportsView({
     setSearchQuery('');
     setAdminFilterFieldId('');
     setAdminFilterValue('');
-    setFromDate(getTodayYmd());
-    setToDate(getTodayYmd());
+    setFromDate('');
+    setToDate('');
     setUserCols({ subject: false, category: false });
     setLocCols({
       district: false,
@@ -2214,14 +2226,10 @@ export default function InspectionReportsView({
       const nextSubject = String(selectedSubjectId).toLowerCase() === String(swmSubjectId).toLowerCase() ? 'all' : selectedSubjectId;
       setSelectedSubjectId(nextSubject);
       if (nextSubject === 'all') setSelectedCategoryId('all');
-      setFromDate(getTodayYmd());
-      setToDate(getTodayYmd());
       filterQueryRef.current = {
         ...filterQueryRef.current,
         selectedSubjectId: nextSubject,
         selectedCategoryId: nextSubject === 'all' ? 'all' : filterQueryRef.current.selectedCategoryId,
-        fromDate: getTodayYmd(),
-        toDate: getTodayYmd(),
       };
     }
     queueMicrotask(() => applyFiltersAndLoad());
@@ -2302,6 +2310,16 @@ export default function InspectionReportsView({
     if (userDistrictId) setSelectedDistrictId(userDistrictId);
     if (userTpId) setSelectedTpId(userTpId);
   }, [userZoneId, userDistrictId, userTpId]);
+
+  // Non-admin: align report date window with dashboard (all-time), not legacy "today" default.
+  useEffect(() => {
+    if (isAdminOrDirector) return;
+    const today = getTodayYmd();
+    if (fromDate === today && toDate === today) {
+      setFromDate('');
+      setToDate('');
+    }
+  }, [isAdminOrDirector, fromDate, toDate]);
 
   const embedInitialLoadDoneRef = React.useRef(false);
 

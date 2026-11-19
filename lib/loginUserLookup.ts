@@ -23,11 +23,13 @@ export async function findUserForLogin(
   const empCol = db.collection('employees');
 
   const findIndexed = async () => {
-    if (isPhone && opts.mobileClient) {
+    if (isPhone) {
       const byMobile = await usersCol.findOne({ mobile: cleanUsername }, hint);
       if (byMobile) return { userDoc: byMobile, sourceCollection: 'users' as const };
       const byPhone = await usersCol.findOne({ phone: cleanUsername }, hint);
       if (byPhone) return { userDoc: byPhone, sourceCollection: 'users' as const };
+      const byMobileUser = await usersCol.findOne({ username: cleanUsername }, hint);
+      if (byMobileUser) return { userDoc: byMobileUser, sourceCollection: 'users' as const };
     }
     if (usernameVariants.length) {
       const byUser = await usersCol.findOne({ username: { $in: usernameVariants } }, hint);

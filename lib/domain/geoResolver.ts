@@ -256,11 +256,42 @@ export async function resolveGeoForPortalUser(db: Db, user: any): Promise<Resolv
     };
   }
 
+  if (st === 'multi_tp' && Array.isArray(user.selectedTpIds) && user.selectedTpIds.length > 1) {
+    const districtLookup = await matchGeoEntity(
+      db,
+      normId(user.districtId || user.scopeId || user.district || user.districtName),
+    );
+    const distRow =
+      districtLookup?.kind === 'district'
+        ? districtLookup.row
+        : await db.collection('districts').findOne(
+            { $or: [{ id: normId(user.districtId) }, { nameEn: normId(user.district) }] },
+            { maxTimeMS: 3000, projection: { _id: 0, id: 1, nameEn: 1, nameTa: 1, code: 1, zoneId: 1 } },
+          );
+    const districtId = normId((distRow as any)?.id) || normId(user.districtId);
+    let zoneId = normId((distRow as any)?.zoneId) || normId(user.zoneId);
+    if (!zoneId) {
+      const z = await matchGeoEntity(db, normId(user.zone || user.zoneNameEn));
+      if (z?.kind === 'zone') zoneId = normId(z.row.id);
+    }
+    return {
+      ...emptyResolved(distRow ? [] : ['district']),
+      districtId,
+      districtNameEn: normId((distRow as any)?.nameEn),
+      districtNameTa: normId((distRow as any)?.nameTa),
+      districtCode: normId((distRow as any)?.code),
+      zoneId,
+      scopeType: 'District',
+      scopeId: districtId || scopeKey,
+      portalScope: { tpId: null, districtId: districtId || null, zoneId: zoneId || null },
+    };
+  }
+
   const tpKey = normId(
     user.tpId ||
       user.townPanchayatId ||
       user.assignedTpId ||
-      (st === 'single_tp' || st === 'townpanchayat' || st === 'multi_tp' || st === 'tp' ? scopeKey : '') ||
+      (st === 'single_tp' || st === 'townpanchayat' || st === 'tp' ? scopeKey : '') ||
       user.townPanchayat ||
       user.tpName,
   );

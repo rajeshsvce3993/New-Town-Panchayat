@@ -121,6 +121,31 @@ export function getPortalFilterScopeIds(
   const districts = masters.districts || [];
   const zones = masters.zones || [];
 
+  const st = scopeTypeKey(scoped.scopeType);
+  if (
+    st === 'multi_tp' &&
+    Array.isArray(scoped.selectedTpIds) &&
+    scoped.selectedTpIds.length > 1
+  ) {
+    const districtId =
+      scoped.districtId && scoped.districtId !== 'all'
+        ? String(scoped.districtId)
+        : (() => {
+            const firstTp = tps.find((t) =>
+              scoped.selectedTpIds.some(
+                (sel: string) => String(t.id).toLowerCase() === String(sel).toLowerCase(),
+              ),
+            );
+            return firstTp?.districtId ? String(firstTp.districtId) : null;
+          })();
+    let zoneId = scoped.zoneId && scoped.zoneId !== 'all' ? String(scoped.zoneId) : null;
+    if (!zoneId && districtId) {
+      const dist = districts.find((d) => String(d.id).toLowerCase() === String(districtId).toLowerCase());
+      if (dist?.zoneId) zoneId = String(dist.zoneId);
+    }
+    return { tpId: null, districtId, zoneId };
+  }
+
   if (isZonalScopedUser(scoped)) {
     const rawZone =
       (scoped.zoneId && scoped.zoneId !== 'all' ? scoped.zoneId : null) ||

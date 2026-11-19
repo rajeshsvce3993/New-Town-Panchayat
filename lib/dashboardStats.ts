@@ -1,4 +1,4 @@
-import { tpIdsForDistrict, tpIdsForZone } from '@/lib/inspectionWorksMongoRepository';
+import { resolveTpMasterIds, tpIdsForDistrict, tpIdsForZone } from '@/lib/inspectionWorksMongoRepository';
 import { resolveInspectionFilterMasters } from '@/lib/inspectionWorksFilterMastersServer';
 import { queryInspectionWorkReportRollupGrandTotal } from '@/lib/inspectionWorkReportRollups';
 import { aggregateSwmTotals } from '@/lib/swmReportsAggregate';
@@ -47,7 +47,7 @@ function cacheKey(origin: string, filter: InspectionWorksFilterQuery) {
 
 function scopedTpIds(filter: InspectionWorksFilterQuery, masters: Awaited<ReturnType<typeof resolveInspectionFilterMasters>>) {
   const tpId = String(filter.tpId || filter.scopeTpId || '').trim();
-  if (tpId) return [tpId];
+  if (tpId) return resolveTpMasterIds(tpId, masters);
   const districtId = String(filter.districtId || filter.scopeDistrictId || '').trim();
   if (districtId) return tpIdsForDistrict(districtId, masters);
   const zoneId = String(filter.zoneId || filter.scopeZoneId || '').trim();
