@@ -47,10 +47,47 @@ export function extractS3ObjectKey(raw: string): string {
   return s;
 }
 
+/** Web-safe `/api/media?…` — fixes `/1/api/media`, `api/media` (no slash), and bad full URLs. */
+export function rootMediaProxyUrl(raw: string): string {
+  const val = String(raw || '').trim();
+  if (!val) return '';
+  if (val.startsWith('data:') || val.startsWith('blob:')) return val;
+  if (val.startsWith('/uploads')) return val;
+
+  const pickProxy = (pathAndQuery: string) => {
+    const p = pathAndQuery.replace(/^\/+\d+\//, '/');
+    if (p.startsWith('/api/media')) return p.split('#')[0];
+    return '';
+  };
+
+  if (val.startsWith('/api/media')) return val.split('#')[0];
+  if (val.startsWith('api/media')) return `/${val.split('#')[0]}`;
+
+  const fromPath = val.match(/(\/+\d+\/api\/media\?[^#\s]*)|(\/api\/media\?[^#\s]*)/i);
+  if (fromPath) {
+    const hit = fromPath[1] || fromPath[2];
+    const fixed = pickProxy(hit.startsWith('/') ? hit : `/${hit}`);
+    if (fixed) return fixed;
+  }
+
+  if (/^https?:\/\//i.test(val)) {
+    try {
+      const u = new URL(val);
+      const fixed = pickProxy(`${u.pathname}${u.search}`);
+      if (fixed) return fixed;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  return '';
+}
+
 export function toMediaProxyPath(rawUrlOrKey: string): string {
   if (!rawUrlOrKey || typeof rawUrlOrKey !== 'string') return '';
+  const rooted = rootMediaProxyUrl(rawUrlOrKey);
+  if (rooted) return rooted;
   if (rawUrlOrKey.startsWith('data:image') || rawUrlOrKey.startsWith('blob:')) return rawUrlOrKey;
-  if (rawUrlOrKey.startsWith('/api/media')) return rawUrlOrKey;
   if (rawUrlOrKey.startsWith('/uploads')) return rawUrlOrKey;
 
   const key = extractS3ObjectKey(rawUrlOrKey);
@@ -88,6 +125,9 @@ export function normalizePortalMediaValue(raw: string, origin?: string): string 
   if (val.startsWith('/uploads')) {
     return origin ? `${origin}${val}` : val;
   }
+  const rooted = rootMediaProxyUrl(val);
+  if (rooted) return origin ? `${origin}${rooted}` : rooted;
+
   const proxied = toMediaProxyPath(val);
   if (proxied) {
     if (origin && proxied.startsWith('/')) return `${origin}${proxied}`;
@@ -98,7 +138,6 @@ export function normalizePortalMediaValue(raw: string, origin?: string): string 
     if (origin && p.startsWith('/')) return `${origin}${p}`;
     return p;
   }
-  if (origin && val.startsWith('/api/media')) return `${origin}${val}`;
   return val;
 }
 
@@ -115,6 +154,7 @@ export function rewriteWorkMediaFields(work: any, origin?: string): any {
       if (
         v.includes('s3.') ||
         v.includes('amazonaws.com') ||
+        v.includes('/api/media') ||
         v.includes('inspection/') ||
         v.includes('profiles/') ||
         v.includes('X-Amz-Signature') ||

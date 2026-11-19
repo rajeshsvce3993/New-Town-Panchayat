@@ -46,7 +46,7 @@ import ThemeSelect from './ThemeSelect';
 import dynamic from 'next/dynamic';
 import { Language, translations } from './translations';
 import { ThemeType, themesConfig } from '@/lib/themeConfig';
-import { isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
+import { getPortalFilterScopeIds, isHodLikeUser, isZonalScopedUser } from '@/lib/userScope';
 import {
   isFallbackInspectionWork,
   workMatchesDistrict,
@@ -103,6 +103,19 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
 
   const hodLike = isHodLikeUser(currentUser);
 
+  const portalScope = useMemo(
+    () =>
+      getPortalFilterScopeIds(currentUser, {
+        townPanchayats,
+        districts,
+        zones,
+      }),
+    [currentUser, townPanchayats, districts, zones],
+  );
+  const userTpId = portalScope.tpId;
+  const userDistrictId = portalScope.districtId;
+  const userZoneId = portalScope.zoneId;
+
   const getTPZoneId = (tp: any) => {
     if (!tp) return '';
     if (tp.zoneId) return tp.zoneId;
@@ -116,12 +129,15 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   const allIssues = state?.pendingIssues || [];
   const scopedIssues = hodLike
     ? allIssues
-    : currentUser?.scopeType === 'Zone'
+    : isZonalScopedUser(currentUser)
       ? allIssues.filter((i: any) => {
           const tp = townPanchayats.find((t: any) => t.id === i.townPanchayatId);
-          return tp && getTPZoneId(tp) === currentUser?.scopeId;
+          const zoneKey = String(userZoneId || currentUser?.scopeId || '').toLowerCase();
+          return tp && String(getTPZoneId(tp) || '').toLowerCase() === zoneKey;
         })
-      : allIssues.filter((i: any) => i.townPanchayatId === currentUser?.scopeId);
+      : userTpId
+        ? allIssues.filter((i: any) => String(i.townPanchayatId || '').toLowerCase() === String(userTpId).toLowerCase())
+        : allIssues;
 
   const DEFAULT_ISSUE_CATEGORIES = [
     { 
@@ -1050,41 +1066,6 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSlideIndex, isSlideViewActive, sortedIssues]);
 
-  // Scoped inspection calculations for dashboard card
-  const userZoneId = useMemo(() => {
-    if (!currentUser || hodLike) return null;
-    if (currentUser.scopeType === 'Zone') {
-      return currentUser.scopeId;
-    }
-    if (currentUser.scopeType === 'TownPanchayat' || currentUser.isEmployee) {
-      const tpId = currentUser.tpId || currentUser.scopeId;
-      const tpObj = (townPanchayats || []).find((t: any) => t.id === tpId);
-      if (tpObj) {
-        const distObj = (districts || []).find((d: any) => d.id === tpObj.districtId);
-        return distObj?.zoneId || null;
-      }
-    }
-    return null;
-  }, [currentUser, hodLike, townPanchayats, districts]);
-
-  const userDistrictId = useMemo(() => {
-    if (!currentUser || hodLike) return null;
-    if (currentUser.scopeType === 'TownPanchayat' || currentUser.isEmployee) {
-      const tpId = currentUser.tpId || currentUser.scopeId;
-      const tpObj = (townPanchayats || []).find((t: any) => t.id === tpId);
-      return tpObj?.districtId || null;
-    }
-    return null;
-  }, [currentUser, hodLike, townPanchayats]);
-
-  const userTpId = useMemo(() => {
-    if (!currentUser || hodLike) return null;
-    if (currentUser.scopeType === 'TownPanchayat' || currentUser.isEmployee) {
-      return currentUser.tpId || currentUser.scopeId;
-    }
-    return null;
-  }, [currentUser, hodLike]);
-
   const dashboardAbstractData = useMemo(() => {
     const subjectsMap: Record<string, {
       subjectId: string;
@@ -1305,9 +1286,13 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
 
   const scopedDashboardTps = hodLike
     ? townPanchayats
-    : currentUser?.scopeType === 'Zone'
-      ? townPanchayats.filter((tp: any) => getTPZoneId(tp) === currentUser.scopeId)
-      : townPanchayats.filter((tp: any) => tp.id === currentUser?.scopeId);
+    : isZonalScopedUser(currentUser) && userZoneId
+      ? townPanchayats.filter(
+          (tp: any) => String(getTPZoneId(tp) || '').toLowerCase() === String(userZoneId).toLowerCase(),
+        )
+      : userTpId
+        ? townPanchayats.filter((tp: any) => String(tp.id).toLowerCase() === String(userTpId).toLowerCase())
+        : townPanchayats;
 
   const fetchDashboardStats = useCallback(async (module: 'inspection' | 'swm' | 'all' = 'inspection') => {
     const params = new URLSearchParams();

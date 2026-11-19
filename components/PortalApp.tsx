@@ -814,23 +814,15 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: loginUsername, password: loginPassword })
+        headers: { 'Content-Type': 'application/json', 'X-Client': 'web' },
+        body: JSON.stringify({ username: loginUsername, password: loginPassword, client: 'web' })
       });
       const data = await res.json();
       if (data.success && data.user) {
-        // Allow all users & employees to log in to the webapp, except field inspection users
-        const isInspectionUser = data.user.isInspectionUser || 
-                                 (data.user.roleId && data.user.roleId.toLowerCase().includes('inspect')) ||
-                                 (data.user.role && data.user.role.toLowerCase().includes('inspect'));
-        if (isInspectionUser) {
-          setLoginError(lang === 'ta' ? 'அனுமதி மறுக்கப்பட்டது: கள ஆய்வுப் பயனர்கள் இணையதளத்தில் உள்நுழைய அனுமதியில்லை.' : 'Access Denied: Field inspection users are not permitted to log in to the webapp.');
-          return;
-        }
-
-        setCurrentUser(data.user);
-        localStorage.setItem('ems_current_user', JSON.stringify(data.user));
-        if (data.user.isEmployee) {
+        const sessionUser = normalizePortalSessionUser(data.user);
+        setCurrentUser(sessionUser);
+        localStorage.setItem('ems_current_user', JSON.stringify(sessionUser));
+        if (sessionUser.isEmployee) {
           setActiveTab('employeeManagement');
         } else {
           setActiveTab('dashboard');
@@ -906,10 +898,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     { id: 'userSettings', label: t('userSettings'), navLabel: nav('Profile', 'சுயவிவரம்'), icon: UserCircle, view: UserSettingsView }
   ];
 
-  let userRole = (currentUser.roleId || currentUser.role || '').toLowerCase();
-  if (!currentUser.isEmployee && (userRole === 'officer' || userRole === 'field inspector' || !userRole)) {
-    userRole = 'admin'; // Self-healing fallback for web portal administrative sessions
-  }
+  const userRole = (currentUser.roleId || currentUser.role || '').toLowerCase();
   const activeMenuItems = (currentUser.isEmployee ? employeeMenuItems : adminMenuItems)
     .filter(item => allowedPageIds.includes(item.id) || (item.id === 'reportShareSettings' && userRole.includes('admin')))
     .filter((item) => {

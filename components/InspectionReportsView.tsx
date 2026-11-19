@@ -91,7 +91,7 @@ import { isNoAnswer, isYesAnswer } from '@/lib/yesNoAnswer';
 import MapViewReport from './MapViewReport';
 import ThemeSelect from './ThemeSelect';
 import { buildInspectionSlidesFile, renderInspectionSlideJpeg } from '@/lib/buildInspectionSlideDeck';
-import { toMediaProxyPath } from '@/lib/s3MediaKey';
+import { rootMediaProxyUrl, toMediaProxyPath } from '@/lib/s3MediaKey';
 
 export function formatIndianTime(dateStr: any): string {
   if (!dateStr) return '-';
@@ -773,13 +773,14 @@ function safeParseDate(dateStr: any): Date | null {
 
 function toStableMediaSrc(raw: string) {
   if (!raw) return '';
+  const rooted = rootMediaProxyUrl(raw);
+  if (rooted) return rooted;
   const trimmed = String(raw).trim();
-  if (/^\d+\/api\/media/i.test(trimmed)) return '';
-  if (trimmed.startsWith('data:image') || trimmed.startsWith('blob:') || trimmed.startsWith('/api/media')) return trimmed;
+  if (trimmed.startsWith('data:image') || trimmed.startsWith('blob:')) return trimmed;
   try {
-    let key = raw;
-    if (/^https?:\/\//i.test(raw)) {
-      key = new URL(raw).pathname.replace(/^\//, '');
+    let key = trimmed;
+    if (/^https?:\/\//i.test(trimmed)) {
+      key = new URL(trimmed).pathname.replace(/^\//, '');
     }
     key = key.split('?')[0];
     const cut = key.indexOf('inspection/');
@@ -791,7 +792,7 @@ function toStableMediaSrc(raw: string) {
   } catch {
     /* fall through */
   }
-  return `/api/media?url=${encodeURIComponent(raw.split('?')[0])}`;
+  return `/api/media?url=${encodeURIComponent(trimmed.split('?')[0])}`;
 }
 
 // Slide Photo component with eager rendering, loading shimmer, and instant proxy fallback

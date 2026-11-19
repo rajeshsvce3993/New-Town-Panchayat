@@ -45,23 +45,11 @@ export default function Home() {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: loginUsername, password: loginPassword }),
+        headers: { 'Content-Type': 'application/json', 'X-Client': 'web' },
+        body: JSON.stringify({ username: loginUsername, password: loginPassword, client: 'web' }),
       });
       const data = await res.json();
       if (data.success && data.user) {
-        const isInspectionUser =
-          data.user.isInspectionUser ||
-          (data.user.roleId && String(data.user.roleId).toLowerCase().includes('inspect')) ||
-          (data.user.role && String(data.user.role).toLowerCase().includes('inspect'));
-        if (isInspectionUser) {
-          setLoginError(
-            lang === 'ta'
-              ? 'அனுமதி மறுக்கப்பட்டது: கள ஆய்வுப் பயனர்கள் இணையதளத்தில் உள்நுழைய அனுமதியில்லை.'
-              : 'Access Denied: Field inspection users are not permitted to log in to the webapp.'
-          );
-          return;
-        }
         const sessionUser = normalizePortalSessionUser(data.user);
         localStorage.setItem('ems_current_user', JSON.stringify(sessionUser));
         void import('@/lib/portalBootstrapClient').then(({ loadPortalBootstrap }) => loadPortalBootstrap());

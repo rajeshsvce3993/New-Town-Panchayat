@@ -5,8 +5,9 @@ import { buildLiveUserScope, isLiveDataOnly } from '@/lib/services/liveUserScope
 import { recordUserLogin } from '@/lib/userActivity';
 import { logServerProcess } from '@/lib/serverLogger';
 import { postRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
-import { isHodLikeUser } from '@/lib/userScope';
+import { isHodLikeUser, normalizePortalSessionUser, normalizePortalUserScope } from '@/lib/userScope';
 import { isMobileClientRequest, mobileLoginDeniedMessage, userMayUseMobileApp } from '@/lib/mobileAppAuth';
+import { isWebPortalClientRequest } from '@/lib/portalWebAuth';
 import { getUserScopeDetailsForLogin, getUserScopeFromCacheOnly } from '@/lib/userScopeCache';
 import { findUserForLogin } from '@/lib/loginUserLookup';
 
@@ -36,10 +37,11 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
   try {
     const body = await parseLoginBody(req);
-    const username = body.username;
+    const username = String(body.username ?? '').trim();
     const password = body.password;
-    const cleanUsername = (username || '').trim().toLowerCase();
+    const cleanUsername = username.toLowerCase();
     const mobileClient = isMobileClientRequest(req, body);
+    const webPortal = isWebPortalClientRequest(req, body);
     const preferTamil = String(req.headers.get('x-app-language') || body?.language || '')
       .toLowerCase()
       .startsWith('ta');
@@ -53,9 +55,13 @@ export async function POST(req: NextRequest) {
 
     // Dev / thin client: authenticate only against live portal (server MongoDB), never local cache.
     if (shouldUseRemotePortalApi(req.nextUrl.origin)) {
-      const forwardBody = { username, password, ...(mobileClient ? { client: 'mobile' } : {}) };
+      const forwardBody = {
+        username,
+        password,
+        client: mobileClient ? 'mobile' : webPortal ? 'web' : undefined,
+      };
       const { status, data } = await postRemotePortalJson('/api/auth/login', req.nextUrl.origin, forwardBody, 60000, {
-        'X-Client': mobileClient ? 'mobile' : req.headers.get('x-client') || '',
+        'X-Client': mobileClient ? 'mobile' : webPortal ? 'web' : req.headers.get('x-client') || '',
         'X-App-Version': req.headers.get('x-app-version') || '',
         'X-App-Build': req.headers.get('x-app-build') || '',
         'X-App-Language': req.headers.get('x-app-language') || '',
@@ -99,10 +105,18 @@ export async function POST(req: NextRequest) {
         getCollectionData('inspectionUsers'),
         getCollectionData('employees'),
       ]);
-      const allUsers = [...(inspectionUsers || []), ...(users || []), ...(employees || [])];
-      userDoc = allUsers.find((u: any) => (u.username || '').trim().toLowerCase() === cleanUsername);
+      const portalUser = (users || []).find(
+        (u: any) => (u.username || '').trim().toLowerCase() === cleanUsername,
+      );
+      const empUser = (employees || []).find(
+        (u: any) => (u.username || '').trim().toLowerCase() === cleanUsername,
+      );
+      const inspUser = (inspectionUsers || []).find(
+        (u: any) => (u.username || '').trim().toLowerCase() === cleanUsername,
+      );
+      userDoc = portalUser || empUser || inspUser;
       if (userDoc) {
-        sourceCollection = 'localFallback';
+        sourceCollection = portalUser ? 'users' : empUser ? 'employees' : 'inspectionUsers';
       }
     }
 
@@ -177,7 +191,7 @@ export async function POST(req: NextRequest) {
     }
 
     let resolvedGeo: Awaited<ReturnType<typeof resolveGeoForUser>> | null = null;
-    if (mongoDb && sourceCollection === 'inspectionUsers') {
+    if (mongoDb && (sourceCollection === 'inspectionUsers' || sourceCollection === 'users')) {
       resolvedGeo = await resolveGeoForUser(mongoDb, userDoc);
     }
 
@@ -258,7 +272,7 @@ export async function POST(req: NextRequest) {
       profilePhotoUrl: signedPhoto,
       avatarUrl: signedPhoto,
       status: userDoc.status || 'active',
-      isInspectionUser: sourceCollection === 'inspectionUsers' || userDoc.isInspectionUser === true,
+      isInspectionUser: !webPortal && (sourceCollection === 'inspectionUsers' || userDoc.isInspectionUser === true),
       customPagePermissions: userDoc.customPagePermissions || null,
     };
 
@@ -267,7 +281,11 @@ export async function POST(req: NextRequest) {
       returnUser.scopeId = 'all';
     }
 
-    if (mobileClient && !userMayUseMobileApp(returnUser, sourceCollection)) {
+    const sessionUser = webPortal
+      ? normalizePortalSessionUser(returnUser)
+      : normalizePortalUserScope(returnUser);
+
+    if (mobileClient && !userMayUseMobileApp(sessionUser, sourceCollection)) {
       logServerProcess({
         category: 'LOGIN',
         action: 'LOGIN_MOBILE_DENIED',
@@ -284,7 +302,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    void recordUserLogin(returnUser, req).catch((err) => {
+    void recordUserLogin(sessionUser, req).catch((err) => {
       console.error('[LOGIN] Error in recordUserLogin:', err);
     });
 
@@ -295,7 +313,7 @@ export async function POST(req: NextRequest) {
       {
         success: true,
         token: `auth_jwt_${Date.now()}_${cleanUsername}`,
-        user: returnUser,
+        user: sessionUser,
         userScope: userScope || null,
         scopeVersion: userScope?.scopeVersion || 1,
         message: 'Login successful',

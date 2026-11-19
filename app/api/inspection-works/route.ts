@@ -659,6 +659,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const origin = requestOrigin;
     const toObfuscatedProxyUrl = (rawUrlOrKey: string): string => toMediaProxyPath(rawUrlOrKey);
 
     const normalizedWorks = await Promise.all(filtered.map(async (w: any) => {
