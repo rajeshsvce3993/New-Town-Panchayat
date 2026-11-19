@@ -10,8 +10,9 @@ module.exports = {
       name: 'townpan',
       script: 'server.js',
       cwd: __dirname,
-      instances: 1,
-      exec_mode: 'fork',
+      // Two workers share the listen backlog under mobile spike (needs ~2× RAM vs single fork).
+      instances: 2,
+      exec_mode: 'cluster',
       env: {
         NODE_ENV: 'production',
         PORT: '5000',

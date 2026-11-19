@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  getUserScopeDetails,
   getUserScopeDetailsForLogin,
   getUserScopeFromCacheOnly,
 } from '@/lib/userScopeCache';
@@ -37,7 +38,11 @@ export async function GET(req: NextRequest) {
     const mobileClient = isMobileClientRequest(req);
     let scope = await getUserScopeFromCacheOnly(identifier);
     if (!scope) {
-      scope = await getUserScopeDetailsForLogin(identifier, mobileClient ? 12_000 : 20_000);
+      // Cap build time for all clients so post-login scope fetch does not pile onto :5000 under load.
+      scope = await getUserScopeDetailsForLogin(identifier, mobileClient ? 8_000 : 12_000);
+      if (!scope) {
+        void getUserScopeDetails(identifier).catch(() => {});
+      }
     }
 
     if (!scope) {
