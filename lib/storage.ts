@@ -1261,6 +1261,8 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
       db.collection('users').createIndex({ phone: 1 }, { background: true }),
       db.collection('user_scope_cache').createIndex({ username: 1 }, { background: true }),
       db.collection('user_scope_cache').createIndex({ userId: 1 }, { background: true }),
+      db.collection('portal_bootstrap_cache').createIndex({ username: 1, todayOnly: 1 }, { unique: true, background: true }),
+      db.collection('portal_bootstrap_cache').createIndex({ builtAt: -1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ workId: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ submittedAt: -1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ submittedAt: -1, createdAt: -1 }, { background: true }),
@@ -1702,24 +1704,52 @@ export function enrichUserForApp(user: any, masters?: any): any {
   );
   const resolvedTpId = matchedTp ? matchedTp.id : (user.tpId || user.townPanchayatId || rawTp || '');
 
-  const rawDist = user.districtId || user.district || matchedTp?.districtId || '';
-  const rawDistStr = String(rawDist).trim().toLowerCase();
-  const matchedDist = districts.find((d: any) =>
-    String(d.id || '').toLowerCase() === rawDistStr ||
-    String(d._id || '').toLowerCase() === rawDistStr ||
-    geoNamesEqual(d.nameEn, rawDist) ||
-    geoNamesEqual(d.nameTa, rawDist)
-  );
-  const resolvedDistId = matchedDist ? matchedDist.id : (user.districtId || rawDist || '');
+  const findDistrict = (rawDist: string) => {
+    const rawDistStr = String(rawDist || '').trim().toLowerCase();
+    if (!rawDistStr) return null;
+    return (
+      districts.find((d: any) =>
+        String(d.id || '').toLowerCase() === rawDistStr ||
+        String(d._id || '').toLowerCase() === rawDistStr ||
+        geoNamesEqual(d.nameEn, rawDist) ||
+        geoNamesEqual(d.nameTa, rawDist),
+      ) || null
+    );
+  };
 
-  const rawZone = user.zoneId || user.zone || matchedDist?.zoneId || matchedTp?.zoneId || '';
-  const rawZoneStr = String(rawZone).trim().toLowerCase();
-  const matchedZone = zones.find((z: any) =>
-    String(z.id || '').toLowerCase() === rawZoneStr ||
-    String(z._id || '').toLowerCase() === rawZoneStr ||
-    String(z.nameEn || '').toLowerCase() === rawZoneStr ||
-    String(z.nameTa || '').toLowerCase() === rawZoneStr
-  );
+  // Town Panchayat master is authoritative for district/zone (avoids stale user.district e.g. Kanchipuram on Erode TP).
+  let matchedDist: any = null;
+  let resolvedDistId = '';
+  if (matchedTp?.districtId) {
+    resolvedDistId = String(matchedTp.districtId).trim();
+    matchedDist = findDistrict(resolvedDistId);
+  }
+  if (!matchedDist) {
+    const rawDist = user.districtId || user.district || matchedTp?.districtId || '';
+    matchedDist = findDistrict(String(rawDist));
+    resolvedDistId = matchedDist ? matchedDist.id : String(user.districtId || rawDist || '').trim();
+  }
+
+  let matchedZone: any = null;
+  const zoneCandidates = [
+    matchedTp?.zoneId,
+    matchedDist?.zoneId,
+    user.zoneId,
+    user.zone,
+  ]
+    .map((z) => String(z || '').trim())
+    .filter(Boolean);
+  for (const cand of zoneCandidates) {
+    const rawZoneStr = cand.toLowerCase();
+    matchedZone = zones.find(
+      (z: any) =>
+        String(z.id || '').toLowerCase() === rawZoneStr ||
+        String(z._id || '').toLowerCase() === rawZoneStr ||
+        geoNamesEqual(z.nameEn, cand) ||
+        geoNamesEqual(z.nameTa, cand),
+    );
+    if (matchedZone) break;
+  }
 
   const roleId = user.roleId || user.role || '';
   const matchedRole = roles.find((r: any) => r.id === roleId || r.code === roleId);
@@ -1904,11 +1934,21 @@ export function enrichUserForApp(user: any, masters?: any): any {
   const tpNameEn = matchedTp?.nameEn || user.townPanchayat || 'Thiruporur TP';
   const tpNameTa = matchedTp?.nameTa || user.townPanchayatTa || 'திருப்போரூர் பேரூராட்சி';
 
-  const distNameEn = matchedDist?.nameEn || user.district || 'Chengalpattu';
-  const distNameTa = matchedDist?.nameTa || user.districtTa || 'செங்கல்பட்டு';
+  const distNameEn =
+    matchedDist?.nameEn ||
+    matchedTp?.districtNameEn ||
+    user.district ||
+    (matchedTp ? '' : 'Chengalpattu');
+  const distNameTa =
+    matchedDist?.nameTa ||
+    matchedTp?.districtNameTa ||
+    user.districtTa ||
+    (matchedTp ? '' : 'செங்கல்பட்டு');
 
-  const zoneNameEn = matchedZone?.nameEn || user.zone || 'Kanchipuram';
-  const zoneNameTa = matchedZone?.nameTa || user.zoneTa || 'காஞ்சிபுரம்';
+  const zoneNameEn =
+    matchedZone?.nameEn || matchedTp?.zoneNameEn || user.zone || (matchedTp ? '' : 'Kanchipuram');
+  const zoneNameTa =
+    matchedZone?.nameTa || matchedTp?.zoneNameTa || user.zoneTa || (matchedTp ? '' : 'காஞ்சிபுரம்');
 
   // Resolve unique clean friendly English names for assigned subjects and categories
   const assignedSubjectNames = Array.from(new Set(
@@ -2664,6 +2704,13 @@ export async function rebuildUserScopeCache(targetUsername?: string): Promise<bo
     void scope.prewarmMissingInspectionUserScopes().catch((err: Error) => {
       console.error('[CACHE_TRIGGER] Scope prewarm failed:', err?.message || err);
     });
+    void import('./portalBootstrapCache')
+      .then(({ prewarmMissingPortalBootstraps, defaultPortalOrigin }) =>
+        prewarmMissingPortalBootstraps({ origin: defaultPortalOrigin(), concurrency: 2 }),
+      )
+      .catch((err: Error) => {
+        console.error('[CACHE_TRIGGER] Portal bootstrap prewarm failed:', err?.message || err);
+      });
     return true;
   } catch (e: any) {
     console.error('[rebuildUserScopeCache]', e?.message || e);

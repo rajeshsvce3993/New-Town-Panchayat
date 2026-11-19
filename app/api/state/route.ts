@@ -16,6 +16,7 @@ import {
   prewarmMissingInspectionUserScopes,
 } from '@/lib/userScopeCache';
 import { invalidatePortalMastersCache } from '@/lib/portalMastersCache';
+import { defaultPortalOrigin, prewarmMissingPortalBootstraps } from '@/lib/portalBootstrapCache';
 import { logServerProcess } from '@/lib/serverLogger';
 import { logPortalEnvironmentOnce } from '@/lib/appEnvironment';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
@@ -186,15 +187,29 @@ export async function GET(req: NextRequest) {
 
     // Handle manual cache purge request
     const shouldRebuildCache = key === 'rebuildCache' || searchParams.get('rebuildCache') === 'true';
-    if (shouldRebuildCache) {
-      await invalidateAndRefreshUserScopeCache('manual_rebuild');
-      invalidatePortalMastersCache();
-      const stats = await prewarmMissingInspectionUserScopes();
+    const shouldRebuildPortal =
+      key === 'rebuildPortalCache' || searchParams.get('rebuildPortalCache') === 'true';
+    if (shouldRebuildCache || shouldRebuildPortal) {
+      let scopeStats = { warmed: 0, alreadyCached: 0 };
+      let portalStats = { warmed: 0, skipped: 0, failed: 0 };
+      if (shouldRebuildCache) {
+        await invalidateAndRefreshUserScopeCache('manual_rebuild');
+        invalidatePortalMastersCache();
+        scopeStats = await prewarmMissingInspectionUserScopes();
+      }
+      if (shouldRebuildPortal || shouldRebuildCache) {
+        portalStats = await prewarmMissingPortalBootstraps({
+          origin: defaultPortalOrigin(),
+          concurrency: 3,
+        });
+      }
       return NextResponse.json(
         {
           success: true,
-          message: 'Scope cache version bumped; missing inspector scopes prewarmed (collection not dropped).',
-          stats,
+          message:
+            'Cache rebuild: scope version bumped when requested; portal bootstrap prewarm runs in Mongo (no collection drop).',
+          scopeStats,
+          portalStats,
         },
         { headers: CORS_HEADERS },
       );

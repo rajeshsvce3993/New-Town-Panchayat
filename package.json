@@ -6,6 +6,7 @@
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build && node scripts/build-scope-cache.js",
     "prewarm-scope": "node scripts/build-scope-cache.js",
+    "prewarm-portal": "node -e \"console.log('After deploy: curl https://townpanchayat.com/api/state?rebuildPortalCache=true (or rebuildCache=true for scope+portal)')\"",
     "start": "node server.js",
     "server": "node server.js",
     "lint": "next lint"

@@ -229,6 +229,8 @@ export async function buildSingleUserScope(
   user: any,
   masters: {
     townPanchayats: any[];
+    districts?: any[];
+    zones?: any[];
     wardsAndStreets: any[];
     subjects: any[];
     categories: any[];
@@ -243,16 +245,32 @@ export async function buildSingleUserScope(
   const userTpId = (user.tpId || user.townPanchayatId || user.resolvedTpId || '').trim();
   const userTpName = (user.townPanchayat || '').trim().toLowerCase();
 
-  const matchedTp = masters.townPanchayats.find((t: any) => {
-    return (
-      (userTpId && (String(t.id).toLowerCase() === userTpId.toLowerCase() || String(t._id).toLowerCase() === userTpId.toLowerCase())) ||
-      (userTpName && (String(t.nameEn).toLowerCase() === userTpName || String(t.nameTa).toLowerCase() === userTpName))
-    );
-  }) || {
-    id: userTpId || 'tp1',
-    nameEn: user.townPanchayat || 'Town Panchayat',
-    nameTa: user.townPanchayatTa || 'பேரூராட்சி',
-  };
+  const tpNameNorm = userTpName.replace(/\s+(tp|town panchayat|பேரூராட்சி)$/i, '').trim();
+  const matchedTp =
+    masters.townPanchayats.find((t: any) => {
+      const nameEn = String(t.nameEn || '').trim().toLowerCase();
+      const nameTa = String(t.nameTa || '').trim().toLowerCase();
+      const nameEnNorm = nameEn.replace(/\s+(tp|town panchayat)$/i, '').trim();
+      return (
+        (userTpId &&
+          (String(t.id).toLowerCase() === userTpId.toLowerCase() ||
+            String(t._id).toLowerCase() === userTpId.toLowerCase())) ||
+        (userTpName && (nameEn === userTpName || nameTa === userTpName || nameEnNorm === tpNameNorm))
+      );
+    }) ||
+    ({
+      id: userTpId || userTpName || 'unknown_tp',
+      nameEn: user.townPanchayat || userTpName || 'Town Panchayat',
+      nameTa: user.townPanchayatTa || 'பேரூராட்சி',
+      districtId: user.districtId || '',
+      districtNameEn: user.district || user.districtNameEn || '',
+      districtNameTa: user.districtTa || user.districtNameTa || '',
+      zoneId: user.zoneId || '',
+    } as any);
+
+  const matchedDistMaster = (masters.districts || []).find(
+    (d: any) => String(d.id || '').toLowerCase() === String(matchedTp.districtId || '').toLowerCase(),
+  );
 
   // Determine user's assigned wards
   const rawAssignedWards: string[] = Array.isArray(user.assignedWards) ? user.assignedWards : [];
@@ -311,8 +329,8 @@ export async function buildSingleUserScope(
   // Clean user object without duplicating the entire wardsAndStreets inside it!
   const cleanUser = enrichUserForApp(user, {
     townPanchayats: masters.townPanchayats,
-    districts: [],
-    zones: [],
+    districts: masters.districts || [],
+    zones: masters.zones || [],
     inspectionRoles: [],
     inspectionDesignations: [],
     inspectionSubjects: masters.subjects,
@@ -334,9 +352,9 @@ export async function buildSingleUserScope(
       id: matchedTp.id,
       nameEn: matchedTp.nameEn,
       nameTa: matchedTp.nameTa,
-      districtId: matchedTp.districtId,
-      districtNameEn: matchedTp.districtNameEn,
-      districtNameTa: matchedTp.districtNameTa,
+      districtId: matchedTp.districtId || matchedDistMaster?.id || '',
+      districtNameEn: matchedDistMaster?.nameEn || matchedTp.districtNameEn || cleanUser.district || '',
+      districtNameTa: matchedDistMaster?.nameTa || matchedTp.districtNameTa || cleanUser.districtTa || '',
     },
     assignedWards,
     wardsAndStreets: compactStreets,
@@ -404,6 +422,8 @@ export async function initializeUserScopeCacheOnce(): Promise<{ initialized: boo
 
       const [
         townPanchayats,
+        districts,
+        zones,
         wardsAndStreets,
         subjects,
         categories,
@@ -413,6 +433,8 @@ export async function initializeUserScopeCacheOnce(): Promise<{ initialized: boo
         employees,
       ] = await Promise.all([
         getCollectionData('townPanchayats'),
+        getCollectionData('districts'),
+        getCollectionData('zones'),
         getCollectionData('wardsAndStreets'),
         getCollectionData('inspectionSubjects'),
         getCollectionData('inspectionCategories'),
@@ -424,6 +446,8 @@ export async function initializeUserScopeCacheOnce(): Promise<{ initialized: boo
 
       const masters = {
         townPanchayats: townPanchayats || [],
+        districts: districts || [],
+        zones: zones || [],
         wardsAndStreets: wardsAndStreets || [],
         subjects: subjects || [],
         categories: categories || [],
@@ -573,8 +597,10 @@ export async function getUserScopeDetails(userIdOrUsername: string): Promise<Cac
       const userTpName = (foundUser.townPanchayat || '').trim();
 
       // Targeted TP queries only (Takes ~5ms instead of loading whole database!)
-      const [townPanchayats, userStreets, subjects, categories, fields] = await Promise.all([
-        db.collection('townPanchayats').find({}).limit(100).toArray().catch(() => []),
+      const [townPanchayats, districts, zones, userStreets, subjects, categories, fields] = await Promise.all([
+        db.collection('townPanchayats').find({}).limit(500).toArray().catch(() => []),
+        db.collection('districts').find({}).limit(200).toArray().catch(() => []),
+        db.collection('zones').find({}).limit(100).toArray().catch(() => []),
         db.collection('wardsAndStreets').find(
           userTpId || userTpName
             ? {
@@ -597,6 +623,8 @@ export async function getUserScopeDetails(userIdOrUsername: string): Promise<Cac
         foundUser,
         {
           townPanchayats: townPanchayats || [],
+          districts: districts || [],
+          zones: zones || [],
           wardsAndStreets: userStreets || [],
           subjects: subjects || [],
           categories: categories || [],
@@ -625,8 +653,11 @@ export async function getUserScopeDetails(userIdOrUsername: string): Promise<Cac
 
   // Graceful fallback to local storage / memory when MongoDB connection is unavailable
   try {
-    const [townPanchayats, wardsAndStreets, subjects, categories, fields, users, inspectionUsers, employees] = await Promise.all([
+    const [townPanchayats, districts, zones, wardsAndStreets, subjects, categories, fields, users, inspectionUsers, employees] =
+      await Promise.all([
       getCollectionData('townPanchayats'),
+      getCollectionData('districts'),
+      getCollectionData('zones'),
       getCollectionData('wardsAndStreets'),
       getCollectionData('inspectionSubjects'),
       getCollectionData('inspectionCategories'),
@@ -662,6 +693,8 @@ export async function getUserScopeDetails(userIdOrUsername: string): Promise<Cac
         matched,
         {
           townPanchayats: townPanchayats || [],
+          districts: districts || [],
+          zones: zones || [],
           wardsAndStreets: wardsAndStreets || [],
           subjects: subjects || [],
           categories: categories || [],
@@ -694,6 +727,12 @@ export async function invalidateAndRefreshUserScopeCache(reason: string = 'maste
     try {
       const { invalidatePortalMastersCache } = await import('./portalMastersCache');
       invalidatePortalMastersCache();
+    } catch {
+      /* optional */
+    }
+    try {
+      const { prewarmMissingPortalBootstraps, defaultPortalOrigin } = await import('./portalBootstrapCache');
+      void prewarmMissingPortalBootstraps({ origin: defaultPortalOrigin(), concurrency: 2 }).catch(() => undefined);
     } catch {
       /* optional */
     }
@@ -748,6 +787,11 @@ export async function prewarmMissingInspectionUserScopes(): Promise<{ warmed: nu
     }
 
     const meta = getScopeVersionMeta();
+    const [geoTps, geoDistricts, geoZones] = await Promise.all([
+      db.collection('townPanchayats').find({}).limit(500).maxTimeMS(15_000).toArray().catch(() => []),
+      db.collection('districts').find({}).limit(200).maxTimeMS(8000).toArray().catch(() => []),
+      db.collection('zones').find({}).limit(100).maxTimeMS(8000).toArray().catch(() => []),
+    ]);
     const batchSize = 8;
     for (let i = 0; i < missing.length; i += batchSize) {
       const batch = missing.slice(i, i + batchSize);
@@ -756,8 +800,7 @@ export async function prewarmMissingInspectionUserScopes(): Promise<{ warmed: nu
           try {
             const userTpId = (foundUser.tpId || foundUser.townPanchayatId || '').trim();
             const userTpName = (foundUser.townPanchayat || '').trim();
-            const [townPanchayats, userStreets, subjects, categories, fields] = await Promise.all([
-              db.collection('townPanchayats').find({}).limit(100).maxTimeMS(8000).toArray().catch(() => []),
+            const [userStreets, subjects, categories, fields] = await Promise.all([
               db.collection('wardsAndStreets')
                 .find(
                   userTpId || userTpName
@@ -782,7 +825,9 @@ export async function prewarmMissingInspectionUserScopes(): Promise<{ warmed: nu
             const newScope = await buildSingleUserScope(
               foundUser,
               {
-                townPanchayats: townPanchayats || [],
+                townPanchayats: geoTps || [],
+                districts: geoDistricts || [],
+                zones: geoZones || [],
                 wardsAndStreets: userStreets || [],
                 subjects: subjects || [],
                 categories: categories || [],
@@ -825,8 +870,11 @@ export async function compactExistingScopeCache(): Promise<number> {
     const sample = await scopeCol.findOne({});
     if (sample && (sample.user?.wardsAndStreets || (sample.wardsAndStreets && sample.wardsAndStreets.length > 0 && sample.wardsAndStreets[0].boundaries))) {
       console.log(`[UserScopeCache] Detected legacy oversized documents in user_scope_cache (${total} items). Compacting now...`);
-      const [townPanchayats, wardsAndStreets, subjects, categories, fields, users, inspectionUsers, employees] = await Promise.all([
+      const [townPanchayats, districts, zones, wardsAndStreets, subjects, categories, fields, users, inspectionUsers, employees] =
+        await Promise.all([
         getCollectionData('townPanchayats'),
+        getCollectionData('districts'),
+        getCollectionData('zones'),
         getCollectionData('wardsAndStreets'),
         getCollectionData('inspectionSubjects'),
         getCollectionData('inspectionCategories'),
@@ -838,6 +886,8 @@ export async function compactExistingScopeCache(): Promise<number> {
 
       const masters = {
         townPanchayats: townPanchayats || [],
+        districts: districts || [],
+        zones: zones || [],
         wardsAndStreets: wardsAndStreets || [],
         subjects: subjects || [],
         categories: categories || [],

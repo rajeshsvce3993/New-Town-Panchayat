@@ -20,6 +20,9 @@ let mastersInFlight: Promise<PortalMastersBundle> | null = null;
 export function invalidatePortalMastersCache() {
   mastersCache = null;
   mastersInFlight = null;
+  void import('./portalBootstrapCache')
+    .then(({ bumpMastersVersion }) => bumpMastersVersion('portal_masters_memory_invalidate'))
+    .catch(() => undefined);
 }
 
 export async function loadPortalMastersBundle(): Promise<PortalMastersBundle> {

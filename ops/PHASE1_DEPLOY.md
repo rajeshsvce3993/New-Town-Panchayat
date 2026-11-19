@@ -90,7 +90,17 @@ curl -s -o /dev/null -w 'login:%{http_code} %{time_total}s\n' --max-time 20 \
 
 Expect **200** or **401/403** in **&lt;3s** — not **000**. If **000**, capacity is still the bottleneck (cluster + limits + prewarm).
 
-## 6. What Phase 1 changed (summary)
+## 6. Portal bootstrap cache (Mongo)
+
+See `ops/PORTAL_BOOTSTRAP_CACHE.md`. After deploy:
+
+```bash
+curl -s "https://townpanchayat.com/api/state?rebuildCache=true"
+```
+
+Check: `curl -sI "https://townpanchayat.com/api/portal-state?username=USER" | grep -i x-portal-cache` → expect `HIT-MONGO`.
+
+## 7. What Phase 1 changed (summary)
 
 - Login: scope from **cache only**; background prewarm on master edits (no Mongo **drop**).
 - `portal-state`: shared masters cache, per-user cache/coalesce, targeted user lookup.

@@ -197,6 +197,11 @@ async function runSystemDiagnostics() {
         await db.collection('user_scope_cache').createIndex({ username: 1 }, { background: true });
         await db.collection('user_scope_cache').createIndex({ userId: 1 }, { background: true });
       }
+      if (colNames.includes('portal_bootstrap_cache')) {
+        await db.collection('portal_bootstrap_cache').createIndex({ username: 1, todayOnly: 1 }, { unique: true, background: true });
+        await db.collection('portal_bootstrap_cache').createIndex({ scopeVersion: 1 }, { background: true });
+        await db.collection('portal_bootstrap_cache').createIndex({ builtAt: -1 }, { background: true });
+      }
       if (colNames.includes('inspectionWorks')) {
         await db.collection('inspectionWorks').createIndex({ workId: 1 }, { background: true });
         await db.collection('inspectionWorks').createIndex({ submittedAt: -1 }, { background: true });
