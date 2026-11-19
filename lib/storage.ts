@@ -2704,13 +2704,6 @@ export async function rebuildUserScopeCache(targetUsername?: string): Promise<bo
     void scope.prewarmMissingInspectionUserScopes().catch((err: Error) => {
       console.error('[CACHE_TRIGGER] Scope prewarm failed:', err?.message || err);
     });
-    void import('./portalBootstrapCache')
-      .then(({ prewarmMissingPortalBootstraps, defaultPortalOrigin }) =>
-        prewarmMissingPortalBootstraps({ origin: defaultPortalOrigin(), concurrency: 2 }),
-      )
-      .catch((err: Error) => {
-        console.error('[CACHE_TRIGGER] Portal bootstrap prewarm failed:', err?.message || err);
-      });
     return true;
   } catch (e: any) {
     console.error('[rebuildUserScopeCache]', e?.message || e);

@@ -730,12 +730,7 @@ export async function invalidateAndRefreshUserScopeCache(reason: string = 'maste
     } catch {
       /* optional */
     }
-    try {
-      const { prewarmMissingPortalBootstraps, defaultPortalOrigin } = await import('./portalBootstrapCache');
-      void prewarmMissingPortalBootstraps({ origin: defaultPortalOrigin(), concurrency: 2 }).catch(() => undefined);
-    } catch {
-      /* optional */
-    }
+    // Portal bootstrap prewarm is heavy — run only via /api/state?rebuildPortalCache=true (not on every master touch).
   } catch (e) {
     console.error('[UserScopeCache] Error refreshing scope cache:', e);
   }

@@ -190,26 +190,53 @@ export async function GET(req: NextRequest) {
     const shouldRebuildPortal =
       key === 'rebuildPortalCache' || searchParams.get('rebuildPortalCache') === 'true';
     if (shouldRebuildCache || shouldRebuildPortal) {
-      let scopeStats = { warmed: 0, alreadyCached: 0 };
-      let portalStats = { warmed: 0, skipped: 0, failed: 0 };
+      let scopeStats: { warmed?: number; alreadyCached?: number; status?: string } = {
+        warmed: 0,
+        alreadyCached: 0,
+      };
+      let portalStats: { warmed?: number; skipped?: number; failed?: number; status?: string } = {
+        warmed: 0,
+        skipped: 0,
+        failed: 0,
+      };
+      const portalLimit = Math.min(
+        Math.max(parseInt(searchParams.get('portalLimit') || '80', 10) || 80, 10),
+        500,
+      );
+      const syncPortal = searchParams.get('syncPortal') === 'true';
+
       if (shouldRebuildCache) {
         await invalidateAndRefreshUserScopeCache('manual_rebuild');
         invalidatePortalMastersCache();
         scopeStats = await prewarmMissingInspectionUserScopes();
       }
-      if (shouldRebuildPortal || shouldRebuildCache) {
-        portalStats = await prewarmMissingPortalBootstraps({
-          origin: defaultPortalOrigin(),
-          concurrency: 3,
-        });
+
+      // Portal bootstrap is heavy — never block rebuildCache on full portal prewarm (use rebuildPortalCache).
+      if (shouldRebuildPortal || searchParams.get('portalBackground') === 'true') {
+        const runPortal = () =>
+          prewarmMissingPortalBootstraps({
+            origin: defaultPortalOrigin(),
+            concurrency: 2,
+            maxUsers: portalLimit,
+          });
+        if (syncPortal && shouldRebuildPortal) {
+          portalStats = await runPortal();
+        } else {
+          portalStats = { status: 'started_in_background', warmed: 0, skipped: 0, failed: 0 };
+          void runPortal().catch((err: Error) => {
+            console.error('[rebuildCache] portal prewarm background:', err?.message || err);
+          });
+        }
       }
+
       return NextResponse.json(
         {
           success: true,
           message:
-            'Cache rebuild: scope version bumped when requested; portal bootstrap prewarm runs in Mongo (no collection drop).',
+            'Scope rebuilt when requested. Portal prewarm runs in background unless syncPortal=true&rebuildPortalCache=true.',
           scopeStats,
           portalStats,
+          portalLimit,
         },
         { headers: CORS_HEADERS },
       );
