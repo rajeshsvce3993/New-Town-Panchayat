@@ -386,9 +386,16 @@ export async function initializeUserScopeCacheOnce(): Promise<{ initialized: boo
       const existingCount = await scopeCol.countDocuments();
       if (existingCount > 0) {
         hasCheckedScopeCache = true;
-        // Ensure indexes exist for instant retrieval
-        await scopeCol.createIndex({ username: 1 }, { unique: true, background: true });
-        await scopeCol.createIndex({ userId: 1 }, { background: true });
+        try {
+          await scopeCol.createIndex({ username: 1 }, { background: true });
+        } catch {
+          /* index may already exist with different options */
+        }
+        try {
+          await scopeCol.createIndex({ userId: 1 }, { background: true });
+        } catch {
+          /* ignore duplicate index */
+        }
         console.log(`[UserScopeCache] user_scope_cache active with ${existingCount} user scopes (Indexed).`);
         return { initialized: false, count: existingCount };
       }

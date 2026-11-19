@@ -1,22 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getCollectionData,
-  getEmployees,
-  getAppSettings,
   enrichUserForApp,
   extractCalendarDateYMD,
   getTargetedInspectionWorks,
 } from '@/lib/storage';
+import { loadPortalMastersBundle } from '@/lib/portalMastersCache';
 import { getScopeVersionMeta } from '@/lib/userScopeCache';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { isHodLikeUser } from '@/lib/userScope';
 import { resolveReportShare } from '@/lib/reportShareConfig';
 import { normalizePortalMediaValue, rewriteWorkMediaFields } from '@/lib/s3MediaKey';
-import {
-  getCachedPortalState,
-  portalStateCacheKey,
-  setCachedPortalState,
-} from '@/lib/portalStateCache';
+import { portalStateCacheKey, runExclusivePortalBuild } from '@/lib/portalStateCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,19 +49,10 @@ export async function GET(req: NextRequest) {
     const todayOnly = searchParams.get('todayOnly') === 'true';
 
     const requestedUser = (username || '').trim().toLowerCase();
+    const cacheKey = requestedUser ? portalStateCacheKey(requestedUser, todayOnly) : '';
 
-    if (requestedUser) {
-      const cacheKey = portalStateCacheKey(requestedUser, todayOnly);
-      const cached = getCachedPortalState(cacheKey);
-      if (cached) {
-        return NextResponse.json(cached, {
-          headers: { ...CORS_HEADERS, 'X-Portal-Cache': 'HIT' },
-        });
-      }
-    }
-
-    // 1. Load ALL live master data directly from MongoDB / Database (excluding heavy inspectionWorks)
-    const [
+    const producePayload = async () => {
+    const {
       districts,
       townPanchayats,
       zones,
@@ -80,20 +65,7 @@ export async function GET(req: NextRequest) {
       inspectionRoles,
       inspectionDesignations,
       settings,
-    ] = await Promise.all([
-      getCollectionData('districts'),
-      getCollectionData('townPanchayats'),
-      getCollectionData('zones'),
-      getCollectionData('inspectionSubjects'),
-      getCollectionData('inspectionCategories'),
-      getCollectionData('inspectionFields'),
-      getCollectionData('wardsAndStreets'),
-      getCollectionData('inspectionUsers'),
-      getEmployees(),
-      getCollectionData('inspectionRoles'),
-      getCollectionData('inspectionDesignations'),
-      getAppSettings(),
-    ]);
+    } = await loadPortalMastersBundle();
 
     // Normalize subjects directly from original database records
     const normalizedSubjects = (subjects || []).map((s: any) => {
@@ -496,11 +468,16 @@ export async function GET(req: NextRequest) {
       },
     };
 
-    if (requestedUser) {
-      setCachedPortalState(portalStateCacheKey(requestedUser, todayOnly), payload);
+    return payload;
+    };
+
+    if (cacheKey) {
+      const { payload, tag } = await runExclusivePortalBuild(cacheKey, producePayload);
+      return NextResponse.json(payload, { headers: { ...CORS_HEADERS, 'X-Portal-Cache': tag } });
     }
 
-    return NextResponse.json(payload, { headers: { ...CORS_HEADERS, 'X-Portal-Cache': 'MISS' } });
+  const payload = await producePayload();
+  return NextResponse.json(payload, { headers: CORS_HEADERS });
   } catch (err: any) {
     console.error('Portal state error:', err);
     return NextResponse.json({ success: false, message: 'Server error retrieving portal state' }, { status: 500, headers: CORS_HEADERS });

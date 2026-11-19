@@ -254,6 +254,23 @@ app.prepare().then(() => {
         });
       }
 
+      if (parsedUrl.pathname === '/api/health' && req.method === 'GET') {
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(
+          JSON.stringify({
+            status: 'ok',
+            service: 'Tamil Nadu Town Panchayat EMS Server',
+            port: String(port),
+            timestamp: new Date().toISOString(),
+          }),
+        );
+        return;
+      }
+
       if (servePublicFile(req, res, parsedUrl.pathname)) return;
       await handle(req, res, customParsedUrl);
     } catch (err) {
