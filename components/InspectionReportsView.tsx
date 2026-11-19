@@ -1864,21 +1864,22 @@ export default function InspectionReportsView({
       if (p.fromDate) qParams.set('fromDate', p.fromDate);
       if (p.toDate) qParams.set('toDate', p.toDate);
       if (!p.fromDate && !p.toDate) qParams.set('allTime', '1');
-      if (p.selectedTpId && p.selectedTpId !== 'all') {
+      const allowUiGeoDrill = isAdminOrDirector;
+      if (allowUiGeoDrill && p.selectedTpId && p.selectedTpId !== 'all') {
         qParams.set('tpId', p.selectedTpId);
         const tp = (state.townPanchayats || []).find(
           (t: any) => String(t.id || '').toLowerCase() === String(p.selectedTpId).toLowerCase()
         );
         if (tp?.nameEn) qParams.set('tpNameEn', String(tp.nameEn));
       }
-      if (p.selectedDistrictId && p.selectedDistrictId !== 'all') {
+      if (allowUiGeoDrill && p.selectedDistrictId && p.selectedDistrictId !== 'all') {
         qParams.set('districtId', p.selectedDistrictId);
         const dist = (state.districts || []).find(
           (d: any) => String(d.id || '').toLowerCase() === String(p.selectedDistrictId).toLowerCase()
         );
         if (dist?.nameEn) qParams.set('districtNameEn', String(dist.nameEn));
       }
-      if (p.selectedZoneId && p.selectedZoneId !== 'all') {
+      if (allowUiGeoDrill && p.selectedZoneId && p.selectedZoneId !== 'all') {
         qParams.set('zoneId', p.selectedZoneId);
         const zone = (state.zones || []).find(
           (z: any) => String(z.id || '').toLowerCase() === String(p.selectedZoneId).toLowerCase()

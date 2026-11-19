@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient, getActiveMongoDb, getCollectionData } from '@/lib/storage';
-import { resolveGeoForUser } from '@/lib/domain/geoResolver';
+import { resolveGeoForPortalUser, resolveGeoForUser, type ResolvedPortalGeo } from '@/lib/domain/geoResolver';
 import { buildLiveUserScope, isLiveDataOnly } from '@/lib/services/liveUserScope';
 import { recordUserLogin } from '@/lib/userActivity';
 import { logServerProcess } from '@/lib/serverLogger';
@@ -192,7 +192,11 @@ export async function POST(req: NextRequest) {
     }
 
     let resolvedGeo: Awaited<ReturnType<typeof resolveGeoForUser>> | null = null;
-    if (mongoDb && (sourceCollection === 'inspectionUsers' || sourceCollection === 'users')) {
+    let resolvedPortalGeo: ResolvedPortalGeo | null = null;
+    if (mongoDb && webPortal && (sourceCollection === 'users' || sourceCollection === 'inspectionUsers')) {
+      resolvedPortalGeo = await resolveGeoForPortalUser(mongoDb, userDoc);
+      resolvedGeo = resolvedPortalGeo;
+    } else if (mongoDb && (sourceCollection === 'inspectionUsers' || sourceCollection === 'users')) {
       resolvedGeo = await resolveGeoForUser(mongoDb, userDoc);
     }
 
@@ -261,8 +265,9 @@ export async function POST(req: NextRequest) {
       tpId: resolvedGeo?.tpId || userDoc.tpId || userDoc.townPanchayatId || userScope?.townPanchayat?.id || '',
       townPanchayatId:
         resolvedGeo?.tpId || userDoc.tpId || userDoc.townPanchayatId || userScope?.townPanchayat?.id || '',
-      scopeType: userDoc.scopeType || 'single_tp',
-      scopeId: userDoc.scopeId || userDoc.tpId || '',
+      scopeType: resolvedPortalGeo?.scopeType || userDoc.scopeType || 'single_tp',
+      scopeId: resolvedPortalGeo?.scopeId || userDoc.scopeId || userDoc.tpId || '',
+      portalScope: resolvedPortalGeo?.portalScope || null,
       assignedWards: userDoc.assignedWards || userScope?.assignedWards || [],
       selectedWards: userDoc.selectedWards || userScope?.assignedWards || [],
       subjectIds: userDoc.subjectIds || userDoc.assignedSubjects || [],

@@ -41,7 +41,9 @@ function isTownPanchayatScopedUser(user: any): boolean {
   if (st === 'townpanchayat' || st === 'single_tp' || st === 'multi_tp' || st === 'tp') return true;
 
   const r = String(user.roleId || user.role || '').toLowerCase();
-  if (r === 'eo' || r.includes('tp') || r.includes('panchayat')) return true;
+  if (r === 'eo' || r === 'tp' || r.includes('panchayat') || r.includes('town_panchayat') || r.endsWith('_tp')) {
+    return true;
+  }
 
   return !!(user.tpId || user.townPanchayatId || user.assignedTpId);
 }
@@ -105,6 +107,15 @@ export function getPortalFilterScopeIds(
     return { tpId: null, districtId: null, zoneId: null };
   }
 
+  const snap = user.portalScope;
+  if (snap && (snap.tpId || snap.zoneId || snap.districtId)) {
+    return {
+      tpId: snap.tpId ? String(snap.tpId) : null,
+      districtId: snap.districtId ? String(snap.districtId) : null,
+      zoneId: snap.zoneId ? String(snap.zoneId) : null,
+    };
+  }
+
   const scoped = normalizePortalUserScope(user);
   const tps = masters.townPanchayats || [];
   const districts = masters.districts || [];
@@ -115,7 +126,14 @@ export function getPortalFilterScopeIds(
       (scoped.zoneId && scoped.zoneId !== 'all' ? scoped.zoneId : null) ||
       (scoped.scopeId && scoped.scopeId !== 'all' ? scoped.scopeId : null);
     if (rawZone) {
-      const matched = zones.find((z) => String(z.id).toLowerCase() === String(rawZone).toLowerCase());
+      const rz = String(rawZone).toLowerCase();
+      const matched = zones.find(
+        (z) =>
+          String(z.id).toLowerCase() === rz ||
+          String(z.code || '').toLowerCase() === rz ||
+          String(z.nameEn || '').toLowerCase() === rz ||
+          String(z.nameTa || '').toLowerCase() === rz,
+      );
       return { tpId: null, districtId: null, zoneId: matched?.id || String(rawZone) };
     }
     return { tpId: null, districtId: null, zoneId: null };
@@ -126,7 +144,14 @@ export function getPortalFilterScopeIds(
     scoped.townPanchayatId ||
     (scoped.scopeId && scoped.scopeId !== 'all' ? scoped.scopeId : null);
   if (rawTp) {
-    const matched = tps.find((t) => String(t.id).toLowerCase() === String(rawTp).toLowerCase());
+    const rt = String(rawTp).toLowerCase();
+    const matched = tps.find(
+      (t) =>
+        String(t.id).toLowerCase() === rt ||
+        String(t.code || '').toLowerCase() === rt ||
+        String(t.nameEn || '').toLowerCase() === rt ||
+        String(t.nameTa || '').toLowerCase() === rt,
+    );
     const tpId = matched?.id || String(rawTp);
     const tpObj = matched || tps.find((t) => String(t.id).toLowerCase() === String(tpId).toLowerCase());
     const districtId =
@@ -162,9 +187,11 @@ export function getPortalFilterScopeIds(
 /** Hydrate localStorage / SSR session — always a web portal identity (never field-only). */
 export function normalizePortalSessionUser(user: any): any {
   if (!user) return user;
+  const portalScope = user.portalScope;
   const scoped = normalizePortalUserScope(user);
   return {
     ...scoped,
+    portalScope: portalScope || scoped.portalScope || null,
     isInspectionUser: false,
     isPortalUser: true,
     portalLogin: scoped.portalLogin !== false,
