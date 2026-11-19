@@ -1,4 +1,4 @@
-import { getAppSettings, getCollectionData, getEmployees } from '@/lib/storage';
+import { getAppSettings, getCollectionData } from '@/lib/storage';
 
 export type PortalMastersBundle = {
   districts: any[];
@@ -8,8 +8,6 @@ export type PortalMastersBundle = {
   categories: any[];
   fields: any[];
   wardsAndStreets: any[];
-  inspectionUsers: any[];
-  employees: any[];
   inspectionRoles: any[];
   inspectionDesignations: any[];
   settings: Record<string, unknown>;
@@ -35,8 +33,6 @@ export async function loadPortalMastersBundle(): Promise<PortalMastersBundle> {
       categories,
       fields,
       wardsAndStreets,
-      inspectionUsers,
-      employees,
       inspectionRoles,
       inspectionDesignations,
       settings,
@@ -48,8 +44,6 @@ export async function loadPortalMastersBundle(): Promise<PortalMastersBundle> {
       getCollectionData('inspectionCategories'),
       getCollectionData('inspectionFields'),
       getCollectionData('wardsAndStreets'),
-      getCollectionData('inspectionUsers'),
-      getEmployees(),
       getCollectionData('inspectionRoles'),
       getCollectionData('inspectionDesignations'),
       getAppSettings(),
@@ -63,8 +57,6 @@ export async function loadPortalMastersBundle(): Promise<PortalMastersBundle> {
       categories: categories || [],
       fields: fields || [],
       wardsAndStreets: wardsAndStreets || [],
-      inspectionUsers: inspectionUsers || [],
-      employees: employees || [],
       inspectionRoles: inspectionRoles || [],
       inspectionDesignations: inspectionDesignations || [],
       settings: (settings || {}) as Record<string, unknown>,

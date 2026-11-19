@@ -2,7 +2,7 @@ type PortalCacheEntry = { ts: number; body: Record<string, unknown> };
 
 const PORTAL_STATE_CACHE_MS = 120_000;
 const PORTAL_STATE_STALE_MS = 600_000;
-const PORTAL_STATE_MAX_CONCURRENT = 10;
+const PORTAL_STATE_MAX_CONCURRENT = 6;
 
 const portalStateCache = new Map<string, PortalCacheEntry>();
 const portalInflight = new Map<string, Promise<Record<string, unknown>>>();

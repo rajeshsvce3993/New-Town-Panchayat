@@ -5,6 +5,7 @@ import {
   getTargetedInspectionWorks,
 } from '@/lib/storage';
 import { loadPortalMastersBundle } from '@/lib/portalMastersCache';
+import { findPortalRequestingUser } from '@/lib/portalUserLookup';
 import { getScopeVersionMeta } from '@/lib/userScopeCache';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { isHodLikeUser } from '@/lib/userScope';
@@ -60,8 +61,6 @@ export async function GET(req: NextRequest) {
       categories,
       fields,
       wardsAndStreets,
-      inspectionUsers,
-      employees,
       inspectionRoles,
       inspectionDesignations,
       settings,
@@ -142,19 +141,7 @@ export async function GET(req: NextRequest) {
     let userSpecificDistricts = districts || [];
     let userSpecificZones = zones || [];
 
-    const allCandidateUsers = [
-      ...(inspectionUsers || []),
-      ...(employees || []),
-    ];
-
-    const rawUser = requestedUser ? allCandidateUsers.find(
-      (u: any) =>
-        String(u.username || '').toLowerCase() === requestedUser ||
-        String(u.id || '').toLowerCase() === requestedUser ||
-        String(u._id || '').toLowerCase() === requestedUser ||
-        String(u.mobile || '').trim() === requestedUser ||
-        String(u.employeeId || '').toLowerCase() === requestedUser
-    ) : null;
+    const rawUser = requestedUser ? await findPortalRequestingUser(requestedUser) : null;
 
     if (rawUser) {
       matchedUser = enrichUserForApp(rawUser, masters);

@@ -165,10 +165,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const needsScope = mobileClient || sourceCollection === 'inspectionUsers';
-    const userScope = needsScope
-      ? await getUserScopeDetailsForLogin(userDoc.username || cleanUsername, mobileClient ? 14_000 : 20_000)
-      : null;
+    // Mobile APK uses /api/scope/user after login — skip heavy scope build on auth (keeps login fast under load).
+    const userScope = mobileClient
+      ? null
+      : sourceCollection === 'inspectionUsers'
+        ? await getUserScopeDetailsForLogin(userDoc.username || cleanUsername, 20_000)
+        : null;
 
     let designationNameEn = String(userDoc.designationNameEn || '').trim();
     let designationNameTa = String(userDoc.designationNameTa || '').trim();
