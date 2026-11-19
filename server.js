@@ -16,6 +16,36 @@ const hostname = '0.0.0.0';
 // Server runs on port 5000 for AWS Lightsail (proxied to https://townpanchayat.com), or process.env.PORT if specified
 const port = parseInt(process.env.PORT || '3000', 10);
 
+const healthPort = parseInt(process.env.HEALTH_PORT || '5001', 10);
+
+/** Always-on health (separate port) — survives main port 5000 event-loop saturation. */
+const healthSidecar = createServer((req, res) => {
+  const rawPath = (req.url || '').split('?')[0];
+  if (req.method === 'GET' && rawPath === '/api/health') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(
+      JSON.stringify({
+        status: 'ok',
+        service: 'Tamil Nadu Town Panchayat EMS Server',
+        port: String(port),
+        healthPort: String(healthPort),
+        layer: 'health-sidecar',
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    return;
+  }
+  res.writeHead(404, { 'Content-Type': 'text/plain' });
+  res.end('Not found');
+});
+healthSidecar.listen(healthPort, '127.0.0.1', () => {
+  console.log(`[health-sidecar] http://127.0.0.1:${healthPort}/api/health (use when :${port} is saturated)`);
+});
+
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
@@ -221,7 +251,7 @@ async function runSystemDiagnostics() {
 }
 
 let heavyApiInFlight = 0;
-const HEAVY_API_MAX = 24;
+const HEAVY_API_MAX = 12;
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
@@ -246,11 +276,13 @@ app.prepare().then(() => {
         return;
       }
 
-      if (
-        rawPath === '/api/portal-state' &&
+      const isHeavyGet =
         req.method === 'GET' &&
-        heavyApiInFlight >= HEAVY_API_MAX
-      ) {
+        (rawPath === '/api/portal-state' ||
+          rawPath === '/api/inspection-works' ||
+          rawPath.startsWith('/api/state'));
+
+      if (isHeavyGet && heavyApiInFlight >= HEAVY_API_MAX) {
         res.writeHead(503, {
           'Content-Type': 'application/json',
           'Retry-After': '3',
@@ -263,7 +295,7 @@ app.prepare().then(() => {
       if (
         rawPath === '/api/portal-state' ||
         rawPath === '/api/inspection-works' ||
-        rawPath === '/api/state'
+        rawPath.startsWith('/api/state')
       ) {
         heavyApiInFlight += 1;
         res.on('close', () => {

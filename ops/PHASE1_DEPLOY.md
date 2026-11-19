@@ -29,7 +29,10 @@ Or HTTP (admin): `GET /api/state?rebuildCache=true`
 ## 3. Health checks
 
 ```bash
-curl -s -o /dev/null -w 'health:%{http_code} %{time_total}s\n' --max-time 5 http://127.0.0.1:5000/api/health
+# Sidecar (always fast under load):
+curl -s -o /dev/null -w 'health5001:%{http_code} %{time_total}s\n' --max-time 3 http://127.0.0.1:5001/api/health
+# Main app (may queue when mobiles spike):
+curl -s -o /dev/null -w 'health5000:%{http_code} %{time_total}s\n' --max-time 5 http://127.0.0.1:5000/api/health
 curl -s -o /dev/null -w 'portal:%{http_code} %{time_total}s\n' --max-time 15 \
   'http://127.0.0.1:5000/api/portal-state?username=TESTUSER'
 ```
@@ -49,9 +52,9 @@ location /api/portal-state {
     proxy_read_timeout 120s;
 }
 
-location /api/health {
-    proxy_pass http://127.0.0.1:5000;
-    proxy_read_timeout 5s;
+location = /api/health {
+    proxy_pass http://127.0.0.1:5001/api/health;
+    proxy_read_timeout 3s;
 }
 ```
 
