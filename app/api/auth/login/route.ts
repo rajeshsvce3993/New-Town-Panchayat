@@ -5,7 +5,11 @@ import { logServerProcess } from '@/lib/serverLogger';
 import { postRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { isHodLikeUser } from '@/lib/userScope';
 import { isMobileClientRequest, mobileLoginDeniedMessage, userMayUseMobileApp } from '@/lib/mobileAppAuth';
-import { getUserScopeDetailsForLogin } from '@/lib/userScopeCache';
+import {
+  getUserScopeDetails,
+  getUserScopeDetailsForLogin,
+  getUserScopeFromCacheOnly,
+} from '@/lib/userScopeCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,11 +75,15 @@ export async function POST(req: NextRequest) {
         { phone: cleanUsername },
       ];
 
+      const mongoLimit = { maxTimeMS: mobileClient ? 4000 : 8000 };
       const [portalUser, inspUser] = await Promise.all([
-        db.collection('users').findOne({ $or: identityOr }),
-        db.collection('inspectionUsers').findOne({
-          $or: [...identityOr, { employeeId: cleanUsername }, { contact: cleanUsername }],
-        }),
+        db.collection('users').findOne({ $or: identityOr }, mongoLimit),
+        db.collection('inspectionUsers').findOne(
+          {
+            $or: [...identityOr, { employeeId: cleanUsername }, { contact: cleanUsername }],
+          },
+          mongoLimit,
+        ),
       ]);
 
       if (portalUser) {
@@ -85,9 +93,12 @@ export async function POST(req: NextRequest) {
         userDoc = inspUser;
         sourceCollection = 'inspectionUsers';
       } else {
-        const empUser = await db.collection('employees').findOne({
-          $or: [{ username: { $in: usernameVariants } }, { employeeId: cleanUsername }],
-        });
+        const empUser = await db.collection('employees').findOne(
+          {
+            $or: [{ username: { $in: usernameVariants } }, { employeeId: cleanUsername }],
+          },
+          mongoLimit,
+        );
         if (empUser) {
           userDoc = empUser;
           sourceCollection = 'employees';
@@ -95,7 +106,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (!userDoc) {
+    if (!userDoc && !mobileClient) {
       const [users, inspectionUsers, employees] = await Promise.all([
         getCollectionData('users'),
         getCollectionData('inspectionUsers'),
@@ -165,17 +176,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Mobile APK uses /api/scope/user after login — skip heavy scope build on auth (keeps login fast under load).
-    const userScope = mobileClient
-      ? null
-      : sourceCollection === 'inspectionUsers'
-        ? await getUserScopeDetailsForLogin(userDoc.username || cleanUsername, 20_000)
+    const scopeKey = userDoc.username || cleanUsername;
+    let userScope =
+      mobileClient || sourceCollection === 'inspectionUsers'
+        ? await getUserScopeFromCacheOnly(scopeKey)
         : null;
+    if (mobileClient && !userScope) {
+      void getUserScopeDetails(scopeKey).catch(() => {});
+    } else if (!mobileClient && sourceCollection === 'inspectionUsers' && !userScope) {
+      userScope = await getUserScopeDetailsForLogin(scopeKey, 12_000);
+    }
 
-    let designationNameEn = String(userDoc.designationNameEn || '').trim();
+    let designationNameEn = String(userDoc.designationNameEn || userDoc.designation || '').trim();
     let designationNameTa = String(userDoc.designationNameTa || '').trim();
     const designationId = String(userDoc.designationId || '').trim();
-    if (mongoDb && designationId && (!designationNameEn || !designationNameTa)) {
+    const needDesigLookup =
+      !mobileClient && mongoDb && designationId && (!designationNameEn || !designationNameTa);
+    if (needDesigLookup) {
       try {
         const matchedDesig = await mongoDb.collection('inspectionDesignations').findOne({
           $or: [{ id: designationId }, { nameEn: designationId }, { nameTa: designationId }],

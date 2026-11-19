@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserScopeDetails, initializeUserScopeCacheOnce } from '@/lib/userScopeCache';
+import {
+  getUserScopeDetailsForLogin,
+  getUserScopeFromCacheOnly,
+} from '@/lib/userScopeCache';
+import { isMobileClientRequest } from '@/lib/mobileAppAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +34,11 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const scope = await getUserScopeDetails(identifier);
+    const mobileClient = isMobileClientRequest(req);
+    let scope = await getUserScopeFromCacheOnly(identifier);
+    if (!scope) {
+      scope = await getUserScopeDetailsForLogin(identifier, mobileClient ? 12_000 : 20_000);
+    }
 
     if (!scope) {
       return NextResponse.json(

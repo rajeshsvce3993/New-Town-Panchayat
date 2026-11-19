@@ -473,6 +473,35 @@ export async function initializeUserScopeCacheOnce(): Promise<{ initialized: boo
  * Instant lookup using indexed username or userId.
  * If user detail NOT in user_scope_cache, builds it on-demand for that single user only.
  */
+/** Indexed read only — no on-demand build (fast mobile login + scope/user). */
+export async function getUserScopeFromCacheOnly(userIdOrUsername: string): Promise<CachedUserScope | null> {
+  const cleanKey = (userIdOrUsername || '').trim().toLowerCase();
+  if (!cleanKey) return null;
+
+  try {
+    const client = await getMongoClient();
+    if (!client) return null;
+    const db = await getActiveMongoDb(client);
+    const scopeCol = db.collection('user_scope_cache');
+    const cached = await scopeCol.findOne(
+      {
+        $or: [
+          { username: cleanKey },
+          { userId: cleanKey },
+          { 'user.mobile': cleanKey },
+          { 'user.phone': cleanKey },
+        ],
+      },
+      { maxTimeMS: 2500 },
+    );
+    if (!cached) return null;
+    delete (cached as any)._id;
+    return cached as unknown as CachedUserScope;
+  } catch {
+    return null;
+  }
+}
+
 /** Login path: cap wait so mobile 30s fetch abort does not race a stuck scope build. */
 export async function getUserScopeDetailsForLogin(
   userIdOrUsername: string,

@@ -220,10 +220,57 @@ async function runSystemDiagnostics() {
   console.log('======================================================\n');
 }
 
+let heavyApiInFlight = 0;
+const HEAVY_API_MAX = 24;
+
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
     const reqStart = Date.now();
     try {
+      const rawPath = (req.url || '').split('?')[0];
+
+      if (rawPath === '/api/health' && req.method === 'GET') {
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(
+          JSON.stringify({
+            status: 'ok',
+            service: 'Tamil Nadu Town Panchayat EMS Server',
+            port: String(port),
+            timestamp: new Date().toISOString(),
+          }),
+        );
+        return;
+      }
+
+      if (
+        rawPath === '/api/portal-state' &&
+        req.method === 'GET' &&
+        heavyApiInFlight >= HEAVY_API_MAX
+      ) {
+        res.writeHead(503, {
+          'Content-Type': 'application/json',
+          'Retry-After': '3',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(JSON.stringify({ success: false, message: 'Server busy — retry in a few seconds' }));
+        return;
+      }
+
+      if (
+        rawPath === '/api/portal-state' ||
+        rawPath === '/api/inspection-works' ||
+        rawPath === '/api/state'
+      ) {
+        heavyApiInFlight += 1;
+        res.on('close', () => {
+          heavyApiInFlight = Math.max(0, heavyApiInFlight - 1);
+        });
+      }
+
       const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
       const customParsedUrl = {
         pathname: parsedUrl.pathname,
@@ -254,23 +301,6 @@ app.prepare().then(() => {
         });
       }
 
-      if (parsedUrl.pathname === '/api/health' && req.method === 'GET') {
-        res.writeHead(200, {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-store',
-          'Access-Control-Allow-Origin': '*',
-        });
-        res.end(
-          JSON.stringify({
-            status: 'ok',
-            service: 'Tamil Nadu Town Panchayat EMS Server',
-            port: String(port),
-            timestamp: new Date().toISOString(),
-          }),
-        );
-        return;
-      }
-
       if (servePublicFile(req, res, parsedUrl.pathname)) return;
       await handle(req, res, customParsedUrl);
     } catch (err) {
@@ -292,7 +322,7 @@ app.prepare().then(() => {
     process.exit(1);
   });
 
-  server.listen(port, hostname, () => {
+  server.listen({ port, host: hostname, backlog: 2048 }, () => {
     // Run diagnostics asynchronously after listen
     runSystemDiagnostics().catch(console.error);
   });
