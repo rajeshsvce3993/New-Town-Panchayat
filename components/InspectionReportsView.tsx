@@ -93,6 +93,22 @@ import ThemeSelect from './ThemeSelect';
 import { buildInspectionSlidesFile, renderInspectionSlideJpeg } from '@/lib/buildInspectionSlideDeck';
 import { rootMediaProxyUrl, toMediaProxyPath } from '@/lib/s3MediaKey';
 
+function buildSubjectCategoryRollupsFromWorks(
+  works: any[],
+): Array<{ subjectId: string; categoryId: string; count: number }> {
+  const merged = new Map<string, { subjectId: string; categoryId: string; count: number }>();
+  for (const w of works || []) {
+    if (isFallbackInspectionWork(w)) continue;
+    const subjectId = String(w.subjectId || 'unknown').trim();
+    const categoryId = String(w.categoryId || '_unknown').trim();
+    const key = `${subjectId}|${categoryId}`;
+    const cur = merged.get(key) || { subjectId, categoryId, count: 0 };
+    cur.count += 1;
+    merged.set(key, cur);
+  }
+  return [...merged.values()];
+}
+
 export function formatIndianTime(dateStr: any): string {
   if (!dateStr) return '-';
   const s = String(dateStr).trim();
@@ -1768,6 +1784,7 @@ export default function InspectionReportsView({
 
   // Deduplicate inspection works to eliminate duplicate rows and resolve real subjects and categories
   const worksFromApi = fetchedWorks !== null;
+  const worksRowsFromApi = Array.isArray(fetchedWorks) && fetchedWorks.length > 0;
 
   const rawWorks: any[] = useMemo(() => {
     const list =
@@ -1954,6 +1971,20 @@ export default function InspectionReportsView({
     return applied;
   }, [state.inspectionCategories]);
 
+  const hydrateCountsFromWorks = React.useCallback(
+    (works: any[]) => {
+      if (!Array.isArray(works) || works.length === 0) return false;
+      const rollups = buildSubjectCategoryRollupsFromWorks(works);
+      if (!rollups.length) return false;
+      setApiSubjectRollups(rollups);
+      const total = rollups.reduce((s, r) => s + (r.count || 0), 0);
+      setApiTotalWithoutCategory(total);
+      setApiCategoryCounts(categoryCountsFromSubjectRollups(rollups, state.inspectionCategories || []));
+      return true;
+    },
+    [state.inspectionCategories],
+  );
+
   const applyBootstrapStatsFallback = React.useCallback(() => {
     if (!isAdminOrDirector) return false;
     const stats = state.inspectionWorkStats;
@@ -2065,17 +2096,20 @@ export default function InspectionReportsView({
     if (embedMode && fetchedWorksRef.current == null && isAdminOrDirector) {
       applyBootstrapStatsFallback();
     }
-    const countsOnly = activeTab === 'abstract' || (embedMode && !activeTab);
-    const useRowsOnly = !countsOnly && hasApiRollupCountsRef.current;
+    const abstractTab = activeTab === 'abstract' || (embedMode && !activeTab);
+    const countsOnly = abstractTab && isAdminOrDirector;
+    const useRowsOnly = !abstractTab && hasApiRollupCountsRef.current;
+    const reportsBundle =
+      (abstractTab && !isAdminOrDirector) || (!abstractTab && !countsOnly && !useRowsOnly);
     const queryKey = buildInspectionWorksQueryParams({
       countsOnly,
       rowsOnly: useRowsOnly,
-      reportsBundle: !countsOnly && !useRowsOnly,
+      reportsBundle,
       page: 1,
       pageSize: REPORTS_SERVER_PAGE_SIZE,
     }).toString();
     const now = Date.now();
-    const dedupeMs = countsOnly ? 8000 : 1500;
+    const dedupeMs = countsOnly || (abstractTab && reportsBundle) ? 8000 : 1500;
     if (
       lastWorksQueryKeyRef.current === queryKey &&
       now - lastWorksQueryAtRef.current < dedupeMs
@@ -2102,14 +2136,26 @@ export default function InspectionReportsView({
           if (typeof json.total === 'number') setApiWorksTotal(json.total);
           else setApiWorksTotal(works.length);
         } else if (countsOnly) {
-          setFetchedWorks((prev) =>
-            Array.isArray(prev) && prev.length === 0 ? prev : emptyWorksRef.current
-          );
           if (typeof json.totalWithoutCategoryFilter === 'number') {
             setApiWorksTotal(json.totalWithoutCategoryFilter);
           }
         }
-        applyCountsPayload(json);
+        const countsApplied = applyCountsPayload(json);
+        if (
+          !countsApplied &&
+          Array.isArray(works) &&
+          works.length > 0 &&
+          (!(Array.isArray(json?.subjectCategoryRollups) && json.subjectCategoryRollups.length > 0))
+        ) {
+          hydrateCountsFromWorks(works);
+        } else if (
+          countsOnly &&
+          (!(Array.isArray(json?.subjectCategoryRollups) && json.subjectCategoryRollups.length > 0)) &&
+          (typeof json?.totalWithoutCategoryFilter !== 'number' || json.totalWithoutCategoryFilter === 0)
+        ) {
+          const existing = Array.isArray(fetchedWorks) ? fetchedWorks : [];
+          if (existing.length > 0) hydrateCountsFromWorks(existing);
+        }
         setLastRefreshed(new Date().toLocaleTimeString());
         if (seq === fetchSeqRef.current) setFetchError(null);
       } else if (json?.success === false && seq === fetchSeqRef.current) {
@@ -2134,6 +2180,8 @@ export default function InspectionReportsView({
     isAdminOrDirector,
     applyBootstrapStatsFallback,
     applyCountsPayload,
+    hydrateCountsFromWorks,
+    fetchedWorks,
   ]);
 
   // Hydrate abstract/category stats from bootstrap until the reports API returns (admin only).
@@ -2956,6 +3004,7 @@ export default function InspectionReportsView({
 
   const filteredApiDimensionRollups = useMemo(() => {
     let rows = apiDimensionRollups;
+    if (!isAdminOrDirector) return rows;
     if (selectedZoneId !== 'all') {
       rows = rows.filter((row) => workMatchesZone(row, selectedZoneId, filterMasters));
     }
@@ -2984,12 +3033,14 @@ export default function InspectionReportsView({
     selectedSubjectId,
     selectedCategoryId,
     filterMasters,
+    isAdminOrDirector,
   ]);
 
   const hasGeoFilter =
-    (selectedZoneId && selectedZoneId !== 'all') ||
-    (selectedDistrictId && selectedDistrictId !== 'all') ||
-    (selectedTpId && selectedTpId !== 'all');
+    isAdminOrDirector &&
+    ((selectedZoneId && selectedZoneId !== 'all') ||
+      (selectedDistrictId && selectedDistrictId !== 'all') ||
+      (selectedTpId && selectedTpId !== 'all'));
 
   const filteredApiSubjectRollups = useMemo(() => {
     if (hasGeoFilter) {
@@ -3252,12 +3303,15 @@ export default function InspectionReportsView({
   const swmBuildingFilter = swmBuildingType;
 
   const swmAbstractRows = useMemo(() => {
-    if (swmServerRows) return swmServerRows;
-    if (reportModule !== 'swm' || !swmSummaryGroups.length) return [];
+    if (swmServerRows && swmServerRows.length > 0) return swmServerRows;
+    if (reportModule !== 'swm') return [];
     const fields = state.inspectionFields || [];
     const groups = new Map<string, SwmAbstractRow & { wardSet: Set<string>; streetSet: Set<string> }>();
 
-    const sourceGroups = swmSummaryGroups;
+    const sourceGroups = swmSummaryGroups.length
+      ? swmSummaryGroups
+      : filteredWorks.filter((w) => isSwmDoorToDoorWork(w, swmDoorToDoorCategoryIds));
+    if (!sourceGroups.length) return [];
     sourceGroups.forEach((work: any) => {
       if (isFallbackInspectionWork(work)) return;
       if (work.categoryId && !isSwmDoorToDoorWork(work, swmDoorToDoorCategoryIds)) return;
@@ -3353,7 +3407,19 @@ export default function InspectionReportsView({
       || String(a.wardNumber || '').localeCompare(String(b.wardNumber || ''), undefined, { numeric: true })
       || String(a.streetName || '').localeCompare(String(b.streetName || ''))
     );
-  }, [reportModule, resolveGeoNames, state.inspectionFields, streetLabel, swmSummaryGroups, swmBuildingFilter, swmDoorToDoorCategoryIds, swmShowStreet, swmShowWard, swmServerRows]);
+  }, [
+    reportModule,
+    resolveGeoNames,
+    state.inspectionFields,
+    streetLabel,
+    swmSummaryGroups,
+    swmBuildingFilter,
+    swmDoorToDoorCategoryIds,
+    swmShowStreet,
+    swmShowWard,
+    swmServerRows,
+    filteredWorks,
+  ]);
 
   const swmAbstractTotals = useMemo(() => {
     if (swmServerTotals) {
@@ -3558,7 +3624,7 @@ export default function InspectionReportsView({
 
   // Abstract calculations
   const abstractData = useMemo(() => {
-    if (worksFromApi || filteredApiSubjectRollups.length > 0) {
+    if (filteredApiSubjectRollups.length > 0) {
       const subjectsMap: Record<string, {
         subjectId: string;
         subjectNameEn: string;
@@ -3675,11 +3741,11 @@ export default function InspectionReportsView({
     });
 
     return Object.values(subjectsMap);
-  }, [filteredWorks, worksFromApi, filteredApiSubjectRollups, state.inspectionSubjects, state.inspectionCategories]);
+  }, [filteredWorks, filteredApiSubjectRollups, state.inspectionSubjects, state.inspectionCategories]);
 
   // Subject-wise grouping calculations
   const subjectWiseData = useMemo(() => {
-    if (worksFromApi || filteredApiSubjectRollups.length > 0) {
+    if (filteredApiSubjectRollups.length > 0) {
       return filteredApiSubjectRollups.map((row) => {
         const sId = row.subjectId || 'unknown';
         const cId = row.categoryId || 'unknown';
@@ -3737,7 +3803,7 @@ export default function InspectionReportsView({
     });
 
     return Object.values(groups);
-  }, [filteredWorks, worksFromApi, filteredApiSubjectRollups, state.inspectionSubjects, state.inspectionCategories]);
+  }, [filteredWorks, filteredApiSubjectRollups, state.inspectionSubjects, state.inspectionCategories]);
 
   // User-wise grouping calculations
   const userWiseData = useMemo(() => {
@@ -3760,7 +3826,7 @@ export default function InspectionReportsView({
     const includeSubject = categoryWiseEnabled && userCols.subject;
     const includeCategory = categoryWiseEnabled && userCols.category;
 
-    if (worksFromApi) {
+    if (filteredApiDimensionRollups.length > 0) {
       filteredApiDimensionRollups.forEach((row) => {
         const geo = resolveGeoNames(row.zoneId, row.districtId, row.tpId, row);
         const uName = row.submittedByUserName || (lang === 'ta' ? 'கள ஆய்வாளர்' : 'Field Inspector');
@@ -3923,7 +3989,7 @@ export default function InspectionReportsView({
       return parts.join('|');
     };
 
-    if (worksFromApi) {
+    if (filteredApiDimensionRollups.length > 0) {
       filteredApiDimensionRollups.forEach((row) => {
         const geo = resolveGeoNames(row.zoneId, row.districtId, row.tpId, row);
         const streetName = String(row.streetName || geo.streetName || '').trim() || '-';
@@ -4098,12 +4164,22 @@ export default function InspectionReportsView({
     return sortedLocationWiseData;
   }, [groupingStyle, sortedSubjectWiseData, sortedUserWiseData, sortedLocationWiseData]);
 
+  const reportsRecordTotal = useMemo(
+    () =>
+      Math.max(
+        filteredWorks.length,
+        apiTotalWithoutCategory || 0,
+        apiWorksTotal || 0,
+        worksRowsFromApi ? filteredWorksTotal : 0,
+      ),
+    [filteredWorks.length, apiTotalWithoutCategory, apiWorksTotal, worksRowsFromApi, filteredWorksTotal],
+  );
+
   const activeRowsTotal = useMemo(() => {
     const rowSum = activeRows.reduce((sum, r: any) => sum + (r.totalInspections || 0), 0);
     if (rowSum > 0) return rowSum;
-    if (worksFromApi) return filteredWorksTotal;
-    return apiTotalWithoutCategory || 0;
-  }, [activeRows, worksFromApi, filteredWorksTotal, apiTotalWithoutCategory]);
+    return reportsRecordTotal;
+  }, [activeRows, reportsRecordTotal]);
 
   // Paginated Rows (50 items per page)
   const paginatedRows = useMemo(() => {
@@ -8212,7 +8288,7 @@ export default function InspectionReportsView({
                 className={`portal-fis-cat ${selectedCategoryId === 'all' ? 'is-active' : ''}`}
               >
                 <span className="portal-fis-cat-name">{lang === 'ta' ? 'அனைத்து வகைகளும்' : 'All categories'}</span>
-                <span className="portal-fis-count">{worksFromApi ? apiTotalWithoutCategory : filteredWorks.length}</span>
+                <span className="portal-fis-count">{reportsRecordTotal}</span>
               </button>
               {availableCategories.map((cat: any) => {
                 const isSelected = selectedCategoryId === cat.id || selectedCategoryId === cat.nameEn;
