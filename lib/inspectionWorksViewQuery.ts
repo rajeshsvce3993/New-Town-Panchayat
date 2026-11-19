@@ -40,6 +40,8 @@ export function parseInspectionWorksViewQuery(searchParams: URLSearchParams) {
     swmReport: searchParams.get('swmReport') === '1',
     swmGroup: searchParams.get('swmGroup'),
     swmBuildingType: searchParams.get('swmBuildingType'),
+    /** Skip expensive dimension rollup explode (dashboard embed / KPI cards). */
+    compactCounts: searchParams.get('compactCounts') === '1',
   };
 }
 
@@ -76,6 +78,7 @@ export function buildInspectionWorksCacheKey(searchParams: URLSearchParams): str
     q.swmSummary ? 'swm' : '',
     q.swmReport ? `swm-report:${q.swmGroup || 'tp'}` : '',
     q.swmBuildingType || '',
+    q.compactCounts ? 'compact' : 'full-counts',
   ].join('|');
 }
 

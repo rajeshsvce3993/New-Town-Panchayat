@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getScopeVersionMeta, initializeUserScopeCacheOnce } from '@/lib/userScopeCache';
+import { isLiveDataOnly } from '@/lib/services/liveUserScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,8 +20,9 @@ export async function OPTIONS() {
  */
 export async function GET(req: NextRequest) {
   try {
-    // Ensure cache is initialized if server started
-    initializeUserScopeCacheOnce().catch(() => {});
+    if (!isLiveDataOnly()) {
+      initializeUserScopeCacheOnce().catch(() => {});
+    }
 
     const { searchParams } = new URL(req.url);
     const clientVersionStr = searchParams.get('clientVersion') || req.headers.get('x-scope-version') || '0';

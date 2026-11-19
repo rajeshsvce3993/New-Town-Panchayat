@@ -562,11 +562,21 @@ function emptyTotals(): SwmReportTotals {
   };
 }
 
+const SWM_TOTALS_CACHE_TTL_MS = 120_000;
+const swmTotalsCache = new Map<string, { ts: number; data: SwmReportTotals & { source: string } }>();
+
 export async function aggregateSwmTotals(
   filter: InspectionWorksFilterQuery,
   masters: InspectionWorksFilterMasters,
   opts?: { buildingType?: string | null }
 ): Promise<SwmReportTotals & { source: string }> {
+  const cacheKey = JSON.stringify({
+    filter,
+    buildingType: opts?.buildingType || '',
+  });
+  const hit = swmTotalsCache.get(cacheKey);
+  if (hit && Date.now() - hit.ts < SWM_TOTALS_CACHE_TTL_MS) return hit.data;
+
   const client = await getMongoClient();
   if (!client) return { ...emptyTotals(), source: 'empty' };
   const db = await getActiveMongoDb(client);
@@ -581,7 +591,7 @@ export async function aggregateSwmTotals(
     },
   ];
   const [row] = await runSwmAggregate(col, pipeline, filter);
-  return {
+  const data = {
     ...emptyTotals(),
     householdsSurveyed: Number(row?.householdsSurveyed) || 0,
     segregating: Number(row?.segregating) || 0,
@@ -590,4 +600,10 @@ export async function aggregateSwmTotals(
     homeComposting: Number(row?.homeComposting) || 0,
     source: 'mongo-swm-totals',
   };
+  swmTotalsCache.set(cacheKey, { ts: Date.now(), data });
+  if (swmTotalsCache.size > 40) {
+    const first = swmTotalsCache.keys().next().value;
+    if (first) swmTotalsCache.delete(first);
+  }
+  return data;
 }

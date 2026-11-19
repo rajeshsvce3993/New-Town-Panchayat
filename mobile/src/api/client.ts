@@ -10,6 +10,7 @@ import {
   UPLOAD_TIMEOUT_MS,
 } from '../constants/config';
 import type {
+  AppUser,
   ChangePasswordResponse,
   InspectionWork,
   LoginRequest,
@@ -193,12 +194,89 @@ export const api = {
     return attempt(false);
   },
 
+  /** @deprecated Server returns 410. Use bootstrapProductionPortal. */
   async getPortalState(username?: string | null): Promise<PortalState> {
-    const url = username ? `${baseUrl}/api/portal-state?username=${encodeURIComponent(username)}` : `${baseUrl}/api/portal-state`;
-    const response = await fetchWithTimeout(url, { headers: { 'Cache-Control': 'no-cache, no-store' } });
-    if (!response.ok) throw new Error(`Server returned non-successful response: ${response.status}`);
-    const json = (await response.json()) as PortalState & { data?: PortalState };
-    return (json?.data && typeof json.data === 'object' && !Array.isArray(json.data) ? { ...json, ...json.data } : json) as PortalState;
+    return this.bootstrapProductionPortal(username || '');
+  },
+
+  /** Login refresh path: geo/me + masters/scope + scoped works (no portal-state). */
+  async bootstrapProductionPortal(username: string, user?: AppUser | null): Promise<PortalState> {
+    const u = String(username || '').trim();
+    if (!u) throw new Error('username required');
+
+    const [scopeRes, geoRes, settings, config, worksRes] = await Promise.all([
+      fetchWithTimeout(`${baseUrl}/api/masters/scope?username=${encodeURIComponent(u)}`, {
+        headers: mobileClientHeaders(),
+      }, BOOTSTRAP_API_TIMEOUT_MS),
+      fetchWithTimeout(`${baseUrl}/api/geo/me?username=${encodeURIComponent(u)}`, {
+        headers: mobileClientHeaders(),
+      }, BOOTSTRAP_API_TIMEOUT_MS),
+      this.getAppSettings(),
+      this.getMobileConfig(),
+      fetchWithTimeout(
+        `${baseUrl}/api/inspection-works?username=${encodeURIComponent(u)}&lite=1&limit=120`,
+        { headers: { ...mobileClientHeaders(), 'Cache-Control': 'no-cache' } },
+        BOOTSTRAP_API_TIMEOUT_MS,
+      ),
+    ]);
+
+    const scopeJson = (await scopeRes.json().catch(() => ({}))) as UserScopeResponse;
+    const geoJson = (await geoRes.json().catch(() => ({}))) as { success?: boolean; geo?: any; username?: string };
+    const worksJson = (await worksRes.json().catch(() => ({}))) as { works?: InspectionWork[]; success?: boolean };
+
+    const scope = scopeJson.scope;
+    const geo = geoJson.geo;
+    const districts: PortalState['districts'] = geo?.districtId
+      ? [
+          {
+            id: geo.districtId,
+            nameEn: geo.districtNameEn || '',
+            nameTa: geo.districtNameTa || '',
+            zoneId: geo.zoneId || '',
+          },
+        ]
+      : [];
+    const townPanchayats: PortalState['townPanchayats'] = geo?.tpId
+      ? [
+          {
+            id: geo.tpId,
+            nameEn: geo.tpNameEn || '',
+            nameTa: geo.tpNameTa || '',
+            districtId: geo.districtId || '',
+            zoneId: geo.zoneId || '',
+          },
+        ]
+      : scope?.townPanchayat?.id
+        ? [
+            {
+              id: scope.townPanchayat.id,
+              nameEn: scope.townPanchayat.nameEn,
+              nameTa: scope.townPanchayat.nameTa,
+              districtId: scope.townPanchayat.districtId || '',
+            },
+          ]
+        : [];
+
+    return {
+      districts,
+      townPanchayats,
+      zones: geo?.zoneId
+        ? [{ id: geo.zoneId, nameEn: geo.zoneNameEn || '', nameTa: geo.zoneNameTa || '' }]
+        : [],
+      inspectionSubjects: scope?.subjects || [],
+      inspectionCategories: scope?.categories || [],
+      inspectionFields: scope?.fields || [],
+      wardsAndStreets: scope?.wardsAndStreets || [],
+      subjects: scope?.subjects || [],
+      categories: scope?.categories || [],
+      fields: scope?.fields || [],
+      inspectionWorks: worksJson.works || [],
+      works: worksJson.works || [],
+      user: user || (scope?.user as AppUser) || null,
+      appIconUrl: config?.appIconUrl || null,
+      loginLogoUrl: config?.loginLogoUrl || null,
+      settings,
+    };
   },
 
   async getAppSettings(): Promise<Record<string, unknown>> {

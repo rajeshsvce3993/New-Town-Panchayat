@@ -2,6 +2,7 @@
 import ThemeSelect from './ThemeSelect';
 
 import React, { useState, useRef } from 'react';
+import { useGeoCascade } from '@/lib/hooks/useGeoCascade';
 import { jsPDF } from 'jspdf';
 import { motion } from 'motion/react';
 import { 
@@ -82,12 +83,31 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
   const [districtEn, setDistrictEn] = useState('');
   const [districtTa, setDistrictTa] = useState('');
   const [districtCode, setDistrictCode] = useState('');
-  const [selectedZoneId, setSelectedZoneId] = useState('');
+  const geo = useGeoCascade();
+  const {
+    zones,
+    districts,
+    townPanchayats,
+    wardsAndStreets,
+    selectedZoneId,
+    selectedDistrictId,
+    selectedTpId: wardStreetTpId,
+    selectZone: setSelectedZoneId,
+    selectDistrict: setSelectedDistrictId,
+    selectTp: setWardStreetTpId,
+    wardTotal,
+    wardHasMore,
+    loadMoreWards,
+    loading: geoLoading,
+    refreshAllVisible,
+    refreshDistricts,
+    refreshTownPanchayats,
+    refreshWards,
+  } = geo;
+
   const [tpEn, setTpEn] = useState('');
   const [tpTa, setTpTa] = useState('');
   const [tpCode, setTpCode] = useState('');
-  const [selectedDistrictId, setSelectedDistrictId] = useState('');
-  const [wardStreetTpId, setWardStreetTpId] = useState('');
   const [wardNo, setWardNo] = useState('');
   const [streetEn, setStreetEn] = useState('');
   const [streetTa, setStreetTa] = useState('');
@@ -137,10 +157,6 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
   };
 
   const {
-    zones = [],
-    districts = [],
-    townPanchayats = [],
-    wardsAndStreets = [],
     employeeGroups = [],
     employeeCategories = [],
     postNatures = [],
@@ -158,9 +174,10 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
       nameEn: zoneEn,
       nameTa: zoneTa
     };
-    await onSaveCollection('zones', [...zones, newZone]);
+    await onSaveCollection('zones', [newZone]);
     setZoneEn('');
     setZoneTa('');
+    await refreshAllVisible();
   };
 
   // Helper to suggest next 2-digit district code across districts
@@ -194,10 +211,11 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
       nameTa: districtTa,
       code: finalCode
     };
-    await onSaveCollection('districts', [...districts, newDistrict]);
+    await onSaveCollection('districts', [newDistrict]);
     setDistrictEn('');
     setDistrictTa('');
     setDistrictCode('');
+    if (selectedZoneId) await refreshDistricts(selectedZoneId);
   };
 
   const handleAddTP = async (e: React.FormEvent) => {
@@ -211,10 +229,11 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
       nameTa: tpTa,
       code: finalCode
     };
-    await onSaveCollection('townPanchayats', [...townPanchayats, newTP]);
+    await onSaveCollection('townPanchayats', [newTP]);
     setTpEn('');
     setTpTa('');
     setTpCode('');
+    if (selectedDistrictId) await refreshTownPanchayats(selectedDistrictId);
   };
 
   const handleAddWardAndStreet = async (e: React.FormEvent) => {
@@ -227,9 +246,10 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
       streetNameEn: streetEn.trim(),
       streetNameTa: streetTa.trim()
     };
-    await onSaveCollection('wardsAndStreets', [...wardsAndStreets, newWs]);
+    await onSaveCollection('wardsAndStreets', [newWs]);
     setStreetEn('');
     setStreetTa('');
+    if (wardStreetTpId) await refreshWards(wardStreetTpId, 1, false);
   };
 
   // Handlers for Employee Masters
@@ -341,26 +361,46 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
     if (!editingId || !editNameEn || !editNameTa) return;
 
     if (editingType === 'zone') {
-      const updatedZones = zones.map((z: any) => 
-        z.id === editingId ? { ...z, nameEn: editNameEn, nameTa: editNameTa } : z
-      );
-      await onSaveCollection('zones', updatedZones);
+      const row = zones.find((z: any) => z.id === editingId);
+      if (row) {
+        await onSaveCollection('zones', [{ ...row, nameEn: editNameEn, nameTa: editNameTa }]);
+      }
     } else if (editingType === 'district') {
-      const updatedDistricts = districts.map((d: any) => 
-        d.id === editingId ? { ...d, nameEn: editNameEn, nameTa: editNameTa, zoneId: editZoneId, code: editDistrictCode.replace(/\D/g, '').padStart(2, '0') } : d
-      );
-      await onSaveCollection('districts', updatedDistricts);
+      const row = districts.find((d: any) => d.id === editingId);
+      if (row) {
+        await onSaveCollection('districts', [
+          {
+            ...row,
+            nameEn: editNameEn,
+            nameTa: editNameTa,
+            zoneId: editZoneId,
+            code: editDistrictCode.replace(/\D/g, '').padStart(2, '0'),
+          },
+        ]);
+      }
     } else if (editingType === 'tp') {
-      const updatedTPs = townPanchayats.map((tp: any) => 
-        tp.id === editingId ? { ...tp, nameEn: editNameEn, nameTa: editNameTa, districtId: editDistrictId, code: editTpCode.replace(/\D/g, '').padStart(2, '0') } : tp
-      );
-      await onSaveCollection('townPanchayats', updatedTPs);
+      const row = townPanchayats.find((tp: any) => tp.id === editingId);
+      if (row) {
+        await onSaveCollection('townPanchayats', [
+          {
+            ...row,
+            nameEn: editNameEn,
+            nameTa: editNameTa,
+            districtId: editDistrictId,
+            code: editTpCode.replace(/\D/g, '').padStart(2, '0'),
+          },
+        ]);
+      }
     } else if (editingType === 'ward_street') {
-      const updatedWs = wardsAndStreets.map((ws: any) =>
-        ws.id === editingId ? { ...ws, streetNameEn: editNameEn, streetNameTa: editNameTa, wardNo: editWardNo, tpId: editTpId } : ws
-      );
-      await onSaveCollection('wardsAndStreets', updatedWs);
+      const row = wardsAndStreets.find((ws: any) => ws.id === editingId);
+      if (row) {
+        await onSaveCollection('wardsAndStreets', [
+          { ...row, streetNameEn: editNameEn, streetNameTa: editNameTa, wardNo: editWardNo, tpId: editTpId },
+        ]);
+      }
     }
+
+    await refreshAllVisible();
 
     setEditingType(null);
     setEditingId('');
@@ -878,6 +918,57 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
               </div>
             </div>
             <div className="portal-dash-body portal-wt-form">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 p-3 rounded-xl bg-slate-50/80 border border-slate-200/80">
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-500 uppercase">
+                    {lang === 'ta' ? '1. மண்டலம்' : '1. Zone'}
+                  </label>
+                  <ThemeSelect
+                    value={selectedZoneId}
+                    onChange={(e) => setSelectedZoneId(e.target.value)}
+                  >
+                    <option value="">{lang === 'ta' ? '-- மண்டலம் தேர்வு --' : '-- Select zone --'}</option>
+                    {zones.map((z: any) => (
+                      <option key={z.id} value={z.id}>{tObj(z)}</option>
+                    ))}
+                  </ThemeSelect>
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-500 uppercase">
+                    {lang === 'ta' ? '2. மாவட்டம்' : '2. District'}
+                  </label>
+                  <ThemeSelect
+                    value={selectedDistrictId}
+                    onChange={(e) => setSelectedDistrictId(e.target.value)}
+                    disabled={!selectedZoneId}
+                  >
+                    <option value="">{lang === 'ta' ? '-- மாவட்டம் தேர்வு --' : '-- Select district --'}</option>
+                    {districts.map((d: any) => (
+                      <option key={d.id} value={d.id}>{tObj(d)} {d.code ? `[${d.code}]` : ''}</option>
+                    ))}
+                  </ThemeSelect>
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-500 uppercase">
+                    {lang === 'ta' ? '3. பேரூராட்சி' : '3. Town Panchayat'}
+                  </label>
+                  <ThemeSelect
+                    value={wardStreetTpId}
+                    onChange={(e) => setWardStreetTpId(e.target.value)}
+                    disabled={!selectedDistrictId}
+                  >
+                    <option value="">{lang === 'ta' ? '-- பேரூராட்சி தேர்வு --' : '-- Select TP --'}</option>
+                    {townPanchayats.map((tp: any) => (
+                      <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
+                    ))}
+                  </ThemeSelect>
+                </div>
+              </div>
+              {(geoLoading.zones || geoLoading.districts || geoLoading.tps || geoLoading.wards) && (
+                <p className="text-xs text-slate-500 mb-2">
+                  {lang === 'ta' ? 'MongoDB இருந்து ஏற்றுகிறது…' : 'Loading from MongoDB…'}
+                </p>
+              )}
               <div className="portal-dash-pills">
                 <button
                   type="button"
@@ -1071,18 +1162,16 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
                   <div className="space-y-3">
                     <div>
                       <label>{lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}</label>
-                      <ThemeSelect
-                        value={wardStreetTpId}
-                        onChange={(e) => setWardStreetTpId(e.target.value)}
-                        required
-                      >
+                      <p className="text-[11px] text-slate-500 mb-1">
+                        {lang === 'ta'
+                          ? 'மேலே 3-படி தேர்வில் பேரூராட்சியைத் தேர்ந்தெடுக்கவும்.'
+                          : 'Pick Town Panchayat in the 3-step selector above.'}
+                      </p>
+                      <ThemeSelect value={wardStreetTpId} onChange={(e) => setWardStreetTpId(e.target.value)} required>
                         <option value="">-- Choose Town Panchayat --</option>
-                        {townPanchayats.map((tp: any) => {
-                          const dist = districts.find((d: any) => d.id === tp.districtId);
-                          return (
-                            <option key={tp.id} value={tp.id}>{tObj(tp)} {dist ? `(${tObj(dist)})` : ''}</option>
-                          );
-                        })}
+                        {townPanchayats.map((tp: any) => (
+                          <option key={tp.id} value={tp.id}>{tObj(tp)}</option>
+                        ))}
                       </ThemeSelect>
                     </div>
                     <div>
@@ -1135,7 +1224,9 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
                   {lang === 'ta' ? 'தற்போதைய மண்டல படிநிலை வரைபடம்' : 'Active Town Panchayat Jurisdictions'}
                 </h3>
                 <p>
-                  {lang === 'ta' ? 'அனைத்து மண்டலம், மாவட்டம், பேரூராட்சி மற்றும் வார்டுகள்.' : 'Full list of zones, districts, town panchayats, and wards.'}
+                  {lang === 'ta'
+                    ? 'தேர்ந்தெடுத்த மண்டலம் → மாவட்டம் → பேரூராட்சி வாரியாக மட்டும் ஏற்றப்படும் (வேகமான MongoDB).'
+                    : 'Loads only the selected zone → district → TP chain from MongoDB (faster).'}
                 </p>
               </div>
               <div className="portal-dash-pills">
@@ -1495,7 +1586,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
                       : 'No jurisdictional data. Upload a CSV above or create a zone to populate this tree.'}
                   </p>
                 )}
-                {zones.map((zone: any, zIdx: number) => {
+                {(selectedZoneId ? zones.filter((z: any) => z.id === selectedZoneId) : zones).map((zone: any, zIdx: number) => {
                   const zoneDistricts = districts.filter((d: any) => d.zoneId === zone.id);
                   const zoneOpen = Boolean(openZones[zone.id]);
                   const zoneTone = ZONE_TONES[zIdx % ZONE_TONES.length];
@@ -1723,6 +1814,13 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
                     </div>
                   );
                 })}
+                {wardStreetTpId && wardHasMore && (
+                  <button type="button" className="portal-dash-pill mt-4 w-full justify-center" onClick={() => loadMoreWards()}>
+                    {lang === 'ta'
+                      ? `மேலும் தெருக்கள் ஏற்று (${wardsAndStreets.length} / ${wardTotal})`
+                      : `Load more streets (${wardsAndStreets.length} / ${wardTotal})`}
+                  </button>
+                )}
               </div>
             )}
             </div>

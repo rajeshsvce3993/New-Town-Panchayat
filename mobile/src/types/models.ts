@@ -388,9 +388,16 @@ export interface InspectionWork {
   status?: string;
 }
 
+export interface ZoneModel {
+  id: string;
+  nameEn: string;
+  nameTa: string;
+}
+
 export interface PortalState {
   districts?: DistrictModel[];
   townPanchayats?: TownPanchayatModel[];
+  zones?: ZoneModel[];
   inspectionSubjects?: Subject[];
   inspectionCategories?: Category[];
   inspectionFields?: FieldDefinition[];

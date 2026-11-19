@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  getUserScopeDetails,
-  getUserScopeDetailsForLogin,
-  getUserScopeFromCacheOnly,
-} from '@/lib/userScopeCache';
+import { getUserScopeDetailsForLogin, getUserScopeFromCacheOnly } from '@/lib/userScopeCache';
 import { isMobileClientRequest } from '@/lib/mobileAppAuth';
+import { buildLiveUserScope, isLiveDataOnly } from '@/lib/services/liveUserScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,12 +33,14 @@ export async function GET(req: NextRequest) {
     }
 
     const mobileClient = isMobileClientRequest(req);
-    let scope = await getUserScopeFromCacheOnly(identifier);
-    if (!scope) {
-      // Cap build time for all clients so post-login scope fetch does not pile onto :5000 under load.
-      scope = await getUserScopeDetailsForLogin(identifier, mobileClient ? 8_000 : 12_000);
+    let scope = null as Awaited<ReturnType<typeof buildLiveUserScope>>;
+
+    if (isLiveDataOnly()) {
+      scope = await buildLiveUserScope(identifier, mobileClient ? 8_000 : 12_000);
+    } else {
+      scope = await getUserScopeFromCacheOnly(identifier);
       if (!scope) {
-        void getUserScopeDetails(identifier).catch(() => {});
+        scope = await getUserScopeDetailsForLogin(identifier, mobileClient ? 8_000 : 12_000);
       }
     }
 
@@ -49,7 +48,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: 'No assigned inspection scope found for this user in user_scope_cache',
+          message: isLiveDataOnly()
+            ? 'No assigned inspection scope found for this user'
+            : 'No assigned inspection scope found for this user in user_scope_cache',
         },
         { status: 404, headers: CORS_HEADERS }
       );
@@ -58,6 +59,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
+        source: isLiveDataOnly() ? 'mongo-live' : 'scope-cache',
         scopeVersion: scope.scopeVersion,
         updatedAt: scope.updatedAt,
         scope,

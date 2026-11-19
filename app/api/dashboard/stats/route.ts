@@ -46,7 +46,15 @@ export async function GET(req: NextRequest) {
     const moduleRaw = req.nextUrl.searchParams.get('module');
     const module = moduleRaw === 'swm' || moduleRaw === 'inspection' ? moduleRaw : 'all';
     const stats = await loadDashboardStats(origin, filter, module);
-    return NextResponse.json({ success: true, ...stats, dataSource: getAppEnv() }, { headers: CORS_HEADERS });
+    return NextResponse.json(
+      { success: true, ...stats, dataSource: getAppEnv() },
+      {
+        headers: {
+          ...CORS_HEADERS,
+          'Cache-Control': module === 'all' ? 'private, max-age=60, stale-while-revalidate=120' : 'private, max-age=30',
+        },
+      },
+    );
   } catch (err: any) {
     return NextResponse.json(
       { success: false, message: err?.message || 'Could not load dashboard stats' },

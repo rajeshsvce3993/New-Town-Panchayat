@@ -2,6 +2,7 @@ import { MongoClient } from 'mongodb';
 import { getActiveMongoDb, getMongoClient } from '@/lib/storage';
 import { getScopeVersionMeta } from '@/lib/userScopeCache';
 import { buildPortalStatePayload } from '@/lib/buildPortalStatePayload';
+import { isBootstrapCacheDisabled } from '@/lib/productionFlags';
 
 const COLLECTION = 'portal_bootstrap_cache';
 const META_COLLECTION = 'masters_meta';
@@ -111,6 +112,7 @@ export async function readPortalBootstrapMongo(
   todayOnly: boolean,
   opts: { allowStale?: boolean } = {},
 ): Promise<{ payload: Record<string, unknown>; tag: PortalBootstrapMongoTag; scopeVersion: number } | null> {
+  if (isBootstrapCacheDisabled()) return null;
   const allowStale = opts.allowStale !== false;
   const clean = String(username || '').trim().toLowerCase();
   if (!clean) return null;
@@ -154,6 +156,7 @@ export async function writePortalBootstrapMongo(
   payload: Record<string, unknown>,
   buildDurationMs?: number,
 ): Promise<void> {
+  if (isBootstrapCacheDisabled()) return;
   const clean = String(username || '').trim().toLowerCase();
   if (!clean) return;
 

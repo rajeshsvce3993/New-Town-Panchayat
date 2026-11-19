@@ -40,6 +40,8 @@ import { normalizePortalSessionUser } from '@/lib/userScope';
 import { PortalSplash } from '@/components/PortalSplash';
 import {
   loadPortalBootstrap,
+  loadPortalHeavyCollections,
+  loadPortalUserDirectory,
   invalidatePortalBootstrapCache,
   onPortalBootstrapFresh,
   peekPortalBootstrapCache,
@@ -179,8 +181,8 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'dashboard' || activeTab === 'inspectionReports') {
-      setMountedHeavyPages((prev) => (prev[activeTab] ? prev : { ...prev, [activeTab]: true }));
+    if (activeTab === 'dashboard') {
+      setMountedHeavyPages((prev) => (prev.dashboard ? prev : { ...prev, dashboard: true }));
     }
   }, [activeTab]);
 
@@ -308,13 +310,10 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
 
   const loadExtendedState = async () => {
     try {
-      const res = await fetch('/api/state?mode=extended', { cache: 'no-store' });
-      const json = await res.json();
-      if (json.success && json.data) {
-        setState((prev: any) => mergePortalState(prev, json.data));
-      }
+      const heavy = await loadPortalHeavyCollections();
+      setState((prev: any) => mergePortalState(prev, heavy));
     } catch (err) {
-      console.error('Failed to load extended portal state:', err);
+      console.error('Failed to load extended portal collections:', err);
     }
   };
 
@@ -332,7 +331,14 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
           setRefreshToast(lang === 'ta' ? `தரவுகள் உடனே புதுப்பிக்கப்பட்டன (${elapsed}ms) ✅` : `Refreshed in ${elapsed}ms ✅`);
           setTimeout(() => setRefreshToast(null), 2500);
         }
-        window.setTimeout(() => void loadExtendedState(), 1500);
+        void loadPortalUserDirectory()
+          .then((dir) => {
+            if (!dir.inspectionUsers?.length) return;
+            setState((prev: any) =>
+              mergePortalState(prev, { inspectionUsers: dir.inspectionUsers, users: dir.users?.length ? dir.users : prev.users })
+            );
+          })
+          .catch(() => undefined);
       }
     } catch (err) {
       console.error('Failed to load portal database state:', err);
@@ -357,29 +363,43 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     });
   };
 
-  // When opening Inspection Reports, ensure bootstrap has started and trigger a filter load
+  const heavyCollectionsLoadedRef = React.useRef(false);
+  const HEAVY_PORTAL_TABS = useMemo(
+    () =>
+      new Set([
+        'employeeManagement',
+        'employees',
+        'appManagement',
+        'masters',
+        'pendingIssues',
+        'transferCounseling',
+        'inspectionEmployees',
+        'users',
+      ]),
+    []
+  );
+
+  useEffect(() => {
+    if (!currentUser || !HEAVY_PORTAL_TABS.has(activeTab) || heavyCollectionsLoadedRef.current) return;
+    heavyCollectionsLoadedRef.current = true;
+    void loadExtendedState();
+  }, [activeTab, currentUser, HEAVY_PORTAL_TABS]);
+
   useEffect(() => {
     if (activeTab !== 'inspectionReports' || !currentUser) return;
     if ((state.townPanchayats?.length ?? 0) === 0 && (state.zones?.length ?? 0) === 0) {
       void loadState(false, false, true);
     }
-    window.dispatchEvent(new CustomEvent('portal:inspection-reports-refresh'));
-  }, [activeTab, currentUser]);
-
-  // Dashboard-only background refresh (KPI cards / bootstrap stats — not inspection filter API)
-  useEffect(() => {
-    if (activeTab !== 'dashboard') return;
-    const interval = window.setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      void loadPortalBootstrap(false).then((json) => {
-        if (json?.success && json.data) {
-          setState((prev: any) => mergePortalState(prev, json.data));
-          applySettingsFromState(json.data);
+    if ((state.inspectionUsers?.length ?? 0) === 0) {
+      void loadPortalUserDirectory().then((dir) => {
+        if (dir.inspectionUsers?.length) {
+          setState((prev: any) => mergePortalState(prev, { inspectionUsers: dir.inspectionUsers }));
         }
       });
-    }, 90_000);
-    return () => window.clearInterval(interval);
-  }, [activeTab]);
+    }
+  }, [activeTab, currentUser, state.townPanchayats?.length, state.zones?.length, state.inspectionUsers?.length]);
+
+  // Dashboard KPI refresh is handled inside DashboardView (`/api/dashboard/stats`) — no full /api/state poll.
 
   useEffect(() => {
     return onPortalBootstrapFresh((json) => {
@@ -548,23 +568,68 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     }
   };
 
-  // Master Collection Save
+  const masterKeyLabel = (key: string) => {
+    const labels: Record<string, { en: string; ta: string }> = {
+      inspectionSubjects: { en: 'Inspection subjects', ta: 'ஆய்வுப் பிரிவுகள்' },
+      inspectionCategories: { en: 'Work types / categories', ta: 'பணி வகைகள்' },
+      inspectionFields: { en: 'Form fields', ta: 'புலங்கள்' },
+      inspectionUsers: { en: 'Field staff', ta: 'களப் பணியாளர்கள்' },
+      users: { en: 'Portal users', ta: 'பயனர்கள்' },
+      wardsAndStreets: { en: 'Wards & streets', ta: 'வார்டு / தெருக்கள்' },
+    };
+    const hit = labels[key];
+    if (hit) return lang === 'ta' ? hit.ta : hit.en;
+    return key;
+  };
+
+  // Master Collection Save — keep UI data; never reload stale bootstrap cache over the save.
   const handleSaveCollection = async (key: string, data: any[], skipCacheRebuild?: boolean) => {
+    const label = masterKeyLabel(key);
+    setRefreshToast(lang === 'ta' ? `${label} சேமிக்கிறது…` : `Saving ${label}…`);
     try {
       const res = await fetch('/api/state', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operation: 'saveCollection', key, data, skipCacheRebuild })
+        body: JSON.stringify({ operation: 'saveCollection', key, data, skipCacheRebuild }),
       });
-      const resJson = await res.json();
-      if (resJson.success) {
-        setState((prev: any) => mergePortalState(prev, { [key]: data }));
-        const forceBootstrap = key === 'users' || key === 'inspectionUsers';
-        if (forceBootstrap) invalidatePortalBootstrapCache();
-        await loadState(false, forceBootstrap, true);
+      const resJson = await res.json().catch(() => ({}));
+      if (!res.ok || !resJson.success) {
+        const msg = resJson.message || res.statusText || 'Save failed';
+        setRefreshToast(lang === 'ta' ? `சேமிப்பு தோல்வி: ${msg}` : `Save failed: ${msg}`);
+        window.setTimeout(() => setRefreshToast(null), 5000);
+        return;
       }
-    } catch (err) {
+      setState((prev: any) => mergePortalState(prev, { [key]: data }));
+      invalidatePortalBootstrapCache();
+      if (key === 'users' || key === 'inspectionUsers') {
+        try {
+          const verify = await fetch(`/api/masters/list?collection=${encodeURIComponent(key)}&page=1&limit=2000`, {
+            cache: 'no-store',
+          });
+          const verified = await verify.json();
+          if (verified?.success && Array.isArray(verified.items)) {
+            setState((prev: any) => mergePortalState(prev, { [key]: verified.items }));
+          }
+        } catch {
+          /* optimistic state already applied */
+        }
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('portal:masters-updated', { detail: { key, at: Date.now() } }));
+        window.dispatchEvent(new CustomEvent('portal:inspection-reports-refresh'));
+      }
+      setRefreshToast(
+        lang === 'ta'
+          ? `${label} சேமிக்கப்பட்டது — களப் பயனர்களுக்கு scope புதுப்பிக்கப்படும் ✅`
+          : `${label} saved — field app will pick up scope on next sync ✅`,
+      );
+      window.setTimeout(() => setRefreshToast(null), 3500);
+    } catch (err: any) {
       console.error(`Error saving collection ${key}:`, err);
+      setRefreshToast(
+        lang === 'ta' ? 'பிணையப் பிழை — மீண்டும் முயற்சிக்கவும்' : 'Network error — please try again',
+      );
+      window.setTimeout(() => setRefreshToast(null), 5000);
     }
   };
 
@@ -578,9 +643,12 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
       const resJson = await res.json();
       if (resJson.success) {
         setState((prev: any) => mergePortalState(prev, {
-          [key]: (prev?.[key] || []).filter((item: any) => String(item?.id || item?._id || '') !== String(itemId))
+          [key]: (prev?.[key] || []).filter((item: any) => String(item?.id || item?._id || '') !== String(itemId)),
         }));
-        await loadState(false, false, true);
+        invalidatePortalBootstrapCache();
+        window.dispatchEvent(new CustomEvent('portal:masters-updated', { detail: { key, at: Date.now() } }));
+        setRefreshToast(lang === 'ta' ? 'நீக்கப்பட்டது ✅' : 'Deleted ✅');
+        window.setTimeout(() => setRefreshToast(null), 3000);
       }
     } catch (err) {
       console.error(`Error deleting ${key} item ${itemId}:`, err);
@@ -712,7 +780,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
     setLoginPassword('');
     setLoginError('');
     setSidebarOpen(false);
-    window.location.replace('/');
+    // Stay in SPA — avoid full reload (dev compile + bootstrap) which feels like a 3–5s “slow logout”.
   };
 
   // User Profile self save
@@ -1298,8 +1366,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                   currentUser={currentUser}
                 />
               )}
-              {mountedHeavyPages.inspectionReports ? (
-                <div className={activeTab === 'inspectionReports' ? '' : 'portal-dash-tab-off'}>
+              {activeTab === 'inspectionReports' && (
                 <InspectionReportsView
                   state={state}
                   lang={lang}
@@ -1307,8 +1374,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
                   currentUser={currentUser}
                   onSaveCollection={handleSaveCollection}
                 />
-                </div>
-              ) : null}
+              )}
               {activeTab === 'transferCounseling' && (
                 <EmployeeTransferCounselingView lang={lang} currentUser={currentUser} />
               )}

@@ -1,6 +1,11 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { fetchGeoMasters } from '@/lib/geoMastersClient';
+import {
+  fetchInspectionWorksJson,
+  invalidateInspectionWorksClientCache,
+} from '@/lib/inspectionWorksApiClient';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, 
@@ -1344,6 +1349,9 @@ export default function InspectionReportsView({
 
   // Additional New Filters requested: Zone, District, Street
   const [selectedZoneId, setSelectedZoneId] = useState<string>('all');
+  const [geoZones, setGeoZones] = useState<any[]>([]);
+  const [geoDistricts, setGeoDistricts] = useState<any[]>([]);
+  const [geoTownPanchayats, setGeoTownPanchayats] = useState<any[]>([]);
   const [selectedDistrictId, setSelectedDistrictId] = useState<string>('all');
   const [selectedStreetName, setSelectedStreetName] = useState<string>('all');
 
@@ -1659,6 +1667,11 @@ export default function InspectionReportsView({
   const [apiDimensionRollups, setApiDimensionRollups] = useState<InspectionWorkReportDimensionRollup[]>([]);
   const apiDimensionRollupsRef = React.useRef<InspectionWorkReportDimensionRollup[]>([]);
   apiDimensionRollupsRef.current = apiDimensionRollups;
+  const hasApiRollupCountsRef = React.useRef(false);
+  hasApiRollupCountsRef.current =
+    apiTotalWithoutCategory > 0 ||
+    apiSubjectRollups.length > 0 ||
+    Object.keys(apiCategoryCounts).length > 0;
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<string>(() => new Date().toLocaleTimeString());
 
@@ -1713,6 +1726,9 @@ export default function InspectionReportsView({
   const fetchSeqRef = React.useRef(0);
   const fetchedWorksRef = React.useRef<any[] | null>(null);
   fetchedWorksRef.current = fetchedWorks;
+  const emptyWorksRef = React.useRef<any[]>([]);
+  const lastWorksQueryKeyRef = React.useRef('');
+  const lastWorksQueryAtRef = React.useRef(0);
   const lastUserActivityRef = React.useRef(Date.now());
   /** Increment to load report rows from API (Apply / Refresh — not dashboard auto-refresh). */
   const [filtersLoadToken, setFiltersLoadToken] = React.useState(0);
@@ -2005,9 +2021,17 @@ export default function InspectionReportsView({
         qParams.set('refreshRemote', '1');
         refreshRemoteOnFetchRef.current = false;
       }
+      if (extra?.countsOnly) {
+        const p = filterQueryRef.current;
+        const geoDrill =
+          (p.selectedZoneId && p.selectedZoneId !== 'all') ||
+          (p.selectedDistrictId && p.selectedDistrictId !== 'all') ||
+          (p.selectedTpId && p.selectedTpId !== 'all');
+        if (embedMode || !geoDrill) qParams.set('compactCounts', '1');
+      }
       return qParams;
     },
-    [isAdminOrDirector, state.townPanchayats, state.districts, state.zones]
+    [isAdminOrDirector, state.townPanchayats, state.districts, state.zones, embedMode, activeTab]
   );
 
   const applyCountsPayload = React.useCallback((json: any) => {
@@ -2102,18 +2126,18 @@ export default function InspectionReportsView({
 
   const fetchReportRowsPage = React.useCallback(
     async (page: number, seq: number) => {
-      const res = await fetch(
-        `/api/inspection-works?${buildInspectionWorksQueryParams({
-          reportsBundle: true,
-          page,
-          pageSize: REPORTS_SERVER_PAGE_SIZE,
-        }).toString()}`,
-        { cache: 'no-store' }
-      );
+      const queryKey = buildInspectionWorksQueryParams({
+        rowsOnly: hasApiRollupCountsRef.current,
+        reportsBundle: !hasApiRollupCountsRef.current,
+        page,
+        pageSize: REPORTS_SERVER_PAGE_SIZE,
+      }).toString();
+      const url = `/api/inspection-works?${queryKey}`;
       if (seq !== fetchSeqRef.current) return;
-      const json = await res.json().catch(() => ({}));
+      const json = await fetchInspectionWorksJson(queryKey, url);
+      if (seq !== fetchSeqRef.current) return;
       const works = extractWorksFromInspectionApiPayload(json);
-      if (res.ok && json.success !== false && Array.isArray(works)) {
+      if (json?.success !== false && Array.isArray(works)) {
         setFetchedWorks(works);
         if (typeof json.total === 'number') setApiWorksTotal(json.total);
         else setApiWorksTotal(works.length);
@@ -2126,7 +2150,7 @@ export default function InspectionReportsView({
         applyCountsPayload(json);
         setLastRefreshed(new Date().toLocaleTimeString());
         if (seq === fetchSeqRef.current) setFetchError(null);
-      } else if (!res.ok && seq === fetchSeqRef.current) {
+      } else if (json?.success === false && seq === fetchSeqRef.current) {
         setFetchError(json?.message || (lang === 'ta' ? 'தரவு பெற முடியவில்லை' : 'Could not load inspection works'));
       }
     },
@@ -2135,18 +2159,16 @@ export default function InspectionReportsView({
 
   const fetchRowsOnlyPage = React.useCallback(
     async (page: number, pageSize: number) => {
-      const res = await fetch(
-        `/api/inspection-works?${buildInspectionWorksQueryParams({
-          rowsOnly: true,
-          page,
-          pageSize,
-        }).toString()}`,
-        { cache: 'no-store' }
-      );
-      const json = await res.json().catch(() => ({}));
+      const queryKey = buildInspectionWorksQueryParams({
+        rowsOnly: true,
+        page,
+        pageSize,
+      }).toString();
+      const url = `/api/inspection-works?${queryKey}`;
+      const json = await fetchInspectionWorksJson(queryKey, url);
       const works = extractWorksFromInspectionApiPayload(json);
       return {
-        ok: res.ok && json.success !== false,
+        ok: json?.success !== false,
         works: Array.isArray(works) ? works : [],
         total: typeof json.total === 'number' ? json.total : (Array.isArray(works) ? works.length : 0),
       };
@@ -2158,29 +2180,46 @@ export default function InspectionReportsView({
     if (embedMode && fetchedWorksRef.current == null) {
       applyBootstrapStatsFallback();
     }
+    const countsOnly = activeTab === 'abstract' || (embedMode && !activeTab);
+    const useRowsOnly = !countsOnly && hasApiRollupCountsRef.current;
+    const queryKey = buildInspectionWorksQueryParams({
+      countsOnly,
+      rowsOnly: useRowsOnly,
+      reportsBundle: !countsOnly && !useRowsOnly,
+      page: 1,
+      pageSize: REPORTS_SERVER_PAGE_SIZE,
+    }).toString();
+    const now = Date.now();
+    const dedupeMs = countsOnly ? 8000 : 1500;
+    if (
+      lastWorksQueryKeyRef.current === queryKey &&
+      now - lastWorksQueryAtRef.current < dedupeMs
+    ) {
+      return;
+    }
+    if (isFetchingRef.current && lastWorksQueryKeyRef.current === queryKey) {
+      return;
+    }
+    lastWorksQueryKeyRef.current = queryKey;
+    lastWorksQueryAtRef.current = now;
+
     const seq = ++fetchSeqRef.current;
     isFetchingRef.current = true;
     setIsRefreshing(true);
-    const countsOnly = embedMode && (activeTab === 'abstract' || !activeTab);
     try {
-      const bundleUrl = `/api/inspection-works?${buildInspectionWorksQueryParams({
-        countsOnly,
-        reportsBundle: !countsOnly,
-        page: 1,
-        pageSize: REPORTS_SERVER_PAGE_SIZE,
-      }).toString()}`;
-      const res = await fetch(bundleUrl, { cache: 'no-store' });
+      const bundleUrl = `/api/inspection-works?${queryKey}`;
+      const json = await fetchInspectionWorksJson(queryKey, bundleUrl);
       if (seq !== fetchSeqRef.current) return;
-
-      const json = await res.json().catch(() => ({}));
       const works = extractWorksFromInspectionApiPayload(json);
-      if (res.ok && json.success !== false) {
+      if (json?.success !== false) {
         if (!countsOnly && Array.isArray(works)) {
           setFetchedWorks(works);
           if (typeof json.total === 'number') setApiWorksTotal(json.total);
           else setApiWorksTotal(works.length);
         } else if (countsOnly) {
-          setFetchedWorks([]);
+          setFetchedWorks((prev) =>
+            Array.isArray(prev) && prev.length === 0 ? prev : emptyWorksRef.current
+          );
           if (typeof json.totalWithoutCategoryFilter === 'number') {
             setApiWorksTotal(json.totalWithoutCategoryFilter);
           }
@@ -2188,12 +2227,7 @@ export default function InspectionReportsView({
         applyCountsPayload(json);
         setLastRefreshed(new Date().toLocaleTimeString());
         if (seq === fetchSeqRef.current) setFetchError(null);
-      } else if (!res.ok) {
-        console.warn('Inspection works fetch failed:', res.status, json?.message || '');
-        if (seq === fetchSeqRef.current) {
-          setFetchError(json?.message || (lang === 'ta' ? 'தரவு பெற முடியவில்லை' : 'Could not load inspection works'));
-        }
-      } else if (json.success === false && seq === fetchSeqRef.current) {
+      } else if (json?.success === false && seq === fetchSeqRef.current) {
         setFetchError(json?.message || (lang === 'ta' ? 'தரவு இல்லை' : 'No data returned'));
       }
     } catch (err) {
@@ -2223,7 +2257,10 @@ export default function InspectionReportsView({
   }, [state.inspectionWorkStats, applyBootstrapStatsFallback, fetchedWorks]);
 
   const applyFiltersAndLoad = React.useCallback((opts?: { refreshRemote?: boolean }) => {
-    if (opts?.refreshRemote) refreshRemoteOnFetchRef.current = true;
+    if (opts?.refreshRemote) {
+      refreshRemoteOnFetchRef.current = true;
+      invalidateInspectionWorksClientCache();
+    }
     setFiltersLoadToken((t) => t + 1);
   }, []);
 
@@ -2317,13 +2354,27 @@ export default function InspectionReportsView({
   }, [applyFiltersAndLoad, fetchError, handleResetFilters, isRefreshing, onFilterActionsReady]);
 
   const detailedPageFetchSkipRef = React.useRef(false);
+  const reportsActiveTabRef = React.useRef(activeTab);
 
   useEffect(() => {
     if (filtersLoadToken === 0) return;
     if (reportModule === 'swm' && (activeTab === 'abstract' || activeTab === 'tp')) return;
+    const tabChanged = reportsActiveTabRef.current !== activeTab;
+    reportsActiveTabRef.current = activeTab;
+    const needsRows = activeTab === 'detailed' || activeTab === 'mapview';
+    if (
+      tabChanged &&
+      needsRows &&
+      Array.isArray(fetchedWorks) &&
+      fetchedWorks.length > 0 &&
+      detailedPage === 1
+    ) {
+      return;
+    }
     detailedPageFetchSkipRef.current = true;
+    if (isFetchingRef.current) return;
     void requestInspectionWorks();
-  }, [activeTab, filtersLoadToken, reportModule, requestInspectionWorks]);
+  }, [activeTab, filtersLoadToken, reportModule, requestInspectionWorks, detailedPage]);
 
   useEffect(() => {
     if (filtersLoadToken === 0 || detailedPage <= 1) return;
@@ -2358,29 +2409,37 @@ export default function InspectionReportsView({
     if (userTpId) setSelectedTpId(userTpId);
   }, [userZoneId, userDistrictId, userTpId]);
 
+  const embedInitialLoadDoneRef = React.useRef(false);
+
   // Auto-load when portal masters / user scope are ready (bootstrap often arrives after first paint)
   useEffect(() => {
     const mastersReady =
       isAdminOrDirector ||
       (state.townPanchayats?.length ?? 0) > 0 ||
-      (state.zones?.length ?? 0) > 0;
+      (state.zones?.length ?? 0) > 0 ||
+      (state.inspectionSubjects?.length ?? 0) > 0;
     if (!mastersReady) return;
 
+    if (embedMode) {
+      if (embedInitialLoadDoneRef.current) return;
+      embedInitialLoadDoneRef.current = true;
+      if (fetchedWorksRef.current == null) {
+        queueMicrotask(() => applyBootstrapStatsFallback());
+      }
+      queueMicrotask(() => applyFiltersAndLoad());
+      return;
+    }
+
     const loadKey = [
-      embedMode ? 'embed' : 'reports',
+      'reports',
       isAdminOrDirector ? 'admin' : 'scoped',
       userTpId || '',
       userZoneId || '',
       userDistrictId || '',
-      state.townPanchayats?.length ?? 0,
-      embedMode ? 'stats' : '',
     ].join('|');
     if (lastAutoLoadKeyRef.current === loadKey) return;
     lastAutoLoadKeyRef.current = loadKey;
 
-    if (embedMode && fetchedWorksRef.current == null) {
-      queueMicrotask(() => applyBootstrapStatsFallback());
-    }
     queueMicrotask(() => applyFiltersAndLoad());
   }, [
     embedMode,
@@ -2390,6 +2449,7 @@ export default function InspectionReportsView({
     userDistrictId,
     state.townPanchayats?.length,
     state.zones?.length,
+    state.inspectionSubjects?.length,
     applyFiltersAndLoad,
     applyBootstrapStatsFallback,
   ]);
@@ -2430,11 +2490,20 @@ export default function InspectionReportsView({
     () => ({
       inspectionSubjects: state.inspectionSubjects || [],
       inspectionCategories: state.inspectionCategories || [],
-      zones: state.zones || [],
-      districts: state.districts || [],
-      townPanchayats: state.townPanchayats || [],
+      zones: geoZones.length ? geoZones : state.zones || [],
+      districts: geoDistricts.length ? geoDistricts : state.districts || [],
+      townPanchayats: geoTownPanchayats.length ? geoTownPanchayats : state.townPanchayats || [],
     }),
-    [state.inspectionSubjects, state.inspectionCategories, state.zones, state.districts, state.townPanchayats]
+  [
+    state.inspectionSubjects,
+    state.inspectionCategories,
+    state.zones,
+    state.districts,
+    state.townPanchayats,
+    geoZones,
+    geoDistricts,
+    geoTownPanchayats,
+  ]
   );
 
   // Rows from API (primary filters server-side) + client guard for dynamic field filter/columns
@@ -2562,8 +2631,34 @@ export default function InspectionReportsView({
   }, [worksFromApi, apiWorksTotal, filteredWorks.length]);
 
   // Zones available from state, filtered by user scope
+  useEffect(() => {
+    void fetchGeoMasters({ level: 'zones' }).then((res) => {
+      if (res.success && res.items?.length) setGeoZones(res.items);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedZoneId || selectedZoneId === 'all') {
+      setGeoDistricts([]);
+      return;
+    }
+    void fetchGeoMasters({ level: 'districts', zoneId: selectedZoneId }).then((res) => {
+      if (res.success) setGeoDistricts(res.items || []);
+    });
+  }, [selectedZoneId]);
+
+  useEffect(() => {
+    if (!selectedDistrictId || selectedDistrictId === 'all') {
+      setGeoTownPanchayats([]);
+      return;
+    }
+    void fetchGeoMasters({ level: 'townPanchayats', districtId: selectedDistrictId }).then((res) => {
+      if (res.success) setGeoTownPanchayats(res.items || []);
+    });
+  }, [selectedDistrictId]);
+
   const filteredZones = useMemo(() => {
-    const list = state.zones || [];
+    const list = geoZones.length ? geoZones : state.zones || [];
     if (userZoneId) {
       const matched = list.filter(
         (z: any) => String(z.id).toLowerCase() === String(userZoneId).toLowerCase()
@@ -2572,11 +2667,11 @@ export default function InspectionReportsView({
       return [{ id: userZoneId, nameEn: userZoneId, nameTa: userZoneId }];
     }
     return list;
-  }, [state.zones, userZoneId]);
+  }, [geoZones, state.zones, userZoneId]);
 
   // Districts available from state, filtered by selected zone if applicable and restricted by scope
   const availableDistricts = useMemo(() => {
-    let list = state.districts || [];
+    let list = geoDistricts.length ? geoDistricts : state.districts || [];
     if (userDistrictId) {
       const matched = list.filter(
         (d: any) => String(d.id).toLowerCase() === String(userDistrictId).toLowerCase()
@@ -2592,11 +2687,11 @@ export default function InspectionReportsView({
       list = list.filter((d: any) => String(d.zoneId || '').toLowerCase() === zoneIdKey);
     }
     return list;
-  }, [state.districts, state.zones, selectedZoneId, userZoneId, userDistrictId]);
+  }, [geoDistricts, state.districts, state.zones, selectedZoneId, userZoneId, userDistrictId]);
 
   // Town Panchayats available from state, filtered by selected district and zone and restricted by scope
   const availableTownPanchayats = useMemo(() => {
-    let list = state.townPanchayats || [];
+    let list = geoTownPanchayats.length ? geoTownPanchayats : state.townPanchayats || [];
     if (userTpId) {
       const matched = list.filter((tp: any) => 
         String(tp.id).toLowerCase() === String(userTpId).toLowerCase() ||
@@ -6615,23 +6710,30 @@ export default function InspectionReportsView({
         return;
       }
       setSlideDeckExport({ current: 0, total: works.length, format });
-      const missing = works.filter((w) => !w.fieldsData || !Object.keys(w.fieldsData).length).slice(0, 40);
-      await Promise.all(
-        missing.map(async (w) => {
-          const id = w.id || w.workId;
-          if (!id) return;
-          try {
-            const res = await fetch(`/api/inspection-works?lookupId=${encodeURIComponent(String(id))}`, {
-              cache: 'no-store',
-            });
-            const json = await res.json();
-            if (json?.work?.fieldsData) w.fieldsData = json.work.fieldsData;
-            if (json?.work?.imageUrl) w.imageUrl = json.work.imageUrl;
-          } catch {
-            /* keep lite row */
-          }
-        })
-      );
+      const missing = works.filter((w) => !w.fieldsData || !Object.keys(w.fieldsData).length);
+      const hydrateBatch = 10;
+      for (let i = 0; i < missing.length; i += hydrateBatch) {
+        const batch = missing.slice(i, i + hydrateBatch);
+        await Promise.all(
+          batch.map(async (w) => {
+            const id = w.id || w.workId;
+            if (!id) return;
+            try {
+              const res = await fetch(`/api/inspection-works?lookupId=${encodeURIComponent(String(id))}`, {
+                cache: 'no-store',
+              });
+              const json = await res.json();
+              if (json?.work?.fieldsData) w.fieldsData = json.work.fieldsData;
+              if (json?.work?.imageUrl) w.imageUrl = json.work.imageUrl;
+              if (Array.isArray(json?.work?.photos) && json.work.photos.length) {
+                w.photos = json.work.photos;
+              }
+            } catch {
+              /* keep lite row */
+            }
+          })
+        );
+      }
       await buildInspectionSlidesFile({
         works,
         lang: slideLang,

@@ -20,22 +20,44 @@ import {
 } from '@/lib/storage';
 import {
   ensureInspectionWorkReportIndexes,
+  invalidateRollupGrandTotalCache,
   queryInspectionWorkReportRollupCounts,
+  queryInspectionWorkReportRollupGrandTotal,
 } from '@/lib/inspectionWorkReportRollups';
 
 export const REPORTS_PAGE_SIZE_DEFAULT = 50;
 export const REPORTS_PAGE_SIZE_MAX = 200;
 
 const AGG_CACHE_TTL_MS = 120_000;
+const AGG_CACHE_TTL_ABSTRACT_MS = 300_000;
 const aggCache = new Map<string, { ts: number; data: unknown }>();
 
-function aggCacheKey(kind: string, filter: InspectionWorksFilterQuery, extra = ''): string {
-  return `named-street-live-geo-2|${kind}|${JSON.stringify(filter)}|${extra}`;
+function aggCacheTtl(kind: string, filter: InspectionWorksFilterQuery): number {
+  if (kind === 'counts-dim' && !filter.fromDate && !filter.toDate && !filter.dateParam) {
+    return AGG_CACHE_TTL_ABSTRACT_MS;
+  }
+  return AGG_CACHE_TTL_MS;
 }
 
-function readAggCache<T>(key: string): T | null {
+function aggCacheKey(kind: string, filter: InspectionWorksFilterQuery, extra = ''): string {
+  return `rollup-lifetime-v1|${kind}|${JSON.stringify(filter)}|${extra}`;
+}
+
+async function rollupsCollectionPopulated(): Promise<boolean> {
+  const client = await getMongoClient();
+  if (!client) return false;
+  const db = await getActiveMongoDb(client);
+  try {
+    const n = await db.collection('inspectionWorkReportRollups').estimatedDocumentCount();
+    return n > 0;
+  } catch {
+    return false;
+  }
+}
+
+function readAggCache<T>(key: string, ttlMs = AGG_CACHE_TTL_MS): T | null {
   const hit = aggCache.get(key);
-  if (!hit || Date.now() - hit.ts > AGG_CACHE_TTL_MS) return null;
+  if (!hit || Date.now() - hit.ts > ttlMs) return null;
   return hit.data as T;
 }
 
@@ -49,6 +71,7 @@ function writeAggCache(key: string, data: unknown) {
 
 export function invalidateInspectionWorksAggregateCache() {
   aggCache.clear();
+  invalidateRollupGrandTotalCache();
 }
 
 /** Street/search/admin field cannot use pre-aggregated rollups; they still stay in Mongo (never a Node full scan). */
@@ -57,12 +80,11 @@ export function reportsFiltersNeedFullDocumentScan(filter: InspectionWorksFilter
 }
 
 /**
- * Location-wise / Abstract counts for a date window come from live inspectionWorks
- * via indexed $match + $group. That is not a Node collection scan.
- * All-time (no from/to) still uses rollups.
+ * Rollups are keyed by submittedDateYmd — use them for date-window counts (fast).
+ * Live works aggregation is only for street/search/admin-field filters.
  */
-export function reportsFiltersNeedLiveGeoCounts(filter?: InspectionWorksFilterQuery): boolean {
-  return !!(filter?.fromDate || filter?.toDate);
+export function reportsFiltersNeedLiveGeoCounts(_filter?: InspectionWorksFilterQuery): boolean {
+  return false;
 }
 
 function escapeRegex(value: string): string {
@@ -348,49 +370,56 @@ async function aggregateLiveReportCounts(
 
 export async function aggregateInspectionWorksReportCounts(
   filter: InspectionWorksFilterQuery,
-  masters: InspectionWorksFilterMasters
+  masters: InspectionWorksFilterMasters,
+  opts?: { needDimensionRollups?: boolean }
 ): Promise<ReportAggregateCountsResult | null> {
   try {
-    const cacheKey = aggCacheKey('counts', filter);
-    const cached = readAggCache<ReportAggregateCountsResult>(cacheKey);
+    const kind = opts?.needDimensionRollups ? 'counts-dim' : 'counts';
+    const cacheKey = aggCacheKey(kind, filter);
+    const cached = readAggCache<ReportAggregateCountsResult>(cacheKey, aggCacheTtl(kind, filter));
     if (cached) return cached;
 
     await ensureInspectionWorkReportIndexes();
     const preferLive =
       reportsFiltersNeedFullDocumentScan(filter) || reportsFiltersNeedLiveGeoCounts(filter);
+    const rollupsReady = await rollupsCollectionPopulated();
+
+    const rollupOpts = opts?.needDimensionRollups
+      ? ({ omitCategory: true, withDimensions: true } as const)
+      : ({ omitCategory: true, compact: true } as const);
 
     if (!preferLive) {
-      const rollup = await queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: true });
+      const rollup = await queryInspectionWorkReportRollupCounts(filter, masters, rollupOpts);
       if (rollup) {
         const hasRows =
           (rollup.dimensionRollups?.length || 0) > 0 ||
           (rollup.subjectCategoryRollups?.length || 0) > 0 ||
           (rollup.totalWithoutCategoryFilter || 0) > 0;
-        if (hasRows) writeAggCache(cacheKey, rollup);
-        return rollup;
+        if (hasRows || rollupsReady) {
+          writeAggCache(cacheKey, rollup);
+          return rollup;
+        }
       }
     }
 
-    try {
-      const result = await aggregateLiveReportCounts(filter, masters);
-      if (result) {
-        writeAggCache(cacheKey, result);
-        return result;
+    if (!rollupsReady) {
+      try {
+        const result = await aggregateLiveReportCounts(filter, masters);
+        if (result) {
+          writeAggCache(cacheKey, result);
+          return result;
+        }
+      } catch (liveErr) {
+        console.warn('[inspectionWorksReportsAggregate] live counts failed; using rollups:', liveErr);
       }
-    } catch (liveErr) {
-      console.warn('[inspectionWorksReportsAggregate] live counts failed; using rollups:', liveErr);
     }
 
-    const rollup = await queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: true });
+    const rollup = await queryInspectionWorkReportRollupCounts(filter, masters, rollupOpts);
     if (rollup) {
-      const hasRows =
-        (rollup.dimensionRollups?.length || 0) > 0 ||
-        (rollup.subjectCategoryRollups?.length || 0) > 0 ||
-        (rollup.totalWithoutCategoryFilter || 0) > 0;
-      if (hasRows) writeAggCache(cacheKey, rollup);
+      writeAggCache(cacheKey, rollup);
       return rollup;
     }
-    return emptyCountsResult('mongo-aggregate');
+    return emptyCountsResult(rollupsReady ? 'mongo-rollup' : 'mongo-aggregate');
   } catch (err) {
     console.warn('[inspectionWorksReportsAggregate] counts aggregate failed:', err);
     return null;
@@ -423,24 +452,30 @@ async function fetchIndexedReportPage(
 
   const findCursor = col
     .find(match, { projection })
-    .sort({ _id: -1 })
+    .sort({ submittedDateYmd: -1, submittedAt: -1, workId: -1 })
     .skip(skip)
-    .limit(cap);
+    .limit(cap)
+    .maxTimeMS(12_000);
 
   const liveScan =
     reportsFiltersNeedFullDocumentScan(filter) || reportsFiltersNeedLiveGeoCounts(filter);
-  const [items, counts] = await Promise.all([
+  const categoryScoped = !!(filter.categoryId || filter.subjectId);
+  const [items, totalFromRollup] = await Promise.all([
     findCursor.toArray(),
     liveScan
       ? Promise.resolve(null)
-      : queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: true }),
+      : categoryScoped
+        ? queryInspectionWorkReportRollupCounts(filter, masters, { omitCategory: false, compact: true }).then((c) =>
+            c ? filteredReportTotal(c, filter, masters) : null
+          )
+        : queryInspectionWorkReportRollupGrandTotal(filter, masters).catch(() => null),
   ]);
 
   let total: number;
-  if (counts) {
-    total = filteredReportTotal(counts, filter, masters);
+  if (totalFromRollup != null) {
+    total = totalFromRollup;
   } else {
-    total = await col.countDocuments(match);
+    total = await col.countDocuments(match, { maxTimeMS: 10_000 });
   }
   if (items.length > 0 && total < skip + items.length) {
     total = skip + items.length;

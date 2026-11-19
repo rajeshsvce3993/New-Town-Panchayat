@@ -258,7 +258,9 @@ async function runSystemDiagnostics() {
 }
 
 let heavyApiInFlight = 0;
-const HEAVY_API_MAX = 8;
+let heavyPortalStateInFlight = 0;
+const HEAVY_API_MAX = parseInt(process.env.HEAVY_API_MAX || '16', 10);
+const HEAVY_PORTAL_STATE_MAX = parseInt(process.env.HEAVY_PORTAL_STATE_MAX || '4', 10);
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {
@@ -283,13 +285,21 @@ app.prepare().then(() => {
         return;
       }
 
-      const isHeavyGet =
+      const isPortalStateGet = req.method === 'GET' && rawPath === '/api/portal-state';
+      const isOtherHeavyGet =
         req.method === 'GET' &&
-        (rawPath === '/api/portal-state' ||
-          rawPath === '/api/inspection-works' ||
-          rawPath.startsWith('/api/state'));
+        (rawPath === '/api/inspection-works' || rawPath.startsWith('/api/state'));
 
-      if (isHeavyGet && heavyApiInFlight >= HEAVY_API_MAX) {
+      if (isPortalStateGet && heavyPortalStateInFlight >= HEAVY_PORTAL_STATE_MAX) {
+        res.writeHead(503, {
+          'Content-Type': 'application/json',
+          'Retry-After': '3',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(JSON.stringify({ success: false, message: 'Server busy — retry in a few seconds' }));
+        return;
+      }
+      if (isOtherHeavyGet && heavyApiInFlight >= HEAVY_API_MAX) {
         res.writeHead(503, {
           'Content-Type': 'application/json',
           'Retry-After': '3',
@@ -299,11 +309,12 @@ app.prepare().then(() => {
         return;
       }
 
-      if (
-        rawPath === '/api/portal-state' ||
-        rawPath === '/api/inspection-works' ||
-        rawPath.startsWith('/api/state')
-      ) {
+      if (isPortalStateGet) {
+        heavyPortalStateInFlight += 1;
+        res.on('close', () => {
+          heavyPortalStateInFlight = Math.max(0, heavyPortalStateInFlight - 1);
+        });
+      } else if (isOtherHeavyGet) {
         heavyApiInFlight += 1;
         res.on('close', () => {
           heavyApiInFlight = Math.max(0, heavyApiInFlight - 1);

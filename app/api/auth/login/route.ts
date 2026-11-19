@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient, getActiveMongoDb, getCollectionData } from '@/lib/storage';
+import { resolveGeoForUser } from '@/lib/domain/geoResolver';
+import { buildLiveUserScope, isLiveDataOnly } from '@/lib/services/liveUserScope';
 import { recordUserLogin } from '@/lib/userActivity';
 import { logServerProcess } from '@/lib/serverLogger';
 import { postRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { isHodLikeUser } from '@/lib/userScope';
 import { isMobileClientRequest, mobileLoginDeniedMessage, userMayUseMobileApp } from '@/lib/mobileAppAuth';
-import {
-  getUserScopeDetails,
-  getUserScopeDetailsForLogin,
-  getUserScopeFromCacheOnly,
-} from '@/lib/userScopeCache';
+import { getUserScopeDetailsForLogin, getUserScopeFromCacheOnly } from '@/lib/userScopeCache';
 import { findUserForLogin } from '@/lib/loginUserLookup';
 
 export const dynamic = 'force-dynamic';
@@ -24,11 +22,22 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
 }
 
+async function parseLoginBody(req: NextRequest): Promise<Record<string, unknown>> {
+  try {
+    const text = await req.text();
+    if (!text.trim()) return {};
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
   try {
-    const body = await req.json();
-    const { username, password } = body;
+    const body = await parseLoginBody(req);
+    const username = body.username;
+    const password = body.password;
     const cleanUsername = (username || '').trim().toLowerCase();
     const mobileClient = isMobileClientRequest(req, body);
     const preferTamil = String(req.headers.get('x-app-language') || body?.language || '')
@@ -72,7 +81,9 @@ export async function POST(req: NextRequest) {
 
     const [loginHit, scopePrefetch] = await Promise.all([
       findUserForLogin(username, cleanUsername, { mobileClient }),
-      mobileClient ? getUserScopeFromCacheOnly(cleanUsername) : Promise.resolve(null),
+      mobileClient && !isLiveDataOnly()
+        ? getUserScopeFromCacheOnly(cleanUsername)
+        : Promise.resolve(null),
     ]);
 
     if (loginHit) {
@@ -153,13 +164,21 @@ export async function POST(req: NextRequest) {
     }
 
     const scopeKey = userDoc.username || cleanUsername;
-    if (!userScope && (mobileClient || sourceCollection === 'inspectionUsers')) {
-      userScope = await getUserScopeFromCacheOnly(scopeKey);
+    const needsInspectionScope = mobileClient || sourceCollection === 'inspectionUsers';
+    if (needsInspectionScope) {
+      if (isLiveDataOnly()) {
+        userScope = await buildLiveUserScope(scopeKey, mobileClient ? 6_000 : 10_000);
+      } else if (!userScope) {
+        userScope = await getUserScopeFromCacheOnly(scopeKey);
+        if (!userScope) {
+          userScope = await getUserScopeDetailsForLogin(scopeKey, mobileClient ? 8_000 : 12_000);
+        }
+      }
     }
-    if (mobileClient && !userScope) {
-      void getUserScopeDetails(scopeKey).catch(() => {});
-    } else if (!mobileClient && sourceCollection === 'inspectionUsers' && !userScope) {
-      userScope = await getUserScopeDetailsForLogin(scopeKey, 12_000);
+
+    let resolvedGeo: Awaited<ReturnType<typeof resolveGeoForUser>> | null = null;
+    if (mongoDb && sourceCollection === 'inspectionUsers') {
+      resolvedGeo = await resolveGeoForUser(mongoDb, userDoc);
     }
 
     let designationNameEn = String(userDoc.designationNameEn || userDoc.designation || '').trim();
@@ -198,15 +217,35 @@ export async function POST(req: NextRequest) {
       designation: designationNameEn || userDoc.designation || '',
       designationNameEn,
       designationNameTa,
-      townPanchayat: userDoc.townPanchayat || userDoc.tpName || userScope?.townPanchayat?.nameEn || '',
-      townPanchayatTa: userDoc.townPanchayatTa || userDoc.tpNameTa || userScope?.townPanchayat?.nameTa || '',
-      district: userDoc.district || userDoc.districtName || userScope?.townPanchayat?.districtNameEn || '',
-      districtTa: userDoc.districtTa || userScope?.townPanchayat?.districtNameTa || '',
-      districtCode: userDoc.districtCode || '03',
-      tpCode: userDoc.tpCode || '01',
-      districtId: userDoc.districtId || userScope?.townPanchayat?.districtId || '',
-      tpId: userDoc.tpId || userDoc.townPanchayatId || userScope?.townPanchayat?.id || '',
-      townPanchayatId: userDoc.tpId || userDoc.townPanchayatId || userScope?.townPanchayat?.id || '',
+      townPanchayat:
+        resolvedGeo?.tpNameEn ||
+        userScope?.townPanchayat?.nameEn ||
+        userDoc.townPanchayat ||
+        userDoc.tpName ||
+        '',
+      townPanchayatTa:
+        resolvedGeo?.tpNameTa || userScope?.townPanchayat?.nameTa || userDoc.townPanchayatTa || userDoc.tpNameTa || '',
+      district:
+        resolvedGeo?.districtNameEn ||
+        userScope?.townPanchayat?.districtNameEn ||
+        userDoc.district ||
+        userDoc.districtName ||
+        '',
+      districtTa: resolvedGeo?.districtNameTa || userScope?.townPanchayat?.districtNameTa || userDoc.districtTa || '',
+      districtCode: resolvedGeo?.districtCode || userDoc.districtCode || '',
+      tpCode: resolvedGeo?.tpCode || userDoc.tpCode || '',
+      districtId: resolvedGeo?.districtId || userScope?.townPanchayat?.districtId || userDoc.districtId || '',
+      zone:
+        resolvedGeo?.zoneNameEn ||
+        userDoc.zone ||
+        userDoc.zoneName ||
+        userDoc.zoneNameEn ||
+        '',
+      zoneTa: resolvedGeo?.zoneNameTa || userDoc.zoneTa || userDoc.zoneNameTa || '',
+      zoneId: resolvedGeo?.zoneId || userDoc.zoneId || '',
+      tpId: resolvedGeo?.tpId || userDoc.tpId || userDoc.townPanchayatId || userScope?.townPanchayat?.id || '',
+      townPanchayatId:
+        resolvedGeo?.tpId || userDoc.tpId || userDoc.townPanchayatId || userScope?.townPanchayat?.id || '',
       scopeType: userDoc.scopeType || 'single_tp',
       scopeId: userDoc.scopeId || userDoc.tpId || '',
       assignedWards: userDoc.assignedWards || userScope?.assignedWards || [],

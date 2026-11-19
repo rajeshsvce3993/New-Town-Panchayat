@@ -65,7 +65,7 @@ export async function OPTIONS() {
 
 // In-memory short-lived cache for inspection works list to prevent event-loop congestion from rapid polling
 let cachedWorksList: { data: any; timestamp: number; key: string; gen: number } | null = null;
-const WORKS_CACHE_TTL_MS = 180_000; // filtered response cache (raw list cached separately ~15 min)
+const WORKS_CACHE_TTL_MS = 300_000; // filtered response cache (counts + rows-only pages)
 
 function applyExactGeoFilterToRemoteReports(
   remote: any,
@@ -339,7 +339,9 @@ export async function GET(req: NextRequest) {
       }
 
       if (viewQuery.countsOnly) {
-        const counts = await loadInspectionWorksReportCounts(req.nextUrl.origin, filterQuery, rowLimit);
+        const counts = await loadInspectionWorksReportCounts(req.nextUrl.origin, filterQuery, rowLimit, {
+          compactCounts: viewQuery.compactCounts,
+        });
         const responsePayload = {
           success: true,
           countsOnly: true,
@@ -359,9 +361,10 @@ export async function GET(req: NextRequest) {
         return NextResponse.json(responsePayload, {
           headers: {
             ...CORS_HEADERS,
+            'Cache-Control': 'private, max-age=45, stale-while-revalidate=90',
             'X-Inspection-Works-Source': counts.source,
             'X-Inspection-Works-Truncated': counts.truncated ? '1' : '0',
-            'X-Inspection-Works-Mode': 'counts',
+            'X-Inspection-Works-Mode': viewQuery.compactCounts ? 'counts-compact' : 'counts',
           },
         });
       }

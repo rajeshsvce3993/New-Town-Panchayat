@@ -1297,6 +1297,14 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
         { submittedDateYmd: -1, categoryId: 1, tpId: 1, wardNumber: 1, streetName: 1 },
         { background: true }
       ),
+      db.collection('townPanchayats').createIndex({ id: 1 }, { background: true }),
+      db.collection('townPanchayats').createIndex({ districtId: 1 }, { background: true }),
+      db.collection('districts').createIndex({ id: 1 }, { background: true }),
+      db.collection('districts').createIndex({ zoneId: 1 }, { background: true }),
+      db.collection('townPanchayats').createIndex({ districtId: 1 }, { background: true }),
+      db.collection('zones').createIndex({ id: 1 }, { background: true }),
+      db.collection('inspectionCategories').createIndex({ subjectId: 1 }, { background: true }),
+      db.collection('inspectionSubjects').createIndex({ id: 1 }, { background: true }),
       db.collection('wardsAndStreets').createIndex({ tpId: 1, wardNo: 1 }, { background: true }),
       db.collection('wardsAndStreets').createIndex({ townPanchayatId: 1, wardNumber: 1 }, { background: true }),
       db.collection('wardsAndStreets').createIndex({ tpNameEn: 1 }, { background: true }),
@@ -1309,6 +1317,22 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
         { background: true }
       ),
       db.collection('inspectionWorkReportRollups').createIndex({ submittedDateYmd: 1, zoneId: 1 }, { background: true }),
+      db.collection('inspectionWorkReportRollupsLifetime').createIndex(
+        { tpId: 1, subjectId: 1, categoryId: 1 },
+        { background: true }
+      ),
+      db.collection('inspectionWorkReportRollupsLifetime').createIndex(
+        { districtId: 1, subjectId: 1 },
+        { background: true }
+      ),
+      db.collection('inspectionWorkReportRollupsLifetime').createIndex({ zoneId: 1 }, { background: true }),
+      db.collection('inspectionWorkReportRollupsLifetime').createIndex(
+        { subjectId: 1, categoryId: 1 },
+        { background: true }
+      ),
+      db.collection('wardsAndStreets').createIndex({ townPanchayatId: 1 }, { background: true }),
+      db.collection('app_response_cache').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, background: true }),
+      db.collection('dashboard_swm_totals').createIndex({ builtAt: -1 }, { background: true }),
       db.collection('user_activity').createIndex({ username: 1, status: 1 }, { background: true }),
       db.collection('user_activity').createIndex({ userId: 1, status: 1 }, { background: true }),
       db.collection('user_activity').createIndex({ status: 1 }, { background: true }),
@@ -2510,6 +2534,110 @@ async function timedBootstrap<T>(label: string, work: Promise<T>): Promise<T> {
   }
 }
 
+function nameInspectionWorkStatsRows(inspectionWorkStats: any[], inspectionSubjects: any[], inspectionCategories: any[]) {
+  const subjectById = new Map(
+    (inspectionSubjects || []).map((s: any) => [String(s.id || s.code || ''), s])
+  );
+  const categoryById = new Map(
+    (inspectionCategories || []).map((c: any) => [String(c.id || c.code || ''), c])
+  );
+  return (inspectionWorkStats || []).map((row: any) => {
+    const subj = subjectById.get(String(row.subjectId || ''));
+    const cat = categoryById.get(String(row.categoryId || ''));
+    return {
+      ...row,
+      subjectNameEn: row.subjectNameEn || subj?.nameEn || 'General Inspection',
+      subjectNameTa: row.subjectNameTa || subj?.nameTa || 'பொது ஆய்வு',
+      categoryNameEn: row.categoryNameEn || cat?.nameEn || '',
+      categoryNameTa: row.categoryNameTa || cat?.nameTa || '',
+    };
+  });
+}
+
+function mastersFromBootstrapParts(parts: {
+  townPanchayats: any[];
+  districts: any[];
+  zones: any[];
+  inspectionRoles: any[];
+  inspectionDesignations: any[];
+}) {
+  return {
+    townPanchayats: parts.townPanchayats || [],
+    districts: parts.districts || [],
+    zones: parts.zones || [],
+    inspectionRoles: parts.inspectionRoles || [],
+    inspectionDesignations: parts.inspectionDesignations || [],
+  };
+}
+
+/** Web first paint: geo + masters + KPI stats — users/wards load in extended pass. */
+export async function getPortalWebBootstrapState(): Promise<any> {
+  const t0 = Date.now();
+  const [
+    districts,
+    townPanchayats,
+    zones,
+    inspectionSubjects,
+    inspectionCategories,
+    inspectionFields,
+    inspectionRoles,
+    inspectionDesignations,
+    roles,
+    settings,
+    inspectionWorkStats,
+    pendingIssues,
+    pendingIssuesSchema,
+  ] = await Promise.all([
+    timedBootstrap('districts', getCollectionData('districts')),
+    timedBootstrap('townPanchayats', getCollectionData('townPanchayats')),
+    timedBootstrap('zones', getCollectionData('zones')),
+    timedBootstrap('inspectionSubjects', getCollectionData('inspectionSubjects')),
+    timedBootstrap('inspectionCategories', getCollectionData('inspectionCategories')),
+    timedBootstrap('inspectionFields', getCollectionData('inspectionFields')),
+    timedBootstrap('inspectionRoles', getCollectionData('inspectionRoles')),
+    timedBootstrap('inspectionDesignations', getCollectionData('inspectionDesignations')),
+    timedBootstrap('roles', getCollectionData('roles')),
+    timedBootstrap('settings', getAppSettings()),
+    timedBootstrap('inspectionWorkStats', getInspectionWorksDashboardStats()),
+    timedBootstrap('pendingIssues', getCollectionData('pendingIssues')),
+    timedBootstrap('pendingIssuesSchema', getCollectionData('pendingIssuesSchema')),
+  ]);
+  console.info(`[bootstrap] web-lite parallel load ${Date.now() - t0}ms`);
+  const namedStats = nameInspectionWorkStatsRows(
+    inspectionWorkStats || [],
+    inspectionSubjects || [],
+    inspectionCategories || [],
+  );
+
+  return {
+    ...portalStructuralDefaults(),
+    districts: districts || [],
+    townPanchayats: townPanchayats || [],
+    zones: zones || [],
+    inspectionSubjects: inspectionSubjects || [],
+    inspectionCategories: inspectionCategories || [],
+    inspectionFields: inspectionFields || [],
+    wardsAndStreets: [],
+    inspectionUsers: [],
+    inspectionRoles: inspectionRoles || [],
+    inspectionDesignations: inspectionDesignations || [],
+    users: [],
+    employees: [],
+    pendingIssues: pendingIssues || [],
+    pendingIssuesSchema: (pendingIssuesSchema && pendingIssuesSchema.length > 0)
+      ? pendingIssuesSchema
+      : INITIAL_DATA.pendingIssuesSchema,
+    notifications: [],
+    apkVersions: [],
+    userActivities: [],
+    roles: (Array.isArray(roles) && roles.length > 0) ? roles : (INITIAL_DATA.roles),
+    settings: slimSettings(settings),
+    inspectionWorkStats: namedStats,
+    inspectionWorks: [],
+    transferRequests: [],
+  };
+}
+
 /** Fast first paint: dashboard masters, issues, and field staff — not employees. */
 export async function getPortalBootstrapState(): Promise<any> {
   const t0 = Date.now();
@@ -2549,31 +2677,19 @@ export async function getPortalBootstrapState(): Promise<any> {
     timedBootstrap('pendingIssuesSchema', getCollectionData('pendingIssuesSchema')),
   ]);
   console.info(`[bootstrap] parallel load ${Date.now() - t0}ms`);
-  const masters = {
+  const masters = mastersFromBootstrapParts({
     townPanchayats: townPanchayats || [],
     districts: districts || [],
     zones: zones || [],
     inspectionRoles: inspectionRoles || [],
     inspectionDesignations: inspectionDesignations || [],
-  };
-  const enrichedUsers = (inspectionUsers || []).map((u: any) => enrichUserForApp(u, masters));
-  const subjectById = new Map(
-    (inspectionSubjects || []).map((s: any) => [String(s.id || s.code || ''), s])
-  );
-  const categoryById = new Map(
-    (inspectionCategories || []).map((c: any) => [String(c.id || c.code || ''), c])
-  );
-  const namedStats = (inspectionWorkStats || []).map((row: any) => {
-    const subj = subjectById.get(String(row.subjectId || ''));
-    const cat = categoryById.get(String(row.categoryId || ''));
-    return {
-      ...row,
-      subjectNameEn: row.subjectNameEn || subj?.nameEn || 'General Inspection',
-      subjectNameTa: row.subjectNameTa || subj?.nameTa || 'பொது ஆய்வு',
-      categoryNameEn: row.categoryNameEn || cat?.nameEn || '',
-      categoryNameTa: row.categoryNameTa || cat?.nameTa || '',
-    };
   });
+  const enrichedUsers = (inspectionUsers || []).map((u: any) => enrichUserForApp(u, masters));
+  const namedStats = nameInspectionWorkStatsRows(
+    inspectionWorkStats || [],
+    inspectionSubjects || [],
+    inspectionCategories || [],
+  );
 
   return {
     ...portalStructuralDefaults(),
@@ -2604,24 +2720,68 @@ export async function getPortalBootstrapState(): Promise<any> {
   };
 }
 
-/** Remaining heavy collections after dashboard is already visible. */
-export async function getPortalExtendedState(): Promise<any> {
+/** Heavy collections after dashboard is visible (web: users + wards + admin lists). */
+export async function getPortalExtendedState(mastersHint?: {
+  districts?: any[];
+  townPanchayats?: any[];
+  zones?: any[];
+  inspectionRoles?: any[];
+  inspectionDesignations?: any[];
+}): Promise<any> {
+  const t0 = Date.now();
   const [
     notifications,
     apkVersions,
     userActivities,
     employees,
+    wardsAndStreets,
+    inspectionUsers,
+    users,
   ] = await Promise.all([
-    getCollectionData('notifications'),
-    getCollectionData('apkVersions'),
-    getCollectionData('userActivities'),
-    getEmployees(),
+    timedBootstrap('notifications', getCollectionData('notifications')),
+    timedBootstrap('apkVersions', getCollectionData('apkVersions')),
+    timedBootstrap('userActivities', getCollectionData('userActivities')),
+    timedBootstrap('employees', getEmployees()),
+    timedBootstrap('wardsAndStreets', getCollectionData('wardsAndStreets')),
+    timedBootstrap('inspectionUsers', getCollectionData('inspectionUsers')),
+    timedBootstrap('users', getCollectionData('users')),
   ]);
+  let masters = mastersFromBootstrapParts({
+    townPanchayats: mastersHint?.townPanchayats || [],
+    districts: mastersHint?.districts || [],
+    zones: mastersHint?.zones || [],
+    inspectionRoles: mastersHint?.inspectionRoles || [],
+    inspectionDesignations: mastersHint?.inspectionDesignations || [],
+  });
+  if (!masters.districts.length || !masters.townPanchayats.length) {
+    const [districts, townPanchayats, zones, inspectionRoles, inspectionDesignations] = await Promise.all([
+      getCollectionData('districts'),
+      getCollectionData('townPanchayats'),
+      getCollectionData('zones'),
+      getCollectionData('inspectionRoles'),
+      getCollectionData('inspectionDesignations'),
+    ]);
+    masters = mastersFromBootstrapParts({
+      districts: districts || [],
+      townPanchayats: townPanchayats || [],
+      zones: zones || [],
+      inspectionRoles: inspectionRoles || [],
+      inspectionDesignations: inspectionDesignations || [],
+    });
+  }
+  let enrichedInspectionUsers = inspectionUsers || [];
+  if (masters.districts.length > 0 && masters.townPanchayats.length > 0) {
+    enrichedInspectionUsers = enrichedInspectionUsers.map((u: any) => enrichUserForApp(u, masters));
+  }
+  console.info(`[bootstrap] extended parallel load ${Date.now() - t0}ms`);
   return {
     notifications,
     apkVersions,
     userActivities,
     employees,
+    wardsAndStreets: wardsAndStreets || [],
+    inspectionUsers: slimInspectionUsers(enrichedInspectionUsers),
+    users: slimPortalUsers(users || []),
   };
 }
 
@@ -2689,10 +2849,21 @@ export async function getFullDatabaseState(): Promise<typeof INITIAL_DATA> {
   });
 }
 
-/** Phase 1: never DROP user_scope_cache — bump version + background prewarm for missing inspectors only. */
+/**
+ * Production (`LIVE_DATA_ONLY=1`): bump scope version only — clients call live Mongo scope APIs.
+ * Legacy: rebuild user_scope_cache (deprecated).
+ */
 export async function rebuildUserScopeCache(targetUsername?: string): Promise<boolean> {
   try {
     const scope = await import('./userScopeCache');
+    const liveOnly = process.env.LIVE_DATA_ONLY !== '0';
+    if (liveOnly) {
+      const reason = targetUsername
+        ? `user_touch_${String(targetUsername).trim().toLowerCase()}`
+        : 'master_data_touch';
+      await scope.bumpScopeVersion(reason);
+      return true;
+    }
     const key = (targetUsername || '').trim().toLowerCase();
     if (key) {
       await scope.getUserScopeDetails(key);
@@ -2931,7 +3102,14 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
   // Rebuild user scope cache in the background whenever master records or users change
   const cacheTriggers = ['districts', 'townPanchayats', 'zones', 'inspectionSubjects', 'inspectionCategories', 'inspectionFields', 'wardsAndStreets', 'inspectionUsers', 'employees', 'users', 'settings'];
   if (cacheTriggers.includes(key) && !skipCacheRebuild) {
-    rebuildUserScopeCache().catch(err => console.error('[CACHE_TRIGGER] Background cache rebuild failed:', err));
+    const liveOnly = process.env.LIVE_DATA_ONLY !== '0';
+    if (liveOnly) {
+      void import('@/lib/userScopeCache')
+        .then((m) => m.bumpScopeVersion(`master_${String(key)}_saved`))
+        .catch((err) => console.error('[CACHE_TRIGGER] scope version bump failed:', err));
+    } else {
+      rebuildUserScopeCache().catch((err) => console.error('[CACHE_TRIGGER] Background cache rebuild failed:', err));
+    }
   }
 }
 

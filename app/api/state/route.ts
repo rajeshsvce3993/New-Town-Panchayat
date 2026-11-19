@@ -8,6 +8,7 @@ import {
   saveSingleInspectionWork,
   getFullDatabaseState,
   getPortalBootstrapState,
+  getPortalWebBootstrapState,
   getPortalExtendedState,
   overlayLocalAdminUserCredentials,
 } from '@/lib/storage';
@@ -302,7 +303,13 @@ export async function GET(req: NextRequest) {
     };
 
     if (mode === 'extended') {
-      const extra = await getPortalExtendedState();
+      const extra = await getPortalExtendedState({
+        districts: cachedFullState?.data?.districts,
+        townPanchayats: cachedFullState?.data?.townPanchayats,
+        zones: cachedFullState?.data?.zones,
+        inspectionRoles: cachedFullState?.data?.inspectionRoles,
+        inspectionDesignations: cachedFullState?.data?.inspectionDesignations,
+      });
       return NextResponse.json({ success: true, data: extra, mode }, { headers: cacheHeaders });
     }
 
@@ -310,9 +317,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, data: cachedFullState.data, cached: true, mode }, { headers: cacheHeaders });
     }
 
-    const fullState = mode === 'full'
-      ? await getFullDatabaseState()
-      : await getPortalBootstrapState();
+    const fullState =
+      mode === 'full'
+        ? await getFullDatabaseState()
+        : mode === 'web'
+          ? await getPortalWebBootstrapState()
+          : await getPortalBootstrapState();
     cachedFullState = { data: fullState, timestamp: Date.now(), mode };
     return NextResponse.json({ success: true, data: fullState, mode }, { headers: cacheHeaders });
   } catch (err: any) {
@@ -382,7 +392,26 @@ export async function POST(req: NextRequest) {
 
     if (key && Array.isArray(data)) {
       await saveCollectionData(key, data, !!skipCacheRebuild);
-      // As requested: Immediately refresh user_scope_cache and update 1KB version file!
+      cachedFullState = null;
+      try {
+        const { invalidateInspectionFilterMastersCache } = await import('@/lib/inspectionWorksFilterMastersServer');
+        invalidateInspectionFilterMastersCache();
+      } catch {
+        /* ignore */
+      }
+      try {
+        const { invalidateDashboardStatsCache } = await import('@/lib/dashboardStats');
+        invalidateDashboardStatsCache();
+      } catch {
+        /* ignore */
+      }
+      try {
+        const { invalidateInspectionWorksLiteCache } = await import('@/lib/inspectionWorksLiteLoader');
+        invalidateInspectionWorksLiteCache();
+      } catch {
+        /* ignore */
+      }
+      invalidatePortalMastersCache();
       invalidateAndRefreshUserScopeCache(`master_${key}_saved`).catch((e) => console.error('[State] Refresh scope error:', e));
       logServerProcess({
         category: 'MASTER_UPDATE',

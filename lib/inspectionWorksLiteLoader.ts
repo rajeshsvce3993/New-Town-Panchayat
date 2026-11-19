@@ -24,6 +24,7 @@ import {
 import { fetchRemoteInspectionWorksRaw, invalidateRemoteInspectionWorksCache } from '@/lib/remoteInspectionWorksCache';
 import { shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { rewriteWorkMediaFields } from '@/lib/s3MediaKey';
+import { readMongoSharedCache, writeMongoSharedCache } from '@/lib/cache/mongoSharedCache';
 
 export type LiteWorksLoadResult = {
   enriched: any[];
@@ -66,6 +67,9 @@ export type ReportCountsLoadResult = {
 };
 
 const ENRICHED_REPORTS_CACHE_TTL_MS = 180_000;
+const REPORT_COUNTS_CACHE_TTL_MS = 120_000;
+const reportCountsMem = new Map<string, { ts: number; data: ReportCountsLoadResult }>();
+const reportCountsInFlight = new Map<string, Promise<ReportCountsLoadResult>>();
 let enrichedReportsCache: { key: string; ts: number; data: LiteWorksLoadResult } | null = null;
 const enrichedReportsInFlight = new Map<string, Promise<LiteWorksLoadResult>>();
 let reportsDataGeneration = 5;
@@ -79,7 +83,10 @@ export function invalidateInspectionWorksLiteCache() {
   invalidateInspectionWorksAggregateCache();
   enrichedReportsCache = null;
   enrichedReportsInFlight.clear();
+  reportCountsMem.clear();
+  reportCountsInFlight.clear();
   reportsDataGeneration += 1;
+  void import('@/lib/cache/mongoSharedCache').then((m) => m.invalidateMongoSharedCachePrefix('iw-counts|'));
 }
 
 function reportsDataCacheKey(filter: InspectionWorksFilterQuery, limit: number, page: number, pageSize: number): string {
@@ -322,33 +329,65 @@ export async function loadInspectionWorksReportsBundle(
   };
 }
 
+function reportCountsCacheKey(filter: InspectionWorksFilterQuery, compact: boolean) {
+  return `${reportsDataCacheKey(filter, 0, 0, 0)}|${compact ? 'compact' : 'dim'}`;
+}
+
 export async function loadInspectionWorksReportCounts(
   requestOrigin: string | undefined,
   filter: InspectionWorksFilterQuery,
-  _limit = 0
+  _limit = 0,
+  opts?: { compactCounts?: boolean }
 ): Promise<ReportCountsLoadResult> {
-  const masters = await resolveInspectionFilterMasters(requestOrigin);
-  const agg = await aggregateInspectionWorksReportCounts(filter, masters);
-  if (agg) {
-    return {
-      categoryCounts: agg.categoryCounts,
-      totalWithoutCategoryFilter: agg.totalWithoutCategoryFilter,
-      subjectCategoryRollups: agg.subjectCategoryRollups,
-      dimensionRollups: agg.dimensionRollups || [],
-      masters,
-      source: agg.source === 'mongo-rollup' ? 'mongo-rollup' : 'mongo-aggregate',
-      truncated: false,
-      appliedDateWindow: false,
-    };
+  const compact = opts?.compactCounts === true;
+  const key = reportCountsCacheKey(filter, compact);
+  const now = Date.now();
+  const mem = reportCountsMem.get(key);
+  if (mem && now - mem.ts < REPORT_COUNTS_CACHE_TTL_MS) return mem.data;
+
+  const mongoKey = `iw-counts|${key}`;
+  const shared = await readMongoSharedCache<ReportCountsLoadResult>(mongoKey);
+  if (shared) {
+    reportCountsMem.set(key, { ts: now, data: shared });
+    return shared;
   }
-  return {
-    categoryCounts: {},
-    totalWithoutCategoryFilter: 0,
-    subjectCategoryRollups: [],
-    dimensionRollups: [],
-    masters,
-    source: 'empty',
-    truncated: false,
-    appliedDateWindow: false,
-  };
+
+  const pending = reportCountsInFlight.get(key);
+  if (pending) return pending;
+
+  const loadPromise = (async (): Promise<ReportCountsLoadResult> => {
+    const masters = await resolveInspectionFilterMasters(requestOrigin);
+    const agg = await aggregateInspectionWorksReportCounts(filter, masters, {
+      needDimensionRollups: !compact,
+    });
+    const result: ReportCountsLoadResult = agg
+      ? {
+          categoryCounts: agg.categoryCounts,
+          totalWithoutCategoryFilter: agg.totalWithoutCategoryFilter,
+          subjectCategoryRollups: agg.subjectCategoryRollups,
+          dimensionRollups: agg.dimensionRollups || [],
+          masters,
+          source: agg.source === 'mongo-rollup' ? 'mongo-rollup' : 'mongo-aggregate',
+          truncated: false,
+          appliedDateWindow: false,
+        }
+      : {
+          categoryCounts: {},
+          totalWithoutCategoryFilter: 0,
+          subjectCategoryRollups: [],
+          dimensionRollups: [],
+          masters,
+          source: 'empty',
+          truncated: false,
+          appliedDateWindow: false,
+        };
+    reportCountsMem.set(key, { ts: Date.now(), data: result });
+    void writeMongoSharedCache(mongoKey, result, REPORT_COUNTS_CACHE_TTL_MS);
+    return result;
+  })().finally(() => {
+    reportCountsInFlight.delete(key);
+  });
+
+  reportCountsInFlight.set(key, loadPromise);
+  return loadPromise;
 }

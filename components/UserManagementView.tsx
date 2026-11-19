@@ -77,11 +77,11 @@ export default function UserManagementView({ state, lang, onSaveCollection }: Us
 
   const refreshPortalUsers = useCallback(async () => {
     try {
-      const res = await fetch('/api/state?key=users', { cache: 'no-store' });
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setLocalUsers(json.data);
-        setCredentialIndex(buildUserCredentialIndex(json.data));
+      const { fetchMastersList } = await import('@/lib/portalMastersClient');
+      const items = await fetchMastersList('users', { page: 1, limit: 2000 });
+      if (items.length) {
+        setLocalUsers(items);
+        setCredentialIndex(buildUserCredentialIndex(items));
       }
     } catch {
       /* ignore */

@@ -47,6 +47,7 @@ import { matchesTp, normalizeWard, resolveUserTpId } from '../../src/utils/wards
 import * as Location from 'expo-location';
 import { acquireGpsFix, gpsFixFromLocation, isPlaceholderCoord, type GpsFix } from '../../src/utils/gpsLocation';
 import { nextWorkId } from '../../src/utils/workId';
+import { resolveWorkGeoLabels } from '../../src/utils/workGeo';
 
 function toast(msg: string) {
   if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.LONG);
@@ -356,11 +357,18 @@ export default function AddWorkScreen() {
     }
     const subject = subjects.find((s) => s.id === subjectId);
     const category = categories.find((c) => c.id === categoryId);
+    const geoLabels = resolveWorkGeoLabels(user, portal);
+    if (!geoLabels) {
+      toast(
+        isTamil
+          ? 'மண்டலம் / மாவட்டம் / பேரூராட்சி விவரம் இல்லை. மீண்டும் உள்நுழைந்து பிணைப்பை சரிபார்க்கவும்.'
+          : 'Missing zone, district, or town panchayat from your account. Sign in again to refresh location from the server.'
+      );
+      return;
+    }
     const ids = nextWorkId(user, portal, ward);
     let actualWorkId = '';
-    const zoneName = user?.zone || 'Kanchipuram';
-    const districtName = user?.district || 'Chengalpattu';
-    const tpName = user?.townPanchayat || 'Thiruporur';
+    const { zoneNameEn: zoneName, districtNameEn: districtName, tpNameEn: tpName } = geoLabels;
     const fieldCopy = { ...values };
     let s3 = SAMPLE_PHOTO;
     const clientWorkId = ensureDraftClientWorkId();
@@ -388,11 +396,11 @@ export default function AddWorkScreen() {
       categoryNameEn: category?.nameEn || 'Field Check',
       categoryNameTa: category?.nameTa || 'கள ஆய்வு',
       tpNameEn: tpName,
-      tpNameTa: user?.townPanchayatTa || 'திருப்போரூர் பேரூராட்சி',
+      tpNameTa: geoLabels.tpNameTa,
       zoneNameEn: zoneName,
-      zoneNameTa: user?.zoneTa || 'காஞ்சிபுரம் மண்டலம்',
+      zoneNameTa: geoLabels.zoneNameTa,
       districtNameEn: districtName,
-      districtNameTa: user?.districtTa || 'செங்கல்பட்டு மாவட்டம்',
+      districtNameTa: geoLabels.districtNameTa,
       wardNumber: ward,
       streetName: street,
       latitude: submitLat,

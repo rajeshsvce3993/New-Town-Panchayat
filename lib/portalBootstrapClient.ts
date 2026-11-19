@@ -1,6 +1,15 @@
 'use client';
 
 let inflight: Promise<any> | null = null;
+let usersInflight: Promise<{ users: any[]; inspectionUsers: any[] }> | null = null;
+type HeavyCollections = {
+  wardsAndStreets: any[];
+  employees: any[];
+  notifications: any[];
+  userActivities: any[];
+  apkVersions: any[];
+};
+let heavyInflight: Promise<HeavyCollections> | null = null;
 let cached: { json: any; at: number } | null = null;
 const freshListeners = new Set<(json: any) => void>();
 
@@ -21,7 +30,7 @@ export function onPortalBootstrapFresh(cb: (json: any) => void): () => void {
   return () => freshListeners.delete(cb);
 }
 const CACHE_MS = 120000;
-const SESSION_KEY = 'portal_bootstrap_v1';
+const SESSION_KEY = 'portal_bootstrap_v2';
 const SESSION_TTL_MS = 20 * 60 * 1000;
 
 function readSessionBootstrap(): any | null {
@@ -46,10 +55,73 @@ function writeSessionBootstrap(json: any) {
   }
 }
 
-function fetchAndStoreBootstrap(force = false): Promise<any> {
+function patchBootstrapData(partial: Record<string, unknown>) {
+  if (!cached?.json?.success || !cached.json.data) return;
+  const next = {
+    ...cached.json,
+    data: { ...cached.json.data, ...partial },
+  };
+  cached = { json: next, at: Date.now() };
+  writeSessionBootstrap(next);
+  notifyFresh(next);
+}
+
+/** Inspection user directory — defer until after dashboard paint or reports tab. */
+export async function loadPortalUserDirectory(): Promise<{ users: any[]; inspectionUsers: any[] }> {
+  if (usersInflight) return usersInflight;
+  usersInflight = (async () => {
+    const [usersRes, inspRes] = await Promise.all([
+      fetch('/api/masters/list?collection=users&page=1&limit=500', { cache: 'no-store' }),
+      fetch('/api/masters/list?collection=inspectionUsers&page=1&limit=1000&lean=1', { cache: 'no-store' }),
+    ]);
+    const [usersJson, inspJson] = await Promise.all([usersRes.json(), inspRes.json()]);
+    return {
+      users: usersJson?.success ? usersJson.items || [] : [],
+      inspectionUsers: inspJson?.success ? inspJson.items || [] : [],
+    };
+  })().finally(() => {
+    usersInflight = null;
+  });
+  return usersInflight;
+}
+
+/** Phase 1: core masters + portal users only (fast first paint). */
+async function fetchProductionBootstrap(): Promise<any> {
+  const [coreRes, usersRes] = await Promise.all([
+    fetch('/api/masters/core', { cache: 'no-store' }),
+    fetch('/api/masters/list?collection=users&page=1&limit=500', { cache: 'no-store' }),
+  ]);
+
+  const [coreJson, usersJson] = await Promise.all([coreRes.json(), usersRes.json()]);
+
+  if (!coreJson?.success || !coreJson.data) {
+    return coreJson;
+  }
+
+  const data = {
+    ...coreJson.data,
+    users: usersJson?.success ? usersJson.items || [] : [],
+    inspectionUsers: [] as any[],
+  };
+
+  void loadPortalUserDirectory()
+    .then(({ inspectionUsers }) => {
+      if (!inspectionUsers.length) return;
+      patchBootstrapData({ inspectionUsers });
+    })
+    .catch(() => undefined);
+
+  return {
+    success: true,
+    source: 'mongo-live',
+    mode: 'production',
+    data,
+  };
+}
+
+function fetchAndStoreBootstrap(): Promise<any> {
   if (!inflight) {
-    inflight = fetch(`/api/state?mode=bootstrap${force ? '&fresh=true' : ''}`)
-      .then((res) => res.json())
+    inflight = fetchProductionBootstrap()
       .then((json) => {
         if (json?.success) {
           cached = { json, at: Date.now() };
@@ -84,9 +156,11 @@ export function peekPortalBootstrapCache(): any | null {
 export function invalidatePortalBootstrapCache() {
   cached = null;
   inflight = null;
+  usersInflight = null;
   if (typeof sessionStorage !== 'undefined') {
     try {
       sessionStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem('portal_bootstrap_v1');
     } catch {
       /* ignore */
     }
@@ -102,9 +176,39 @@ export function loadPortalBootstrap(force = false): Promise<any> {
     const session = readSessionBootstrap();
     if (session?.success) {
       cached = { json: session, at: Date.now() };
-      void fetchAndStoreBootstrap(false);
+      void fetchAndStoreBootstrap();
       return Promise.resolve(session);
     }
   }
-  return fetchAndStoreBootstrap(force);
+  return fetchAndStoreBootstrap();
+}
+
+/** Lazy heavy collections (wards, employees, notifications) — admin tabs only. */
+export async function loadPortalHeavyCollections(): Promise<HeavyCollections> {
+  if (heavyInflight) return heavyInflight;
+
+  heavyInflight = (async () => {
+    const [wards, employees, notifications, activities, apk] = await Promise.all([
+      fetch('/api/masters/list?collection=wardsAndStreets&page=1&limit=1000', { cache: 'no-store' }).then((r) =>
+        r.json()
+      ),
+      fetch('/api/masters/list?collection=employees&page=1&limit=500', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/masters/list?collection=notifications&page=1&limit=200', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/masters/list?collection=userActivities&page=1&limit=200', { cache: 'no-store' }).then((r) =>
+        r.json()
+      ),
+      fetch('/api/masters/list?collection=apkVersions&page=1&limit=50', { cache: 'no-store' }).then((r) => r.json()),
+    ]);
+    return {
+      wardsAndStreets: wards?.success ? wards.items || [] : [],
+      employees: employees?.success ? employees.items || [] : [],
+      notifications: notifications?.success ? notifications.items || [] : [],
+      userActivities: activities?.success ? activities.items || [] : [],
+      apkVersions: apk?.success ? apk.items || [] : [],
+    };
+  })().finally(() => {
+    heavyInflight = null;
+  });
+
+  return heavyInflight;
 }

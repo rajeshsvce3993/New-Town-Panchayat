@@ -4,8 +4,22 @@ import { buildPortalStatePayload } from '@/lib/buildPortalStatePayload';
 import { buildAndPersistPortalBootstrap, readPortalBootstrapMongo } from '@/lib/portalBootstrapCache';
 import { portalStateCacheKey, runExclusivePortalBuild } from '@/lib/portalStateCache';
 import { getScopeVersionMeta } from '@/lib/userScopeCache';
+import { isPortalStateDisabled } from '@/lib/productionFlags';
 
 export const dynamic = 'force-dynamic';
+
+const GONE_BODY = {
+  success: false,
+  deprecated: true,
+  message:
+    'portal-state is retired. Use POST /api/auth/login, GET /api/geo/me, GET /api/masters/scope, GET /api/inspection-works (slim).',
+  replacement: {
+    login: '/api/auth/login',
+    geo: '/api/geo/me',
+    scope: '/api/masters/scope',
+    works: '/api/inspection-works?lite=1',
+  },
+};
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -28,6 +42,13 @@ function requestOrigin(req: NextRequest): string {
 
 export async function GET(req: NextRequest) {
   try {
+    if (isPortalStateDisabled()) {
+      return NextResponse.json(GONE_BODY, {
+        status: 410,
+        headers: { ...CORS_HEADERS, 'X-Portal-State': 'gone' },
+      });
+    }
+
     const { searchParams } = new URL(req.url);
     const remoteQs = searchParams.toString();
     const remoteState = await fetchRemotePortalJson(

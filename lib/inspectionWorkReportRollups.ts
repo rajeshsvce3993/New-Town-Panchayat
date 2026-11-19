@@ -43,9 +43,11 @@ type InspectionWorkReportRollupDoc = InspectionWorkReportRollupDims & {
 
 const SEP = '\x1f';
 const LIVE_COLLECTION = INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION;
+const LIFETIME_COLLECTION = `${INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION}Lifetime`;
 const BUILD_COLLECTION = `${INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION}_build`;
 const PREV_COLLECTION = `${INSPECTION_WORK_REPORT_ROLLUPS_COLLECTION}_prev`;
 const META_ID = 'inspection_work_report_rollups';
+const LIFETIME_META_ID = 'inspection_work_report_rollups_lifetime';
 const WORKS_GEO_REPAIR_META_ID = 'geo_hierarchy_repair_v5';
 const ROLLUP_SCHEMA_VERSION = 3;
 const MONTH_AGG_MAX_MS = 180_000;
@@ -55,6 +57,35 @@ const CATCHUP_MIN_INTERVAL_MS = 15 * 60 * 1000;
 const WORKER_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const BUILD_HINT_TTL_MS = 2_000;
 const QUERY_MAX_MS = 8_000;
+const GRAND_TOTAL_TTL_MS = 90_000;
+const grandTotalCache = new Map<string, { total: number; ts: number }>();
+
+export function invalidateRollupGrandTotalCache() {
+  grandTotalCache.clear();
+}
+
+/** Dashboard / KPI: single $sum on rollups with short TTL (no dimension explode). */
+export async function queryInspectionWorkReportRollupGrandTotal(
+  filter: InspectionWorksFilterQuery,
+  masters: InspectionWorksFilterMasters,
+): Promise<number> {
+  const match = buildRollupMatch(filter, masters, { omitCategory: true });
+  const cacheKey = JSON.stringify({ match, lifetime: !filterUsesRollupDateWindow(filter) });
+  const hit = grandTotalCache.get(cacheKey);
+  if (hit && Date.now() - hit.ts < GRAND_TOTAL_TTL_MS) return hit.total;
+
+  const counts = await queryInspectionWorkReportRollupCounts(filter, masters, {
+    omitCategory: true,
+    totalOnly: true,
+  });
+  const total = Number(counts.totalWithoutCategoryFilter) || 0;
+  grandTotalCache.set(cacheKey, { total, ts: Date.now() });
+  if (grandTotalCache.size > 60) {
+    const first = grandTotalCache.keys().next().value;
+    if (first) grandTotalCache.delete(first);
+  }
+  return total;
+}
 
 let indexesReady = false;
 let workerStarted = false;
@@ -129,6 +160,22 @@ export function inspectionWorkReportRollupId(dims: InspectionWorkReportRollupDim
   ].join(SEP);
 }
 
+export function inspectionWorkReportRollupLifetimeId(dims: InspectionWorkReportRollupDims): string {
+  return [
+    dims.zoneId,
+    dims.districtId,
+    dims.tpId,
+    dims.wardNumber,
+    dims.submittedByUserName,
+    dims.subjectId,
+    dims.categoryId,
+  ].join(SEP);
+}
+
+export function filterUsesRollupDateWindow(filter: InspectionWorksFilterQuery): boolean {
+  return !!(filter.fromDate || filter.toDate || filter.dateParam);
+}
+
 async function mongo() {
   const { getMongoClient, getActiveMongoDb } = await import('@/lib/storage');
   const client = await getMongoClient();
@@ -137,6 +184,7 @@ async function mongo() {
   return {
     db,
     rollups: db.collection<InspectionWorkReportRollupDoc>(LIVE_COLLECTION),
+    lifetime: db.collection<InspectionWorkReportRollupDoc>(LIFETIME_COLLECTION),
     build: db.collection<InspectionWorkReportRollupDoc>(BUILD_COLLECTION),
     meta: db.collection<RollupMetaDoc>('appMeta'),
     works: db.collection('inspectionWorks'),
@@ -145,13 +193,23 @@ async function mongo() {
 
 type MongoCtx = NonNullable<Awaited<ReturnType<typeof mongo>>>;
 
-async function ensureRollupCollectionIndexes(col: { createIndex: Function }) {
+async function ensureRollupCollectionIndexes(col: { createIndex: Function }, withDate = true) {
+  const dateIndexes = withDate
+    ? [
+        col.createIndex({ submittedDateYmd: 1, tpId: 1, subjectId: 1, categoryId: 1 }, { background: true }),
+        col.createIndex({ submittedDateYmd: 1, districtId: 1, subjectId: 1 }, { background: true }),
+        col.createIndex({ submittedDateYmd: 1, zoneId: 1 }, { background: true }),
+        col.createIndex({ submittedDateYmd: 1, wardNumber: 1 }, { background: true }),
+        col.createIndex({ submittedDateYmd: 1, submittedByUserName: 1 }, { background: true }),
+      ]
+    : [];
   await Promise.allSettled([
-    col.createIndex({ submittedDateYmd: 1, tpId: 1, subjectId: 1, categoryId: 1 }, { background: true }),
-    col.createIndex({ submittedDateYmd: 1, districtId: 1, subjectId: 1 }, { background: true }),
-    col.createIndex({ submittedDateYmd: 1, zoneId: 1 }, { background: true }),
-    col.createIndex({ submittedDateYmd: 1, wardNumber: 1 }, { background: true }),
-    col.createIndex({ submittedDateYmd: 1, submittedByUserName: 1 }, { background: true }),
+    ...dateIndexes,
+    col.createIndex({ tpId: 1, subjectId: 1, categoryId: 1 }, { background: true }),
+    col.createIndex({ districtId: 1, subjectId: 1 }, { background: true }),
+    col.createIndex({ zoneId: 1 }, { background: true }),
+    col.createIndex({ submittedByUserName: 1 }, { background: true }),
+    col.createIndex({ subjectId: 1, categoryId: 1 }, { background: true }),
   ]);
 }
 
@@ -163,9 +221,11 @@ export async function ensureInspectionWorkReportIndexes(): Promise<void> {
     ctx.works.createIndex({ submittedDateYmd: -1, submittedAt: -1, workId: -1 }, { background: true }),
     ctx.works.createIndex({ submittedDateYmd: -1, tpId: 1, submittedAt: -1, workId: -1 }, { background: true }),
     ctx.works.createIndex({ submittedDateYmd: 1 }, { background: true }),
+    ctx.works.createIndex({ categoryId: 1, subjectId: 1, submittedDateYmd: -1 }, { background: true }),
     ctx.works.createIndex({ streetName: 1, submittedDateYmd: -1 }, { background: true }),
     ctx.works.createIndex({ workId: 1 }, { background: true }),
-    ensureRollupCollectionIndexes(ctx.rollups),
+    ensureRollupCollectionIndexes(ctx.rollups, true),
+    ensureRollupCollectionIndexes(ctx.lifetime, false),
   ]);
   indexesReady = true;
 }
@@ -641,7 +701,8 @@ async function promoteBuildToLive(ctx: MongoCtx): Promise<void> {
     await ctx.db.collection(PREV_COLLECTION).drop().catch(() => undefined);
   }
   indexesReady = false;
-  await ensureRollupCollectionIndexes(ctx.db.collection(LIVE_COLLECTION));
+  await ensureRollupCollectionIndexes(ctx.db.collection(LIVE_COLLECTION), true);
+  await ensureRollupCollectionIndexes(ctx.lifetime, false);
   indexesReady = true;
   try {
     const { invalidateInspectionWorksAggregateCache } = await import('@/lib/inspectionWorksReportsAggregate');
@@ -919,6 +980,12 @@ async function runRollupWorker(): Promise<void> {
     await catchupRecentDays(ctx, LIVE_COLLECTION);
     await ctx.meta.updateOne({ _id: META_ID }, { $set: { lastCatchupAt: new Date() } }, { upsert: true });
   }
+  void syncLifetimeFromLive(ctx).catch((err) => {
+    console.warn('[inspectionWorkReportRollups] lifetime worker sync:', err);
+  });
+  void import('@/lib/jobs/swmDashboardTotals')
+    .then((m) => m.refreshSwmDashboardTotals())
+    .catch((err) => console.warn('[swmDashboardTotals] refresh:', err));
 }
 
 function tickRollupWorker(): Promise<void> {
@@ -1010,6 +1077,31 @@ async function applyDeltaToCollection(
   }
 }
 
+async function applyDeltaToLifetime(
+  col: MongoCtx['lifetime'],
+  dims: InspectionWorkReportRollupDims,
+  delta: number
+): Promise<void> {
+  const _id = inspectionWorkReportRollupLifetimeId(dims);
+  const { submittedDateYmd: _ymd, ...rest } = dims;
+  void _ymd;
+  try {
+    await col.updateOne(
+      { _id },
+      {
+        $inc: { count: delta },
+        $setOnInsert: { ...rest, _id },
+      },
+      { upsert: true }
+    );
+    if (delta < 0) {
+      await col.deleteMany({ _id, count: { $lte: 0 } });
+    }
+  } catch (err) {
+    if (!isMissingNamespace(err)) throw err;
+  }
+}
+
 async function applyRollupDelta(work: any, delta: number): Promise<void> {
   if (!work || typeof work !== 'object' || delta === 0) return;
   if (isFallbackInspectionWork(work)) return;
@@ -1018,6 +1110,7 @@ async function applyRollupDelta(work: any, delta: number): Promise<void> {
   const ctx = await mongo();
   if (!ctx) return;
   await applyDeltaToCollection(ctx.rollups, dims, delta);
+  await applyDeltaToLifetime(ctx.lifetime, dims, delta);
   const hint = await refreshBuildHint(ctx);
   if (
     hint &&
@@ -1084,13 +1177,15 @@ function attachMasterGeoNames(
 
 async function aggregateLiveRollups(
   ctx: MongoCtx,
-  pipeline: Record<string, unknown>[]
+  pipeline: Record<string, unknown>[],
+  col: MongoCtx['rollups'] = ctx.rollups
 ): Promise<any[]> {
-  const run = async (col: MongoCtx['rollups']) =>
-    col.aggregate(pipeline, { maxTimeMS: QUERY_MAX_MS }).toArray();
+  const run = async (target: MongoCtx['rollups']) =>
+    target.aggregate(pipeline, { allowDiskUse: true, maxTimeMS: QUERY_MAX_MS }).toArray();
   try {
-    const rows = await run(ctx.rollups);
+    const rows = await run(col);
     if (rows.length) return rows;
+    if (col !== ctx.rollups) return rows;
     if (await collectionExists(ctx, PREV_COLLECTION)) {
       const prev = await run(ctx.db.collection(PREV_COLLECTION));
       if (prev.length) return prev;
@@ -1098,25 +1193,210 @@ async function aggregateLiveRollups(
     return rows;
   } catch (err) {
     if (!isMissingNamespace(err)) throw err;
-    if (await collectionExists(ctx, PREV_COLLECTION)) {
+    if (col === ctx.rollups && (await collectionExists(ctx, PREV_COLLECTION))) {
       return await run(ctx.db.collection(PREV_COLLECTION));
     }
     return [];
   }
 }
 
+async function pickRollupQueryCollection(
+  ctx: MongoCtx,
+  filter: InspectionWorksFilterQuery
+): Promise<MongoCtx['rollups']> {
+  if (filterUsesRollupDateWindow(filter)) return ctx.rollups;
+  try {
+    const lifeCount = await ctx.lifetime.estimatedDocumentCount();
+    if (lifeCount > 0) return ctx.lifetime;
+  } catch (_) {}
+  return ctx.rollups;
+}
+
+async function syncLifetimeFromLive(ctx: MongoCtx): Promise<void> {
+  const statusDoc = await ctx.meta.findOne({ _id: LIFETIME_META_ID });
+  if (statusDoc?.status === 'building') return;
+  let lifeCount = 0;
+  try {
+    lifeCount = await ctx.lifetime.estimatedDocumentCount();
+  } catch (_) {}
+  if (lifeCount > 0 && !statusDoc?.forceRebuild) return;
+  const liveCount = (await collectionExists(ctx, LIVE_COLLECTION))
+    ? await ctx.rollups.estimatedDocumentCount()
+    : 0;
+  if (!liveCount) return;
+
+  await ctx.meta.updateOne(
+    { _id: LIFETIME_META_ID },
+    { $set: { status: 'building', startedAt: new Date() } },
+    { upsert: true }
+  );
+  try {
+    if (statusDoc?.forceRebuild) {
+      await ctx.lifetime.deleteMany({});
+    }
+    await ctx.rollups
+      .aggregate(
+        [
+          { $match: { count: { $gt: 0 } } },
+          {
+            $group: {
+              _id: {
+                zoneId: { $ifNull: ['$zoneId', ''] },
+                districtId: { $ifNull: ['$districtId', ''] },
+                tpId: { $ifNull: ['$tpId', ''] },
+                wardNumber: { $ifNull: ['$wardNumber', ''] },
+                submittedByUserName: { $ifNull: ['$submittedByUserName', ''] },
+                subjectId: { $ifNull: ['$subjectId', 'unknown'] },
+                categoryId: { $ifNull: ['$categoryId', '_unknown'] },
+              },
+              count: { $sum: '$count' },
+            },
+          },
+          {
+            $project: {
+              _id: {
+                $concat: [
+                  { $ifNull: ['$_id.zoneId', ''] },
+                  SEP,
+                  { $ifNull: ['$_id.districtId', ''] },
+                  SEP,
+                  { $ifNull: ['$_id.tpId', ''] },
+                  SEP,
+                  { $ifNull: ['$_id.wardNumber', ''] },
+                  SEP,
+                  { $ifNull: ['$_id.submittedByUserName', ''] },
+                  SEP,
+                  { $ifNull: ['$_id.subjectId', 'unknown'] },
+                  SEP,
+                  { $ifNull: ['$_id.categoryId', '_unknown'] },
+                ],
+              },
+              zoneId: '$_id.zoneId',
+              districtId: '$_id.districtId',
+              tpId: '$_id.tpId',
+              wardNumber: '$_id.wardNumber',
+              submittedByUserName: '$_id.submittedByUserName',
+              subjectId: '$_id.subjectId',
+              categoryId: '$_id.categoryId',
+              count: 1,
+            },
+          },
+          {
+            $merge: {
+              into: LIFETIME_COLLECTION,
+              on: '_id',
+              whenMatched: 'replace',
+              whenNotMatched: 'insert',
+            },
+          },
+        ],
+        { allowDiskUse: true, maxTimeMS: MONTH_AGG_MAX_MS }
+      )
+      .toArray();
+    await ctx.meta.updateOne(
+      { _id: LIFETIME_META_ID },
+      {
+        $set: { status: 'ready', finishedAt: new Date(), buckets: await ctx.lifetime.estimatedDocumentCount() },
+        $unset: { forceRebuild: '' },
+      }
+    );
+    console.log('[inspectionWorkReportRollups] lifetime rollups synced from LIVE');
+  } catch (err) {
+    console.warn('[inspectionWorkReportRollups] lifetime sync failed:', err);
+    await ctx.db.collection('appMeta').updateOne(
+      { _id: LIFETIME_META_ID },
+      { $set: { status: 'error', lastError: String(err) }, $unset: { startedAt: 1 } }
+    );
+  }
+}
+
+/** Ops/deploy: build inspectionWorkReportRollupsLifetime from LIVE (optional force rebuild). */
+export async function refreshLifetimeRollupsFromLive(force = false): Promise<number> {
+  const ctx = await mongo();
+  if (!ctx) return 0;
+  if (force) {
+    await ctx.db.collection('appMeta').updateOne(
+      { _id: LIFETIME_META_ID },
+      { $set: { forceRebuild: true, queuedAt: new Date() } },
+      { upsert: true },
+    );
+  }
+  await syncLifetimeFromLive(ctx);
+  try {
+    return await ctx.lifetime.estimatedDocumentCount();
+  } catch {
+    return 0;
+  }
+}
+
 export async function queryInspectionWorkReportRollupCounts(
   filter: InspectionWorksFilterQuery,
   masters: InspectionWorksFilterMasters,
-  opts?: { omitCategory?: boolean }
+  opts?: { omitCategory?: boolean; totalOnly?: boolean; compact?: boolean; withDimensions?: boolean }
 ): Promise<InspectionWorkReportRollupCounts> {
   startInspectionReportRollupWorker();
   try {
     const ctx = await mongo();
     if (!ctx) return emptyRollupCounts();
+    const rollupCol = await pickRollupQueryCollection(ctx, filter);
     const match = buildRollupMatch(filter, masters, { omitCategory: opts?.omitCategory !== false });
     const pipeline: Record<string, unknown>[] = [];
     if (Object.keys(match).length) pipeline.push({ $match: match });
+
+    if (opts?.totalOnly) {
+      pipeline.push({ $group: { _id: null, total: { $sum: '$count' } } });
+      const [row] = (await aggregateLiveRollups(ctx, pipeline, rollupCol)) as Array<{ total?: number }>;
+      const total = Number(row?.total) || 0;
+      return {
+        categoryCounts: {},
+        totalWithoutCategoryFilter: total,
+        subjectCategoryRollups: [],
+        dimensionRollups: [],
+        source: 'mongo-rollup',
+      };
+    }
+
+    if (opts?.compact) {
+      pipeline.push({
+        $group: {
+          _id: {
+            subjectId: { $ifNull: ['$subjectId', 'unknown'] },
+            categoryId: { $ifNull: ['$categoryId', '_unknown'] },
+          },
+          count: { $sum: '$count' },
+        },
+      });
+      const grouped = (await aggregateLiveRollups(ctx, pipeline, rollupCol)) as Array<{
+        _id: { subjectId: string; categoryId: string };
+        count: number;
+      }>;
+      const subjectCategoryRollups = grouped.map((r) => ({
+        subjectId: String(r._id?.subjectId || 'unknown'),
+        categoryId: String(r._id?.categoryId || '_unknown'),
+        count: Number(r.count) || 0,
+      }));
+      const categoryCounts = categoryCountsFromRollupRows(
+        subjectCategoryRollups,
+        masters.inspectionCategories || []
+      );
+      const totalWithoutCategoryFilter = subjectCategoryRollups.reduce((s, r) => s + r.count, 0);
+      return {
+        categoryCounts,
+        totalWithoutCategoryFilter,
+        subjectCategoryRollups,
+        dimensionRollups: [],
+        source: 'mongo-rollup',
+      };
+    }
+
+    if (!opts?.withDimensions) {
+      const compactCounts = await queryInspectionWorkReportRollupCounts(filter, masters, {
+        omitCategory: opts?.omitCategory !== false,
+        compact: true,
+      });
+      return compactCounts;
+    }
+
     pipeline.push({
       $group: {
         _id: {
@@ -1131,7 +1411,7 @@ export async function queryInspectionWorkReportRollupCounts(
         count: { $sum: '$count' },
       },
     });
-    const grouped = (await aggregateLiveRollups(ctx, pipeline)) as Array<{
+    const grouped = (await aggregateLiveRollups(ctx, pipeline, rollupCol)) as Array<{
       _id: {
         zoneId: string;
         districtId: string;

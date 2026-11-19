@@ -138,11 +138,9 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
 
   const refreshInspectionUserCredentials = async () => {
     try {
-      const res = await fetch('/api/state?key=inspectionUsers', { cache: 'no-store' });
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        setCredentialIndex(buildUserCredentialIndex(json.data));
-      }
+      const { fetchMastersList } = await import('@/lib/portalMastersClient');
+      const items = await fetchMastersList('inspectionUsers', { page: 1, limit: 2000 });
+      if (items.length) setCredentialIndex(buildUserCredentialIndex(items));
     } catch {
       /* ignore */
     }
@@ -186,9 +184,13 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
 
     const fetchLatestActivities = async () => {
       try {
-        const [stateRes, actRes] = await Promise.all([
-          fetch('/api/state').then(r => r.json()).catch(() => null),
-          fetch(`/api/users/user-activity?date=${actDateFilter}`).then(r => r.json()).catch(() => null)
+        const { fetchMastersList } = await import('@/lib/portalMastersClient');
+        const [actRes, users, inspectionUsers, sessions, activities] = await Promise.all([
+          fetch(`/api/users/user-activity?date=${actDateFilter}`).then((r) => r.json()).catch(() => null),
+          fetchMastersList('users', { page: 1, limit: 500, lean: true }),
+          fetchMastersList('inspectionUsers', { page: 1, limit: 1000, lean: true }),
+          fetchMastersList('userSessions', { page: 1, limit: 500 }),
+          fetchMastersList('userActivities', { page: 1, limit: 200 }),
         ]);
 
         if (actRes && actRes.success) {
@@ -198,15 +200,13 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
           if (actRes.userWorkStats) {
             setUserWorkStats(actRes.userWorkStats);
           }
-        } else if (stateRes && stateRes.success && stateRes.data?.userActivities) {
-          setLocalActivities(stateRes.data.userActivities);
+        } else if (activities.length) {
+          setLocalActivities(activities);
         }
 
-        if (stateRes && stateRes.success && stateRes.data) {
-          if (stateRes.data.users) setLocalUsers(stateRes.data.users);
-          if (stateRes.data.inspectionUsers) setLocalInspectionUsers(stateRes.data.inspectionUsers);
-          if (stateRes.data.userSessions) setLocalSessions(stateRes.data.userSessions);
-        }
+        if (users.length) setLocalUsers(users);
+        if (inspectionUsers.length) setLocalInspectionUsers(inspectionUsers);
+        if (sessions.length) setLocalSessions(sessions);
       } catch (err) {
         console.error('Error auto-refreshing user activities:', err);
       }
@@ -894,10 +894,10 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
   const handleExportEmployeesExcel = async () => {
     let credIndex = { ...credentialIndex };
     try {
-      const res = await fetch('/api/state?key=inspectionUsers', { cache: 'no-store' });
-      const json = await res.json();
-      if (json.success && Array.isArray(json.data)) {
-        credIndex = { ...buildUserCredentialIndex(json.data), ...credIndex };
+      const { fetchMastersList } = await import('@/lib/portalMastersClient');
+      const items = await fetchMastersList('inspectionUsers', { page: 1, limit: 2000 });
+      if (items.length) {
+        credIndex = { ...buildUserCredentialIndex(items), ...credIndex };
       }
     } catch {
       /* use in-memory index */

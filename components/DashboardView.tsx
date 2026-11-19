@@ -53,6 +53,7 @@ import {
   workMatchesTp,
   workMatchesZone,
 } from '@/lib/inspectionWorksQueryFilters';
+import { fetchDashboardStatsJson } from '@/lib/dashboardStatsClient';
 
 const InspectionReportsView = dynamic(
   () => import('./InspectionReportsView'),
@@ -1316,9 +1317,9 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     else if (userZoneId) params.set('scopeZoneId', String(userZoneId));
     else if (userDistrictId) params.set('scopeDistrictId', String(userDistrictId));
     try {
-      const res = await fetch(`/api/dashboard/stats?${params.toString()}`, { cache: 'no-store' });
-      const json = await res.json().catch(() => ({}));
-      if (res.ok && json?.success !== false && (json?.inspection || json?.swm)) {
+      const qs = params.toString();
+      const json = await fetchDashboardStatsJson(qs);
+      if (json?.success !== false && (json?.inspection || json?.swm)) {
         setDashStats((prev) => {
           const inspection =
             module === 'swm' && prev?.inspection ? prev.inspection : json.inspection || prev?.inspection;
@@ -1333,15 +1334,28 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
   }, [userTpId, userZoneId, userDistrictId]);
 
   useEffect(() => {
-    void fetchDashboardStats(dashReportTab);
-  }, [dashReportTab, fetchDashboardStats, dashStatsTick]);
+    const onMasters = () => setDashStatsTick((t) => t + 1);
+    window.addEventListener('portal:masters-updated', onMasters);
+    return () => window.removeEventListener('portal:masters-updated', onMasters);
+  }, []);
 
   useEffect(() => {
-    const t = window.setTimeout(() => {
-      void fetchDashboardStats('swm');
-    }, 300);
+    void fetchDashboardStats('inspection');
+  }, [fetchDashboardStats, dashStatsTick]);
+
+  useEffect(() => {
+    const loadSwm = () => void fetchDashboardStats('swm');
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(loadSwm, { timeout: 2500 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const t = window.setTimeout(loadSwm, 1200);
     return () => window.clearTimeout(t);
   }, [fetchDashboardStats]);
+
+  useEffect(() => {
+    if (dashReportTab === 'swm') void fetchDashboardStats('swm');
+  }, [dashReportTab, fetchDashboardStats]);
 
   const kpi = dashStats?.inspection;
   const swm = dashStats?.swm;
@@ -1408,7 +1422,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
       id: 'total_streets',
       title: lang === 'ta' ? 'மொத்த தெருக்கள்' : 'Total Streets',
       count: Number(swm?.totalStreets) || 0,
-      icon: MapPin,
+        icon: MapPin,
       action: scrollToSwmReports
     },
     {
@@ -1542,7 +1556,7 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
             <div className="kpi-head">
               <span className="kpi-icon-wrap">
                 <card.icon strokeWidth={2.25} />
-              </span>
+            </span>
               <p className="kpi-value">
                 {Number(card.count || 0).toLocaleString('en-IN')}
               </p>
@@ -1558,30 +1572,30 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
         <div className="portal-fis-hero">
           <div className="relative z-[1] min-w-0">
             <div className="portal-fis-hero-tabs">
-              <button
-                type="button"
+                <button
+                  type="button"
                 onClick={() => selectDashReportTab('inspection')}
                 className={`portal-fis-hero-tab ${dashReportTab === 'inspection' ? 'is-active' : ''}`}
               >
                 <ClipboardCheck />
                 <span>{lang === 'ta' ? 'கள ஆய்வு சுருக்கம்' : 'Field Inspection Summary'}</span>
-              </button>
-              <button
-                type="button"
+                </button>
+                <button
+                  type="button"
                 onClick={() => selectDashReportTab('swm')}
                 className={`portal-fis-hero-tab ${dashReportTab === 'swm' ? 'is-active' : ''}`}
               >
                 <Recycle />
                 <span>{lang === 'ta' ? 'SWM அறிக்கைகள்' : 'SWM Reports'}</span>
-              </button>
+                </button>
             </div>
-          </div>
+            </div>
           <div className="relative z-[1] flex shrink-0 flex-wrap items-center justify-end gap-1.5">
             {embedFilterActions?.fetchError && (
               <span className="max-w-[14rem] truncate text-right text-[11px] font-semibold text-rose-100">
                 {embedFilterActions.fetchError}
-              </span>
-            )}
+                </span>
+              )}
             <button
               type="button"
               onClick={() => embedFilterActions?.apply()}
@@ -1592,17 +1606,17 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
               <RefreshCw className={`h-3 w-3 ${embedFilterActions?.isRefreshing ? 'animate-spin' : ''}`} />
               {lang === 'ta' ? 'வடிகட்டி பயன்படுத்து' : 'Apply Filters'}
             </button>
-            <button
-              type="button"
+              <button
+                type="button"
               onClick={() => embedFilterActions?.reset()}
               disabled={!embedFilterActions}
               className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-white/15 disabled:opacity-60 cursor-pointer"
             >
               <RotateCcw className="h-3 w-3" />
               {lang === 'ta' ? 'அனைத்தையும் மீட்டமை' : 'Reset Filters'}
-            </button>
+              </button>
+            </div>
           </div>
-        </div>
         <div className="portal-fis-body">
           <InspectionReportsView
             state={state}
@@ -1617,9 +1631,9 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
             forcedReportModule={dashReportTab}
             onFilterActionsReady={setEmbedFilterActions}
           />
-        </div>
+                          </div>
       </section>
 
-    </div>
+                          </div>
   );
 }

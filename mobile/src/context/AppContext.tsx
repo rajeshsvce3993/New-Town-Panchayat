@@ -294,7 +294,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const sid = sessionIdRef.current;
     touch();
     try {
-      const remote = await api.getPortalState(current.username);
+      const remote = await api.bootstrapProductionPortal(current.username, current);
       if (sid !== sessionIdRef.current || !userRef.current) return;
       const liveSettings = pickReportSettings(await api.getAppSettings());
       const nextPortal: PortalState = {
@@ -491,11 +491,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...prev.filter((w) => isAssignedWorkId(w.workId) && !ids.has(w.id) && !workIds.has(w.workId)),
         ]);
       });
-      try {
-        await refreshPortal();
-      } catch {
-        /* keep merged list */
-      }
     };
     void run();
     const t = setInterval(() => void run(), OFFLINE_SYNC_MS);
