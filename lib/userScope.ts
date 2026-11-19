@@ -212,11 +212,18 @@ export function getPortalFilterScopeIds(
 /** Hydrate localStorage / SSR session — always a web portal identity (never field-only). */
 export function normalizePortalSessionUser(user: any): any {
   if (!user) return user;
-  const portalScope = user.portalScope;
   const scoped = normalizePortalUserScope(user);
+  const snap = user.portalScope;
+  let portalScope = snap;
+  if (!snap || !(snap.tpId || snap.zoneId || snap.districtId)) {
+    const ids = getPortalFilterScopeIds(scoped, {});
+    if (ids.tpId || ids.zoneId || ids.districtId) {
+      portalScope = ids;
+    }
+  }
   return {
     ...scoped,
-    portalScope: portalScope || scoped.portalScope || null,
+    portalScope: portalScope || null,
     isInspectionUser: false,
     isPortalUser: true,
     portalLogin: scoped.portalLogin !== false,

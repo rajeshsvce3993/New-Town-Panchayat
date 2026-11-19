@@ -1299,8 +1299,8 @@ export default function DashboardView({ state, lang, currentUser, setActiveTab, 
     params.set('allTime', '1');
     params.set('module', module);
     if (userTpId) params.set('scopeTpId', String(userTpId));
-    else if (userZoneId) params.set('scopeZoneId', String(userZoneId));
     else if (userDistrictId) params.set('scopeDistrictId', String(userDistrictId));
+    else if (userZoneId) params.set('scopeZoneId', String(userZoneId));
     try {
       const qs = params.toString();
       const json = await fetchDashboardStatsJson(qs);

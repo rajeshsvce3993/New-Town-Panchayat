@@ -1337,9 +1337,8 @@ export default function InspectionReportsView({
   const [selectedTpId, setSelectedTpId] = useState<string>('all');
   const [selectedWard, setSelectedWard] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  /** Empty = all time (same as dashboard KPIs); today-only hid historical rows for scoped users. */
-  const [fromDate, setFromDate] = useState<string>('');
-  const [toDate, setToDate] = useState<string>('');
+  const [fromDate, setFromDate] = useState<string>(() => getTodayYmd());
+  const [toDate, setToDate] = useState<string>(() => getTodayYmd());
 
   // Admin dynamic field filter states
   const [adminFilterFieldId, setAdminFilterFieldId] = useState<string>('');
@@ -1820,21 +1819,9 @@ export default function InspectionReportsView({
     [currentUser, state.townPanchayats, state.districts, state.zones],
   );
 
-  const userTpId = useMemo(() => {
-    if (isAdminOrDirector || !currentUser || isZonalScopedUser(currentUser)) return null;
-    if (portalScope.tpId) return portalScope.tpId;
-    return null;
-  }, [currentUser, isAdminOrDirector, portalScope.tpId]);
-
-  const userDistrictId = useMemo(() => {
-    if (isAdminOrDirector || !currentUser || isZonalScopedUser(currentUser)) return null;
-    return portalScope.districtId;
-  }, [currentUser, isAdminOrDirector, portalScope.districtId]);
-
-  const userZoneId = useMemo(() => {
-    if (isAdminOrDirector || !currentUser) return null;
-    return portalScope.zoneId;
-  }, [currentUser, isAdminOrDirector, portalScope.zoneId]);
+  const userTpId = isAdminOrDirector ? null : portalScope.tpId;
+  const userDistrictId = isAdminOrDirector ? null : portalScope.districtId;
+  const userZoneId = isAdminOrDirector ? null : portalScope.zoneId;
 
   const lastAutoLoadKeyRef = React.useRef('');
 
@@ -1862,20 +1849,9 @@ export default function InspectionReportsView({
     (extra?: { countsOnly?: boolean; rowsOnly?: boolean; reportsBundle?: boolean; page?: number; pageSize?: number }) => {
       const p = filterQueryRef.current;
       const qParams = new URLSearchParams();
-      const today = getTodayYmd();
-      const scopedReportsUser =
-        !isAdminOrDirector && !!(p.scopeTpId || p.scopeZoneId || p.scopeDistrictId);
-      // Scoped users: dashboard KPIs are all-time; "today only" often shows 0 in one TP/zone while admin (statewide) still sees rows.
-      const useAllTimeForScoped =
-        scopedReportsUser &&
-        (!p.fromDate || !p.toDate || (p.fromDate === today && p.toDate === today));
-      if (useAllTimeForScoped) {
-        qParams.set('allTime', '1');
-      } else {
-        if (p.fromDate) qParams.set('fromDate', p.fromDate);
-        if (p.toDate) qParams.set('toDate', p.toDate);
-        if (!p.fromDate && !p.toDate) qParams.set('allTime', '1');
-      }
+      if (p.fromDate) qParams.set('fromDate', p.fromDate);
+      if (p.toDate) qParams.set('toDate', p.toDate);
+      if (!p.fromDate && !p.toDate) qParams.set('allTime', '1');
       const allowUiGeoDrill = isAdminOrDirector;
       if (allowUiGeoDrill && p.selectedTpId && p.selectedTpId !== 'all') {
         qParams.set('tpId', p.selectedTpId);
@@ -1907,8 +1883,8 @@ export default function InspectionReportsView({
       if (p.adminFilterValue) qParams.set('adminFieldValue', p.adminFilterValue);
       if (!isAdminOrDirector) {
         if (p.scopeTpId) qParams.set('scopeTpId', p.scopeTpId);
-        else if (p.scopeZoneId) qParams.set('scopeZoneId', p.scopeZoneId);
         else if (p.scopeDistrictId) qParams.set('scopeDistrictId', p.scopeDistrictId);
+        else if (p.scopeZoneId) qParams.set('scopeZoneId', p.scopeZoneId);
       }
       qParams.set('lite', '1');
       if (extra?.reportsBundle) {
@@ -1930,9 +1906,10 @@ export default function InspectionReportsView({
       if (extra?.countsOnly) {
         const p = filterQueryRef.current;
         const geoDrill =
-          (p.selectedZoneId && p.selectedZoneId !== 'all') ||
-          (p.selectedDistrictId && p.selectedDistrictId !== 'all') ||
-          (p.selectedTpId && p.selectedTpId !== 'all');
+          isAdminOrDirector &&
+          ((p.selectedZoneId && p.selectedZoneId !== 'all') ||
+            (p.selectedDistrictId && p.selectedDistrictId !== 'all') ||
+            (p.selectedTpId && p.selectedTpId !== 'all'));
         if (embedMode || !geoDrill) qParams.set('compactCounts', '1');
       }
       return qParams;
@@ -1978,6 +1955,7 @@ export default function InspectionReportsView({
   }, [state.inspectionCategories]);
 
   const applyBootstrapStatsFallback = React.useCallback(() => {
+    if (!isAdminOrDirector) return false;
     const stats = state.inspectionWorkStats;
     if (!Array.isArray(stats) || stats.length === 0) return false;
     const p = filterQueryRef.current;
@@ -2028,6 +2006,7 @@ export default function InspectionReportsView({
     userTpId,
     userDistrictId,
     userZoneId,
+    isAdminOrDirector,
   ]);
 
   const fetchReportRowsPage = React.useCallback(
@@ -2083,7 +2062,7 @@ export default function InspectionReportsView({
   );
 
   const requestInspectionWorks = React.useCallback(async () => {
-    if (embedMode && fetchedWorksRef.current == null) {
+    if (embedMode && fetchedWorksRef.current == null && isAdminOrDirector) {
       applyBootstrapStatsFallback();
     }
     const countsOnly = activeTab === 'abstract' || (embedMode && !activeTab);
@@ -2152,15 +2131,16 @@ export default function InspectionReportsView({
     lang,
     buildInspectionWorksQueryParams,
     embedMode,
+    isAdminOrDirector,
     applyBootstrapStatsFallback,
     applyCountsPayload,
   ]);
 
-  // Hydrate abstract/category stats from bootstrap until the reports API returns.
+  // Hydrate abstract/category stats from bootstrap until the reports API returns (admin only).
   useEffect(() => {
-    if (fetchedWorks !== null) return;
+    if (fetchedWorks !== null || !isAdminOrDirector) return;
     applyBootstrapStatsFallback();
-  }, [state.inspectionWorkStats, applyBootstrapStatsFallback, fetchedWorks]);
+  }, [state.inspectionWorkStats, applyBootstrapStatsFallback, fetchedWorks, isAdminOrDirector]);
 
   const applyFiltersAndLoad = React.useCallback((opts?: { refreshRemote?: boolean }) => {
     if (opts?.refreshRemote) {
@@ -2311,16 +2291,6 @@ export default function InspectionReportsView({
     if (userTpId) setSelectedTpId(userTpId);
   }, [userZoneId, userDistrictId, userTpId]);
 
-  // Non-admin: align report date window with dashboard (all-time), not legacy "today" default.
-  useEffect(() => {
-    if (isAdminOrDirector) return;
-    const today = getTodayYmd();
-    if (fromDate === today && toDate === today) {
-      setFromDate('');
-      setToDate('');
-    }
-  }, [isAdminOrDirector, fromDate, toDate]);
-
   const embedInitialLoadDoneRef = React.useRef(false);
 
   // Auto-load when portal masters / user scope are ready (bootstrap often arrives after first paint)
@@ -2336,7 +2306,7 @@ export default function InspectionReportsView({
     if (embedMode) {
       if (embedInitialLoadDoneRef.current) return;
       embedInitialLoadDoneRef.current = true;
-      if (fetchedWorksRef.current == null) {
+      if (fetchedWorksRef.current == null && isAdminOrDirector) {
         queueMicrotask(() => applyBootstrapStatsFallback());
       }
       queueMicrotask(() => applyFiltersAndLoad());
@@ -2365,6 +2335,7 @@ export default function InspectionReportsView({
     state.inspectionSubjects?.length,
     applyFiltersAndLoad,
     applyBootstrapStatsFallback,
+    isAdminOrDirector,
   ]);
 
   // Reset pages and reload when filters change (debounced so cascading dropdowns settle).
