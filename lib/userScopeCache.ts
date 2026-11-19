@@ -618,6 +618,11 @@ export async function getUserScopeDetails(userIdOrUsername: string): Promise<Cac
     console.error(`[UserScopeCache] Error retrieving scope for '${cleanKey}':`, e?.message || e);
   }
 
+  // Avoid loading entire DB on hot paths (production login / portal-state protection).
+  if (process.env.SCOPE_ALLOW_FULL_FALLBACK !== '1') {
+    return null;
+  }
+
   // Graceful fallback to local storage / memory when MongoDB connection is unavailable
   try {
     const [townPanchayats, wardsAndStreets, subjects, categories, fields, users, inspectionUsers, employees] = await Promise.all([
@@ -686,9 +691,121 @@ export async function invalidateAndRefreshUserScopeCache(reason: string = 'maste
       await scopeCol.updateMany({}, { $set: { scopeVersion: meta.version, updatedAt: meta.updatedAt } });
       console.log(`[UserScopeCache] Refreshed user_scope_cache with version ${meta.version}`);
     }
+    try {
+      const { invalidatePortalMastersCache } = await import('./portalMastersCache');
+      invalidatePortalMastersCache();
+    } catch {
+      /* optional */
+    }
   } catch (e) {
     console.error('[UserScopeCache] Error refreshing scope cache:', e);
   }
+}
+
+let prewarmScopesInFlight: Promise<{ warmed: number; alreadyCached: number }> | null = null;
+
+/** Background: fill user_scope_cache for inspectionUsers missing an entry (no collection drop). */
+export async function prewarmMissingInspectionUserScopes(): Promise<{ warmed: number; alreadyCached: number }> {
+  if (prewarmScopesInFlight) return prewarmScopesInFlight;
+
+  prewarmScopesInFlight = (async () => {
+    let warmed = 0;
+    let alreadyCached = 0;
+    const client = await getMongoClient();
+    if (!client) return { warmed, alreadyCached };
+
+    const db = await getActiveMongoDb(client);
+    const scopeCol = db.collection('user_scope_cache');
+    const inspUsers = await db.collection('inspectionUsers').find({}).maxTimeMS(45_000).toArray().catch(() => []);
+
+    const uniqueUsers = new Map<string, any>();
+    for (const u of inspUsers || []) {
+      const name = String(u.username || u.mobile || '')
+        .trim()
+        .toLowerCase();
+      if (name && !uniqueUsers.has(name)) uniqueUsers.set(name, u);
+    }
+
+    const existing = await scopeCol
+      .find({}, { projection: { username: 1 } })
+      .maxTimeMS(15_000)
+      .toArray()
+      .catch(() => []);
+    const cachedSet = new Set(existing.map((r: any) => String(r.username || '').toLowerCase()).filter(Boolean));
+
+    const missing: any[] = [];
+    for (const [name, doc] of uniqueUsers) {
+      if (cachedSet.has(name)) {
+        alreadyCached += 1;
+        continue;
+      }
+      missing.push(doc);
+    }
+
+    if (!missing.length) {
+      console.log(`[UserScopeCache] Prewarm: ${alreadyCached} already cached, 0 to build`);
+      return { warmed, alreadyCached };
+    }
+
+    const meta = getScopeVersionMeta();
+    const batchSize = 8;
+    for (let i = 0; i < missing.length; i += batchSize) {
+      const batch = missing.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map(async (foundUser) => {
+          try {
+            const userTpId = (foundUser.tpId || foundUser.townPanchayatId || '').trim();
+            const userTpName = (foundUser.townPanchayat || '').trim();
+            const [townPanchayats, userStreets, subjects, categories, fields] = await Promise.all([
+              db.collection('townPanchayats').find({}).limit(100).maxTimeMS(8000).toArray().catch(() => []),
+              db.collection('wardsAndStreets')
+                .find(
+                  userTpId || userTpName
+                    ? {
+                        $or: [
+                          { tpId: userTpId },
+                          { townPanchayatId: userTpId },
+                          { tpName: { $regex: new RegExp(`^${userTpName}$`, 'i') } },
+                          { townPanchayat: { $regex: new RegExp(`^${userTpName}$`, 'i') } },
+                        ],
+                      }
+                    : {},
+                )
+                .limit(300)
+                .maxTimeMS(8000)
+                .toArray()
+                .catch(() => []),
+              db.collection('inspectionSubjects').find({}).limit(50).maxTimeMS(5000).toArray().catch(() => []),
+              db.collection('inspectionCategories').find({}).limit(100).maxTimeMS(5000).toArray().catch(() => []),
+              db.collection('inspectionFields').find({}).limit(100).maxTimeMS(5000).toArray().catch(() => []),
+            ]);
+            const newScope = await buildSingleUserScope(
+              foundUser,
+              {
+                townPanchayats: townPanchayats || [],
+                wardsAndStreets: userStreets || [],
+                subjects: subjects || [],
+                categories: categories || [],
+                fields: fields || [],
+              },
+              meta.version,
+            );
+            await scopeCol.updateOne({ username: newScope.username }, { $set: newScope }, { upsert: true });
+            warmed += 1;
+          } catch (e: any) {
+            console.warn('[UserScopeCache] Prewarm row failed:', e?.message || e);
+          }
+        }),
+      );
+    }
+
+    console.log(`[UserScopeCache] Prewarm complete: +${warmed} built, ${alreadyCached} already cached`);
+    return { warmed, alreadyCached };
+  })().finally(() => {
+    prewarmScopesInFlight = null;
+  });
+
+  return prewarmScopesInFlight;
 }
 
 /**

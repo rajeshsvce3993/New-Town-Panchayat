@@ -223,7 +223,9 @@ async function runBuildScopeCache() {
 
     // 5. Ensure Indexes
     try {
-      await scopeCol.createIndex({ username: 1 }, { unique: true });
+      try {
+        await scopeCol.createIndex({ username: 1 }, { background: true });
+      } catch (_) {}
       await scopeCol.createIndex({ userId: 1 });
       await db.collection('inspectionUsers').createIndex({ username: 1 });
       await db.collection('inspectionUsers').createIndex({ mobile: 1 });

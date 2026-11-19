@@ -2647,16 +2647,26 @@ export async function getFullDatabaseState(): Promise<typeof INITIAL_DATA> {
   });
 }
 
-// User scope cache removed as requested. Clean up and drop user_scope_cache from MongoDB
+/** Phase 1: never DROP user_scope_cache — bump version + background prewarm for missing inspectors only. */
 export async function rebuildUserScopeCache(targetUsername?: string): Promise<boolean> {
   try {
-    const client = await getMongoClient();
-    if (client) {
-      const db = await getActiveMongoDb(client);
-      await db.collection("user_scope_cache").drop().catch(() => {});
+    const scope = await import('./userScopeCache');
+    const key = (targetUsername || '').trim().toLowerCase();
+    if (key) {
+      await scope.getUserScopeDetails(key);
+      return true;
     }
-  } catch (_) {}
-  return true;
+    await scope.invalidateAndRefreshUserScopeCache('master_data_touch');
+    const { invalidatePortalMastersCache } = await import('./portalMastersCache');
+    invalidatePortalMastersCache();
+    void scope.prewarmMissingInspectionUserScopes().catch((err: Error) => {
+      console.error('[CACHE_TRIGGER] Scope prewarm failed:', err?.message || err);
+    });
+    return true;
+  } catch (e: any) {
+    console.error('[rebuildUserScopeCache]', e?.message || e);
+    return false;
+  }
 }
 
 const GEO_MASTER_KEYS = ['zones', 'districts', 'townPanchayats', 'wardsAndStreets'] as const;

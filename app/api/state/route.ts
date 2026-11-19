@@ -9,10 +9,13 @@ import {
   getFullDatabaseState,
   getPortalBootstrapState,
   getPortalExtendedState,
-  rebuildUserScopeCache,
   overlayLocalAdminUserCredentials,
 } from '@/lib/storage';
-import { invalidateAndRefreshUserScopeCache } from '@/lib/userScopeCache';
+import {
+  invalidateAndRefreshUserScopeCache,
+  prewarmMissingInspectionUserScopes,
+} from '@/lib/userScopeCache';
+import { invalidatePortalMastersCache } from '@/lib/portalMastersCache';
 import { logServerProcess } from '@/lib/serverLogger';
 import { logPortalEnvironmentOnce } from '@/lib/appEnvironment';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
@@ -184,8 +187,17 @@ export async function GET(req: NextRequest) {
     // Handle manual cache purge request
     const shouldRebuildCache = key === 'rebuildCache' || searchParams.get('rebuildCache') === 'true';
     if (shouldRebuildCache) {
-      const success = await rebuildUserScopeCache();
-      return NextResponse.json({ success, message: 'User scope cache cleared and dropped. Live dynamic loading is active.' }, { headers: CORS_HEADERS });
+      await invalidateAndRefreshUserScopeCache('manual_rebuild');
+      invalidatePortalMastersCache();
+      const stats = await prewarmMissingInspectionUserScopes();
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'Scope cache version bumped; missing inspector scopes prewarmed (collection not dropped).',
+          stats,
+        },
+        { headers: CORS_HEADERS },
+      );
     }
 
     if (isDiagnosticRequest) {

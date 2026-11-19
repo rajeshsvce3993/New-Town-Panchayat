@@ -17,6 +17,11 @@ const MASTERS_CACHE_MS = 120_000;
 let mastersCache: { ts: number; data: PortalMastersBundle } | null = null;
 let mastersInFlight: Promise<PortalMastersBundle> | null = null;
 
+export function invalidatePortalMastersCache() {
+  mastersCache = null;
+  mastersInFlight = null;
+}
+
 export async function loadPortalMastersBundle(): Promise<PortalMastersBundle> {
   const now = Date.now();
   if (mastersCache && now - mastersCache.ts < MASTERS_CACHE_MS) {

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build && node scripts/build-scope-cache.js",
+    "prewarm-scope": "node scripts/build-scope-cache.js",
     "start": "node server.js",
     "server": "node server.js",
     "lint": "next lint"
