@@ -65,7 +65,7 @@ export type ReportCountsLoadResult = {
   appliedDateWindow: boolean;
 };
 
-const ENRICHED_REPORTS_CACHE_TTL_MS = 120_000;
+const ENRICHED_REPORTS_CACHE_TTL_MS = 180_000;
 let enrichedReportsCache: { key: string; ts: number; data: LiteWorksLoadResult } | null = null;
 const enrichedReportsInFlight = new Map<string, Promise<LiteWorksLoadResult>>();
 let reportsDataGeneration = 5;

@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"},{"v":{"$numberInt":"2"},"key":{"sourceWorkbook":{"$numberInt":"1"}},"name":"sourceWorkbook_1"}],"uuid":"084405d407a54c22a16839fac57864e5","collectionName":"transfer_counseling_import_metadata","type":"collection"}

@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  getCollectionData, 
-  getEmployees, 
-  getAppSettings, 
+import {
+  getCollectionData,
+  getEmployees,
+  getAppSettings,
   enrichUserForApp,
-  getMongoClient,
-  getActiveMongoDb,
-  getPresignedS3Url,
   extractCalendarDateYMD,
-  getTargetedInspectionWorks
+  getTargetedInspectionWorks,
 } from '@/lib/storage';
 import { getScopeVersionMeta } from '@/lib/userScopeCache';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { isHodLikeUser } from '@/lib/userScope';
 import { resolveReportShare } from '@/lib/reportShareConfig';
+import { normalizePortalMediaValue, rewriteWorkMediaFields } from '@/lib/s3MediaKey';
+import {
+  getCachedPortalState,
+  portalStateCacheKey,
+  setCachedPortalState,
+} from '@/lib/portalStateCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +55,16 @@ export async function GET(req: NextRequest) {
     const todayOnly = searchParams.get('todayOnly') === 'true';
 
     const requestedUser = (username || '').trim().toLowerCase();
+
+    if (requestedUser) {
+      const cacheKey = portalStateCacheKey(requestedUser, todayOnly);
+      const cached = getCachedPortalState(cacheKey);
+      if (cached) {
+        return NextResponse.json(cached, {
+          headers: { ...CORS_HEADERS, 'X-Portal-Cache': 'HIT' },
+        });
+      }
+    }
 
     // 1. Load ALL live master data directly from MongoDB / Database (excluding heavy inspectionWorks)
     const [
@@ -151,6 +164,7 @@ export async function GET(req: NextRequest) {
 
     // 3. Directly find and scope the requesting user without any intermediate cache
     let matchedUser: any = null;
+    let isHodUser = ['admin', 'dtpadmin', 'director'].includes(requestedUser);
     let userSpecificWardsAndStreets = normalizedWardsAndStreets;
     let userSpecificTps = townPanchayats || [];
     let userSpecificDistricts = districts || [];
@@ -175,12 +189,12 @@ export async function GET(req: NextRequest) {
       delete matchedUser.password;
       delete matchedUser.passwordHash;
 
-      const isHOD =
+      isHodUser =
         isHodLikeUser(matchedUser) ||
         matchedUser.role === 'Super Admin' ||
         ['admin', 'dtpadmin', 'director'].includes(String(requestedUser || '').toLowerCase());
 
-      if (!isHOD) {
+      if (!isHodUser) {
         // Resolve user's Town Panchayat
         const userTpId = String(matchedUser.tpId || rawUser.tpId || rawUser.townPanchayatId || '').toLowerCase();
         const userDistrictId = String(matchedUser.districtId || rawUser.districtId || '').toLowerCase();
@@ -240,6 +254,7 @@ export async function GET(req: NextRequest) {
         });
       }
     } else if (['admin', 'dtpadmin', 'director'].includes(requestedUser)) {
+      isHodUser = true;
       matchedUser = {
         id: 'admin',
         username: 'admin',
@@ -359,63 +374,34 @@ export async function GET(req: NextRequest) {
       const effectiveUserId = isCurrentUsersWork && matchedUser.id ? matchedUser.id : (w.submittedByUserId || w.username || '');
       const effectiveUserName = isCurrentUsersWork && (matchedUser.name || matchedUser.username) ? (matchedUser.name || matchedUser.username) : (w.submittedByUserName || w.username || '');
 
-      let imageUrl = w.imageUrl || '';
-      if (imageUrl) {
-        if (imageUrl.startsWith('/uploads')) {
-          imageUrl = `${origin}${imageUrl}`;
-        } else if (imageUrl.startsWith('inspection/')) {
-          imageUrl = `https://tms-2026.s3.ap-south-1.amazonaws.com/${imageUrl}`;
-        } else if (imageUrl.startsWith('/data/') || imageUrl.startsWith('/storage/') || imageUrl.includes('offline_images') || imageUrl.includes('raw_uploads')) {
-          imageUrl = '';
-        }
-      }
-      const fieldsData = { ...(w.fieldsData || {}) };
-      for (const [key, val] of Object.entries(fieldsData)) {
-        if (typeof val !== 'string') continue;
-        if (val.startsWith('data:')) {
-          fieldsData[key] = '';
-        } else if (val.startsWith('/uploads')) {
-          fieldsData[key] = `${origin}${val}`;
-        } else if (val.startsWith('inspection/')) {
-          fieldsData[key] = `https://tms-2026.s3.ap-south-1.amazonaws.com/${val}`;
-        } else if (val.startsWith('/data/') || val.startsWith('/storage/') || val.includes('offline_images') || val.includes('raw_uploads')) {
-          fieldsData[key] = '';
-        }
-      }
-
-      return {
-        ...w,
-        id: w.id || cleanWorkId,
-        workId: cleanWorkId,
-        submittedByUserId: effectiveUserId,
-        submittedByUserName: effectiveUserName,
-        username: isCurrentUsersWork && matchedUser?.username ? matchedUser.username : (w.username || effectiveUserId),
-        tpNameEn: w.tpNameEn || tp?.nameEn || '',
-        tpNameTa: w.tpNameTa || tp?.nameTa || '',
-        districtNameEn: w.districtNameEn || dist?.nameEn || '',
-        districtNameTa: w.districtNameTa || dist?.nameTa || '',
-        zoneNameEn: w.zoneNameEn || '',
-        zoneNameTa: w.zoneNameTa || '',
-        subjectNameEn: w.subjectNameEn || subj?.nameEn || '',
-        subjectNameTa: w.subjectNameTa || subj?.nameTa || '',
-        categoryNameEn: w.categoryNameEn || cat?.nameEn || '',
-        categoryNameTa: w.categoryNameTa || cat?.nameTa || '',
-        status: w.status || 'Completed',
-        imageUrl,
-        fieldsData,
-      };
+      return rewriteWorkMediaFields(
+        {
+          ...w,
+          id: w.id || cleanWorkId,
+          workId: cleanWorkId,
+          submittedByUserId: effectiveUserId,
+          submittedByUserName: effectiveUserName,
+          username: isCurrentUsersWork && matchedUser?.username ? matchedUser.username : (w.username || effectiveUserId),
+          tpNameEn: w.tpNameEn || tp?.nameEn || '',
+          tpNameTa: w.tpNameTa || tp?.nameTa || '',
+          districtNameEn: w.districtNameEn || dist?.nameEn || '',
+          districtNameTa: w.districtNameTa || dist?.nameTa || '',
+          zoneNameEn: w.zoneNameEn || '',
+          zoneNameTa: w.zoneNameTa || '',
+          subjectNameEn: w.subjectNameEn || subj?.nameEn || '',
+          subjectNameTa: w.subjectNameTa || subj?.nameTa || '',
+          categoryNameEn: w.categoryNameEn || cat?.nameEn || '',
+          categoryNameTa: w.categoryNameTa || cat?.nameTa || '',
+          status: w.status || 'Completed',
+        },
+        origin,
+      );
     });
 
     if (matchedUser && (matchedUser.profilePhotoUrl || matchedUser.avatarUrl || matchedUser.profileImage)) {
       let uPhoto = matchedUser.profilePhotoUrl || matchedUser.avatarUrl || matchedUser.profileImage;
-      if (typeof uPhoto === 'string' && uPhoto.startsWith('data:')) {
-        uPhoto = '';
-      } else if (uPhoto?.startsWith('/uploads')) {
-        uPhoto = `${origin}${uPhoto}`;
-      } else if (uPhoto && (uPhoto.includes('s3.') || uPhoto.includes('amazonaws.com') || uPhoto.startsWith('profiles/'))) {
-        try {
-          uPhoto = await getPresignedS3Url(uPhoto);
-        } catch (_) {}
+      if (typeof uPhoto === 'string') {
+        uPhoto = normalizePortalMediaValue(uPhoto, origin);
       }
       if (uPhoto) {
         matchedUser = {
@@ -426,17 +412,59 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    let responseSubjects = normalizedSubjects;
+    let responseCategories = normalizedCategories;
+    let responseFields = fields || [];
+    if (matchedUser && !isHodUser) {
+      const rawSubjectIds = [
+        ...(Array.isArray(matchedUser.assignedSubjects) ? matchedUser.assignedSubjects : []),
+        ...(Array.isArray(matchedUser.subjectIds) ? matchedUser.subjectIds : []),
+      ]
+        .map((x: unknown) => String(x || '').trim())
+        .filter(Boolean);
+      const rawCategoryIds = [
+        ...(Array.isArray(matchedUser.assignedCategories) ? matchedUser.assignedCategories : []),
+        ...(Array.isArray(matchedUser.categoryIds) ? matchedUser.categoryIds : []),
+      ]
+        .map((x: unknown) => String(x || '').trim())
+        .filter(Boolean);
+
+      if (rawSubjectIds.length > 0) {
+        const subjectIdSet = new Set(rawSubjectIds.map((x) => x.toLowerCase()));
+        responseSubjects = normalizedSubjects.filter(
+          (s: any) =>
+            subjectIdSet.has(String(s.id || '').toLowerCase()) ||
+            subjectIdSet.has(String(s.code || '').toLowerCase()),
+        );
+        const allowedSubjectIds = new Set(responseSubjects.map((s: any) => String(s.id || '').toLowerCase()));
+        responseCategories = normalizedCategories.filter((c: any) => {
+          const cid = String(c.id || '').toLowerCase();
+          const sid = String(c.subjectId || '').toLowerCase();
+          if (rawCategoryIds.some((id) => id.toLowerCase() === cid)) return true;
+          return allowedSubjectIds.has(sid);
+        });
+        const allowedCategoryIds = new Set(responseCategories.map((c: any) => String(c.id || '').toLowerCase()));
+        responseFields = (fields || []).filter((f: any) => {
+          const sid = String(f.subjectId || f.subject_id || '').toLowerCase();
+          const cid = String(f.categoryId || f.category_id || '').toLowerCase();
+          if (cid && allowedCategoryIds.has(cid)) return true;
+          if (sid && allowedSubjectIds.has(sid)) return true;
+          return false;
+        });
+      }
+    }
+
     const scopeMeta = getScopeVersionMeta();
 
-    return NextResponse.json({
+    const payload = {
       success: true,
       scopeVersion: scopeMeta.version,
       districts: userSpecificDistricts,
       townPanchayats: userSpecificTps,
       zones: userSpecificZones,
-      inspectionSubjects: normalizedSubjects,
-      inspectionCategories: normalizedCategories,
-      inspectionFields: fields || [],
+      inspectionSubjects: responseSubjects,
+      inspectionCategories: responseCategories,
+      inspectionFields: responseFields,
       wardsAndStreets: userSpecificWardsAndStreets,
       inspectionWorks: finalWorks,
       inspectionUsers: matchedUser
@@ -466,7 +494,13 @@ export async function GET(req: NextRequest) {
         googleMapsApiKey: appSettings.googleMapsApiKey || '',
         reportShare: resolveReportShare(appSettings),
       },
-    }, { headers: CORS_HEADERS });
+    };
+
+    if (requestedUser) {
+      setCachedPortalState(portalStateCacheKey(requestedUser, todayOnly), payload);
+    }
+
+    return NextResponse.json(payload, { headers: { ...CORS_HEADERS, 'X-Portal-Cache': 'MISS' } });
   } catch (err: any) {
     console.error('Portal state error:', err);
     return NextResponse.json({ success: false, message: 'Server error retrieving portal state' }, { status: 500, headers: CORS_HEADERS });

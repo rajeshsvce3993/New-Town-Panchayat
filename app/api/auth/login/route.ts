@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient, getActiveMongoDb, getCollectionData } from '@/lib/storage';
-import { getUserScopeDetails } from '@/lib/userScopeCache';
 import { recordUserLogin } from '@/lib/userActivity';
 import { logServerProcess } from '@/lib/serverLogger';
 import { postRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { isHodLikeUser } from '@/lib/userScope';
 import { isMobileClientRequest, mobileLoginDeniedMessage, userMayUseMobileApp } from '@/lib/mobileAppAuth';
+import { getUserScopeDetailsForLogin } from '@/lib/userScopeCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -165,11 +165,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let userScope =
-      sourceCollection === 'inspectionUsers' ? await getUserScopeDetails(userDoc.username || cleanUsername) : null;
-    if (mobileClient && !userScope) {
-      userScope = await getUserScopeDetails(userDoc.username || cleanUsername);
-    }
+    const needsScope = mobileClient || sourceCollection === 'inspectionUsers';
+    const userScope = needsScope
+      ? await getUserScopeDetailsForLogin(userDoc.username || cleanUsername, mobileClient ? 14_000 : 20_000)
+      : null;
 
     let designationNameEn = String(userDoc.designationNameEn || '').trim();
     let designationNameTa = String(userDoc.designationNameTa || '').trim();

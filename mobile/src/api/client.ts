@@ -5,6 +5,7 @@ import {
   BOOTSTRAP_API_TIMEOUT_MS,
   DEFAULT_SERVER_URL,
   FCM_APP_VERSION_LABEL,
+  LOGIN_TIMEOUT_MS,
   REQUEST_TIMEOUT_MS,
   UPLOAD_TIMEOUT_MS,
 } from '../constants/config';
@@ -73,8 +74,22 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs =
   }
 }
 
+function isLoginTransportError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /abort|timeout|cancel/i.test(msg) || /failed to fetch|network request failed|unreachable/i.test(msg);
+}
+
 function loginNetworkError(e: unknown): LoginResponse {
   const msg = e instanceof Error ? e.message : String(e);
+  if (/cancel/i.test(msg)) {
+    return {
+      success: false,
+      token: null,
+      user: null,
+      message:
+        'Network error: request was interrupted (poor signal or server busy). Wait a moment and tap Sign in again.',
+    };
+  }
   if (/abort|timeout/i.test(msg)) {
     return {
       success: false,
@@ -121,12 +136,17 @@ export const api = {
   },
 
   async login(req: LoginRequest): Promise<LoginResponse> {
-    try {
-      const response = await fetchWithTimeout(`${baseUrl}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...mobileClientHeaders() },
-        body: JSON.stringify({ ...req, client: 'mobile' }),
-      });
+    const attempt = async (retry: boolean): Promise<LoginResponse> => {
+      try {
+      const response = await fetchWithTimeout(
+        `${baseUrl}/api/auth/login`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...mobileClientHeaders() },
+          body: JSON.stringify({ ...req, client: 'mobile' }),
+        },
+        LOGIN_TIMEOUT_MS,
+      );
       const resBody = await response.text();
       const parse = (): LoginResponse | null => {
         try {
@@ -162,9 +182,15 @@ export const api = {
         user: null,
         message: `Authentication failed (Status ${response.status}): ${resBody.slice(0, 100)}`,
       };
-    } catch (e) {
-      return loginNetworkError(e);
-    }
+      } catch (e) {
+        if (!retry && isLoginTransportError(e)) {
+          await delay(900);
+          return attempt(true);
+        }
+        return loginNetworkError(e);
+      }
+    };
+    return attempt(false);
   },
 
   async getPortalState(username?: string | null): Promise<PortalState> {

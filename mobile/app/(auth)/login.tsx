@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -45,6 +45,7 @@ export default function LoginScreen() {
   const [testing, setTesting] = useState(false);
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const [testOk, setTestOk] = useState(false);
+  const loginInFlight = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -54,24 +55,30 @@ export default function LoginScreen() {
   }, []);
 
   const submit = async () => {
+    if (loginInFlight.current || loading) return;
     if (!username.trim() || !password) {
       setError(isTamil ? 'பயனர் பெயர் மற்றும் கடவுச்சொல் தேவை' : 'Username and password are required');
       return;
     }
+    loginInFlight.current = true;
     setLoading(true);
     setError(null);
-    const res = await performLogin({ username: username.trim(), password });
-    setLoading(false);
-    if (res.success && res.user) {
-      await prefs.setSavedUsername(username.trim());
-      await prefs.setSavedPassword(password);
-      if (res.userScope) {
-        await prefs.setUserScope(res.userScope);
-        await prefs.setScopeVersionInt(res.scopeVersion || 1);
+    try {
+      const res = await performLogin({ username: username.trim(), password });
+      if (res.success && res.user) {
+        await prefs.setSavedUsername(username.trim());
+        await prefs.setSavedPassword(password);
+        if (res.userScope) {
+          await prefs.setUserScope(res.userScope);
+          await prefs.setScopeVersionInt(res.scopeVersion || 1);
+        }
+        await onLoginSuccess(res.user);
+      } else {
+        setError(res.message || (isTamil ? 'உள்நுழைவு தோல்வியுற்றது. விவரங்களை சரிபார்க்கவும்.' : 'Login failed. Please check your credentials.'));
       }
-      await onLoginSuccess(res.user);
-    } else {
-      setError(res.message || (isTamil ? 'உள்நுழைவு தோல்வியுற்றது. விவரங்களை சரிபார்க்கவும்.' : 'Login failed. Please check your credentials.'));
+    } finally {
+      loginInFlight.current = false;
+      setLoading(false);
     }
   };
 

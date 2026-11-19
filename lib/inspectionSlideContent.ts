@@ -1,3 +1,5 @@
+import { toMediaProxyPath } from '@/lib/s3MediaKey';
+
 export type SlideLang = 'ta' | 'en';
 
 export type SlidePhoto = { label: string; url: string };
@@ -53,8 +55,11 @@ function normalizePhotoUrl(raw: string): string {
   if (!raw || typeof raw !== 'string') return '';
   const trimmed = raw.trim();
   if (!trimmed) return '';
-  if (trimmed.startsWith('inspection/')) {
-    return `https://tms-2026.s3.ap-south-1.amazonaws.com/${trimmed}`;
+  if (trimmed.startsWith('inspection/') || trimmed.startsWith('profiles/')) {
+    return toMediaProxyPath(trimmed) || trimmed;
+  }
+  if (trimmed.includes('amazonaws.com') || trimmed.includes('s3.')) {
+    return toMediaProxyPath(trimmed) || trimmed;
   }
   return trimmed;
 }

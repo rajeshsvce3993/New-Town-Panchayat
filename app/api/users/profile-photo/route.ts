@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     let publicPhotoUrl = '';
     const s3 = getS3Client();
     const localSettings = readLocalDb().settings;
-    const bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || localSettings.s3Bucket || 'tms-2026';
+    const bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || localSettings.s3Bucket || 'townpanchayat';
     const region = process.env.S3_REGION || localSettings.s3Region || 'ap-south-1';
 
     if (s3 && bucket) {

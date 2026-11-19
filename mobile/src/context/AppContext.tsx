@@ -541,8 +541,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await prefs.setLastInteraction(Date.now());
     lastInteract.current = Date.now();
     try {
+      const cachedScope = await prefs.getUserScope();
       const versionResp = await api.checkScopeVersion(await prefs.getScopeVersionInt());
-      if (versionResp.success && (versionResp.scopeVersion || 0) > (await prefs.getScopeVersionInt())) {
+      const needScope =
+        !cachedScope ||
+        (versionResp.success && (versionResp.scopeVersion || 0) > (await prefs.getScopeVersionInt()));
+      if (needScope) {
         const scopeResp = await api.getUserScope(u.username);
         if (scopeResp.success && scopeResp.scope) {
           await prefs.setUserScope(scopeResp.scope);

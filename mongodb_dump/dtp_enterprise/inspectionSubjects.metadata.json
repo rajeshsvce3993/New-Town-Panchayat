@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}],"uuid":"7ce3b39b95d5417cb59b727e1ee40ac4","collectionName":"inspectionSubjects","type":"collection"}

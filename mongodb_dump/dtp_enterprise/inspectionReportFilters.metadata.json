@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}],"uuid":"fed4098d5c284dc7b795b52a25ec7677","collectionName":"inspectionReportFilters","type":"collection"}

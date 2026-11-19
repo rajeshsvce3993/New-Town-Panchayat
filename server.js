@@ -79,7 +79,7 @@ function getStorageConfig() {
   } catch (_) {}
   return {
     mongodbUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27018/dtp_enterprise',
-    s3Bucket: process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || 'tms-2026',
+    s3Bucket: process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || 'townpanchayat',
     s3Region: process.env.S3_REGION || 'ap-south-1',
     s3AccessKeyId: process.env.S3_ACCESS_KEY_ID || '',
     s3SecretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
@@ -90,7 +90,7 @@ function getStorageConfig() {
 async function runSystemDiagnostics() {
   const config = getStorageConfig();
   const mongoUri = process.env.MONGODB_URI || config.mongodbUri || 'mongodb://127.0.0.1:27018/dtp_enterprise';
-  const s3Bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || config.s3Bucket || 'tms-2026';
+  const s3Bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || config.s3Bucket || 'townpanchayat';
   const s3Region = process.env.S3_REGION || config.s3Region || 'ap-south-1';
   const s3KeyId = process.env.S3_ACCESS_KEY_ID || config.s3AccessKeyId || '';
   const s3Secret = process.env.S3_SECRET_ACCESS_KEY || config.s3SecretAccessKey || '';

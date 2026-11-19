@@ -3192,7 +3192,7 @@ function getS3BucketName(): string {
     process.env.S3_BUCKET_NAME ||
     process.env.S3_BUCKET ||
     dbConfig.s3Bucket ||
-    'tms-2026'
+    'townpanchayat'
   );
 }
 
@@ -3542,7 +3542,7 @@ export async function saveInspectionDetailsToS3(
   const s3Key = `inspection/${cleanUser}/${workRef}_details.json`;
 
   const s3 = getS3Client();
-  const bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || readLocalDb().settings.s3Bucket || 'tms-2026';
+  const bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || readLocalDb().settings.s3Bucket || 'townpanchayat';
   const region = process.env.S3_REGION || readLocalDb().settings.s3Region || 'ap-south-1';
 
   const jsonBuffer = Buffer.from(JSON.stringify(workData, null, 2), 'utf-8');
@@ -4256,7 +4256,7 @@ export async function uploadFileToS3(
   strictS3: boolean = false
 ): Promise<string> {
   const s3 = getS3Client();
-  const bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || readLocalDb().settings.s3Bucket || 'tms-2026';
+  const bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || readLocalDb().settings.s3Bucket || 'townpanchayat';
   const region = process.env.S3_REGION || readLocalDb().settings.s3Region || 'ap-south-1';
 
   const cleanFolder = (folder || 'inspections').replace(/^\/+|\/+$/g, '').trim();
@@ -4315,7 +4315,7 @@ export async function uploadDocument(
   }
 ): Promise<string> {
   const s3 = getS3Client();
-  const bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || readLocalDb().settings.s3Bucket || 'tms-2026';
+  const bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || readLocalDb().settings.s3Bucket || 'townpanchayat';
   const region = process.env.S3_REGION || readLocalDb().settings.s3Region || 'ap-south-1';
 
   let s3Path = '';

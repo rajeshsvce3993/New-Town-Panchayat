@@ -67,17 +67,62 @@ export function toMediaProxyPath(rawUrlOrKey: string): string {
   return `/api/media?token=${encodeURIComponent(token)}`;
 }
 
-export function rewriteWorkMediaFields(work: any): any {
+function isClientLocalMediaPath(val: string): boolean {
+  const s = val.toLowerCase();
+  return (
+    s.startsWith('/data/') ||
+    s.startsWith('data/') ||
+    s.startsWith('/storage/') ||
+    s.includes('offline_images') ||
+    s.includes('raw_uploads') ||
+    s.includes('com.tn.townpanchayat.ems')
+  );
+}
+
+/** Normalize one image field for API/mobile (proxy paths, strip invalid local paths). */
+export function normalizePortalMediaValue(raw: string, origin?: string): string {
+  const val = String(raw || '').trim();
+  if (!val) return '';
+  if (isClientLocalMediaPath(val)) return '';
+  if (val.startsWith('data:')) return '';
+  if (val.startsWith('/uploads')) {
+    return origin ? `${origin}${val}` : val;
+  }
+  const proxied = toMediaProxyPath(val);
+  if (proxied) {
+    if (origin && proxied.startsWith('/')) return `${origin}${proxied}`;
+    return proxied;
+  }
+  if (val.startsWith('inspection/') || val.startsWith('profiles/')) {
+    const p = toMediaProxyPath(val);
+    if (origin && p.startsWith('/')) return `${origin}${p}`;
+    return p;
+  }
+  if (origin && val.startsWith('/api/media')) return `${origin}${val}`;
+  return val;
+}
+
+export function rewriteWorkMediaFields(work: any, origin?: string): any {
   if (!work || typeof work !== 'object') return work;
   const next = { ...work };
   if (typeof next.imageUrl === 'string' && next.imageUrl) {
-    next.imageUrl = toMediaProxyPath(next.imageUrl) || next.imageUrl;
+    next.imageUrl = normalizePortalMediaValue(next.imageUrl, origin);
   }
   if (next.fieldsData && typeof next.fieldsData === 'object') {
     const fields = { ...next.fieldsData };
     for (const [k, v] of Object.entries(fields)) {
-      if (typeof v === 'string' && (v.includes('s3.') || v.includes('inspection/') || v.includes('X-Amz-Signature'))) {
-        fields[k] = toMediaProxyPath(v) || v;
+      if (typeof v !== 'string') continue;
+      if (
+        v.includes('s3.') ||
+        v.includes('amazonaws.com') ||
+        v.includes('inspection/') ||
+        v.includes('profiles/') ||
+        v.includes('X-Amz-Signature') ||
+        v.startsWith('/uploads')
+      ) {
+        fields[k] = normalizePortalMediaValue(v, origin);
+      } else if (isClientLocalMediaPath(v) || v.startsWith('data:')) {
+        fields[k] = '';
       }
     }
     next.fieldsData = fields;

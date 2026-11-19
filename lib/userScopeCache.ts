@@ -466,6 +466,32 @@ export async function initializeUserScopeCacheOnce(): Promise<{ initialized: boo
  * Instant lookup using indexed username or userId.
  * If user detail NOT in user_scope_cache, builds it on-demand for that single user only.
  */
+/** Login path: cap wait so mobile 30s fetch abort does not race a stuck scope build. */
+export async function getUserScopeDetailsForLogin(
+  userIdOrUsername: string,
+  timeoutMs = 15_000,
+): Promise<CachedUserScope | null> {
+  const cleanKey = (userIdOrUsername || '').trim().toLowerCase();
+  if (!cleanKey) return null;
+
+  try {
+    const hit = await Promise.race([
+      getUserScopeDetails(cleanKey),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+    if (hit) return hit;
+    if (timeoutMs > 0) {
+      console.warn(
+        `[UserScopeCache] Login scope lookup timed out after ${timeoutMs}ms for "${cleanKey}" — login continues without scope blob`,
+      );
+    }
+    return null;
+  } catch (e: any) {
+    console.warn(`[UserScopeCache] Login scope error for "${cleanKey}":`, e?.message || e);
+    return null;
+  }
+}
+
 export async function getUserScopeDetails(userIdOrUsername: string): Promise<CachedUserScope | null> {
   const cleanKey = (userIdOrUsername || '').trim().toLowerCase();
   if (!cleanKey) return null;

@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}],"uuid":"9c38ebbedcec4bb6847c5df206eb3e04","collectionName":"inspectionWorkReportRollups_build","type":"collection"}

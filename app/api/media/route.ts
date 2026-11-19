@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getS3Client, getAppSettings } from '@/lib/storage';
+import { getS3Client } from '@/lib/storage';
+import { getS3BucketCandidates } from '@/lib/s3Bucket';
 import { extractS3ObjectKey } from '@/lib/s3MediaKey';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import fs from 'fs';
@@ -93,37 +94,47 @@ export async function GET(req: NextRequest) {
     // Clean key: ensure no leading slash for S3 GetObject
     const cleanS3Key = s3Key;
 
-    // Try fetching from S3 first
     const s3 = getS3Client();
-    const appSettings = getAppSettings();
-    const bucket = process.env.S3_BUCKET_NAME || process.env.S3_BUCKET || appSettings?.s3Bucket || 'tms-2026';
+    const buckets = getS3BucketCandidates();
 
-    if (s3 && bucket && !s3CredentialsBlocked()) {
-      try {
-        const response = await s3.send(new GetObjectCommand({
-          Bucket: bucket,
-          Key: cleanS3Key,
-        }));
+    if (s3 && buckets.length && !s3CredentialsBlocked()) {
+      const streamToBuffer = async (stream: any): Promise<Buffer> => {
+        const chunks: any[] = [];
+        for await (const chunk of stream) chunks.push(chunk);
+        return Buffer.concat(chunks);
+      };
 
-        if (response.Body) {
-          const streamToBuffer = async (stream: any): Promise<Buffer> => {
-            const chunks: any[] = [];
-            for await (const chunk of stream) chunks.push(chunk);
-            return Buffer.concat(chunks);
-          };
-          const buffer = await streamToBuffer(response.Body);
-          const contentType = response.ContentType || 'image/jpeg';
+      for (const bucket of buckets) {
+        try {
+          const response = await s3.send(
+            new GetObjectCommand({
+              Bucket: bucket,
+              Key: cleanS3Key,
+            }),
+          );
 
-          return new NextResponse(new Uint8Array(buffer), {
-            headers: mediaHeaders(contentType),
-          });
-        }
-      } catch (s3Err: any) {
-        const code = String(s3Err?.name || s3Err?.Code || s3Err?.code || 'S3Error');
-        if (S3_CREDENTIAL_FAIL_CODES.has(code)) {
-          blockS3Credentials(code, bucket);
-        } else if (code !== 'NoSuchKey' && code !== 'NotFound') {
-          console.warn(`[media] S3 GetObject ${code} key=${cleanS3Key}`);
+          if (response.Body) {
+            const buffer = await streamToBuffer(response.Body);
+            const contentType = response.ContentType || 'image/jpeg';
+
+            return new NextResponse(new Uint8Array(buffer), {
+              headers: {
+                ...mediaHeaders(contentType, 604800),
+                'X-S3-Bucket': bucket,
+              },
+            });
+          }
+        } catch (s3Err: any) {
+          const code = String(s3Err?.name || s3Err?.Code || s3Err?.code || 'S3Error');
+          if (S3_CREDENTIAL_FAIL_CODES.has(code)) {
+            blockS3Credentials(code, bucket);
+            break;
+          }
+          if (code === 'NoSuchKey' || code === 'NotFound') {
+            continue;
+          }
+          console.warn(`[media] S3 GetObject ${code} bucket=${bucket} key=${cleanS3Key}`);
+          break;
         }
       }
     }

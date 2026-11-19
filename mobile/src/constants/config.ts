@@ -35,6 +35,8 @@ export const APP_VERSION_CODE = 109;
 export const FCM_APP_VERSION_LABEL = '2.0.9';
 export const PACKAGE_NAME = 'com.tn.townpanchayat.ems';
 export const REQUEST_TIMEOUT_MS = 30000;
+/** Login must outlive brief Mongo/scope stalls on production (still below typical proxy limits). */
+export const LOGIN_TIMEOUT_MS = 55000;
 /** Non-critical startup calls (config, version check) — fail fast so splash does not hang. */
 export const BOOTSTRAP_API_TIMEOUT_MS = 12000;
 export const UPLOAD_TIMEOUT_MS = 90000;

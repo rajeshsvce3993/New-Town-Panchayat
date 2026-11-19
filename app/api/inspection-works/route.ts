@@ -65,7 +65,7 @@ export async function OPTIONS() {
 
 // In-memory short-lived cache for inspection works list to prevent event-loop congestion from rapid polling
 let cachedWorksList: { data: any; timestamp: number; key: string; gen: number } | null = null;
-const WORKS_CACHE_TTL_MS = 120_000; // filtered response cache (raw list cached separately ~15 min)
+const WORKS_CACHE_TTL_MS = 180_000; // filtered response cache (raw list cached separately ~15 min)
 
 function applyExactGeoFilterToRemoteReports(
   remote: any,

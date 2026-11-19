@@ -86,6 +86,7 @@ import { isNoAnswer, isYesAnswer } from '@/lib/yesNoAnswer';
 import MapViewReport from './MapViewReport';
 import ThemeSelect from './ThemeSelect';
 import { buildInspectionSlidesFile, renderInspectionSlideJpeg } from '@/lib/buildInspectionSlideDeck';
+import { toMediaProxyPath } from '@/lib/s3MediaKey';
 
 export function formatIndianTime(dateStr: any): string {
   if (!dateStr) return '-';
@@ -1086,8 +1087,11 @@ export default function InspectionReportsView({
       if (!raw || typeof raw !== 'string') return '';
       const trimmed = raw.trim();
       if (!trimmed) return '';
-      if (trimmed.startsWith('inspection/')) {
-        return `https://tms-2026.s3.ap-south-1.amazonaws.com/${trimmed}`;
+      if (trimmed.startsWith('inspection/') || trimmed.startsWith('profiles/')) {
+        return toMediaProxyPath(trimmed) || trimmed;
+      }
+      if (trimmed.includes('amazonaws.com') || trimmed.includes('s3.')) {
+        return toMediaProxyPath(trimmed) || trimmed;
       }
       return trimmed;
     };
