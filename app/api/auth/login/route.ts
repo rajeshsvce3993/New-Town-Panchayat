@@ -10,6 +10,7 @@ import {
   getUserScopeDetailsForLogin,
   getUserScopeFromCacheOnly,
 } from '@/lib/userScopeCache';
+import { findUserForLogin } from '@/lib/loginUserLookup';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,45 +67,20 @@ export async function POST(req: NextRequest) {
 
     const client = await getMongoClient();
     if (client) {
-      const db = await getActiveMongoDb(client);
-      mongoDb = db;
-      const usernameVariants = Array.from(new Set([cleanUsername, String(username || '').trim()].filter(Boolean)));
-      const identityOr = [
-        { username: { $in: usernameVariants } },
-        { mobile: cleanUsername },
-        { phone: cleanUsername },
-      ];
-
-      const mongoLimit = { maxTimeMS: mobileClient ? 4000 : 8000 };
-      const [portalUser, inspUser] = await Promise.all([
-        db.collection('users').findOne({ $or: identityOr }, mongoLimit),
-        db.collection('inspectionUsers').findOne(
-          {
-            $or: [...identityOr, { employeeId: cleanUsername }, { contact: cleanUsername }],
-          },
-          mongoLimit,
-        ),
-      ]);
-
-      if (portalUser) {
-        userDoc = portalUser;
-        sourceCollection = 'users';
-      } else if (inspUser) {
-        userDoc = inspUser;
-        sourceCollection = 'inspectionUsers';
-      } else {
-        const empUser = await db.collection('employees').findOne(
-          {
-            $or: [{ username: { $in: usernameVariants } }, { employeeId: cleanUsername }],
-          },
-          mongoLimit,
-        );
-        if (empUser) {
-          userDoc = empUser;
-          sourceCollection = 'employees';
-        }
-      }
+      mongoDb = await getActiveMongoDb(client);
     }
+
+    const [loginHit, scopePrefetch] = await Promise.all([
+      findUserForLogin(username, cleanUsername, { mobileClient }),
+      mobileClient ? getUserScopeFromCacheOnly(cleanUsername) : Promise.resolve(null),
+    ]);
+
+    if (loginHit) {
+      userDoc = loginHit.userDoc;
+      sourceCollection = loginHit.sourceCollection;
+    }
+
+    let userScope = scopePrefetch;
 
     if (!userDoc && !mobileClient) {
       const [users, inspectionUsers, employees] = await Promise.all([
@@ -177,10 +153,9 @@ export async function POST(req: NextRequest) {
     }
 
     const scopeKey = userDoc.username || cleanUsername;
-    let userScope =
-      mobileClient || sourceCollection === 'inspectionUsers'
-        ? await getUserScopeFromCacheOnly(scopeKey)
-        : null;
+    if (!userScope && (mobileClient || sourceCollection === 'inspectionUsers')) {
+      userScope = await getUserScopeFromCacheOnly(scopeKey);
+    }
     if (mobileClient && !userScope) {
       void getUserScopeDetails(scopeKey).catch(() => {});
     } else if (!mobileClient && sourceCollection === 'inspectionUsers' && !userScope) {

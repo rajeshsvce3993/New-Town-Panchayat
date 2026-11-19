@@ -190,6 +190,8 @@ async function runSystemDiagnostics() {
       }
       if (colNames.includes('users')) {
         await db.collection('users').createIndex({ username: 1 }, { background: true });
+        await db.collection('users').createIndex({ mobile: 1 }, { background: true });
+        await db.collection('users').createIndex({ phone: 1 }, { background: true });
       }
       if (colNames.includes('user_scope_cache')) {
         await db.collection('user_scope_cache').createIndex({ username: 1 }, { background: true });
@@ -251,7 +253,7 @@ async function runSystemDiagnostics() {
 }
 
 let heavyApiInFlight = 0;
-const HEAVY_API_MAX = 12;
+const HEAVY_API_MAX = 8;
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {

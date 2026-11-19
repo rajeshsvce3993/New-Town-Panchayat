@@ -1257,6 +1257,8 @@ export async function ensureDatabaseIndexes(client: MongoClient) {
       db.collection('inspectionUsers').createIndex({ status: 1 }, { background: true }),
       db.collection('inspectionUsers').createIndex({ tpId: 1 }, { background: true }),
       db.collection('users').createIndex({ username: 1 }, { background: true }),
+      db.collection('users').createIndex({ mobile: 1 }, { background: true }),
+      db.collection('users').createIndex({ phone: 1 }, { background: true }),
       db.collection('user_scope_cache').createIndex({ username: 1 }, { background: true }),
       db.collection('user_scope_cache').createIndex({ userId: 1 }, { background: true }),
       db.collection('inspectionWorks').createIndex({ workId: 1 }, { background: true }),
