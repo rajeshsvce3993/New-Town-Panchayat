@@ -66,6 +66,7 @@ export interface CompactCategory {
   nameEn: string;
   nameTa: string;
   subjectId: string;
+  code?: string;
 }
 
 export interface CompactField {
@@ -76,6 +77,8 @@ export interface CompactField {
   nameTa: string;
   isRequired: boolean;
   categoryId?: string;
+  order?: number;
+  sequence?: number;
   options?: string[];
   dependsOnFieldId?: string;
   dependsOnValue?: string;
@@ -178,7 +181,7 @@ export function bumpScopeVersion(reason: string = 'master_data_update'): ScopeVe
 function buildFieldValidationRules(fields: any[]): { enrichedFields: CompactField[]; rules: Record<string, FieldValidationRule> } {
   const rules: Record<string, FieldValidationRule> = {};
   const enrichedFields: CompactField[] = (fields || []).map((field: any) => {
-    const fieldId = field.id || field.key || field.fieldId || '';
+    const fieldId = String(field.id || field.key || field.fieldId || '').trim();
     const fieldType = (field.type || field.fieldType || 'text').toLowerCase();
     const rawNameEn = field.nameEn || field.name || field.fieldName || fieldId;
     const rawNameTa = field.nameTa || field.nameTamil || field.fieldNameTa || rawNameEn;
@@ -205,6 +208,19 @@ function buildFieldValidationRules(fields: any[]): { enrichedFields: CompactFiel
       ? field.options.split(',').map((o: string) => o.trim()).filter(Boolean)
       : undefined;
 
+    const categoryRef =
+      field.categoryId ??
+      field.category_id ??
+      field.inspectionCategoryId ??
+      (field.category && typeof field.category === 'object' ? field.category.id : field.category);
+
+    const stableId =
+      fieldId ||
+      `fld_${String(rawNameEn || 'field')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .slice(0, 48)}_${String(categoryRef || 'cat').slice(0, 24)}`;
+
     const rule: FieldValidationRule = {
       required: isExplicitMandatory,
       mandatory: isExplicitMandatory,
@@ -223,18 +239,16 @@ function buildFieldValidationRules(fields: any[]): { enrichedFields: CompactFiel
       conditionalTriggerValue: field.conditionalTriggerValue || undefined,
     };
 
-    if (fieldId) {
-      rules[fieldId] = rule;
-    }
+    rules[stableId] = rule;
 
     return {
-      id: fieldId,
-      fieldKey: fieldId,
+      id: stableId,
+      fieldKey: stableId,
       fieldType,
       nameEn: displayNameWithStarEn,
       nameTa: displayNameWithStarTa,
       isRequired: isExplicitMandatory,
-      categoryId: field.categoryId || undefined,
+      categoryId: String(categoryRef || '').trim() || undefined,
       options: optionsList,
       dependsOnFieldId: field.dependsOnFieldId || undefined,
       dependsOnValue: field.dependsOnValue || undefined,
@@ -244,6 +258,8 @@ function buildFieldValidationRules(fields: any[]): { enrichedFields: CompactFiel
       isUnique: field.unique === true || field.isUnique === true,
       placeholderEn: field.placeholderEn || undefined,
       placeholderTa: field.placeholderTa || undefined,
+      order: typeof field.order === 'number' ? field.order : undefined,
+      sequence: typeof field.sequence === 'number' ? field.sequence : undefined,
     };
   });
 
@@ -432,6 +448,7 @@ export async function buildSingleUserScope(
     nameEn: c.nameEn || '',
     nameTa: c.nameTa || '',
     subjectId: String(c.subjectId || c.subject_id || ''),
+    code: String(c.code || '').trim() || undefined,
   }));
 
   const { enrichedFields, rules } = buildFieldValidationRules(masters.fields);
@@ -548,6 +565,12 @@ let initScopePromise: Promise<{ initialized: boolean; count: number }> | null = 
  * Strictly SKIPS during "npm run build" or "phase-production-build".
  */
 export async function initializeUserScopeCacheOnce(): Promise<{ initialized: boolean; count: number }> {
+  const { isLiveDataOnly } = await import('@/lib/productionFlags');
+  if (isLiveDataOnly()) {
+    hasCheckedScopeCache = true;
+    return { initialized: false, count: -1 };
+  }
+
   // Never run or build cache during next build!
   if (
     process.env.NEXT_PHASE === 'phase-production-build' ||
@@ -676,6 +699,9 @@ export async function getUserScopeFromCacheOnly(userIdOrUsername: string): Promi
   const cleanKey = (userIdOrUsername || '').trim().toLowerCase();
   if (!cleanKey) return null;
 
+  const { isLiveDataOnly } = await import('@/lib/productionFlags');
+  if (isLiveDataOnly()) return null;
+
   try {
     const client = await getMongoClient();
     if (!client) return null;
@@ -708,6 +734,12 @@ export async function getUserScopeDetailsForLogin(
   const cleanKey = (userIdOrUsername || '').trim().toLowerCase();
   if (!cleanKey) return null;
 
+  const { isLiveDataOnly } = await import('@/lib/productionFlags');
+  if (isLiveDataOnly()) {
+    const { buildLiveUserScope } = await import('@/lib/services/liveUserScope');
+    return buildLiveUserScope(cleanKey, Math.min(timeoutMs, 12_000));
+  }
+
   try {
     const hit = await Promise.race([
       getUserScopeDetails(cleanKey),
@@ -729,6 +761,12 @@ export async function getUserScopeDetailsForLogin(
 export async function getUserScopeDetails(userIdOrUsername: string): Promise<CachedUserScope | null> {
   const cleanKey = (userIdOrUsername || '').trim().toLowerCase();
   if (!cleanKey) return null;
+
+  const { isLiveDataOnly } = await import('@/lib/productionFlags');
+  if (isLiveDataOnly()) {
+    const { buildLiveUserScope } = await import('@/lib/services/liveUserScope');
+    return buildLiveUserScope(cleanKey, 10_000);
+  }
 
   try {
     const client = await getMongoClient();
@@ -881,6 +919,16 @@ export async function getUserScopeDetails(userIdOrUsername: string): Promise<Cac
 export async function invalidateAndRefreshUserScopeCache(reason: string = 'master_data_updated') {
   try {
     const meta = bumpScopeVersion(reason);
+    const { isLiveDataOnly } = await import('@/lib/productionFlags');
+    if (isLiveDataOnly()) {
+      try {
+        const { invalidatePortalMastersCache } = await import('./portalMastersCache');
+        invalidatePortalMastersCache();
+      } catch {
+        /* optional */
+      }
+      return;
+    }
     const client = await getMongoClient();
     if (client) {
       const db = await getActiveMongoDb(client);
@@ -905,6 +953,9 @@ let prewarmScopesInFlight: Promise<{ warmed: number; alreadyCached: number }> | 
 
 /** Background: fill user_scope_cache for inspectionUsers missing an entry (no collection drop). */
 export async function prewarmMissingInspectionUserScopes(): Promise<{ warmed: number; alreadyCached: number }> {
+  const { isLiveDataOnly } = await import('@/lib/productionFlags');
+  if (isLiveDataOnly()) return { warmed: 0, alreadyCached: 0 };
+
   if (prewarmScopesInFlight) return prewarmScopesInFlight;
 
   prewarmScopesInFlight = (async () => {

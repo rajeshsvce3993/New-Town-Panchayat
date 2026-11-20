@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient, getActiveMongoDb, getCollectionData } from '@/lib/storage';
 import { resolveGeoForPortalUser, resolveGeoForUser, type ResolvedPortalGeo } from '@/lib/domain/geoResolver';
 import { buildLiveUserScope, useLiveInspectionScope } from '@/lib/services/liveUserScope';
+import { isLiveDataOnly } from '@/lib/productionFlags';
 import { recordUserLogin } from '@/lib/userActivity';
 import { logServerProcess } from '@/lib/serverLogger';
 import { postRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
@@ -87,10 +88,10 @@ export async function POST(req: NextRequest) {
     }
 
     const loginHit = await findUserForLogin(username, cleanUsername, { mobileClient });
-    const scopePrefetch =
-      mobileClient || useLiveInspectionScope(mobileClient)
-        ? null
-        : await getUserScopeFromCacheOnly(cleanUsername).catch(() => null);
+    const liveScopePath = mobileClient || useLiveInspectionScope(mobileClient) || isLiveDataOnly();
+    const scopePrefetch = liveScopePath
+      ? null
+      : await getUserScopeFromCacheOnly(cleanUsername).catch(() => null);
 
     if (loginHit) {
       userDoc = loginHit.userDoc;
@@ -181,7 +182,7 @@ export async function POST(req: NextRequest) {
     const needsInspectionScope =
       mobileClient || sourceCollection === 'inspectionUsers' || (webPortal && sourceCollection === 'users');
     if (needsInspectionScope) {
-      if (useLiveInspectionScope(mobileClient)) {
+      if (useLiveInspectionScope(mobileClient) || isLiveDataOnly()) {
         userScope = await buildLiveUserScope(scopeKey, mobileClient ? 8_000 : 10_000);
       } else if (!userScope) {
         userScope = await getUserScopeFromCacheOnly(scopeKey);

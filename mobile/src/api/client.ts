@@ -200,7 +200,12 @@ export const api = {
   },
 
   /** Login refresh path: geo/me + masters/scope + scoped works (no portal-state). */
-  async bootstrapProductionPortal(username: string, user?: AppUser | null): Promise<PortalState> {
+  async bootstrapProductionPortal(
+    username: string,
+    user?: AppUser | null,
+    opts?: { worksLimit?: number },
+  ): Promise<PortalState> {
+    const worksLimit = Math.min(Math.max(opts?.worksLimit ?? 80, 20), 200);
     const u = String(username || '').trim();
     if (!u) throw new Error('username required');
 
@@ -214,7 +219,7 @@ export const api = {
       this.getAppSettings(),
       this.getMobileConfig(),
       fetchWithTimeout(
-        `${baseUrl}/api/inspection-works?username=${encodeURIComponent(u)}&lite=1&limit=120`,
+        `${baseUrl}/api/inspection-works?username=${encodeURIComponent(u)}&lite=1&limit=${worksLimit}`,
         { headers: { ...mobileClientHeaders(), 'Cache-Control': 'no-cache' } },
         BOOTSTRAP_API_TIMEOUT_MS,
       ),
@@ -241,7 +246,13 @@ export const api = {
     };
     const worksJson = (await worksRes.json().catch(() => ({}))) as { works?: InspectionWork[]; success?: boolean };
 
-    const scope = scopeJson.scope;
+    let scope = scopeJson.scope;
+    if (scope && !scope.fields?.length) {
+      const scopeFallback = await this.getUserScope(u);
+      if (scopeFallback.success && scopeFallback.scope?.fields?.length) {
+        scope = { ...scope, ...scopeFallback.scope, fields: scopeFallback.scope.fields };
+      }
+    }
     const geo = geoJson.geo;
     const districts: PortalState['districts'] =
       geoJson.districts?.length
@@ -532,14 +543,30 @@ export const api = {
     }
   },
 
+  /** Live inspection scope from Mongo via GET /api/masters/scope (not user_scope_cache). */
   async getUserScope(userIdOrUsername: string): Promise<UserScopeResponse> {
     try {
       const response = await fetchWithTimeout(
-        `${baseUrl}/api/scope/user?username=${encodeURIComponent(userIdOrUsername)}`,
+        `${baseUrl}/api/masters/scope?username=${encodeURIComponent(userIdOrUsername)}`,
         { headers: mobileClientHeaders() },
       );
       const resBody = await response.text();
-      if (response.ok && resBody) return JSON.parse(resBody) as UserScopeResponse;
+      if (response.ok && resBody) {
+        const json = JSON.parse(resBody) as {
+          success?: boolean;
+          scope?: UserScopeResponse['scope'];
+          scopeVersion?: number;
+          updatedAt?: string;
+          message?: string;
+        };
+        return {
+          success: !!json.success,
+          scope: json.scope ?? null,
+          scopeVersion: json.scopeVersion ?? 1,
+          updatedAt: json.updatedAt,
+          message: json.message,
+        };
+      }
       return { success: false, scopeVersion: 1, message: `Server returned ${response.status}` };
     } catch (e) {
       return { success: false, scopeVersion: 1, message: e instanceof Error ? e.message : 'Network error fetching user scope' };
@@ -619,6 +646,32 @@ export const api = {
       return response.ok;
     } catch {
       return false;
+    }
+  },
+
+  async getMobileProfile(username: string): Promise<{
+    success: boolean;
+    profilePhotoUrl?: string | null;
+    profile?: Record<string, unknown>;
+    userId?: string;
+    message?: string;
+  }> {
+    try {
+      const response = await fetchWithTimeout(
+        `${baseUrl}/api/mobile/profile?username=${encodeURIComponent(username)}`,
+        { headers: { ...mobileClientHeaders(), 'Cache-Control': 'no-cache' } },
+        BOOTSTRAP_API_TIMEOUT_MS,
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) return { success: false, message: body?.message || `HTTP ${response.status}` };
+      return body as {
+        success: boolean;
+        profilePhotoUrl?: string | null;
+        profile?: Record<string, unknown>;
+        userId?: string;
+      };
+    } catch (e) {
+      return { success: false, message: e instanceof Error ? e.message : 'Network error' };
     }
   },
 

@@ -1,5 +1,6 @@
 import type { Db } from 'mongodb';
 import { geoNamesEqual } from '@/lib/geoNameMatch';
+import { isLiveDataOnly } from '@/lib/productionFlags';
 
 const PLACEHOLDER_STREETS = new Set(
   [
@@ -159,6 +160,29 @@ async function enrichInspectorForStreet(db: Db, inspector: any | null | undefine
   try {
     const keys = [inspector.username, inspector.mobile, inspector.id].map((v) => String(v || '').trim()).filter(Boolean);
     if (!keys.length) return inspector;
+
+    if (isLiveDataOnly()) {
+      const doc = await db.collection('inspectionUsers').findOne(
+        {
+          $or: [
+            ...keys.map((k) => ({ username: { $regex: new RegExp(`^${k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } })),
+            { mobile: { $in: keys } },
+            { phone: { $in: keys } },
+            { id: { $in: keys } },
+          ],
+        },
+        { projection: { assignedWards: 1, selectedWards: 1 }, maxTimeMS: 3000 },
+      );
+      if (!doc) return inspector;
+      const aw = [...(doc.assignedWards || []), ...(doc.selectedWards || [])];
+      if (!aw.length) return inspector;
+      return {
+        ...inspector,
+        assignedWards: doc.assignedWards || inspector.assignedWards,
+        selectedWards: doc.selectedWards || inspector.selectedWards,
+      };
+    }
+
     const scope = await db.collection('user_scope_cache').findOne(
       {
         $or: [

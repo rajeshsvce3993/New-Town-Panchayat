@@ -30,15 +30,23 @@ import {
   type FormPickerState,
 } from '../../src/components/FormControls';
 import { HeaderBrand } from '../../src/components/HeaderBrand';
-import { FALLBACK_STREETS_EN, FALLBACK_STREETS_TA, SAMPLE_PHOTO } from '../../src/constants/config';
+import { SAMPLE_PHOTO } from '../../src/constants/config';
 import { useApp } from '../../src/context/AppContext';
 import { scheduleQueueDrain, submitAddWork } from '../../src/services/workPipeline';
 import { showInspectionNotification } from '../../src/services/notifications';
 import { dedupeInspectionWorks } from '../../src/utils/dedupeWorks';
 import { prefs } from '../../src/storage/preferences';
+import { portalHasInspectionScope } from '../../src/utils/livePortal';
 import type { Category, FieldDefinition, InspectionWork, Subject } from '../../src/types/models';
 import { effectiveCategoryIds, effectiveSubjectIds, effectiveWards, portalCategories, portalFields, portalSubjects, portalWorks } from '../../src/types/models';
-import { fieldKey, isCameraField, isImageUploadField, visibleDynamicFields } from '../../src/utils/fieldVisibility';
+import {
+  fieldKey,
+  isCameraField,
+  isImageUploadField,
+  orderedCategoryFields,
+  stableFieldListKey,
+  visibleDynamicFields,
+} from '../../src/utils/fieldVisibility';
 import { compressImageLocally } from '../../src/utils/imageCompression';
 import { uniquePhotoFileName } from '../../src/utils/photoPersist';
 import { now12Hr } from '../../src/utils/dates';
@@ -48,6 +56,7 @@ import * as Location from 'expo-location';
 import { acquireGpsFix, gpsFixFromLocation, isPlaceholderCoord, type GpsFix } from '../../src/utils/gpsLocation';
 import { nextWorkId } from '../../src/utils/workId';
 import { resolveWorkGeoLabels } from '../../src/utils/workGeo';
+import { resolveInspectionScopeMode } from '../../src/utils/inspectionScopeMode';
 
 function toast(msg: string) {
   if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.LONG);
@@ -79,8 +88,8 @@ export default function AddWorkScreen() {
   const [step, setStep] = useState(1);
   const [subjectId, setSubjectId] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [ward, setWard] = useState('1');
-  const [street, setStreet] = useState('Anna Street');
+  const [ward, setWard] = useState('');
+  const [street, setStreet] = useState('');
   const [values, setValues] = useState<Record<string, string>>({});
   const [photos, setPhotos] = useState<Record<string, string>>({});
   const [primaryPhoto, setPrimaryPhoto] = useState<string | null>(null);
@@ -107,6 +116,106 @@ export default function AddWorkScreen() {
   const [dlScope, setDlScope] = useState(false);
   const [picker, setPicker] = useState<FormPickerState>(null);
   const [dateField, setDateField] = useState<string | null>(null);
+  const [districtId, setDistrictId] = useState('');
+  const [tpId, setTpId] = useState('');
+
+  const scopeMode = useMemo(() => resolveInspectionScopeMode(user), [user]);
+  const portalDistricts = portal.districts || [];
+  const portalTps = portal.townPanchayats || [];
+
+  const activeTpId = useMemo(() => {
+    if (tpId) return tpId;
+    return resolveUserTpId(user, portalTps, undefined);
+  }, [tpId, user, portalTps]);
+
+  const districtOptions = useMemo(() => {
+    if (scopeMode === 'multi_tp' || scopeMode === 'single_tp') {
+      const d =
+        portalDistricts.find((x) => user?.districtId && x.id === user.districtId) ||
+        portalDistricts.find(
+          (x) =>
+            user?.district &&
+            (x.nameEn.toLowerCase() === user.district.toLowerCase() ||
+              x.nameTa.toLowerCase() === user.district.toLowerCase()),
+        );
+      return d ? [{ id: d.id, label: isTamil ? d.nameTa || d.nameEn : d.nameEn || d.nameTa }] : [];
+    }
+    return portalDistricts.map((d) => ({
+      id: d.id,
+      label: isTamil ? d.nameTa || d.nameEn : d.nameEn || d.nameTa,
+    }));
+  }, [scopeMode, portalDistricts, user, isTamil]);
+
+  const tpOptions = useMemo(() => {
+    if (scopeMode === 'single_tp') {
+      const t =
+        portalTps.find((x) => x.id === activeTpId) ||
+        portalTps.find(
+          (x) =>
+            user?.townPanchayat &&
+            (x.nameEn.toLowerCase() === user.townPanchayat.toLowerCase() ||
+              x.nameTa.toLowerCase() === user.townPanchayat.toLowerCase()),
+        );
+      if (!t) return [];
+      return [{ id: t.id, label: isTamil ? t.nameTa || t.nameEn : t.nameEn || t.nameTa }];
+    }
+    let list = portalTps;
+    if (scopeMode === 'zonal' && districtId) {
+      list = list.filter((t) => String(t.districtId || '') === String(districtId));
+    }
+    if (scopeMode === 'multi_tp') {
+      const allowed = new Set((user?.selectedTpIds || []).map(String));
+      if (allowed.size) list = list.filter((t) => allowed.has(String(t.id)));
+      else if (districtId) list = list.filter((t) => String(t.districtId || '') === String(districtId));
+    }
+    return list.map((t) => ({
+      id: t.id,
+      label: isTamil ? t.nameTa || t.nameEn : t.nameEn || t.nameTa,
+    }));
+  }, [scopeMode, portalTps, districtId, activeTpId, user, isTamil]);
+
+  useEffect(() => {
+    const dists = portalDistricts;
+    const tps = portalTps;
+    const mode = resolveInspectionScopeMode(user);
+    if (mode === 'single_tp') {
+      const d =
+        user?.districtId ||
+        dists.find((x) => user?.district && x.nameEn.toLowerCase() === user.district.toLowerCase())?.id ||
+        '';
+      const t = resolveUserTpId(user, tps) || '';
+      setDistrictId(d);
+      setTpId(t);
+      return;
+    }
+    if (mode === 'multi_tp') {
+      const d =
+        user?.districtId ||
+        dists.find((x) => user?.district && x.nameEn.toLowerCase() === user.district.toLowerCase())?.id ||
+        '';
+      setDistrictId(d);
+      const allowed = new Set((user?.selectedTpIds || []).map(String));
+      const pool = allowed.size
+        ? tps.filter((t) => allowed.has(String(t.id)))
+        : tps.filter((t) => !d || String(t.districtId) === String(d));
+      setTpId((prev) => (pool.some((t) => t.id === prev) ? prev : pool.length === 1 ? pool[0].id : ''));
+      return;
+    }
+    if (dists.length === 1) setDistrictId((prev) => prev || dists[0].id);
+    if (!districtId && user?.districtId) setDistrictId(user.districtId);
+  }, [user?.id, user?.scopeType, user?.districtId, user?.selectedTpIds, portalDistricts, portalTps]);
+
+  useEffect(() => {
+    if (scopeMode !== 'zonal') return;
+    const tps = portalTps.filter((t) => !districtId || String(t.districtId) === String(districtId));
+    if (tps.some((t) => t.id === tpId)) return;
+    setTpId(tps.length === 1 ? tps[0].id : '');
+  }, [districtId, scopeMode, portalTps, tpId]);
+
+  useEffect(() => {
+    setWard('');
+    setStreet('');
+  }, [activeTpId]);
 
   const subjects: Subject[] = useMemo(() => {
     const all = portalSubjects(portal);
@@ -137,11 +246,11 @@ export default function AddWorkScreen() {
     return subjectCats.length ? subjectCats : all;
   }, [portal, user, subjectId, subjects]);
 
-  const userTpId = resolveUserTpId(user, portal.townPanchayats || [], undefined);
   const streetsDb = portal.wardsAndStreets || [];
   const wards = useMemo(() => {
+    if (!activeTpId && (scopeMode === 'zonal' || scopeMode === 'multi_tp')) return [];
     const mongo = streetsDb
-      .filter((w) => matchesTp(w, user, userTpId, portal.townPanchayats || []))
+      .filter((w) => matchesTp(w, user, activeTpId, portalTps))
       .map((w) => normalizeWard(w.wardNo))
       .filter((w) => w && w !== '0');
     const userW = effectiveWards(user).map(normalizeWard).filter((w) => w && w !== '0');
@@ -149,22 +258,22 @@ export default function AddWorkScreen() {
     if (combined.length) return combined;
     if ((user?.role || '').toLowerCase().includes('admin')) return Array.from({ length: 18 }, (_, i) => String(i + 1));
     return [];
-  }, [streetsDb, user, userTpId, portal.townPanchayats]);
+  }, [streetsDb, user, activeTpId, portalTps, scopeMode]);
 
   const streets = useMemo(() => {
+    if (!ward) return [];
     const norm = normalizeWard(ward);
     const filtered = streetsDb
-      .filter((ws) => normalizeWard(ws.wardNo) === norm && matchesTp(ws, user, userTpId, portal.townPanchayats || []))
+      .filter((ws) => normalizeWard(ws.wardNo) === norm && matchesTp(ws, user, activeTpId, portalTps))
       .map((ws) => (isTamil ? ws.streetNameTa || ws.streetNameEn : ws.streetNameEn))
       .filter(Boolean);
-    const uniq = [...new Set(filtered)].sort();
-    if (uniq.length) return uniq;
-    return isTamil ? FALLBACK_STREETS_TA : FALLBACK_STREETS_EN;
-  }, [streetsDb, ward, isTamil, user, userTpId, portal.townPanchayats]);
+    return [...new Set(filtered)].sort();
+  }, [streetsDb, ward, isTamil, user, activeTpId, portalTps]);
 
+  const allCategories = useMemo(() => portalCategories(portal), [portal]);
   const dynFields = useMemo(
-    () => portalFields(portal).filter((f) => f.categoryId === categoryId),
-    [portal, categoryId]
+    () => orderedCategoryFields(portalFields(portal), categoryId, allCategories),
+    [portal, categoryId, allCategories],
   );
   const visible = useMemo(() => visibleDynamicFields(dynFields, values), [dynFields, values]);
 
@@ -175,11 +284,18 @@ export default function AddWorkScreen() {
     if (!categories.some((c) => c.id === categoryId)) setCategoryId(categories[0]?.id || '');
   }, [categories, categoryId]);
   useEffect(() => {
-    if (!wards.includes(ward) && wards[0]) setWard(wards[0]);
+    if (!ward && wards.length === 1) setWard(wards[0]);
+    else if (ward && !wards.includes(ward)) setWard(wards.length === 1 ? wards[0] : '');
   }, [wards, ward]);
   useEffect(() => {
-    setStreet(streets[0] || (isTamil ? 'அண்ணா தெரு' : 'Anna Street'));
-  }, [ward, streets, isTamil]);
+    if (!ward) {
+      setStreet('');
+      return;
+    }
+    if (street && streets.includes(street)) return;
+    const next = streets.length === 1 ? streets[0] : '';
+    if (street !== next) setStreet(next);
+  }, [ward, streets, street]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -249,7 +365,7 @@ export default function AddWorkScreen() {
       let cancelled = false;
       let watch: Location.LocationSubscription | null = null;
       void (async () => {
-        const has = await prefs.hasDownloadedScope(user, await prefs.getUserScope(), portal);
+        const has = portalHasInspectionScope(portal);
         setScopeMissing(!has && (!subjects.length || !wards.length));
         await acquireGps({ silent: true });
         if (cancelled) return;
@@ -329,12 +445,11 @@ export default function AddWorkScreen() {
     submitInFlightRef.current = true;
     setSubmitting(true);
     try {
-    const hasScope = await prefs.hasDownloadedScope(user, await prefs.getUserScope(), portal);
-    if (!hasScope || !subjects.length || !wards.length) {
+    if (!portalHasInspectionScope(portal) || !subjects.length || !wards.length) {
       toast(
         isTamil
-          ? 'பிழை: உங்கள் கணக்கிற்கான ஆய்வு வரம்பு (Scope) இன்னும் பதிவிறக்கப்படவில்லை. பொதுவான ஆய்வு (Fallback Scope) அனுமதிக்கப்படாது!'
-          : 'Error: No assigned inspection scope downloaded. General inspection fallback is disabled!'
+          ? 'ஆய்வு வரம்பு ஏற்றப்படவில்லை. இணையத்துடன் இணைந்து மீண்டும் பதிவேற்றவும்.'
+          : 'Inspection scope not loaded. Connect to the internet and refresh.',
       );
       return;
     }
@@ -357,7 +472,19 @@ export default function AddWorkScreen() {
     }
     const subject = subjects.find((s) => s.id === subjectId);
     const category = categories.find((c) => c.id === categoryId);
-    const geoLabels = resolveWorkGeoLabels(user, portal);
+    if (scopeMode === 'zonal' && !districtId) {
+      toast(isTamil ? 'மாவட்டத்தைத் தேர்ந்தெடுக்கவும்.' : 'Please select a district.');
+      return;
+    }
+    if ((scopeMode === 'zonal' || scopeMode === 'multi_tp') && !activeTpId) {
+      toast(isTamil ? 'பேரூராட்சியைத் தேர்ந்தெடுக்கவும்.' : 'Please select a Town Panchayat.');
+      return;
+    }
+    if (!ward || !street) {
+      toast(isTamil ? 'வார்டு மற்றும் தெருவைத் தேர்ந்தெடுக்கவும்.' : 'Please select ward and street from the list.');
+      return;
+    }
+    const geoLabels = resolveWorkGeoLabels(user, portal, { districtId, tpId: activeTpId });
     if (!geoLabels) {
       toast(
         isTamil
@@ -366,7 +493,7 @@ export default function AddWorkScreen() {
       );
       return;
     }
-    const ids = nextWorkId(user, portal, ward);
+    const ids = nextWorkId(user, portal, ward, { districtId, tpId: activeTpId });
     let actualWorkId = '';
     const { zoneNameEn: zoneName, districtNameEn: districtName, tpNameEn: tpName } = geoLabels;
     const fieldCopy = { ...values };
@@ -468,7 +595,8 @@ export default function AddWorkScreen() {
     value: string,
     options: { id: string; label: string }[],
     onPick: (id: string) => void,
-    key: string
+    key: string,
+    locked = false,
   ) => {
     const display = options.find((o) => o.id === value)?.label || value;
     const placeholder = isTamil ? 'தேர்வு செய்யவும்' : 'Tap to choose';
@@ -479,27 +607,34 @@ export default function AddWorkScreen() {
         display={display}
         placeholder={placeholder}
         primary={palette.primary}
-        onPress={() => setPicker({ title: label, value, options, onPick })}
+        locked={locked}
+        onPress={() => {
+          if (locked) return;
+          setPicker({ title: label, value, options, onPick });
+        }}
       />
     );
   };
 
   const fieldLabel = (f: FieldDefinition) => {
     const k = fieldKey(f);
-    const raw = (isTamil ? f.fieldNameTa || f.nameTa || k : f.nameEn || k).replace(/\s*\*\s*$/, '');
+    const base = isTamil
+      ? f.fieldNameTa || f.nameTa || f.nameEn || k
+      : f.nameEn || f.fieldName || f.nameTa || k;
+    const raw = String(base || k).replace(/\s*\*\s*$/, '');
     const mandatory = !!(f.isRequired || f.isMandatory);
     return mandatory ? `${raw} *` : raw;
   };
 
-  const renderField = (f: FieldDefinition) => {
+  const renderField = (f: FieldDefinition, listKey: string) => {
     const k = fieldKey(f);
     const type = (f.fieldType || f.type || 'text').toLowerCase();
-    const label = fieldLabel(f);
+    const label = String(fieldLabel(f) || k || 'Field');
     const currentVal = values[k] || '';
     if (isCameraField(f)) {
       return (
         <FormPhotoField
-          key={k}
+          key={listKey}
           label={label}
           uri={photos[k] || null}
           primary={palette.primary}
@@ -515,7 +650,7 @@ export default function AddWorkScreen() {
     if (isImageUploadField(f)) {
       return (
         <FormPhotoField
-          key={k}
+          key={listKey}
           label={label}
           uri={photos[k] || null}
           primary={palette.primary}
@@ -533,7 +668,7 @@ export default function AddWorkScreen() {
       const yesText = isTamil ? 'ஆம்' : 'Yes';
       const noText = isTamil ? 'இல்லை' : 'No';
       return (
-        <View key={k} style={styles.ynBlock}>
+        <View key={listKey} style={styles.ynBlock}>
           <Text style={styles.lbl}>{label}</Text>
           <View style={styles.ynRow}>
             <Pressable
@@ -555,7 +690,7 @@ export default function AddWorkScreen() {
     if (type.includes('date')) {
       return (
         <FormSelectTrigger
-          key={k}
+          key={listKey}
           label={label}
           display={currentVal}
           placeholder={isTamil ? 'தேதியைத் தேர்ந்தெடுக்கவும்' : 'Tap to pick date'}
@@ -570,7 +705,7 @@ export default function AddWorkScreen() {
       (type === 'file' || type.includes('document') || type.includes('pdf') || type === 'upload' || type === 'file_upload')
     ) {
       return (
-        <View key={k} style={styles.fieldCard}>
+        <View key={listKey} style={styles.fieldCard}>
           <Text style={styles.fieldLbl}>{label}</Text>
           {currentVal ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -595,15 +730,15 @@ export default function AddWorkScreen() {
     }
     if (type.includes('select') || type.includes('dropdown') || type.includes('option') || type.includes('choice') || (f.options && f.options.length)) {
       return (
-        <View key={k}>
-          {dropdown(label, currentVal, (f.options || []).map((o) => ({ id: o, label: o })), (id) => setValues((v) => ({ ...v, [k]: id })), k)}
+        <View key={listKey}>
+          {dropdown(label, currentVal, (f.options || []).map((o) => ({ id: o, label: o })), (id) => setValues((v) => ({ ...v, [k]: id })), listKey)}
         </View>
       );
     }
     const numeric = type.includes('number') || type.includes('digit') || type.includes('mobile');
     return (
       <FormTextField
-        key={k}
+        key={listKey}
         label={label}
         value={currentVal}
         primary={palette.primary}
@@ -693,18 +828,28 @@ export default function AddWorkScreen() {
                   disabled={dlScope}
                   onPress={async () => {
                     setDlScope(true);
-                    const scopeResp = await api.getUserScope(user?.username || '');
-                    if (scopeResp.success && scopeResp.scope) {
-                      await prefs.setUserScope(scopeResp.scope);
-                      await prefs.setScopeVersionInt(scopeResp.scopeVersion || 1);
-                      await prefs.setPortal(await api.getPortalState(user?.username));
+                    try {
                       await refreshPortal();
-                      setScopeMissing(false);
-                      toast(isTamil ? 'ஆய்வு வரம்பு வெற்றிகரமாகப் பதிவிறக்கப்பட்டது!' : 'Assigned scope downloaded successfully!');
-                    } else {
-                      toast(isTamil ? 'வரம்பைப் பதிவிறக்க முடியவில்லை. இணையத்தை சரிபார்க்கவும்.' : 'Failed to download scope. Check internet connection.');
+                      const scopeResp = await api.getUserScope(user?.username || '');
+                      if (scopeResp.success && scopeResp.scope) {
+                        await prefs.setUserScope(scopeResp.scope);
+                        await prefs.setScopeVersionInt(scopeResp.scopeVersion || 1);
+                      }
+                      const fresh = await prefs.getPortal();
+                      const ok = portalHasInspectionScope(fresh);
+                      setScopeMissing(!ok);
+                      toast(
+                        ok
+                          ? isTamil
+                            ? 'ஆய்வு வரம்பு சேவையகத்திலிருந்து ஏற்றப்பட்டது!'
+                            : 'Inspection scope loaded from server.'
+                          : isTamil
+                            ? 'வரம்பை ஏற்ற முடியவில்லை. இணையத்தை சரிபார்க்கவும்.'
+                            : 'Could not load scope. Check internet.',
+                      );
+                    } finally {
+                      setDlScope(false);
                     }
-                    setDlScope(false);
                   }}
                 >
                   {dlScope ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{isTamil ? 'இணையத்திலிருந்து வரம்பைப் பதிவிறக்கு' : 'Download Assigned Scope Now'}</Text>}
@@ -719,6 +864,22 @@ export default function AddWorkScreen() {
               </View>
               <Text style={styles.sectionTitle}>{isTamil ? 'பொருள் & வார்டு' : 'Subject & location'}</Text>
             </View>
+            {dropdown(
+              isTamil ? 'மாவட்டம் (District)' : 'Select District',
+              districtId,
+              districtOptions,
+              (id) => setDistrictId(id),
+              'geo-dist',
+              scopeMode !== 'zonal',
+            )}
+            {dropdown(
+              isTamil ? 'பேரூராட்சி (Town Panchayat)' : 'Select TP (Town Panchayat)',
+              tpId,
+              tpOptions,
+              (id) => setTpId(id),
+              'geo-tp',
+              scopeMode === 'single_tp',
+            )}
             {!subjects.length ? (
               <View style={[styles.scopeAlert, { borderColor: '#FECACA' }]}>
                 <Text style={{ fontSize: 12, color: '#991B1B' }}>
@@ -812,13 +973,17 @@ export default function AddWorkScreen() {
             {!visible.length && (
               <View style={styles.fieldCard}>
                 <Text style={{ fontSize: 12, color: '#64748B', textAlign: 'center' }}>
-                  {isTamil
-                    ? 'இந்த வகைக்கு ஆய்வு மேலாண்மை பக்கத்தில் தனிப்பயன் புலங்கள் எதுவும் உருவாக்கப்படவில்லை.'
-                    : 'No custom fields configured for this category in inspection module management.'}
+                  {!portalFields(portal).length
+                    ? isTamil
+                      ? 'புல வரையறைகள் பதிவிறக்கம் செய்யப்படவில்லை. மேலே பக்கத்தில் "இணையத்திலிருந்து வரம்பைப் பதிவிறக்கு" என்பதைத் தட்டவும் அல்லது வெளியேறி மீண்டும் உள்நுழையவும்.'
+                      : 'Field definitions are not loaded yet. On step 1 tap “Download Assigned Scope Now”, or log out and sign in again.'
+                    : isTamil
+                      ? 'இந்த வகைக்கு ஆய்வு மேலாண்மை பக்கத்தில் தனிப்பயன் புலங்கள் எதுவும் உருவாக்கப்படவில்லை.'
+                      : 'No custom fields configured for this category in inspection module management.'}
                 </Text>
               </View>
             )}
-            {visible.map(renderField)}
+            {visible.map((f, idx) => renderField(f, stableFieldListKey(f, idx)))}
             {!visible.some(isCameraField) && (
               <FormPhotoField
                 label={isTamil ? 'சான்று புகைப்படம்' : 'Evidence photo'}

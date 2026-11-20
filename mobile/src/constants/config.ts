@@ -42,7 +42,10 @@ export const BOOTSTRAP_API_TIMEOUT_MS = 12000;
 export const UPLOAD_TIMEOUT_MS = 90000;
 export const INACTIVITY_MS = 3600000;
 export const SESSION_CHECK_MS = 10000;
+/** Queue / offline work sync — not full portal refresh. */
 export const OFFLINE_SYNC_MS = 15000;
+/** Re-fetch live geo/scope/works when app returns to foreground (no user_scope_cache). */
+export const PORTAL_FOREGROUND_REFRESH_MS = 120_000;
 export const NOTIF_POLL_MS = 120000;
 export const SCOPE_BG_MINUTES = 15;
 export const DEFAULT_LAT = 12.7244;
@@ -52,21 +55,7 @@ export const FALLBACK_LOGO_URL =
 export const SAMPLE_PHOTO =
   'https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?w=600&auto=format&fit=crop';
 export const BG_SCOPE_TASK = 'FiveMinuteScopeSync';
-export const FALLBACK_STREETS_EN = [
-  'Anna Street',
-  'Gandhi Street',
-  'Bazaar Street',
-  'Kamarajar Salai',
-  'Bharathiyar Street',
-  'Hospital Road',
-  'Periyar Nagar',
-];
-export const FALLBACK_STREETS_TA = [
-  'அண்ணா தெரு',
-  'காந்தி தெரு',
-  'பஜார் தெரு',
-  'காமராஜர் சாலை',
-  'பாரதியார் தெரு',
-  'மருத்துவமனை சாலை',
-  'பெரியார் நகர்',
-];
+/** @deprecated Do not use for Add Work — streets must come from live scope only. */
+export const FALLBACK_STREETS_EN: string[] = [];
+/** @deprecated Do not use for Add Work — streets must come from live scope only. */
+export const FALLBACK_STREETS_TA: string[] = [];

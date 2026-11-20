@@ -7,6 +7,7 @@ import {
   INACTIVITY_MS,
   NOTIF_POLL_MS,
   OFFLINE_SYNC_MS,
+  PORTAL_FOREGROUND_REFRESH_MS,
   SESSION_CHECK_MS,
 } from '../constants/config';
 import { isUsableLogoUrl } from '../components/BrandImage';
@@ -22,6 +23,9 @@ import { syncPendingWorks } from '../services/queueSync';
 import { dedupeInspectionWorks } from '../utils/dedupeWorks';
 import { filterUserWorks } from '../utils/workFilters';
 import { prefs, profilePhotoFile } from '../storage/preferences';
+import { fetchLiveProfilePhotoUrl } from '../services/userProfilePhoto';
+import { mergeLiveProfileOntoUser } from '../utils/userProfileMerge';
+import { mergeScopeMastersIntoPortal } from '../utils/portalMasters';
 import { DEFAULT_PALETTE_ID, getPaletteById, type AppPalette } from '../theme/palettes';
 import type { AppUser, InspectionWork, LoginRequest, LoginResponse, PortalState, UserScopeData } from '../types/models';
 import { emptyPortal, portalWorks } from '../types/models';
@@ -173,7 +177,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
 
     (async () => {
-      const [url, theme, tamil, u, cached, logo, icon, tone] = await Promise.all([
+      const [url, theme, tamil, u, cached, logo, icon, tone, cachedScope] = await Promise.all([
         prefs.getServerUrl(),
         prefs.getThemeId(),
         prefs.getIsTamil(),
@@ -182,6 +186,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         prefs.getLoginLogoUrl(),
         prefs.getAppIconUrl(),
         prefs.getTone(),
+        prefs.getUserScope(),
       ]);
       if (cancelled) return;
 
@@ -195,7 +200,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         activeUser = null;
       }
       applyUser(activeUser);
-      if (cached) setPortal(cached);
+      if (cached) setPortal(mergeScopeMastersIntoPortal(cached, cachedScope));
       setWorks([]);
       setWorksHydrated(false);
       if (isUsableLogoUrl(logo)) setLoginLogo(logo);
@@ -294,7 +299,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const sid = sessionIdRef.current;
     touch();
     try {
-      const remote = await api.bootstrapProductionPortal(current.username, current);
+      const remote = await api.bootstrapProductionPortal(current.username, current, { worksLimit: 80 });
       if (sid !== sessionIdRef.current || !userRef.current) return;
       const liveSettings = pickReportSettings(await api.getAppSettings());
       const nextPortal: PortalState = {
@@ -339,13 +344,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setLoginLogo(nextLogo);
       }
       if (sid !== sessionIdRef.current || !userRef.current) return;
+      const liveBeforeProfile = userRef.current;
+      if (liveBeforeProfile?.username) {
+        try {
+          const prof = await api.getMobileProfile(liveBeforeProfile.username);
+          if (prof.success && sid === sessionIdRef.current && userRef.current) {
+            const merged = mergeLiveProfileOntoUser(
+              userRef.current,
+              prof.profile ?? null,
+              prof.profilePhotoUrl,
+            );
+            await prefs.setCurrentUser(merged);
+            applyUser(merged);
+          }
+        } catch {
+          /* online-only enrichment; offline catch below unchanged */
+        }
+      }
       if (remote.user) {
         if (remote.user.status === 'disabled' || remote.user.forceLoggedOut) {
           applyUser(null);
           await prefs.logoutClear();
           toast('உங்கள் கணக்கு நிர்வாகியால் முடக்கப்பட்டு வெளியேற்றப்பட்டுள்ளது.');
         } else {
-          const photoFile = profilePhotoFile();
+          const photoFile = profilePhotoFile(live);
           let persistent: string | null = null;
           try {
             const FileSystem = await import('expo-file-system/legacy');
@@ -397,6 +419,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!ready || !user?.username) return;
     void refreshPortal();
   }, [ready, user?.username, refreshPortal]);
+
+  const lastForegroundRefresh = useRef(0);
+  useEffect(() => {
+    if (!user?.username) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      const now = Date.now();
+      if (now - lastForegroundRefresh.current < PORTAL_FOREGROUND_REFRESH_MS) return;
+      lastForegroundRefresh.current = now;
+      void refreshPortal();
+    });
+    return () => sub.remove();
+  }, [user?.username, refreshPortal]);
 
   useEffect(() => {
     if (!user) return;
@@ -512,9 +547,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (res.userScope) {
           await prefs.setUserScope(res.userScope);
           await prefs.setScopeVersionInt(res.scopeVersion || 1);
-          const immediate = await withLiveSettings(hydratePortalFromScope(res.userScope));
-          await prefs.setPortal(immediate);
-          setPortal(immediate);
+          const masters = mergeScopeMastersIntoPortal(emptyPortal(), res.userScope);
+          setPortal((prev) => mergeScopeMastersIntoPortal(prev, res.userScope));
+          const cached = (await prefs.getPortal()) || emptyPortal();
+          await prefs.setPortal(mergeScopeMastersIntoPortal(cached, res.userScope));
+          if (!masters.fields?.length && !masters.inspectionFields?.length) {
+            /* refreshPortal will load full scope */
+          }
         }
         return res;
       }
@@ -524,7 +563,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const onLoginSuccess = useCallback(async (u: AppUser) => {
-    const photo = u.profilePhotoUrl || u.avatarUrl || '';
+    let photo = (await fetchLiveProfilePhotoUrl(u)) || u.profilePhotoUrl || u.avatarUrl || '';
     const canonical = photo.includes('amazonaws.com') && photo.includes('?') ? photo.split('?')[0] : photo;
     const next = canonical ? { ...u, profilePhotoUrl: canonical, avatarUrl: canonical } : u;
     applyUser(next);
@@ -535,25 +574,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await prefs.setLoginSessionPeriod(currentLoginSessionPeriod());
     await prefs.setLastInteraction(Date.now());
     lastInteract.current = Date.now();
-    try {
-      const cachedScope = await prefs.getUserScope();
-      const versionResp = await api.checkScopeVersion(await prefs.getScopeVersionInt());
-      const needScope =
-        !cachedScope ||
-        (versionResp.success && (versionResp.scopeVersion || 0) > (await prefs.getScopeVersionInt()));
-      if (needScope) {
-        const scopeResp = await api.getUserScope(u.username);
-        if (scopeResp.success && scopeResp.scope) {
-          await prefs.setUserScope(scopeResp.scope);
-          await prefs.setScopeVersionInt(scopeResp.scopeVersion || 1);
-          const st = await withLiveSettings(hydratePortalFromScope(scopeResp.scope));
-          await prefs.setPortal(st);
-          setPortal(st);
-        }
-      }
-    } catch {
-      /* */
-    }
   }, [applyUser]);
 
   const logout = useCallback(async () => {

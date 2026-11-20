@@ -3,6 +3,7 @@ import { findUserForLogin } from '@/lib/loginUserLookup';
 import { getDb } from '@/lib/repositories/mastersRepository';
 import { resolveInspectionScopeMasters } from '@/lib/inspectionScopeMasters';
 import { isLiveDataOnly as liveDataOnlyEnv } from '@/lib/productionFlags';
+import { getCollectionData } from '@/lib/storage';
 
 const PROJ = { projection: { _id: 0, password: 0, passwordHash: 0 }, maxTimeMS: 8000 };
 
@@ -43,11 +44,11 @@ export async function buildLiveUserScope(userIdOrUsername: string, maxTimeMS = 1
   const scopeGeo = await resolveInspectionScopeMasters(db, foundUser);
 
   const [subjects, categories, fields, inspectionRoles, inspectionDesignations] = await Promise.all([
-    db.collection('inspectionSubjects').find({}, PROJ).limit(100).toArray(),
-    db.collection('inspectionCategories').find({}, PROJ).limit(200).toArray(),
-    db.collection('inspectionFields').find({}, PROJ).limit(200).toArray(),
-    db.collection('inspectionRoles').find({}, PROJ).limit(80).toArray(),
-    db.collection('inspectionDesignations').find({}, PROJ).limit(200).toArray(),
+    getCollectionData('inspectionSubjects'),
+    getCollectionData('inspectionCategories'),
+    getCollectionData('inspectionFields'),
+    getCollectionData('inspectionRoles'),
+    getCollectionData('inspectionDesignations'),
   ]);
 
   const meta = getScopeVersionMeta();

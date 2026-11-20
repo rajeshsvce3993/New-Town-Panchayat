@@ -84,6 +84,7 @@ type SelectTriggerProps = {
   primary: string;
   onPress: () => void;
   trailingIcon?: keyof typeof Ionicons.glyphMap;
+  locked?: boolean;
 };
 
 export function FormSelectTrigger({
@@ -93,6 +94,7 @@ export function FormSelectTrigger({
   primary,
   onPress,
   trailingIcon = 'chevron-down',
+  locked = false,
 }: SelectTriggerProps) {
   const hasValue = !!display;
   const themeBorder = formSelectBorder(primary);
@@ -101,18 +103,19 @@ export function FormSelectTrigger({
     <View style={styles.block}>
       <FormFieldLabel label={label} />
       <Pressable
-        onPress={onPress}
+        onPress={locked ? undefined : onPress}
+        disabled={locked}
         style={({ pressed }) => [
           styles.selectTrigger,
-          { backgroundColor: '#FFFFFF', borderColor: themeBorder },
-          pressed && { backgroundColor: withAlpha(primary, 0.04) },
+          { backgroundColor: locked ? '#F8FAFC' : '#FFFFFF', borderColor: themeBorder, opacity: locked ? 0.92 : 1 },
+          !locked && pressed && { backgroundColor: withAlpha(primary, 0.04) },
         ]}
       >
         <Text style={[styles.selectText, !hasValue && styles.selectPlaceholder]} numberOfLines={2}>
           {hasValue ? display : placeholder}
         </Text>
         <View style={[styles.selectIconWrap, { backgroundColor: themeSoft }]}>
-          <Ionicons name={trailingIcon} size={17} color={primary} />
+          <Ionicons name={locked ? 'lock-closed' : trailingIcon} size={17} color={primary} />
         </View>
       </Pressable>
     </View>

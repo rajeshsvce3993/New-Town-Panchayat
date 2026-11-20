@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { DEFAULT_SERVER_URL, IS_PROD_MOBILE, isNonProductionServerUrl } from '../constants/config';
 import type { AppUser, InspectionWork, NotificationItem, PortalState, QueuedWorkEntry, UserScopeData } from '../types/models';
 import { effectivePhotoUrl } from '../types/models';
+import { portalHasInspectionScope } from '../utils/livePortal';
 import {
   importLegacyLists,
   listOfflineWorks,
@@ -57,8 +58,12 @@ async function setStr(key: string, value: string | null) {
   else await AsyncStorage.setItem(key, value);
 }
 
-export function profilePhotoFile(): string {
-  return `${FileSystem.documentDirectory}user_profile_photo.jpg`;
+export function profilePhotoFile(user?: { id?: string; username?: string } | null): string {
+  const key = String(user?.id || user?.username || 'legacy')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '_');
+  return `${FileSystem.documentDirectory}profile_${key || 'legacy'}.jpg`;
 }
 
 export const prefs = {
@@ -314,17 +319,16 @@ export const prefs = {
   async setLocalPhotoPath(v: string | null) {
     await setStr(K.localPhoto, v);
   },
-  async hasDownloadedScope(user: AppUser | null, scope: UserScopeData | null, portal: PortalState | null): Promise<boolean> {
+  async hasDownloadedScope(
+    user: AppUser | null,
+    _scope: UserScopeData | null,
+    portal: PortalState | null,
+  ): Promise<boolean> {
     if (user) {
       const role = user.role || '';
       if (/admin|super|director/i.test(role)) return true;
-      if ((user.assignedWards?.length || 0) > 0 || (user.selectedWards?.length || 0) > 0 || (user.subjectIds?.length || 0) > 0 || (user.assignedSubjects?.length || 0) > 0) {
-        return true;
-      }
     }
-    if (scope && ((scope.wardsAndStreets?.length || 0) > 0 || (scope.assignedWards?.length || 0) > 0 || (scope.subjects?.length || 0) > 0))
-      return true;
-    return !!(portal && ((portal.wardsAndStreets?.length || 0) > 0 || (portal.inspectionSubjects?.length || portal.subjects?.length || 0) > 0));
+    return portalHasInspectionScope(portal);
   },
   async updateUserPhoto(photoUrl: string, serverUrl: string) {
     let clean = photoUrl;
@@ -354,6 +358,9 @@ export const prefs = {
     await this.setLoginDate(null);
     await this.setLoginSessionPeriod(null);
     await this.setLastInteraction(0);
+    await this.setPortal(null);
+    await this.setUserScope(null);
+    await this.setScopeVersionInt(0);
   },
 };
 

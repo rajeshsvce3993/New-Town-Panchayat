@@ -197,8 +197,8 @@ async function downloadLocationMap(latitude: number, longitude: number, mapsKey?
   return null;
 }
 
-async function downloadOfficerPhoto(raw?: string | null): Promise<string | null> {
-  const local = profilePhotoFile();
+async function downloadOfficerPhoto(raw?: string | null, userKey?: { id?: string; username?: string }): Promise<string | null> {
+  const local = profilePhotoFile(userKey);
   if (await cachedFileIsImage(local)) return mapFileUri(local);
   const src = String(raw || '').trim();
   if (!src) return null;
@@ -209,7 +209,11 @@ async function downloadOfficerPhoto(raw?: string | null): Promise<string | null>
   }
   const remote = resolveProfilePhotoUrl(src);
   if (!remote) return null;
-  const dest = `${FileSystem.cacheDirectory}officer_profile.jpg`;
+  const key = String(userKey?.id || userKey?.username || 'officer')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '_');
+  const dest = `${FileSystem.cacheDirectory}officer_profile_${key || 'officer'}.jpg`;
   if (await cachedFileIsImage(dest)) return mapFileUri(dest);
   try {
     await FileSystem.deleteAsync(dest, { idempotent: true });
@@ -1965,7 +1969,7 @@ export function WorkDetailModal({
   useEffect(() => {
     let live = true;
     setExportOfficerUri(null);
-    void downloadOfficerPhoto(effectivePhotoUrl(user)).then((uri) => {
+    void downloadOfficerPhoto(effectivePhotoUrl(user), user || undefined).then((uri) => {
       if (live) setExportOfficerUri(uri);
     });
     return () => {
@@ -2068,7 +2072,7 @@ export function WorkDetailModal({
       }
       let officerUri = exportOfficerUri;
       if (!officerUri) {
-        officerUri = await downloadOfficerPhoto(effectivePhotoUrl(user));
+        officerUri = await downloadOfficerPhoto(effectivePhotoUrl(user), user || undefined);
         setExportOfficerUri(officerUri);
       }
       const laidOut = new Promise<void>((resolve) => {

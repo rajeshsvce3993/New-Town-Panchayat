@@ -27,6 +27,7 @@ import { createNotificationChannel } from '../../src/services/notifications';
 import { pickAndUploadProfile } from '../../src/services/profilePhoto';
 import { sweepLeftoverOfflineCache } from '../../src/storage/offlineQueueStore';
 import { prefs, profilePhotoFile } from '../../src/storage/preferences';
+import { syncProfilePhotoFromServer } from '../../src/services/userProfilePhoto';
 import { palettes } from '../../src/theme/palettes';
 import {
   effectivePhotoUrl,
@@ -71,15 +72,26 @@ export default function SettingsScreen() {
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       setTone((await prefs.getTone()) || 'default');
+      if (!user) {
+        setPhoto(null);
+        return;
+      }
+      const localPath = await syncProfilePhotoFromServer(user);
+      if (cancelled) return;
+      if (localPath) {
+        setPhoto(localPath);
+        return;
+      }
       const remote = effectivePhotoUrl(user);
       if (isRemotePhotoUrl(remote)) {
         setPhoto(remote);
         return;
       }
       try {
-        const local = profilePhotoFile();
+        const local = profilePhotoFile(user);
         const info = await FileSystem.getInfoAsync(local);
         if (info.exists) {
           setPhoto(local);
@@ -90,7 +102,10 @@ export default function SettingsScreen() {
       }
       setPhoto(remote);
     })();
-  }, [user]);
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.username, user?.profilePhotoUrl, user?.avatarUrl]);
 
   const tones = [
     ['default', isTamil ? 'இயல்புநிலை ஒலி' : 'Default Sound', isTamil ? 'நிலையான கணினி அறிவிப்பு ஒலி' : 'Standard system notification alert'],
@@ -114,7 +129,7 @@ export default function SettingsScreen() {
     setPhotoDlg(false);
     setUploading(true);
     setPhotoMsg(isTamil ? 'புகைப்படம் சுருக்கப்பட்டு S3-ல் பதிவேற்றப்படுகிறது...' : 'Compressing and uploading profile photo to AWS S3...');
-    const r = await pickAndUploadProfile(src, user?.id || 'officer', user?.username || 'officer');
+    const r = await pickAndUploadProfile(src, user?.id || 'officer', user?.username || 'officer', user);
     setUploading(false);
     if (r) {
       setPhoto(r.remote);
@@ -182,7 +197,7 @@ export default function SettingsScreen() {
                 source={{ uri: photoUri }}
                 style={[styles.av, { borderColor: palette.primary }]}
                 onError={() => {
-                  if (isRemotePhotoUrl(photo)) setPhoto(profilePhotoFile());
+                  if (isRemotePhotoUrl(photo) && user) void syncProfilePhotoFromServer(user).then((p) => p && setPhoto(p));
                   else setPhoto(null);
                 }}
               />

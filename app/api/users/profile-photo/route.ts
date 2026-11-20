@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getS3Client, getMongoClient, getActiveMongoDb, readLocalDb, writeLocalDb, getPresignedS3Url } from '@/lib/storage';
+import { isLiveDataOnly } from '@/lib/productionFlags';
 import path from 'path';
 import fs from 'fs';
 
@@ -134,22 +135,27 @@ export async function POST(req: NextRequest) {
           },
         };
 
-        await Promise.all([
+        const writes = [
           db.collection('users').updateMany(filter, updateDoc).catch(() => {}),
           db.collection('inspectionUsers').updateMany(filter, updateDoc).catch(() => {}),
           db.collection('employees').updateMany(filter, updateDoc).catch(() => {}),
-          db.collection('user_scope_cache').updateMany(
-            { $or: [{ userId: cleanUserId }, { username }] },
-            {
-              $set: {
-                'user.profilePhotoUrl': publicPhotoUrl,
-                'user.avatarUrl': publicPhotoUrl,
-                'user.profileImage': publicPhotoUrl,
-                updatedAt: new Date().toISOString(),
+        ];
+        if (!isLiveDataOnly()) {
+          writes.push(
+            db.collection('user_scope_cache').updateMany(
+              { $or: [{ userId: cleanUserId }, { username }] },
+              {
+                $set: {
+                  'user.profilePhotoUrl': publicPhotoUrl,
+                  'user.avatarUrl': publicPhotoUrl,
+                  'user.profileImage': publicPhotoUrl,
+                  updatedAt: new Date().toISOString(),
+                },
               },
-            }
-          ).catch(() => {}),
-        ]);
+            ).catch(() => {}),
+          );
+        }
+        await Promise.all(writes);
       }
     } catch (dbErr) {
       console.error('[ProfilePhoto] Error updating MongoDB user records:', dbErr);

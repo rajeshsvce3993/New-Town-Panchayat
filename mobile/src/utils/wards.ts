@@ -16,12 +16,12 @@ export function matchesTp(
   userTpId: string,
   townPanchayats: TownPanchayatModel[]
 ): boolean {
-  const wsTp = ws.tpId?.trim() || '';
+  const wsTp = ws.tpId?.trim() || ws.townPanchayatId?.trim() || '';
   const wsTpName = ws.tpNameEn?.trim() || '';
   const uTpId = userTpId.trim();
   const uTpName = user?.townPanchayat?.trim() || '';
-  if (!wsTp && !wsTpName) return true;
-  if (!uTpId && !uTpName) return true;
+  if (!uTpId) return false;
+  if (!wsTp && !wsTpName) return false;
   if (wsTp && (wsTp.toLowerCase() === uTpId.toLowerCase() || wsTp.toLowerCase() === uTpName.toLowerCase())) return true;
   if (wsTpName && (wsTpName.toLowerCase() === uTpName.toLowerCase() || wsTpName.toLowerCase() === uTpId.toLowerCase()))
     return true;

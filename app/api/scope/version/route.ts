@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getScopeVersionMeta, initializeUserScopeCacheOnce } from '@/lib/userScopeCache';
 import { isMobileClientRequest } from '@/lib/mobileAppAuth';
 import { useLiveInspectionScope } from '@/lib/services/liveUserScope';
+import { isLiveDataOnly } from '@/lib/productionFlags';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,7 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   try {
     const mobileClient = isMobileClientRequest(req);
-    if (!useLiveInspectionScope(mobileClient)) {
+    if (!useLiveInspectionScope(mobileClient) && !isLiveDataOnly()) {
       initializeUserScopeCacheOnce().catch(() => {});
     }
 
@@ -31,8 +32,8 @@ export async function GET(req: NextRequest) {
     const clientVersion = parseInt(clientVersionStr, 10) || 0;
 
     const meta = getScopeVersionMeta();
-    const liveScope = useLiveInspectionScope(mobileClient);
-    const hasUpdate = clientVersion < meta.version;
+    const liveScope = useLiveInspectionScope(mobileClient) || isLiveDataOnly();
+    const hasUpdate = liveScope ? false : clientVersion < meta.version;
 
     return NextResponse.json(
       {

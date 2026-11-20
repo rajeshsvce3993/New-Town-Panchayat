@@ -4,7 +4,12 @@ import { api } from '../api/client';
 import { prefs, profilePhotoFile } from '../storage/preferences';
 import { compressImageLocally, savePersistentBytes } from '../utils/imageCompression';
 
-export async function pickAndUploadProfile(source: 'camera' | 'gallery', userId: string, username: string) {
+export async function pickAndUploadProfile(
+  source: 'camera' | 'gallery',
+  userId: string,
+  username: string,
+  user?: { id?: string; username?: string },
+) {
   const perm =
     source === 'camera'
       ? await ImagePicker.requestCameraPermissionsAsync()
@@ -16,7 +21,7 @@ export async function pickAndUploadProfile(source: 'camera' | 'gallery', userId:
       : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.85 });
   if (res.canceled || !res.assets[0]) return null;
   const uri = res.assets[0].uri;
-  const dest = profilePhotoFile();
+  const dest = profilePhotoFile(user || { id: userId, username });
   await savePersistentBytes(uri, dest);
   const compressed = await compressImageLocally(uri, `comp_prof_${Date.now()}.jpg`);
   const uploadUri = compressed || dest;

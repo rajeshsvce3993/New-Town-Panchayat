@@ -1,6 +1,11 @@
 import type { AppUser, InspectionWork, PortalState } from '../types/models';
 
-export function nextWorkId(user: AppUser | null | undefined, portal: PortalState, selectedWard: string): {
+export function nextWorkId(
+  user: AppUser | null | undefined,
+  portal: PortalState,
+  selectedWard: string,
+  geo?: { districtId?: string; tpId?: string },
+): {
   workId: string;
   distCode: string;
   townCode: string;
@@ -9,33 +14,35 @@ export function nextWorkId(user: AppUser | null | undefined, portal: PortalState
   const tps = portal.townPanchayats || [];
   const works = portal.inspectionWorks?.length ? portal.inspectionWorks : portal.works || [];
 
+  const distRow =
+    (geo?.districtId && districts.find((d) => d.id === geo.districtId)) ||
+    districts.find(
+      (d) =>
+        (user?.districtId && d.id === user.districtId) ||
+        (user?.district &&
+          (d.nameEn.toLowerCase() === user.district.toLowerCase() ||
+            d.nameTa.toLowerCase() === user.district.toLowerCase())),
+    );
+
+  const tpRow =
+    (geo?.tpId && tps.find((t) => t.id === geo.tpId)) ||
+    tps.find(
+      (t) =>
+        (user?.tpId && t.id === user.tpId) ||
+        (user?.townPanchayat &&
+          (t.nameEn.toLowerCase() === user.townPanchayat.toLowerCase() ||
+            t.nameTa.toLowerCase() === user.townPanchayat.toLowerCase())),
+    );
+
   const distCode =
     user?.districtCode?.replace(/\D/g, '').padStart(2, '0') ||
-    districts
-      .find(
-        (d) =>
-          (user?.districtId && d.id === user.districtId) ||
-          (user?.district &&
-            (d.nameEn.toLowerCase() === user.district.toLowerCase() ||
-              d.nameTa.toLowerCase() === user.district.toLowerCase()))
-      )
-      ?.code?.replace(/\D/g, '')
-      .padStart(2, '0') ||
-    '03';
+    distRow?.code?.replace(/\D/g, '').padStart(2, '0') ||
+    '00';
 
   const townCode =
     user?.tpCode?.replace(/\D/g, '').padStart(2, '0') ||
-    tps
-      .find(
-        (t) =>
-          (user?.tpId && t.id === user.tpId) ||
-          (user?.townPanchayat &&
-            (t.nameEn.toLowerCase() === user.townPanchayat.toLowerCase() ||
-              t.nameTa.toLowerCase() === user.townPanchayat.toLowerCase()))
-      )
-      ?.code?.replace(/\D/g, '')
-      .padStart(2, '0') ||
-    '01';
+    tpRow?.code?.replace(/\D/g, '').padStart(2, '0') ||
+    '00';
 
   const wardDigits = selectedWard.replace(/\D/g, '') || '1';
   const ward2Digit = wardDigits.padStart(2, '0');

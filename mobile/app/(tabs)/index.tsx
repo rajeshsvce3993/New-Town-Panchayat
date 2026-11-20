@@ -20,6 +20,7 @@ import { HeaderActions } from '../../src/components/AppHeader';
 import { HeaderBrand } from '../../src/components/HeaderBrand';
 import { useApp } from '../../src/context/AppContext';
 import { prefs, profilePhotoFile } from '../../src/storage/preferences';
+import { syncProfilePhotoFromServer } from '../../src/services/userProfilePhoto';
 import {
   QUEUE_STATUS,
   effectivePhotoUrl,
@@ -127,15 +128,26 @@ export default function DashboardScreen() {
   );
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      if (!user) {
+        setPhoto(null);
+        return;
+      }
+      const localPath = await syncProfilePhotoFromServer(user);
+      if (cancelled) return;
+      if (localPath) {
+        setPhoto(localPath);
+        return;
+      }
       const remote = effectivePhotoUrl(user);
       if (isRemotePhotoUrl(remote)) {
-        setPhoto(remote);
+        setPhoto(resolveProfilePhotoUrl(remote) || remote);
         return;
       }
       try {
         const FileSystem = await import('expo-file-system/legacy');
-        const local = profilePhotoFile();
+        const local = profilePhotoFile(user);
         const info = await FileSystem.getInfoAsync(local);
         if (info.exists) {
           setPhoto(local);
@@ -146,7 +158,10 @@ export default function DashboardScreen() {
       }
       setPhoto(remote);
     })();
-  }, [user]);
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.username, user?.profilePhotoUrl, user?.avatarUrl]);
 
   const userWorks = useMemo(() => filterUserWorks(works, user, 'dashboard'), [works, user]);
   const filtered = useMemo(() => sortRecentFirst(filterByDateRange(userWorks, fromDate, toDate)), [userWorks, fromDate, toDate]);
@@ -314,7 +329,7 @@ export default function DashboardScreen() {
                   source={{ uri: photoUri }}
                   style={styles.avatarImg}
                   onError={() => {
-                    if (isRemotePhotoUrl(photo)) setPhoto(profilePhotoFile());
+                    if (isRemotePhotoUrl(photo) && user) void syncProfilePhotoFromServer(user).then((p) => p && setPhoto(p));
                     else setPhoto(null);
                   }}
                 />

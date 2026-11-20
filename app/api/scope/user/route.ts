@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserScopeDetailsForLogin, getUserScopeFromCacheOnly } from '@/lib/userScopeCache';
 import { isMobileClientRequest } from '@/lib/mobileAppAuth';
 import { buildLiveUserScope, useLiveInspectionScope } from '@/lib/services/liveUserScope';
+import { isLiveDataOnly } from '@/lib/productionFlags';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
     const mobileClient = isMobileClientRequest(req);
     let scope = null as Awaited<ReturnType<typeof buildLiveUserScope>>;
 
-    const liveScope = useLiveInspectionScope(mobileClient);
+    const liveScope = useLiveInspectionScope(mobileClient) || isLiveDataOnly();
     if (liveScope) {
       scope = await buildLiveUserScope(identifier, mobileClient ? 10_000 : 12_000);
     } else {

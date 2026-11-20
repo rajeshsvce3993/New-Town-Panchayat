@@ -40,12 +40,17 @@ export async function GET(req: NextRequest) {
     }
 
     const profile = await resolveInspectorProfileFromDb(db, userDoc);
+    const profilePhotoUrl = String(
+      userDoc.profilePhotoUrl || userDoc.avatarUrl || userDoc.profileImage || '',
+    ).trim();
 
     return NextResponse.json(
       {
         success: true,
         source: 'mongo-live',
         profile,
+        profilePhotoUrl: profilePhotoUrl || null,
+        userId: String(userDoc.id || userDoc._id || ''),
       },
       { headers: { ...CORS_HEADERS, 'Cache-Control': 'private, no-store, must-revalidate' } },
     );

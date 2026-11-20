@@ -762,7 +762,7 @@ export async function POST(req: NextRequest) {
       data.submittedByUserName || data.username
     );
 
-    // Validate user scope and fields from user_scope_cache (server validation - no general fallback)
+    // Validate user scope and fields from live Mongo scope (or legacy cache when LIVE_DATA_ONLY=0)
     const userScope = await getUserScopeDetails(username);
     const isAdmin = ['admin', 'dtpadmin', 'director'].includes(username.toLowerCase());
 
