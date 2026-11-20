@@ -367,6 +367,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           await prefs.logoutClear();
           toast('உங்கள் கணக்கு நிர்வாகியால் முடக்கப்பட்டு வெளியேற்றப்பட்டுள்ளது.');
         } else {
+          const live = userRef.current;
+          if (!live || sid !== sessionIdRef.current) return;
           const photoFile = profilePhotoFile(live);
           let persistent: string | null = null;
           try {
@@ -376,8 +378,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           } catch {
             /* */
           }
-          const live = userRef.current;
-          if (!live || sid !== sessionIdRef.current) return;
           const remotePhoto = remote.user.profilePhotoUrl || remote.user.avatarUrl || '';
           const livePhoto = live.profilePhotoUrl || live.avatarUrl || '';
           const chosen =
