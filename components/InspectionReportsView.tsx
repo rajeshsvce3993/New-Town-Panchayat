@@ -1367,6 +1367,7 @@ export default function InspectionReportsView({
   const [geoZones, setGeoZones] = useState<any[]>([]);
   const [geoDistricts, setGeoDistricts] = useState<any[]>([]);
   const [geoTownPanchayats, setGeoTownPanchayats] = useState<any[]>([]);
+  const [geoWardsAndStreets, setGeoWardsAndStreets] = useState<any[]>([]);
   const [selectedDistrictId, setSelectedDistrictId] = useState<string>('all');
   const [selectedStreetName, setSelectedStreetName] = useState<string>('all');
 
@@ -2575,24 +2576,56 @@ export default function InspectionReportsView({
   }, []);
 
   useEffect(() => {
-    if (!selectedZoneId || selectedZoneId === 'all') {
-      setGeoDistricts([]);
-      return;
-    }
-    void fetchGeoMasters({ level: 'districts', zoneId: selectedZoneId }).then((res) => {
-      if (res.success) setGeoDistricts(res.items || []);
+    let cancelled = false;
+    const zoneId = selectedZoneId && selectedZoneId !== 'all' ? selectedZoneId : undefined;
+    void fetchGeoMasters({ level: 'districts', zoneId }).then((res) => {
+      if (!cancelled) setGeoDistricts(res.success ? res.items || [] : []);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedZoneId]);
 
   useEffect(() => {
-    if (!selectedDistrictId || selectedDistrictId === 'all') {
-      setGeoTownPanchayats([]);
+    let cancelled = false;
+    const districtId = selectedDistrictId && selectedDistrictId !== 'all' ? selectedDistrictId : '';
+    const zoneId = selectedZoneId && selectedZoneId !== 'all' ? selectedZoneId : '';
+    if (districtId) {
+      void fetchGeoMasters({ level: 'townPanchayats', districtId, limit: 500 }).then((res) => {
+        if (!cancelled) setGeoTownPanchayats(res.success ? res.items || [] : []);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (zoneId) {
+      void fetchGeoMasters({ level: 'townPanchayats', zoneId, limit: 500 }).then((res) => {
+        if (!cancelled) setGeoTownPanchayats(res.success ? res.items || [] : []);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    setGeoTownPanchayats([]);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDistrictId, selectedZoneId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tpId = userTpId || (selectedTpId && selectedTpId !== 'all' ? selectedTpId : '');
+    if (!tpId) {
+      setGeoWardsAndStreets([]);
       return;
     }
-    void fetchGeoMasters({ level: 'townPanchayats', districtId: selectedDistrictId }).then((res) => {
-      if (res.success) setGeoTownPanchayats(res.items || []);
+    void fetchGeoMasters({ level: 'wards', tpId, limit: 2000 }).then((res) => {
+      if (!cancelled) setGeoWardsAndStreets(res.success ? res.items || [] : []);
     });
-  }, [selectedDistrictId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTpId, userTpId]);
 
   const filteredZones = useMemo(() => {
     const list = geoZones.length ? geoZones : state.zones || [];
@@ -2608,14 +2641,16 @@ export default function InspectionReportsView({
 
   // Districts available from state, filtered by selected zone if applicable and restricted by scope
   const availableDistricts = useMemo(() => {
-    let list = geoDistricts.length ? geoDistricts : state.districts || [];
     if (userDistrictId) {
-      const matched = list.filter(
+      const pool = geoDistricts.length ? geoDistricts : state.districts || [];
+      const matched = pool.filter(
         (d: any) => String(d.id).toLowerCase() === String(userDistrictId).toLowerCase()
       );
       if (matched.length > 0) return matched;
       return [{ id: userDistrictId, nameEn: userDistrictId, nameTa: userDistrictId }];
     }
+    if (geoDistricts.length) return geoDistricts;
+    let list = state.districts || [];
     const effZoneId = userZoneId || selectedZoneId;
     if (effZoneId && effZoneId !== 'all') {
       const sZone = String(effZoneId).toLowerCase();
@@ -2628,9 +2663,9 @@ export default function InspectionReportsView({
 
   // Town Panchayats available from state, filtered by selected district and zone and restricted by scope
   const availableTownPanchayats = useMemo(() => {
-    let list = geoTownPanchayats.length ? geoTownPanchayats : state.townPanchayats || [];
     if (userTpId) {
-      const matched = list.filter((tp: any) => 
+      const pool = geoTownPanchayats.length ? geoTownPanchayats : state.townPanchayats || [];
+      const matched = pool.filter((tp: any) => 
         String(tp.id).toLowerCase() === String(userTpId).toLowerCase() ||
         String(tp.nameEn || '').toLowerCase() === String(userTpId).toLowerCase()
       );
@@ -2646,11 +2681,19 @@ export default function InspectionReportsView({
 
       return [{ id: userTpId, nameEn: fallbackNameEn, nameTa: fallbackNameTa }];
     }
+    if (geoTownPanchayats.length) return geoTownPanchayats;
+    let list = state.townPanchayats || [];
     if (selectedDistrictId !== 'all') {
       const sDist = String(selectedDistrictId).toLowerCase();
-      const dist = (state.districts || []).find((d: any) => String(d.id || '').toLowerCase() === sDist);
-      const distIdKey = String(dist?.id || selectedDistrictId).toLowerCase();
-      list = list.filter((tp: any) => String(tp.districtId || '').toLowerCase() === distIdKey);
+      const dist = [...(geoDistricts || []), ...(state.districts || [])].find(
+        (d: any) => String(d.id || '').toLowerCase() === sDist,
+      );
+      const keys = new Set(
+        [selectedDistrictId, dist?.id, dist?.code, dist?.nameEn, dist?.nameTa]
+          .map((v) => String(v || '').trim().toLowerCase())
+          .filter(Boolean),
+      );
+      list = list.filter((tp: any) => keys.has(String(tp.districtId || tp.district_id || '').toLowerCase()));
     } else {
       const effZoneId = userZoneId || selectedZoneId;
       if (effZoneId && effZoneId !== 'all') {
@@ -2660,7 +2703,7 @@ export default function InspectionReportsView({
         list = list.filter((tp: any) => {
           const tpZone = String(tp.zoneId || '').toLowerCase();
           if (tpZone && tpZone === zoneIdKey) return true;
-          const dist = (state.districts || []).find(
+          const dist = [...(geoDistricts || []), ...(state.districts || [])].find(
             (d: any) => String(d.id || '').toLowerCase() === String(tp.districtId || '').toLowerCase()
           );
           return String(dist?.zoneId || '').toLowerCase() === zoneIdKey;
@@ -2669,6 +2712,8 @@ export default function InspectionReportsView({
     }
     return list;
   }, [
+    geoTownPanchayats,
+    geoDistricts,
     state.townPanchayats,
     state.districts,
     state.zones,
@@ -2680,61 +2725,60 @@ export default function InspectionReportsView({
   ]);
 
   // Wards available from state, filtered strictly by selected town panchayat if applicable
+  const streetMasterRows = useMemo(() => {
+    if (geoWardsAndStreets.length) return geoWardsAndStreets;
+    return state.wardsAndStreets || [];
+  }, [geoWardsAndStreets, state.wardsAndStreets]);
+
   const availableWards = useMemo(() => {
     const set = new Set<string>();
     const effectiveTpId = userTpId || (selectedTpId !== 'all' ? selectedTpId : '');
-    if (effectiveTpId) {
-      const activeTp = (state.townPanchayats || []).find((t: any) => 
-        String(t.id).toLowerCase() === String(effectiveTpId).toLowerCase() || 
-        String(t.nameEn || '').toLowerCase() === String(effectiveTpId).toLowerCase() ||
-        String(t.nameTa || '').toLowerCase() === String(effectiveTpId).toLowerCase()
+    if (!effectiveTpId) return [];
+
+    const tpPool = [...(geoTownPanchayats || []), ...(state.townPanchayats || [])];
+    const activeTp = tpPool.find((t: any) => 
+      String(t.id).toLowerCase() === String(effectiveTpId).toLowerCase() || 
+      String(t.nameEn || '').toLowerCase() === String(effectiveTpId).toLowerCase() ||
+      String(t.nameTa || '').toLowerCase() === String(effectiveTpId).toLowerCase()
+    );
+    const activeTpIdLower = String(activeTp?.id || effectiveTpId).toLowerCase().trim();
+    const activeTpNameEnLower = String(activeTp?.nameEn || '').toLowerCase().trim();
+    const activeTpNameTaLower = String(activeTp?.nameTa || '').toLowerCase().trim();
+    const geoScoped = geoWardsAndStreets.length > 0;
+
+    streetMasterRows.forEach((w: any) => {
+      const wsTp = String(w.tpId || w.townPanchayatId || '').toLowerCase().trim();
+      const wsTpNameEn = String(w.tpNameEn || w.tpName || '').toLowerCase().trim();
+      const wsTpNameTa = String(w.tpNameTa || '').toLowerCase().trim();
+      const matchTp = geoScoped || (
+        (wsTp && wsTp === activeTpIdLower) ||
+        (activeTpNameEnLower && wsTpNameEn && wsTpNameEn === activeTpNameEnLower) ||
+        (activeTpNameTaLower && wsTpNameTa && wsTpNameTa === activeTpNameTaLower)
       );
-      const activeTpIdLower = String(activeTp?.id || effectiveTpId).toLowerCase().trim();
-      const activeTpNameEnLower = String(activeTp?.nameEn || '').toLowerCase().trim();
-      const activeTpNameTaLower = String(activeTp?.nameTa || '').toLowerCase().trim();
-
-      (state.wardsAndStreets || []).forEach((w: any) => {
-        const wsTp = String(w.tpId || w.townPanchayatId || '').toLowerCase().trim();
-        const wsTpNameEn = String(w.tpNameEn || w.tpName || '').toLowerCase().trim();
-        const wsTpNameTa = String(w.tpNameTa || '').toLowerCase().trim();
-        const matchTp = (
-          (wsTp && wsTp === activeTpIdLower) ||
-          (activeTpNameEnLower && wsTpNameEn && wsTpNameEn === activeTpNameEnLower) ||
-          (activeTpNameTaLower && wsTpNameTa && wsTpNameTa === activeTpNameTaLower)
-        );
-        if (matchTp) {
-          const wNo = w.wardNumber || w.wardNo;
-          if (wNo) {
-            set.add(String(wNo).trim().replace(/^0+/, '') || '0');
-          }
+      if (matchTp) {
+        const wNo = w.wardNumber || w.wardNo;
+        if (wNo) {
+          set.add(String(wNo).trim().replace(/^0+/, '') || '0');
         }
-      });
-
-      // Also extract wards from inspection works of this specific Town Panchayat
-      (rawWorks || []).forEach((w: any) => {
-        const wTp = String(w.tpId || w.tpCode || '').toLowerCase().trim();
-        const wTpName = String(w.tpNameEn || '').toLowerCase().trim();
-        const matchTp =
-          (wTp && wTp === activeTpIdLower) ||
-          (activeTpNameEnLower && wTpName && wTpName === activeTpNameEnLower);
-        if (matchTp) {
-          const wNo = w.wardNumber || w.wardNo;
-          if (wNo) {
-            set.add(String(wNo).trim().replace(/^0+/, '') || '0');
-          }
-        }
-      });
-    } else {
-      for (let i = 1; i <= 15; i++) set.add(String(i));
-    }
-
-    if (set.size === 0) {
-      for (let i = 1; i <= 15; i++) {
-        set.add(String(i));
       }
-    }
+    });
+
+    (rawWorks || []).forEach((w: any) => {
+      const wTp = String(w.tpId || w.tpCode || '').toLowerCase().trim();
+      const wTpName = String(w.tpNameEn || '').toLowerCase().trim();
+      const matchTp =
+        (wTp && wTp === activeTpIdLower) ||
+        (activeTpNameEnLower && wTpName && wTpName === activeTpNameEnLower);
+      if (matchTp) {
+        const wNo = w.wardNumber || w.wardNo;
+        if (wNo) {
+          set.add(String(wNo).trim().replace(/^0+/, '') || '0');
+        }
+      }
+    });
+
     return Array.from(set).sort((a, b) => Number(a) - Number(b));
-  }, [state.wardsAndStreets, state.townPanchayats, selectedTpId, userTpId, rawWorks]);
+  }, [streetMasterRows, geoWardsAndStreets, geoTownPanchayats, state.townPanchayats, selectedTpId, userTpId, rawWorks]);
 
   // Requirement 2: when selecting ward, only show street names belonging to the selected Town Panchayat
   const availableStreets = useMemo(() => {
@@ -2748,7 +2792,7 @@ export default function InspectionReportsView({
     }
 
     // 2. Resolve matching Town Panchayat entity
-    const matchedTp = (state.townPanchayats || []).find((t: any) => 
+    const matchedTp = [...(geoTownPanchayats || []), ...(state.townPanchayats || [])].find((t: any) => 
       String(t.id).toLowerCase() === String(effectiveTpId).toLowerCase() || 
       String(t.nameEn || '').toLowerCase() === String(effectiveTpId).toLowerCase() ||
       String(t.nameTa || '').toLowerCase() === String(effectiveTpId).toLowerCase()
@@ -2760,13 +2804,13 @@ export default function InspectionReportsView({
     const normSelWard = String(selectedWard || '').trim().replace(/^0+/, '');
 
     // 3. Search wardsAndStreets collection strictly for this selected Town Panchayat
-    (state.wardsAndStreets || []).forEach((ws: any) => {
+    const geoScoped = geoWardsAndStreets.length > 0;
+    streetMasterRows.forEach((ws: any) => {
       const wsTpId = String(ws.tpId || ws.townPanchayatId || '').toLowerCase().trim();
       const wsTpNameEn = String(ws.tpNameEn || ws.tpName || '').toLowerCase().trim();
       const wsTpNameTa = String(ws.tpNameTa || '').toLowerCase().trim();
 
-      // Must strictly match the selected Town Panchayat
-      const matchTp = (
+      const matchTp = geoScoped || (
         (wsTpId && wsTpId === targetTpId) ||
         (targetTpNameEn && wsTpNameEn && wsTpNameEn === targetTpNameEn) ||
         (targetTpNameTa && wsTpNameTa && wsTpNameTa === targetTpNameTa)
@@ -2806,7 +2850,7 @@ export default function InspectionReportsView({
     });
 
     return Array.from(set).sort();
-  }, [state.wardsAndStreets, state.townPanchayats, selectedTpId, userTpId, selectedWard, rawWorks]);
+  }, [streetMasterRows, geoWardsAndStreets, geoTownPanchayats, state.townPanchayats, selectedTpId, userTpId, selectedWard, rawWorks]);
 
   // Default to showing all subjects as requested by the user, instead of auto-selecting the first one.
 

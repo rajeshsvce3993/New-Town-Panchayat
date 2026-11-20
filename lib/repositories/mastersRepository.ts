@@ -115,10 +115,12 @@ export async function loadCoreMasters(db: Db) {
 }
 
 export async function loadWardsForTp(db: Db, tpId: string, opts: { page: number; limit: number }) {
-  const filter = tpId
-    ? { $or: [{ tpId }, { townPanchayatId: tpId }] }
+  const raw = String(tpId || '').trim();
+  const ids = raw ? [...new Set([raw, raw.toLowerCase(), raw.toUpperCase()])] : [];
+  const filter = ids.length
+    ? { $or: [{ tpId: { $in: ids } }, { townPanchayatId: { $in: ids } }] }
     : {};
-  const limit = Math.min(Math.max(opts.limit, 1), 500);
+  const limit = Math.min(Math.max(opts.limit, 1), 2000);
   const page = Math.max(opts.page, 1);
   const skip = (page - 1) * limit;
 
