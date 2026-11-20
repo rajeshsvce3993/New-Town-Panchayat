@@ -1,8 +1,7 @@
 /**
- * Fix street names on inspectionWorks from wardsAndStreets masters (TP + ward).
+ * Fix street + ward on inspectionWorks from wardsAndStreets masters (TP + ward + name).
  * Usage:
  *   node scripts/repair-inspection-works-street.mjs 8925809654
- *   node scripts/repair-inspection-works-street.mjs
  */
 import { MongoClient } from 'mongodb';
 
@@ -32,6 +31,10 @@ function normWard(v) {
     .replace(/^0+/, '');
 }
 
+function wardOnRow(row) {
+  return normWard(row?.wardNo ?? row?.wardNumber ?? row?.ward);
+}
+
 function isPlaceholder(name) {
   const n = String(name || '').trim().toLowerCase();
   return !n || PLACEHOLDERS.has(n);
@@ -55,10 +58,25 @@ function streetFromFields(fields) {
   return '';
 }
 
-async function resolveStreet(db, work) {
+function wardFromFields(fields) {
+  if (!fields || typeof fields !== 'object') return '';
+  for (const key of ['wardNumber', 'wardNo', 'ward', 'if_ward']) {
+    const v = fields[key];
+    if (v != null && String(v).trim()) return normWard(v);
+  }
+  return '';
+}
+
+async function resolveStreet(db, work, inspector) {
   const tpId = String(work.tpId || work.townPanchayatId || '').trim();
-  const ward = normWard(work.wardNumber || work.wardNo || work.ward);
   if (!tpId) return null;
+
+  const allRows = await db
+    .collection('wardsAndStreets')
+    .find({ $or: [{ tpId }, { townPanchayatId: tpId }] })
+    .limit(500)
+    .toArray();
+  if (!allRows.length) return null;
 
   let needle = String(work.streetName || work.street || '').trim();
   if (isPlaceholder(needle)) {
@@ -66,76 +84,93 @@ async function resolveStreet(db, work) {
     if (alt) needle = alt;
   }
 
-  const filter = {
-    $and: [
-      { $or: [{ tpId }, { townPanchayatId: tpId }] },
-      ...(ward
-        ? [{ $or: [{ wardNo: ward }, { wardNumber: ward }, { ward: ward }] }]
-        : []),
-    ],
-  };
+  const masterWards = new Set(allRows.map(wardOnRow).filter(Boolean));
+  let ward = normWard(work.wardNumber || work.wardNo || work.ward) || wardFromFields(work.fieldsData);
 
-  const rows = await db.collection('wardsAndStreets').find(filter).limit(200).toArray();
-  if (!rows.length) return null;
+  if (ward && !masterWards.has(ward) && needle && !isPlaceholder(needle)) {
+    const hit = allRows.find((r) => namesMatch(r, needle));
+    if (hit) ward = wardOnRow(hit);
+  }
 
-  let match =
-    needle && !isPlaceholder(needle) ? rows.find((r) => namesMatch(r, needle)) : undefined;
-  if (!match && rows.length === 1) match = rows[0];
+  const assigned = new Set(
+    [...(inspector?.assignedWards || []), ...(inspector?.selectedWards || [])].map(normWard).filter(Boolean),
+  );
+  if (ward && assigned.size && !assigned.has(ward)) {
+    if (needle && !isPlaceholder(needle)) {
+      const hit = allRows.find((r) => namesMatch(r, needle) && assigned.has(wardOnRow(r)));
+      if (hit) ward = wardOnRow(hit);
+    } else if (assigned.size === 1) ward = [...assigned][0];
+    else if (isPlaceholder(needle)) ward = '';
+  }
+
+  const wardRows = ward ? allRows.filter((r) => wardOnRow(r) === ward) : allRows;
+  let match = null;
+  let matchInWard = false;
+  if (needle && !isPlaceholder(needle)) {
+    match = ward ? wardRows.find((r) => namesMatch(r, needle)) : null;
+    if (match) matchInWard = true;
+    else match = allRows.find((r) => namesMatch(r, needle));
+  }
+  const wardOkForInspector = !assigned.size || !ward || assigned.has(ward);
+  if (!match && isPlaceholder(needle) && ward && wardRows.length === 1 && wardOkForInspector) {
+    match = wardRows[0];
+    matchInWard = true;
+  }
   if (!match) return null;
 
   const en = String(match.streetNameEn || match.streetName || '').trim();
   const ta = String(match.streetNameTa || '').trim();
   const display = en || ta;
+  const wardNorm =
+    matchInWard && ward && wardOnRow(match) === ward ? ward : wardOnRow(match) || ward;
   return {
     streetName: display,
     streetNameEn: en || display,
     streetNameTa: ta || en || display,
     street: display,
     streetId: match.id,
-    wardNumber: ward || normWard(match.wardNo),
-    wardNo: ward || normWard(match.wardNo),
-    ward: ward || normWard(match.wardNo),
+    wardNumber: wardNorm,
+    wardNo: wardNorm,
+    ward: wardNorm,
   };
 }
 
 const client = new MongoClient(uri);
 await client.connect();
 const db = client.db();
-const worksCol = db.collection('inspectionWorks');
 
-const filter = onlyUser
-  ? {
-      $or: [
-        { username: onlyUser },
-        { submittedByUserName: onlyUser },
-        { submittedByUserId: onlyUser },
-      ],
-    }
-  : {};
+let userFilter = {};
+if (onlyUser) {
+  const insp = await db.collection('inspectionUsers').findOne({
+    $or: [{ username: onlyUser }, { mobile: onlyUser }, { id: onlyUser }],
+  });
+  userFilter = {
+    $or: [
+      { username: onlyUser },
+      { submittedByUserName: onlyUser },
+      { submittedByUserId: onlyUser },
+      ...(insp?.id ? [{ submittedByUserId: insp.id }] : []),
+    ],
+  };
+}
 
-const cursor = worksCol.find(filter);
+const cursor = db.collection('inspectionWorks').find(userFilter);
 let scanned = 0;
 let updated = 0;
-let noMaster = 0;
 
 for await (const work of cursor) {
   scanned += 1;
-  const patch = await resolveStreet(db, work);
-  if (!patch) {
-    noMaster += 1;
-    continue;
-  }
-  const before = String(work.streetName || work.street || '');
-  if (before === patch.streetName) continue;
-  await worksCol.updateOne({ _id: work._id }, { $set: patch });
+  const uname = String(work.username || work.submittedByUserName || work.submittedByUserId || '').trim();
+  const inspector = uname
+    ? await db.collection('inspectionUsers').findOne({
+        $or: [{ username: uname }, { mobile: uname }, { id: uname }],
+      })
+    : null;
+  const patch = await resolveStreet(db, work, inspector);
+  if (!patch) continue;
+  await db.collection('inspectionWorks').updateOne({ _id: work._id }, { $set: patch });
   updated += 1;
 }
 
-console.log(
-  JSON.stringify(
-    { onlyUser: onlyUser || 'ALL', scanned, updated, noMasterRow: noMaster },
-    null,
-    2,
-  ),
-);
+console.log(JSON.stringify({ onlyUser: onlyUser || 'ALL', scanned, updated }, null, 2));
 await client.close();

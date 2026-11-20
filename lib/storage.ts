@@ -4259,6 +4259,9 @@ async function findInspectorForGeoStamp(work: any): Promise<any | null> {
             districtId: 1,
             zoneId: 1,
             tpCode: 1,
+            scopeType: 1,
+            assignedWards: 1,
+            selectedWards: 1,
           },
         }
       );
@@ -4346,7 +4349,7 @@ async function stampWorkGeoForSave(work: any): Promise<any> {
         }
       }
       const { stampInspectionWorkStreet } = await import('@/lib/inspectionWorkStreetStamp');
-      next = await stampInspectionWorkStreet(db, next);
+      next = await stampInspectionWorkStreet(db, next, inspector);
       return next;
     }
   } catch (err) {
