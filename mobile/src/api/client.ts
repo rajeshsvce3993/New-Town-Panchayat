@@ -249,12 +249,14 @@ export const api = {
 
     const scope = scopeJson.scope;
     const geo = geoJson.geo;
+    const scopeKind = String(geoJson.scopeKind || scope?.scopeKind || '').toLowerCase();
+    const multiPlace = scopeKind === 'zonal' || scopeKind === 'hod' || scopeKind === 'district' || scopeKind === 'multi_tp';
     const districts: PortalState['districts'] =
       geoJson.districts?.length
         ? geoJson.districts
         : scope?.districts?.length
           ? scope.districts
-          : geo?.districtId && (geo.districtNameEn || geo.districtNameTa)
+          : !multiPlace && geo?.districtId && (geo.districtNameEn || geo.districtNameTa)
             ? [
                 {
                   id: geo.districtId,
@@ -269,7 +271,7 @@ export const api = {
         ? geoJson.townPanchayats
         : scope?.townPanchayats?.length
           ? scope.townPanchayats
-          : geo?.tpId && (geo.tpNameEn || geo.tpNameTa)
+          : !multiPlace && geo?.tpId && (geo.tpNameEn || geo.tpNameTa)
             ? [
                 {
                   id: geo.tpId,
@@ -279,7 +281,7 @@ export const api = {
                   zoneId: geo.zoneId || '',
                 },
               ]
-            : scope?.townPanchayat?.id && (scope.townPanchayat.nameEn || scope.townPanchayat.nameTa)
+            : !multiPlace && scope?.townPanchayat?.id && (scope.townPanchayat.nameEn || scope.townPanchayat.nameTa)
               ? [
                   {
                     id: scope.townPanchayat.id,
@@ -314,7 +316,7 @@ export const api = {
       loginLogoUrl: config?.loginLogoUrl || null,
       settings,
       validationRules: scope?.validationRules || {},
-      scopeKind: geoJson.scopeKind || scope?.scopeKind || '',
+      scopeKind: scopeKind || geoJson.scopeKind || scope?.scopeKind || '',
     };
   },
 

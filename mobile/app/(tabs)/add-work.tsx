@@ -178,19 +178,21 @@ export default function AddWorkScreen() {
     const mode = resolveInspectionScopeMode(user, portal);
     if (mode === 'single_tp') {
       const d =
-        user?.districtId ||
+        (user?.districtId && dists.some((x) => x.id === user.districtId) ? user.districtId : '') ||
         dists.find((x) => user?.district && x.nameEn.toLowerCase() === user.district.toLowerCase())?.id ||
-        '';
-      const t = resolveUserTpId(user, tps) || '';
+        (dists.length === 1 ? dists[0].id : '');
+      const t =
+        resolveUserTpId(user, tps) ||
+        (tps.length === 1 ? tps[0].id : '');
       setDistrictId(d);
-      setTpId(t);
+      setTpId(tps.some((x) => x.id === t) ? t : tps.length === 1 ? tps[0].id : '');
       return;
     }
     if (mode === 'multi_tp') {
       const d =
-        user?.districtId ||
+        (user?.districtId && dists.some((x) => x.id === user.districtId) ? user.districtId : '') ||
         dists.find((x) => user?.district && x.nameEn.toLowerCase() === user.district.toLowerCase())?.id ||
-        '';
+        (dists.length === 1 ? dists[0].id : '');
       setDistrictId(d);
       const allowed = new Set((user?.selectedTpIds || []).map(String));
       const pool = allowed.size
@@ -199,8 +201,12 @@ export default function AddWorkScreen() {
       setTpId((prev) => (pool.some((t) => t.id === prev) ? prev : pool.length === 1 ? pool[0].id : ''));
       return;
     }
-    if (dists.length === 1) setDistrictId((prev) => prev || dists[0].id);
-    if (!districtId && user?.districtId) setDistrictId(user.districtId);
+    const allowedDist = new Set(dists.map((d) => String(d.id)));
+    if (dists.length === 1) {
+      setDistrictId(dists[0].id);
+      return;
+    }
+    setDistrictId((prev) => (allowedDist.has(String(prev)) ? prev : ''));
   }, [user?.id, user?.scopeType, user?.districtId, user?.selectedTpIds, portal.scopeKind, portalDistricts, portalTps]);
 
   useEffect(() => {
