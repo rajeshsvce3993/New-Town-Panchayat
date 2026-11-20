@@ -424,13 +424,23 @@ function reportShareConfig(portal: PortalState) {
   const saved = settings?.reportShare;
   const themeId = String(saved?.themeId || settings?.theme || '').trim();
   const legacy = String(saved?.template || '');
-  const isHeaderLine = (text: string) => {
-    const t = String(text || '').trim();
-    return !t || (t.includes('{DateTime}') && t.includes('{Gps}') && t.split('\n').length <= 6);
+  const plain = (text: string) =>
+    String(text || '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div)>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  const isLegacyGpsHeader = (text: string) => {
+    const t = plain(text);
+    if (!t) return true;
+    if (!(t.includes('{DateTime}') && t.includes('{Gps}'))) return false;
+    return t.length < 280;
   };
   const firstLetter = (...candidates: string[]) => {
     for (const candidate of candidates) {
-      if (!isHeaderLine(candidate)) return candidate;
+      if (!isLegacyGpsHeader(candidate)) return candidate;
     }
     return '';
   };
@@ -2038,14 +2048,33 @@ export function WorkDetailModal({
   const pickTemplate = (primary: string, fallback: string) => (isTamil ? primary || fallback : fallback || primary);
   const letterEn = `Respected Sir/Madam,\n\nA field inspection on {CategoryNameEn} was carried out at Ward {Ward_No}, {Street_Name}, {TownPanchayat_EN} Town Panchayat, {District_EN} District, {Zone_EN} Zone. This is submitted for your kind information.\n\n{EmployeeName_EN}\n{Designation_EN}\n{TownPanchayat_EN} Town Panchayat\n{District_EN} District`;
   const letterTa = `மதிப்பிற்குரிய அம்மையீர்/ஐயா வணக்கம்,\n\n{Zone_TA} மண்டலம், {District_TA} மாவட்டம், {TownPanchayat_TA} பேரூராட்சி வார்டு எண்.{Ward_No}, {Street_Name} பகுதியில் {CategoryNameTa} தொடர்பாக கள ஆய்வு மேற்கொள்ளப்பட்டது என்ற விவரம் பணிந்து சமர்ப்பிக்கப்படுகிறது.\n\n{EmployeeName_TA}\n{Designation_TA}\n{TownPanchayat_TA} பேரூராட்சி\n{District_TA} மாவட்டம்`;
-  const shareMessage = fillShareTemplate(
-    pickTemplate(shareConfig.imagesTemplateTa || letterTa, shareConfig.imagesTemplateEn || letterEn),
-    shareValues
-  );
+  const buildShareMessage = (cfg: ReturnType<typeof reportShareConfig>) =>
+    fillShareTemplate(
+      pickTemplate(cfg.imagesTemplateTa || letterTa, cfg.imagesTemplateEn || letterEn),
+      shareValues,
+    );
+  const shareMessage = buildShareMessage(shareConfig);
 
   const run = async (kind: 'image' | 'report' | 'images', save: boolean) => {
     try {
       setBusy(kind);
+      let captionMessage = shareMessage;
+      try {
+        const raw = await api.getAppSettings();
+        if (raw && typeof raw === 'object') {
+          const nextSettings = {
+            ...portal.settings,
+            ...(raw.theme != null ? { theme: raw.theme } : {}),
+            ...(raw.customColors != null ? { customColors: raw.customColors } : {}),
+            ...(raw.googleMapsApiKey != null ? { googleMapsApiKey: raw.googleMapsApiKey } : {}),
+            ...(raw.reportShare != null ? { reportShare: raw.reportShare } : {}),
+          };
+          setLiveSettings(nextSettings);
+          captionMessage = buildShareMessage(reportShareConfig({ ...portal, settings: nextSettings }));
+        }
+      } catch {
+        /* use templates already on screen */
+      }
       if (kind === 'image') {
         if (!current) {
           toast(isTamil ? 'பகிர புகைப்படம் இல்லை' : 'No photo to share');
@@ -2123,7 +2152,7 @@ export function WorkDetailModal({
       const exists = await FileSystem.getInfoAsync(dest);
       if (exists.exists) await FileSystem.deleteAsync(dest, { idempotent: true });
       await FileSystem.copyAsync({ from: captured, to: dest });
-      await shareOrSave(dest, 'image/jpeg', filename, save, isTamil, htmlToPlain(shareMessage));
+      await shareOrSave(dest, 'image/jpeg', filename, save, isTamil, htmlToPlain(captionMessage));
     } catch (error) {
       console.warn('Report share failed', error);
       toast(isTamil ? 'செயல் தோல்வியுற்றது. மீண்டும் முயலவும்.' : 'Could not complete that action. Please try again.');

@@ -30,9 +30,9 @@ export function isNonProductionServerUrl(url?: string | null): boolean {
   return false;
 }
 
-export const APP_VERSION_NAME = '2.0.9';
-export const APP_VERSION_CODE = 109;
-export const FCM_APP_VERSION_LABEL = '2.0.9';
+export const APP_VERSION_NAME = '2.0.10';
+export const APP_VERSION_CODE = 110;
+export const FCM_APP_VERSION_LABEL = '2.0.10';
 export const PACKAGE_NAME = 'com.tn.townpanchayat.ems';
 export const REQUEST_TIMEOUT_MS = 30000;
 /** Login must outlive brief Mongo/scope stalls on production (still below typical proxy limits). */

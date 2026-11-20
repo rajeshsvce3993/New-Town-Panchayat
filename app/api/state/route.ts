@@ -3,8 +3,6 @@ import {
   getCollectionData,
   saveCollectionData,
   deleteCollectionItem,
-  getAppSettings,
-  saveAppSettings,
   saveSingleInspectionWork,
   getFullDatabaseState,
   getPortalBootstrapState,
@@ -21,6 +19,7 @@ import { defaultPortalOrigin, prewarmMissingPortalBootstraps } from '@/lib/porta
 import { logServerProcess } from '@/lib/serverLogger';
 import { logPortalEnvironmentOnce } from '@/lib/appEnvironment';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
+import { loadLiveAppSettings, persistLiveAppSettings } from '@/lib/liveAppSettings';
 
 export const dynamic = 'force-dynamic';
 
@@ -286,8 +285,16 @@ export async function GET(req: NextRequest) {
     }
 
     if (key === 'settings') {
-      const settings = await getAppSettings();
-      return NextResponse.json({ success: true, data: settings }, { headers: CORS_HEADERS });
+      const settings = await loadLiveAppSettings();
+      return NextResponse.json(
+        { success: true, data: settings },
+        {
+          headers: {
+            ...CORS_HEADERS,
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+          },
+        },
+      );
     }
 
     if (key) {
@@ -369,7 +376,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (op === 'saveSettings' || key === 'settings') {
-      await saveAppSettings(data);
+      await persistLiveAppSettings(data && typeof data === 'object' ? data : {});
       logServerProcess({
         category: 'MASTER_UPDATE',
         action: 'UPDATE_SETTINGS',

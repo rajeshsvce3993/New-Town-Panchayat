@@ -139,10 +139,22 @@ function mix(a: string, b: string, t: number) {
   return `#${c(A.r, B.r)}${c(A.g, B.g)}${c(A.b, B.b)}`;
 }
 
+function plainShareText(text: string) {
+  return String(text || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Skip empty or the old GPS-only header — never drop a full letter that includes DateTime/Gps. */
 function isHeaderLineTemplate(text: string) {
-  const t = String(text || '').trim();
+  const t = plainShareText(text);
   if (!t) return true;
-  return t.includes('{DateTime}') && t.includes('{Gps}') && t.split('\n').length <= 6;
+  if (!(t.includes('{DateTime}') && t.includes('{Gps}'))) return false;
+  return t.length < 280;
 }
 
 function firstLetterTemplate(...candidates: string[]) {

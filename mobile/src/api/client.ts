@@ -317,9 +317,34 @@ export const api = {
 
   async getAppSettings(): Promise<Record<string, unknown>> {
     try {
+      const live = await fetchWithTimeout(
+        `${baseUrl}/api/mobile/report-share`,
+        { headers: mobileClientHeaders({ 'Cache-Control': 'no-cache, no-store' }) },
+        BOOTSTRAP_API_TIMEOUT_MS,
+      );
+      if (live.ok) {
+        const json = (await live.json().catch(() => ({}))) as {
+          success?: boolean;
+          reportShare?: Record<string, unknown>;
+          theme?: unknown;
+          customColors?: unknown;
+          googleMapsApiKey?: unknown;
+        };
+        if (json?.success && json.reportShare) {
+          const out: Record<string, unknown> = { reportShare: json.reportShare };
+          if (json.theme != null) out.theme = json.theme;
+          if (json.customColors != null) out.customColors = json.customColors;
+          if (json.googleMapsApiKey != null) out.googleMapsApiKey = json.googleMapsApiKey;
+          return out;
+        }
+      }
+    } catch {
+      /* fall through to /api/state */
+    }
+    try {
       const response = await fetchWithTimeout(
         `${baseUrl}/api/state?key=settings`,
-        { headers: { 'Cache-Control': 'no-cache, no-store' } },
+        { headers: mobileClientHeaders({ 'Cache-Control': 'no-cache, no-store' }) },
         BOOTSTRAP_API_TIMEOUT_MS,
       );
       if (!response.ok) return {};
