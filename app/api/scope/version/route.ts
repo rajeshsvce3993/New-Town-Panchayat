@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getScopeVersionMeta, initializeUserScopeCacheOnce } from '@/lib/userScopeCache';
-import { isLiveDataOnly } from '@/lib/services/liveUserScope';
+import { isMobileClientRequest } from '@/lib/mobileAppAuth';
+import { useLiveInspectionScope } from '@/lib/services/liveUserScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,8 @@ export async function OPTIONS() {
  */
 export async function GET(req: NextRequest) {
   try {
-    if (!isLiveDataOnly()) {
+    const mobileClient = isMobileClientRequest(req);
+    if (!useLiveInspectionScope(mobileClient)) {
       initializeUserScopeCacheOnce().catch(() => {});
     }
 
@@ -29,6 +31,7 @@ export async function GET(req: NextRequest) {
     const clientVersion = parseInt(clientVersionStr, 10) || 0;
 
     const meta = getScopeVersionMeta();
+    const liveScope = useLiveInspectionScope(mobileClient);
     const hasUpdate = clientVersion < meta.version;
 
     return NextResponse.json(
@@ -37,7 +40,12 @@ export async function GET(req: NextRequest) {
         scopeVersion: meta.version,
         updatedAt: meta.updatedAt,
         hasUpdate,
-        message: hasUpdate ? 'New scope updates available' : 'Local scope is up-to-date',
+        liveScope,
+        message: liveScope
+          ? 'Scope is loaded from MongoDB (not user_scope_cache)'
+          : hasUpdate
+            ? 'New scope updates available'
+            : 'Local scope is up-to-date',
       },
       {
         headers: {

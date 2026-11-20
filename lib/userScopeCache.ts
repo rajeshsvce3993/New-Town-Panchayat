@@ -1,6 +1,12 @@
 import fs from 'fs';
 import path from 'path';
+import type { Db } from 'mongodb';
 import { getMongoClient, getActiveMongoDb, getCollectionData, enrichUserForApp } from './storage';
+import {
+  applyResolvedProfileToUser,
+  resolveInspectorProfileFromDb,
+  type ResolvedInspectorProfile,
+} from '@/lib/inspectionUserProfile';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const SCOPE_VERSION_FILE = path.join(DATA_DIR, 'latest_scope_update.json');
@@ -109,6 +115,7 @@ export interface CachedUserScope {
   categories: CompactCategory[];
   fields: CompactField[];
   validationRules: Record<string, FieldValidationRule>;
+  profile?: ResolvedInspectorProfile;
 }
 
 export interface ScopeVersionMeta {
@@ -256,11 +263,14 @@ export async function buildSingleUserScope(
     subjects: any[];
     categories: any[];
     fields: any[];
+    inspectionRoles?: any[];
+    inspectionDesignations?: any[];
     scopeKind?: string;
     scopeZoneId?: string;
     scopeTpIds?: string[];
   },
-  scopeVersion: number
+  scopeVersion: number,
+  db?: Db | null,
 ): Promise<CachedUserScope> {
   const uId = user.id || user._id ? String(user.id || user._id) : '';
   const username = (user.username || '').trim().toLowerCase();
@@ -431,8 +441,8 @@ export async function buildSingleUserScope(
     townPanchayats: masters.townPanchayats,
     districts: masters.districts || [],
     zones: masters.zones || [],
-    inspectionRoles: [],
-    inspectionDesignations: [],
+    inspectionRoles: masters.inspectionRoles || [],
+    inspectionDesignations: masters.inspectionDesignations || [],
     inspectionSubjects: masters.subjects,
     inspectionCategories: masters.categories,
     wardsAndStreets: [],
@@ -487,6 +497,16 @@ export async function buildSingleUserScope(
     zoneId: String(t.zoneId || ''),
   }));
 
+  let profile: ResolvedInspectorProfile | undefined;
+  if (db) {
+    try {
+      profile = await resolveInspectorProfileFromDb(db, user);
+      Object.assign(cleanUser, applyResolvedProfileToUser(cleanUser, profile));
+    } catch {
+      /* keep enriched user */
+    }
+  }
+
   return {
     userId: uId,
     username,
@@ -515,6 +535,7 @@ export async function buildSingleUserScope(
     categories: compactCategories,
     fields: enrichedFields,
     validationRules: rules,
+    profile,
   };
 }
 
@@ -748,10 +769,12 @@ export async function getUserScopeDetails(userIdOrUsername: string): Promise<Cac
 
       const { resolveInspectionScopeMasters } = await import('@/lib/inspectionScopeMasters');
       const scopeGeo = await resolveInspectionScopeMasters(db, foundUser);
-      const [subjects, categories, fields] = await Promise.all([
+      const [subjects, categories, fields, inspectionRoles, inspectionDesignations] = await Promise.all([
         db.collection('inspectionSubjects').find({}).limit(50).toArray().catch(() => []),
         db.collection('inspectionCategories').find({}).limit(100).toArray().catch(() => []),
         db.collection('inspectionFields').find({}).limit(100).toArray().catch(() => []),
+        db.collection('inspectionRoles').find({}).limit(80).toArray().catch(() => []),
+        db.collection('inspectionDesignations').find({}).limit(200).toArray().catch(() => []),
       ]);
 
       const meta = getScopeVersionMeta();
@@ -765,11 +788,14 @@ export async function getUserScopeDetails(userIdOrUsername: string): Promise<Cac
           subjects: subjects || [],
           categories: categories || [],
           fields: fields || [],
+          inspectionRoles: inspectionRoles || [],
+          inspectionDesignations: inspectionDesignations || [],
           scopeKind: scopeGeo.scopeKind,
           scopeZoneId: scopeGeo.zoneId,
           scopeTpIds: scopeGeo.tpIds,
         },
-        meta.version
+        meta.version,
+        db,
       );
 
       // Save compact scope to user_scope_cache collection

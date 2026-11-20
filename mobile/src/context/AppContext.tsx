@@ -366,7 +366,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             persistent;
           const safePhoto =
             chosen && chosen.includes('amazonaws.com') && chosen.includes('?') ? chosen.split('?')[0] : chosen;
-          const safeUser = { ...remote.user, profilePhotoUrl: safePhoto, avatarUrl: safePhoto };
+          const safeUser = { ...live, profilePhotoUrl: safePhoto, avatarUrl: safePhoto };
           await prefs.setCurrentUser(safeUser);
           if (sid !== sessionIdRef.current || !userRef.current) {
             await prefs.logoutClear();

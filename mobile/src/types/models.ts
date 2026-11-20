@@ -537,8 +537,13 @@ export interface UserScopeData {
   username?: string;
   scopeVersion?: number;
   updatedAt?: string;
+  scopeType?: string;
+  scopeKind?: string;
   user?: AppUser | null;
   townPanchayat?: ScopeTownPanchayat | null;
+  zones?: ZoneModel[];
+  districts?: DistrictModel[];
+  townPanchayats?: TownPanchayatModel[];
   assignedWards?: string[];
   wardsAndStreets?: WardAndStreet[];
   subjects?: Subject[];

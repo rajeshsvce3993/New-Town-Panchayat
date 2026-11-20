@@ -221,48 +221,73 @@ export const api = {
     ]);
 
     const scopeJson = (await scopeRes.json().catch(() => ({}))) as UserScopeResponse;
-    const geoJson = (await geoRes.json().catch(() => ({}))) as { success?: boolean; geo?: any; username?: string };
+    const geoJson = (await geoRes.json().catch(() => ({}))) as {
+      success?: boolean;
+      geo?: {
+        zoneId?: string;
+        zoneNameEn?: string;
+        zoneNameTa?: string;
+        districtId?: string;
+        districtNameEn?: string;
+        districtNameTa?: string;
+        tpId?: string;
+        tpNameEn?: string;
+        tpNameTa?: string;
+      };
+      zones?: PortalState['zones'];
+      districts?: PortalState['districts'];
+      townPanchayats?: PortalState['townPanchayats'];
+      username?: string;
+    };
     const worksJson = (await worksRes.json().catch(() => ({}))) as { works?: InspectionWork[]; success?: boolean };
 
     const scope = scopeJson.scope;
     const geo = geoJson.geo;
-    const districts: PortalState['districts'] = geo?.districtId
-      ? [
-          {
-            id: geo.districtId,
-            nameEn: geo.districtNameEn || '',
-            nameTa: geo.districtNameTa || '',
-            zoneId: geo.zoneId || '',
-          },
-        ]
-      : [];
-    const townPanchayats: PortalState['townPanchayats'] = geo?.tpId
-      ? [
-          {
-            id: geo.tpId,
-            nameEn: geo.tpNameEn || '',
-            nameTa: geo.tpNameTa || '',
-            districtId: geo.districtId || '',
-            zoneId: geo.zoneId || '',
-          },
-        ]
-      : scope?.townPanchayat?.id
-        ? [
-            {
-              id: scope.townPanchayat.id,
-              nameEn: scope.townPanchayat.nameEn,
-              nameTa: scope.townPanchayat.nameTa,
-              districtId: scope.townPanchayat.districtId || '',
-            },
-          ]
-        : [];
+    const districts: PortalState['districts'] =
+      geoJson.districts?.length
+        ? geoJson.districts
+        : geo?.districtId
+          ? [
+              {
+                id: geo.districtId,
+                nameEn: geo.districtNameEn || '',
+                nameTa: geo.districtNameTa || '',
+                zoneId: geo.zoneId || '',
+              },
+            ]
+          : [];
+    const townPanchayats: PortalState['townPanchayats'] =
+      geoJson.townPanchayats?.length
+        ? geoJson.townPanchayats
+        : geo?.tpId
+          ? [
+              {
+                id: geo.tpId,
+                nameEn: geo.tpNameEn || '',
+                nameTa: geo.tpNameTa || '',
+                districtId: geo.districtId || '',
+                zoneId: geo.zoneId || '',
+              },
+            ]
+          : scope?.townPanchayat?.id
+            ? [
+                {
+                  id: scope.townPanchayat.id,
+                  nameEn: scope.townPanchayat.nameEn,
+                  nameTa: scope.townPanchayat.nameTa,
+                  districtId: scope.townPanchayat.districtId || '',
+                },
+              ]
+            : [];
 
-    return {
+  return {
       districts,
       townPanchayats,
-      zones: geo?.zoneId
-        ? [{ id: geo.zoneId, nameEn: geo.zoneNameEn || '', nameTa: geo.zoneNameTa || '' }]
-        : [],
+      zones: geoJson.zones?.length
+        ? geoJson.zones
+        : geo?.zoneId
+          ? [{ id: geo.zoneId, nameEn: geo.zoneNameEn || '', nameTa: geo.zoneNameTa || '' }]
+          : [],
       inspectionSubjects: scope?.subjects || [],
       inspectionCategories: scope?.categories || [],
       inspectionFields: scope?.fields || [],
@@ -272,7 +297,7 @@ export const api = {
       fields: scope?.fields || [],
       inspectionWorks: worksJson.works || [],
       works: worksJson.works || [],
-      user: user || (scope?.user as AppUser) || null,
+      user: user ?? null,
       appIconUrl: config?.appIconUrl || null,
       loginLogoUrl: config?.loginLogoUrl || null,
       settings,
@@ -491,7 +516,9 @@ export const api = {
 
   async checkScopeVersion(clientVersion = 0): Promise<ScopeVersionResponse> {
     try {
-      const response = await fetchWithTimeout(`${baseUrl}/api/scope/version?clientVersion=${clientVersion}`);
+      const response = await fetchWithTimeout(`${baseUrl}/api/scope/version?clientVersion=${clientVersion}`, {
+        headers: mobileClientHeaders(),
+      });
       const resBody = await response.text();
       if (response.ok && resBody) return JSON.parse(resBody) as ScopeVersionResponse;
       return { success: false, scopeVersion: clientVersion, hasUpdate: false, message: `Server returned ${response.status}` };
@@ -508,7 +535,8 @@ export const api = {
   async getUserScope(userIdOrUsername: string): Promise<UserScopeResponse> {
     try {
       const response = await fetchWithTimeout(
-        `${baseUrl}/api/scope/user?username=${encodeURIComponent(userIdOrUsername)}`
+        `${baseUrl}/api/scope/user?username=${encodeURIComponent(userIdOrUsername)}`,
+        { headers: mobileClientHeaders() },
       );
       const resBody = await response.text();
       if (response.ok && resBody) return JSON.parse(resBody) as UserScopeResponse;

@@ -5,6 +5,8 @@ import { getDb } from '@/lib/repositories/mastersRepository';
 import { resolveGeoForPortalUser, resolveGeoForUser } from '@/lib/domain/geoResolver';
 import { resolveInspectionScopeMasters } from '@/lib/inspectionScopeMasters';
 import { isHodLikeUser, isZonalScopedUser, normalizePortalUserScope } from '@/lib/userScope';
+import { resolveInspectorProfileFromDb } from '@/lib/inspectionUserProfile';
+import { isMobileClientRequest } from '@/lib/mobileAppAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +47,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'MongoDB unavailable' }, { status: 503, headers: CORS_HEADERS });
     }
 
-    const hit = await findUserForLogin(identifier, clean, { mobileClient: false });
+    const mobileClient = isMobileClientRequest(req);
+    const hit = await findUserForLogin(identifier, clean, { mobileClient });
     const userDoc = hit?.userDoc;
     if (!userDoc) {
       return NextResponse.json({ success: false, message: 'User not found' }, { status: 404, headers: CORS_HEADERS });
@@ -96,12 +99,20 @@ export async function GET(req: NextRequest) {
         ...(extra ? extra(r) : {}),
       }));
 
+    let profile: Awaited<ReturnType<typeof resolveInspectorProfileFromDb>> | undefined;
+    try {
+      profile = await resolveInspectorProfileFromDb(db, userDoc);
+    } catch {
+      /* optional */
+    }
+
     return NextResponse.json(
       {
         success: true,
         source: 'mongo-live',
         username: userDoc.username || clean,
         geo,
+        profile,
         zones: mapGeo(scopeGeo.zones),
         districts: mapGeo(scopeGeo.districts, (d) => ({ zoneId: d.zoneId || '' })),
         townPanchayats: mapGeo(scopeGeo.townPanchayats, (t) => ({
@@ -116,7 +127,7 @@ export async function GET(req: NextRequest) {
             ? scopeGeo.townPanchayats.length > 0
             : geo.missing.length === 0,
       },
-      { headers: { ...CORS_HEADERS, 'Cache-Control': 'private, no-store' } },
+      { headers: { ...CORS_HEADERS, 'Cache-Control': 'private, no-store, must-revalidate', 'X-Geo-Source': 'mongo-live' } },
     );
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err?.message || 'Server error' }, { status: 500, headers: CORS_HEADERS });

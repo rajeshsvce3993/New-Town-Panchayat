@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { buildLiveUserScope } from '@/lib/services/liveUserScope';
+import { isMobileClientRequest } from '@/lib/mobileAppAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,9 +35,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'username required' }, { status: 400, headers: CORS_HEADERS });
     }
 
-    const scope = await buildLiveUserScope(username, 12_000);
+    let scope = await buildLiveUserScope(username, 12_000);
     if (!scope) {
       return NextResponse.json({ success: false, message: 'No inspection scope for this user' }, { status: 404, headers: CORS_HEADERS });
+    }
+
+    if (isMobileClientRequest(req)) {
+      const profile = scope.profile;
+      const { user: _dropUser, ...rest } = scope;
+      scope = { ...rest, user: undefined, profile };
     }
 
     return NextResponse.json(
@@ -47,7 +54,13 @@ export async function GET(req: NextRequest) {
         updatedAt: scope.updatedAt,
         scope,
       },
-      { headers: { ...CORS_HEADERS, 'Cache-Control': 'private, no-store' } },
+      {
+        headers: {
+          ...CORS_HEADERS,
+          'Cache-Control': 'private, no-store, must-revalidate',
+          'X-Inspection-Scope-Source': 'mongo-live',
+        },
+      },
     );
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err?.message || 'Server error' }, { status: 500, headers: CORS_HEADERS });

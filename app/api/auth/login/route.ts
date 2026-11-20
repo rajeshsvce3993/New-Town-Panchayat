@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient, getActiveMongoDb, getCollectionData } from '@/lib/storage';
 import { resolveGeoForPortalUser, resolveGeoForUser, type ResolvedPortalGeo } from '@/lib/domain/geoResolver';
-import { buildLiveUserScope, isLiveDataOnly } from '@/lib/services/liveUserScope';
+import { buildLiveUserScope, useLiveInspectionScope } from '@/lib/services/liveUserScope';
 import { recordUserLogin } from '@/lib/userActivity';
 import { logServerProcess } from '@/lib/serverLogger';
 import { postRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
@@ -10,6 +10,7 @@ import { isMobileClientRequest, mobileLoginDeniedMessage, userMayUseMobileApp } 
 import { isWebPortalClientRequest } from '@/lib/portalWebAuth';
 import { getUserScopeDetailsForLogin, getUserScopeFromCacheOnly } from '@/lib/userScopeCache';
 import { findUserForLogin } from '@/lib/loginUserLookup';
+import { applyResolvedProfileToUser, resolveInspectorProfileFromDb } from '@/lib/inspectionUserProfile';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,12 +86,11 @@ export async function POST(req: NextRequest) {
       mongoDb = await getActiveMongoDb(client);
     }
 
-    const [loginHit, scopePrefetch] = await Promise.all([
-      findUserForLogin(username, cleanUsername, { mobileClient }),
-      mobileClient && !isLiveDataOnly()
-        ? getUserScopeFromCacheOnly(cleanUsername)
-        : Promise.resolve(null),
-    ]);
+    const loginHit = await findUserForLogin(username, cleanUsername, { mobileClient });
+    const scopePrefetch =
+      mobileClient || useLiveInspectionScope(mobileClient)
+        ? null
+        : await getUserScopeFromCacheOnly(cleanUsername).catch(() => null);
 
     if (loginHit) {
       userDoc = loginHit.userDoc;
@@ -181,8 +181,8 @@ export async function POST(req: NextRequest) {
     const needsInspectionScope =
       mobileClient || sourceCollection === 'inspectionUsers' || (webPortal && sourceCollection === 'users');
     if (needsInspectionScope) {
-      if (isLiveDataOnly()) {
-        userScope = await buildLiveUserScope(scopeKey, mobileClient ? 6_000 : 10_000);
+      if (useLiveInspectionScope(mobileClient)) {
+        userScope = await buildLiveUserScope(scopeKey, mobileClient ? 8_000 : 10_000);
       } else if (!userScope) {
         userScope = await getUserScopeFromCacheOnly(scopeKey);
         if (!userScope) {
@@ -204,19 +204,17 @@ export async function POST(req: NextRequest) {
     let designationNameEn = String(userDoc.designationNameEn || userDoc.designation || '').trim();
     let designationNameTa = String(userDoc.designationNameTa || '').trim();
     const designationId = String(userDoc.designationId || '').trim();
-    const needDesigLookup =
-      !mobileClient && mongoDb && designationId && (!designationNameEn || !designationNameTa);
-    if (needDesigLookup) {
+    let roleNameEn = String(userDoc.role || userDoc.roleId || '').trim();
+    let roleNameTa = String(userDoc.roleNameTa || '').trim();
+    if (mongoDb) {
       try {
-        const matchedDesig = await mongoDb.collection('inspectionDesignations').findOne({
-          $or: [{ id: designationId }, { nameEn: designationId }, { nameTa: designationId }],
-        });
-        if (matchedDesig) {
-          designationNameEn = designationNameEn || String(matchedDesig.nameEn || '').trim();
-          designationNameTa = designationNameTa || String(matchedDesig.nameTa || '').trim();
-        }
+        const profile = await resolveInspectorProfileFromDb(mongoDb, userDoc);
+        designationNameEn = profile.designationNameEn || designationNameEn;
+        designationNameTa = profile.designationNameTa || designationNameTa;
+        roleNameEn = profile.role || roleNameEn;
+        roleNameTa = profile.roleNameTa || roleNameTa;
       } catch {
-        /* keep stored designation names */
+        /* keep stored labels */
       }
     }
 
@@ -230,9 +228,9 @@ export async function POST(req: NextRequest) {
       nameEn: userDoc.nameEn || userDoc.name || userDoc.fullName || cleanUsername,
       nameTa: userDoc.nameTa || userDoc.name || cleanUsername,
       mobile: userDoc.mobile || userDoc.mobileNumber || userDoc.phone || '',
-      role: userDoc.role || userDoc.roleId || (sourceCollection === 'inspectionUsers' ? 'Inspection Officer' : 'admin'),
+      role: roleNameEn || userDoc.role || userDoc.roleId || (sourceCollection === 'inspectionUsers' ? 'Inspection Officer' : 'admin'),
       roleId: userDoc.roleId || userDoc.role || (sourceCollection === 'inspectionUsers' ? 'Inspection Officer' : 'admin'),
-      roleNameTa: userDoc.roleNameTa || '',
+      roleNameTa,
       designationId,
       designation: designationNameEn || userDoc.designation || '',
       designationNameEn,
@@ -288,21 +286,46 @@ export async function POST(req: NextRequest) {
       returnUser.scopeId = 'all';
     }
 
+    if (mongoDb) {
+      try {
+        const profile = await resolveInspectorProfileFromDb(mongoDb, returnUser);
+        Object.assign(returnUser, applyResolvedProfileToUser(returnUser, profile));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (userScope?.profile) {
+      Object.assign(returnUser, applyResolvedProfileToUser(returnUser, userScope.profile));
+    }
+
     if (userScope?.user && (mobileClient || sourceCollection === 'inspectionUsers')) {
       const su = userScope.user;
-      returnUser.townPanchayat = su.townPanchayat || returnUser.townPanchayat;
-      returnUser.townPanchayatTa = su.townPanchayatTa || returnUser.townPanchayatTa;
-      returnUser.district = su.district || returnUser.district;
-      returnUser.districtTa = su.districtTa || returnUser.districtTa;
-      returnUser.zone = su.zone || returnUser.zone;
-      returnUser.zoneTa = su.zoneTa || returnUser.zoneTa;
-      returnUser.zoneId = su.zoneId || returnUser.zoneId;
-      returnUser.tpId = su.tpId ?? returnUser.tpId ?? '';
-      returnUser.townPanchayatId = su.townPanchayatId ?? returnUser.townPanchayatId ?? '';
-      returnUser.selectedTpIds = su.selectedTpIds || returnUser.selectedTpIds;
-      returnUser.assignedWards = userScope.assignedWards || su.assignedWards || returnUser.assignedWards;
-      returnUser.selectedWards = userScope.assignedWards || su.selectedWards || returnUser.selectedWards;
-      returnUser.scopeType = userScope.scopeType || su.scopeType || returnUser.scopeType;
+      if (mobileClient) {
+        returnUser.assignedWards = userScope.assignedWards || su.assignedWards || returnUser.assignedWards;
+        returnUser.selectedWards = userScope.assignedWards || su.selectedWards || returnUser.selectedWards;
+        returnUser.scopeType = userScope.scopeType || su.scopeType || returnUser.scopeType;
+        if (su.selectedTpIds?.length) returnUser.selectedTpIds = su.selectedTpIds;
+      } else {
+        returnUser.designation = su.designation || returnUser.designation;
+        returnUser.designationNameEn = su.designationNameEn || returnUser.designationNameEn;
+        returnUser.designationNameTa = su.designationNameTa || returnUser.designationNameTa;
+        returnUser.role = su.role || returnUser.role;
+        returnUser.roleNameTa = su.roleNameTa || returnUser.roleNameTa;
+        returnUser.townPanchayat = su.townPanchayat || returnUser.townPanchayat;
+        returnUser.townPanchayatTa = su.townPanchayatTa || returnUser.townPanchayatTa;
+        returnUser.district = su.district || returnUser.district;
+        returnUser.districtTa = su.districtTa || returnUser.districtTa;
+        returnUser.zone = su.zone || returnUser.zone;
+        returnUser.zoneTa = su.zoneTa || returnUser.zoneTa;
+        returnUser.zoneId = su.zoneId || returnUser.zoneId;
+        returnUser.tpId = su.tpId ?? returnUser.tpId ?? '';
+        returnUser.townPanchayatId = su.townPanchayatId ?? returnUser.townPanchayatId ?? '';
+        returnUser.selectedTpIds = su.selectedTpIds || returnUser.selectedTpIds;
+        returnUser.assignedWards = userScope.assignedWards || su.assignedWards || returnUser.assignedWards;
+        returnUser.selectedWards = userScope.assignedWards || su.selectedWards || returnUser.selectedWards;
+        returnUser.scopeType = userScope.scopeType || su.scopeType || returnUser.scopeType;
+      }
     }
 
     const sessionUser = webPortal
@@ -333,12 +356,19 @@ export async function POST(req: NextRequest) {
     const duration = Date.now() - startTime;
     console.log(`[LOGIN SUCCESS] User "${cleanUsername}" from "${sourceCollection}" in ${duration}ms ✅`);
 
+    let userScopeForClient = userScope;
+    if (mobileClient && userScope) {
+      const profile = userScope.profile;
+      const { user: _scopeUser, ...scopeRest } = userScope;
+      userScopeForClient = { ...scopeRest, user: undefined, profile };
+    }
+
     return NextResponse.json(
       {
         success: true,
         token: `auth_jwt_${Date.now()}_${cleanUsername}`,
         user: sessionUser,
-        userScope: userScope || null,
+        userScope: userScopeForClient || null,
         scopeVersion: userScope?.scopeVersion || 1,
         message: 'Login successful',
       },

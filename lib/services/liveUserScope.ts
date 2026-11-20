@@ -2,12 +2,18 @@ import { getScopeVersionMeta, buildSingleUserScope, type CachedUserScope } from 
 import { findUserForLogin } from '@/lib/loginUserLookup';
 import { getDb } from '@/lib/repositories/mastersRepository';
 import { resolveInspectionScopeMasters } from '@/lib/inspectionScopeMasters';
+import { isLiveDataOnly as liveDataOnlyEnv } from '@/lib/productionFlags';
 
-const LIVE_SCOPE = process.env.LIVE_DATA_ONLY !== '0';
 const PROJ = { projection: { _id: 0, password: 0, passwordHash: 0 }, maxTimeMS: 8000 };
 
 export function isLiveDataOnly(): boolean {
-  return LIVE_SCOPE;
+  return liveDataOnlyEnv();
+}
+
+/** Field/mobile app must never use user_scope_cache — always Mongo masters + inspectionUsers. */
+export function useLiveInspectionScope(mobileClient?: boolean): boolean {
+  if (mobileClient) return true;
+  return liveDataOnlyEnv();
 }
 
 /**
@@ -36,10 +42,12 @@ export async function buildLiveUserScope(userIdOrUsername: string, maxTimeMS = 1
 
   const scopeGeo = await resolveInspectionScopeMasters(db, foundUser);
 
-  const [subjects, categories, fields] = await Promise.all([
+  const [subjects, categories, fields, inspectionRoles, inspectionDesignations] = await Promise.all([
     db.collection('inspectionSubjects').find({}, PROJ).limit(100).toArray(),
     db.collection('inspectionCategories').find({}, PROJ).limit(200).toArray(),
     db.collection('inspectionFields').find({}, PROJ).limit(200).toArray(),
+    db.collection('inspectionRoles').find({}, PROJ).limit(80).toArray(),
+    db.collection('inspectionDesignations').find({}, PROJ).limit(200).toArray(),
   ]);
 
   const meta = getScopeVersionMeta();
@@ -53,10 +61,13 @@ export async function buildLiveUserScope(userIdOrUsername: string, maxTimeMS = 1
       subjects,
       categories,
       fields,
+      inspectionRoles,
+      inspectionDesignations,
       scopeKind: scopeGeo.scopeKind,
       scopeZoneId: scopeGeo.zoneId,
       scopeTpIds: scopeGeo.tpIds,
     },
     meta.version,
+    db,
   );
 }
