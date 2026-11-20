@@ -91,6 +91,9 @@ import {
   userBelongsToTp,
   userBelongsToZone,
 } from '@/lib/inspectionUserPortalEnrich';
+import { useLazyGeoTree } from '@/lib/hooks/useLazyGeoTree';
+import GeoTreeBranchLoader from '@/components/GeoTreeBranchLoader';
+import { geoEntityId, isTownPanchayatMasterRow } from '@/lib/geoEntityId';
 
 interface InspectionEmployeeManagementViewProps {
   state: any;
@@ -175,32 +178,91 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     setLocalSessions(state.userSessions || []);
   }, [state.userActivities, state.users, state.inspectionUsers, state.userSessions]);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    const loadStaff = async () => {
+  const lazyGeo = useLazyGeoTree();
+  const [usersByTp, setUsersByTp] = useState<Record<string, any[]>>({});
+  const [tpUsersLoading, setTpUsersLoading] = useState<Record<string, boolean>>({});
+  const [inspectionUserTotal, setInspectionUserTotal] = useState<number | null>(null);
+
+  const ensureTpUsers = React.useCallback(
+    async (tpId: string, tpNameEn?: string) => {
+      if (!tpId || usersByTp[tpId]) return usersByTp[tpId];
+      setTpUsersLoading((prev) => ({ ...prev, [tpId]: true }));
       try {
-        const { fetchAllMastersList } = await import('@/lib/portalMastersClient');
-        const items = await fetchAllMastersList('inspectionUsers', { pageSize: 1000, lean: false, maxPages: 5 });
-        if (!cancelled && items.length) {
-          setLocalInspectionUsers(items);
-        }
-      } catch {
-        /* keep bootstrap list */
+        const { fetchInspectionUsersForTp } = await import('@/lib/portalMastersClient');
+        const items = await fetchInspectionUsersForTp(tpId, { tpNameEn });
+        setUsersByTp((prev) => ({ ...prev, [tpId]: items }));
+        return items;
+      } finally {
+        setTpUsersLoading((prev) => {
+          const next = { ...prev };
+          delete next[tpId];
+          return next;
+        });
       }
-    };
-    void loadStaff();
-    return () => {
-      cancelled = true;
-    };
-  }, [state?.zones?.length, state?.districts?.length, state?.townPanchayats?.length]);
+    },
+    [usersByTp],
+  );
+
+  const handleZoneTreeClick = (zoneId: string) => {
+    const zid = geoEntityId({ id: zoneId });
+    if (!zid) return;
+    const willOpen = !openZones[zid];
+    setOpenZones((prev) => ({ ...prev, [zid]: willOpen }));
+    if (willOpen) void lazyGeo.ensureDistricts(zid);
+  };
+
+  const handleDistrictTreeClick = (districtId: string) => {
+    const did = geoEntityId({ id: districtId });
+    if (!did) return;
+    const willOpen = !openDistricts[did];
+    setOpenDistricts((prev) => ({ ...prev, [did]: willOpen }));
+    if (willOpen) void lazyGeo.ensureTownPanchayats(did);
+  };
+
+  const handleTpTreeClick = (tp: any) => {
+    const tid = geoEntityId(tp);
+    if (!tid) return;
+    const willOpen = !openTps[tid];
+    setOpenTps((prev) => ({ ...prev, [tid]: willOpen }));
+    if (willOpen) void ensureTpUsers(tid, tp?.nameEn || tp?.nameTa);
+  };
 
   React.useEffect(() => {
     if (activeTab !== 'employees' && activeTab !== 'roles' && activeTab !== 'designations') return;
     let cancelled = false;
     void (async () => {
       try {
+        const { fetchMastersListTotal, fetchAllMastersList } = await import('@/lib/portalMastersClient');
+        const total = await fetchMastersListTotal('inspectionUsers', { lean: true });
+        if (!cancelled) setInspectionUserTotal(total);
+        if (activeTab === 'roles' || activeTab === 'designations') {
+          const leanDir = await fetchAllMastersList('inspectionUsers', {
+            pageSize: 1000,
+            lean: true,
+            maxPages: 5,
+          });
+          if (!cancelled && leanDir.length) setLocalInspectionUsers(leanDir);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, employeeViewMode]);
+
+  React.useEffect(() => {
+    if (activeTab !== 'employees' || employeeViewMode !== 'table') return;
+    let cancelled = false;
+    void (async () => {
+      try {
         const { fetchAllMastersList } = await import('@/lib/portalMastersClient');
-        const items = await fetchAllMastersList('inspectionUsers', { pageSize: 1000, lean: false, maxPages: 5 });
+        const items = await fetchAllMastersList('inspectionUsers', {
+          pageSize: 1000,
+          lean: false,
+          maxPages: 5,
+        });
         if (!cancelled && items.length) setLocalInspectionUsers(items);
       } catch {
         /* ignore */
@@ -209,7 +271,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     return () => {
       cancelled = true;
     };
-  }, [activeTab, state?.zones?.length, state?.districts?.length]);
+  }, [activeTab, employeeViewMode]);
 
   React.useEffect(() => {
     if (activeTab !== 'employees') return;
@@ -272,28 +334,43 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     inspectionUsers: bootstrapInspectionUsers = [],
   } = state || {};
 
+  const treeZones = lazyGeo.zones.length > 0 ? lazyGeo.zones : state?.zones || [];
+  const zones = treeZones;
+  const lazyDistricts = lazyGeo.allDistricts?.() || [];
+  const lazyTps = lazyGeo.allTownPanchayats?.() || [];
+  const districts = lazyDistricts.length > 0 ? lazyDistricts : state?.districts || [];
+  const townPanchayats = lazyTps.length > 0 ? lazyTps : state?.townPanchayats || [];
+
   const geoMasters = React.useMemo(
     () => ({
-      zones: state?.zones || [],
-      districts: state?.districts || [],
-      townPanchayats: state?.townPanchayats || [],
+      zones,
+      districts,
+      townPanchayats,
     }),
-    [state?.zones, state?.districts, state?.townPanchayats],
+    [zones, districts, townPanchayats],
   );
 
   const inspectionUsersRaw = React.useMemo(() => {
     const fromBootstrap = bootstrapInspectionUsers || [];
-    return localInspectionUsers.length > fromBootstrap.length ? localInspectionUsers : fromBootstrap;
-  }, [bootstrapInspectionUsers, localInspectionUsers]);
+    const fromTree = Object.values(usersByTp).flat();
+    const pickLocal = localInspectionUsers.length > fromBootstrap.length ? localInspectionUsers : fromBootstrap;
+    const byId = new Map<string, any>();
+    [...pickLocal, ...fromTree, ...fromBootstrap].forEach((u) => {
+      if (u?.id) byId.set(String(u.id), u);
+    });
+    return Array.from(byId.values());
+  }, [bootstrapInspectionUsers, localInspectionUsers, usersByTp]);
 
   const inspectionUsers = React.useMemo(
     () => enrichInspectionUsersForPortal(inspectionUsersRaw, geoMasters),
     [inspectionUsersRaw, geoMasters],
   );
 
-  const zones = state?.zones || [];
-  const districts = state?.districts || [];
-  const townPanchayats = state?.townPanchayats || [];
+  const inspectionUserCount =
+    typeof inspectionUserTotal === 'number' && inspectionUserTotal > 0
+      ? inspectionUserTotal
+      : inspectionUsers.length;
+
   const wardsAndStreets = state?.wardsAndStreets || [];
 
   // Form states - Roles
@@ -327,6 +404,14 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
   const [userCategoryIds, setUserCategoryIds] = useState<string[]>([]);
   const [customWardInput, setCustomWardInput] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
+
+  React.useEffect(() => {
+    if (userZoneId) void lazyGeo.ensureDistricts(userZoneId);
+  }, [userZoneId, lazyGeo]);
+
+  React.useEffect(() => {
+    if (userDistrictId) void lazyGeo.ensureTownPanchayats(userDistrictId);
+  }, [userDistrictId, lazyGeo]);
 
   const [csvFeedback, setCsvFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -413,7 +498,9 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
 
   const tObj = (obj: any) => {
     if (!obj) return '';
-    return lang === 'ta' ? (obj.nameTa || obj.nameEn) : (obj.nameEn || obj.nameTa);
+    const en = obj.employeeNameEn || obj.employeeName || obj.nameEn || obj.name;
+    const ta = obj.employeeNameTa || obj.nameTa || en;
+    return lang === 'ta' ? (ta || en) : (en || ta);
   };
 
   const ZONE_TONES = ['#1d4ed8', '#7c3aed', '#c2410c', '#0f766e', '#be185d', '#0369a1', '#b45309', '#4f46e5'];
@@ -685,25 +772,46 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     await onSaveCollection('inspectionUsers', updated);
   };
 
-  // Download Bulk CSV Template pre-filled with ACTUAL details from the system
-  const downloadInspectionEmployeeTemplate = () => {
+  // Download Bulk CSV Template pre-filled from a real zone → district → TP chain (lazy geo).
+  const downloadInspectionEmployeeTemplate = async () => {
     const rows: string[] = [
       "Username,Password,EmployeeNameEn,EmployeeNameTa,MobileNumber,RoleNameEn,RoleNameTa,RoleScope,ZoneNameEn,DistrictNameEn,TownPanchayatNameEn,AssignedWards,DesignationNameEn,DesignationNameTa,InspectionSubjects"
     ];
 
-    const actualZone = zones[0]?.nameEn || 'Kanchipuram';
-    const actualDist = districts[0]?.nameEn || 'Tiruvallur';
-    if (!townPanchayats?.length) {
+    const firstZone = treeZones[0];
+    if (!firstZone) {
       alert(
         lang === 'ta'
-          ? 'மாதிரி பதிவிறக்கம் — முதலில் பேரூராட்சி தரவு ஏற்றப்பட வேண்டும் (மாஸ்டர்ஸ் தாவல்).'
-          : 'Download template after Town Panchayat masters are loaded (open Masters tab first).',
+          ? 'மாதிரி பதிவிறக்கம் — முதலில் மண்டல தரவு ஏற்றப்பட வேண்டும்.'
+          : 'Download template after zones are loaded.',
       );
       return;
     }
-    const actualTps = townPanchayats;
-    const tp1 = actualTps[0]?.nameEn || '';
-    const tp2 = actualTps[1]?.nameEn || tp1;
+    const zoneId = geoEntityId(firstZone);
+    const dists = await lazyGeo.ensureDistricts(zoneId);
+    const dist = dists[0];
+    if (!dist) {
+      alert(
+        lang === 'ta'
+          ? 'மாதிரிக்கு முதல் மண்டலத்தில் மாவட்டம் கிடைக்கவில்லை. மாஸ்டர்ஸில் மாவட்டம் சேர்க்கவும்.'
+          : 'No district found under the first zone for the sample template.',
+      );
+      return;
+    }
+    const distId = geoEntityId(dist);
+    const actualTps = await lazyGeo.ensureTownPanchayats(distId);
+    if (!actualTps.length) {
+      alert(
+        lang === 'ta'
+          ? 'மாதிரிக்கு மாவட்டத்தில் பேரூராட்சி கிடைக்கவில்லை.'
+          : 'No town panchayat found under the sample district for the template.',
+      );
+      return;
+    }
+    const actualZone = firstZone.nameEn || firstZone.nameTa || '';
+    const actualDist = dist.nameEn || dist.nameTa || '';
+    const tp1 = actualTps[0]?.nameEn || actualTps[0]?.nameTa || '';
+    const tp2 = actualTps[1]?.nameEn || actualTps[1]?.nameTa || tp1;
 
     const desigAnimator = inspectionDesignations.find((d: any) => d.nameEn?.toLowerCase().includes('animator')) || inspectionDesignations[1] || { nameEn: 'Animators', nameTa: 'அனிமேட்டர்கள்' };
     const desigDbc = inspectionDesignations.find((d: any) => d.nameEn?.toLowerCase().includes('dbc')) || inspectionDesignations[2] || { nameEn: 'DBC Workers', nameTa: 'டெங்கு கொசுப்புழு தடுப்பு பணியாளர்கள்' };
@@ -714,12 +822,15 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     const subjWater = inspectionSubjects.find((s: any) => s.code === 'WSM' || s.nameEn?.toLowerCase().includes('water'))?.nameEn || 'Water Supply Management';
     const subjPhs = inspectionSubjects.find((s: any) => s.code === 'PHS' || s.nameEn?.toLowerCase().includes('public'))?.nameEn || 'Public Health & Sanitation';
 
-    const actualWardsTp1 = Array.from<string>(new Set(
-      (wardsAndStreets || [])
-        .filter((ws: any) => ws.tpId === actualTps[0]?.id || ws.townPanchayatId === actualTps[0]?.id)
-        .map((ws: any) => String(ws.wardNo || '1').trim().replace(/^0+/, ''))
-        .filter(Boolean)
-    )).sort((a: any, b: any) => Number(a) - Number(b));
+    const tp1Id = geoEntityId(actualTps[0]);
+    const tpWards = tp1Id ? await lazyGeo.ensureWards(tp1Id) : [];
+    const actualWardsTp1 = Array.from<string>(
+      new Set(
+        tpWards
+          .map((ws: any) => String(ws.wardNo || ws.wardNumber || '1').trim().replace(/^0+/, ''))
+          .filter(Boolean),
+      ),
+    ).sort((a: any, b: any) => Number(a) - Number(b));
     const sampleWards1 = actualWardsTp1.slice(0, 2).join(', ') || '1, 2';
     const sampleWards2 = actualWardsTp1.slice(1, 3).join(', ') || actualWardsTp1[0] || '1';
 
@@ -1158,7 +1269,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
           >
             <Users className="h-3.5 w-3.5" />
             <span>{t('inspectionUsers')}</span>
-            <span className="portal-fis-count">{inspectionUsers.length}</span>
+            <span className="portal-fis-count">{inspectionUserCount}</span>
           </button>
           <button
             type="button"
@@ -2182,16 +2293,22 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
               <div>
                 {employeeViewMode === 'tree' ? (
                   <div className="portal-wt-tree">
-                    {zones.map((zone: any, zIdx: number) => {
-                      const zoneDists = districts.filter((d: any) => d.zoneId === zone.id);
-                      const zoneUsers = filteredUsers.filter((u: any) => userBelongsToZone(u, zone.id, geoMasters));
-                      if (zoneUsers.length === 0) return null;
-                      const zoneOpen = Boolean(openZones[zone.id]);
+                    {lazyGeo.isLoading('zones') && zones.length === 0 && (
+                      <GeoTreeBranchLoader
+                        label={lang === 'ta' ? 'மண்டலங்கள் ஏற்றப்படுகின்றன…' : 'Loading zones…'}
+                      />
+                    )}
+                    {treeZones.map((zone: any, zIdx: number) => {
+                      const zoneId = geoEntityId(zone);
+                      if (!zoneId) return null;
+                      const zoneOpen = Boolean(openZones[zoneId]);
                       const zoneTone = ZONE_TONES[zIdx % ZONE_TONES.length];
+                      const zoneDists = lazyGeo.districtsForZone(zoneId);
+                      const zoneLoading = lazyGeo.isLoading(`districts:${zoneId}`);
 
                       return (
                         <div
-                          key={zone.id}
+                          key={zoneId}
                           className={`portal-wt-node${zoneOpen ? ' is-open' : ''}`}
                           style={{ ['--wt-tone' as string]: zoneTone }}
                         >
@@ -2199,14 +2316,18 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                             <button
                               type="button"
                               className="portal-wt-toggle"
-                              onClick={() => setOpenZones((prev) => ({ ...prev, [zone.id]: !prev[zone.id] }))}
+                              onClick={() => handleZoneTreeClick(zoneId)}
                               aria-expanded={zoneOpen}
                             >
                               <ChevronRight className={`portal-wt-caret${zoneOpen ? ' is-open' : ''}`} />
                               <div className="portal-wt-copy">
                                 <div className="portal-wt-title">
                                   <span>{tObj(zone)} {lang === 'ta' ? 'மண்டலம்' : 'Zone'}</span>
-                                  <span className="portal-wt-count">{zoneUsers.length}</span>
+                                  {zoneOpen && !zoneLoading && (
+                                    <span className="portal-wt-count">
+                                      {zoneDists.length} {lang === 'ta' ? 'மாவட்டங்கள்' : 'districts'}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </button>
@@ -2214,18 +2335,27 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
 
                           {zoneOpen && (
                           <div className="portal-wt-cats">
+                            {zoneLoading && (
+                              <GeoTreeBranchLoader
+                                label={lang === 'ta' ? 'மாவட்டங்கள் ஏற்றப்படுகின்றன…' : 'Loading districts…'}
+                              />
+                            )}
+                            {!zoneLoading && zoneDists.length === 0 && (
+                              <p className="portal-wt-empty">
+                                {lang === 'ta' ? 'மாவட்டங்கள் இல்லை' : 'No districts mapped to this zone'}
+                              </p>
+                            )}
                             {zoneDists.map((dist: any, dIdx: number) => {
-                              const distTps = townPanchayats.filter((tp: any) => tp.districtId === dist.id);
-                              const distUsers = zoneUsers.filter((u: any) =>
-                                userBelongsToDistrict(u, dist.id, geoMasters),
-                              );
-                              if (distUsers.length === 0) return null;
-                              const distOpen = Boolean(openDistricts[dist.id]);
+                              const distId = geoEntityId(dist);
+                              if (!distId) return null;
+                              const distTps = lazyGeo.tpsForDistrict(distId);
+                              const distOpen = Boolean(openDistricts[distId]);
                               const distTone = DISTRICT_TONES[dIdx % DISTRICT_TONES.length];
+                              const distLoading = lazyGeo.isLoading(`tps:${distId}`);
 
                               return (
                                 <div
-                                  key={dist.id}
+                                  key={distId}
                                   className={`portal-wt-cat${distOpen ? ' is-open' : ''}`}
                                   style={{ ['--wt-tone' as string]: distTone }}
                                 >
@@ -2233,30 +2363,62 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                     <button
                                       type="button"
                                       className="portal-wt-toggle"
-                                      onClick={() => setOpenDistricts((prev) => ({ ...prev, [dist.id]: !prev[dist.id] }))}
+                                      onClick={() => handleDistrictTreeClick(distId)}
                                       aria-expanded={distOpen}
                                     >
                                       <ChevronRight className={`portal-wt-caret${distOpen ? ' is-open' : ''}`} />
                                       <div className="portal-wt-copy">
                                         <div className="portal-wt-title">
                                           <span>{tObj(dist)} {lang === 'ta' ? 'மாவட்டம்' : 'District'}</span>
-                                          <span className="portal-wt-count">{distUsers.length}</span>
+                                          {distOpen && !distLoading && (
+                                            <span className="portal-wt-count">
+                                              {distTps.length} {lang === 'ta' ? 'பேரூராட்சி' : 'TPs'}
+                                            </span>
+                                          )}
                                         </div>
                                       </div>
                                     </button>
                                   </div>
 
                                   {distOpen && (
-                                  <div className="portal-wt-cats">
-                                    {distTps.map((tp: any, tIdx: number) => {
-                                      const tpUsers = distUsers.filter((u: any) => userBelongsToTp(u, tp.id));
-                                      if (tpUsers.length === 0) return null;
-                                      const tpOpen = Boolean(openTps[tp.id]);
+                                  <div className="portal-wt-cats portal-wt-tp-branch">
+                                    {distLoading && (
+                                      <GeoTreeBranchLoader
+                                        label={lang === 'ta' ? 'பேரூராட்சிகள் ஏற்றப்படுகின்றன…' : 'Loading town panchayats…'}
+                                      />
+                                    )}
+                                    {!distLoading && distTps.filter(isTownPanchayatMasterRow).length === 0 && (
+                                      <p className="portal-wt-empty">
+                                        {lang === 'ta' ? 'பேரூராட்சிகள் இல்லை' : 'No town panchayats in this district'}
+                                      </p>
+                                    )}
+                                    {distTps.filter(isTownPanchayatMasterRow).map((tp: any, tIdx: number) => {
+                                      const tpId = geoEntityId(tp);
+                                      if (!tpId) return null;
+                                      const tpOpen = Boolean(openTps[tpId]);
                                       const tpTone = TP_TONES[tIdx % TP_TONES.length];
+                                      const tpLoadingUsers = Boolean(tpUsersLoading[tpId]);
+                                      const tpUsers = tpOpen
+                                        ? enrichInspectionUsersForPortal(
+                                            usersByTp[tpId] || [],
+                                            { ...geoMasters, townPanchayats: [...townPanchayats, tp] },
+                                          ).filter((u: any) => {
+                                            if (!userSearchQuery) return true;
+                                            const q = userSearchQuery.toLowerCase();
+                                            return (
+                                              u.employeeNameEn?.toLowerCase().includes(q) ||
+                                              u.employeeName?.toLowerCase().includes(q) ||
+                                              u.nameEn?.toLowerCase().includes(q) ||
+                                              u.nameTa?.toLowerCase().includes(q) ||
+                                              u.username?.toLowerCase().includes(q) ||
+                                              u.mobile?.includes(q)
+                                            );
+                                          })
+                                        : [];
 
                                       return (
                                         <div
-                                          key={tp.id}
+                                          key={tpId}
                                           className={`portal-wt-cat${tpOpen ? ' is-open' : ''}`}
                                           style={{ ['--wt-tone' as string]: tpTone }}
                                         >
@@ -2264,22 +2426,38 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                             <button
                                               type="button"
                                               className="portal-wt-toggle"
-                                              onClick={() => setOpenTps((prev) => ({ ...prev, [tp.id]: !prev[tp.id] }))}
+                                              onClick={() => handleTpTreeClick(tp)}
                                               aria-expanded={tpOpen}
                                             >
                                               <ChevronRight className={`portal-wt-caret${tpOpen ? ' is-open' : ''}`} />
                                               <div className="portal-wt-copy">
                                                 <div className="portal-wt-title">
                                                   <span>{tObj(tp)}</span>
-                                                  <span className="portal-wt-count">{tpUsers.length}</span>
+                                                  <span className="portal-dash-id text-[10px] opacity-70">
+                                                    {lang === 'ta' ? 'பேரூராட்சி' : 'Town Panchayat'}
+                                                  </span>
+                                                  {tpOpen && !tpLoadingUsers && (
+                                                    <span className="portal-wt-count">{tpUsers.length}</span>
+                                                  )}
                                                 </div>
                                               </div>
                                             </button>
                                           </div>
 
                                           {tpOpen && (
-                                          <div className="portal-wt-fields">
-                                            {tpUsers.map((user: any) => {
+                                          <div className="portal-wt-fields portal-wt-staff-branch">
+                                            {tpLoadingUsers && (
+                                              <GeoTreeBranchLoader
+                                                label={lang === 'ta' ? 'பணியாளர்கள் ஏற்றப்படுகின்றன…' : 'Loading field staff…'}
+                                              />
+                                            )}
+                                            {!tpLoadingUsers && tpUsers.length === 0 && (
+                                              <p className="portal-wt-empty">
+                                                {lang === 'ta' ? 'இந்த பேரூராட்சிக்கு பணியாளர்கள் இல்லை' : 'No staff mapped to this town panchayat'}
+                                              </p>
+                                            )}
+                                            {!tpLoadingUsers
+                                              ? tpUsers.map((user: any) => {
                                               const roleObj = inspectionRoles.find((r: any) => r.id === user.roleId);
                                               const desigObj = inspectionDesignations.find((d: any) => d.id === user.designationId);
                                               const userWards = user.assignedWards || user.selectedWards || [];
@@ -2335,7 +2513,8 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                                   </div>
                                                 </div>
                                               );
-                                            })}
+                                            })
+                                              : null}
                                           </div>
                                           )}
                                         </div>

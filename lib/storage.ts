@@ -1945,9 +1945,11 @@ export function enrichUserForApp(user: any, masters?: any): any {
 
   const resolvedCategoryIds = Array.from(resolvedCategoryIdsSet);
 
-  const name = user.name || user.nameEn || user.username || 'Officer';
-  const nameEn = user.nameEn || user.name || user.username || 'Officer';
-  const nameTa = user.nameTa || user.name || name;
+  const name =
+    user.employeeName || user.employeeNameEn || user.name || user.nameEn || user.username || 'Officer';
+  const nameEn =
+    user.employeeNameEn || user.employeeName || user.nameEn || user.name || user.username || 'Officer';
+  const nameTa = user.employeeNameTa || user.nameTa || user.name || nameEn;
 
   const roleName = matchedRole?.nameEn || user.role || (roleId === 'role_single_tp' ? 'Single TP Inspector' : (roleId === 'role_multi_tp' ? 'Multi TP Inspector' : (roleId === 'role_zonal' ? 'Zonal Inspector' : (roleId === 'admin' ? 'Admin / Director' : (['ad', 'zonal'].includes(roleId) ? 'Assistant Director (Zone)' : (roleId === 'eo' ? 'Executive Officer (TP)' : 'User'))))));
   const roleNameTa = matchedRole?.nameTa || user.roleNameTa || 'பயனர்';
@@ -1955,24 +1957,20 @@ export function enrichUserForApp(user: any, masters?: any): any {
   const desigNameEn = matchedDesig?.nameEn || user.designation || user.designationNameEn || 'Officer';
   const desigNameTa = matchedDesig?.nameTa || user.designationNameTa || 'அலுவலர்';
 
-  const tpNameEn = matchedTp?.nameEn || user.townPanchayat || 'Thiruporur TP';
-  const tpNameTa = matchedTp?.nameTa || user.townPanchayatTa || 'திருப்போரூர் பேரூராட்சி';
+  const tpNameEn =
+    matchedTp?.nameEn || user.townPanchayat || user.tpName || user.townPanchayatNameEn || '';
+  const tpNameTa =
+    matchedTp?.nameTa || user.townPanchayatTa || user.tpNameTa || user.townPanchayatNameTa || '';
 
   const distNameEn =
-    matchedDist?.nameEn ||
-    matchedTp?.districtNameEn ||
-    user.district ||
-    (matchedTp ? '' : 'Chengalpattu');
+    matchedDist?.nameEn || matchedTp?.districtNameEn || user.district || user.districtNameEn || '';
   const distNameTa =
-    matchedDist?.nameTa ||
-    matchedTp?.districtNameTa ||
-    user.districtTa ||
-    (matchedTp ? '' : 'செங்கல்பட்டு');
+    matchedDist?.nameTa || matchedTp?.districtNameTa || user.districtTa || user.districtNameTa || '';
 
   const zoneNameEn =
-    matchedZone?.nameEn || matchedTp?.zoneNameEn || user.zone || (matchedTp ? '' : 'Kanchipuram');
+    matchedZone?.nameEn || matchedTp?.zoneNameEn || user.zone || user.zoneNameEn || '';
   const zoneNameTa =
-    matchedZone?.nameTa || matchedTp?.zoneNameTa || user.zoneTa || (matchedTp ? '' : 'காஞ்சிபுரம்');
+    matchedZone?.nameTa || matchedTp?.zoneNameTa || user.zoneTa || user.zoneNameTa || '';
 
   // Resolve unique clean friendly English names for assigned subjects and categories
   const assignedSubjectNames = Array.from(new Set(

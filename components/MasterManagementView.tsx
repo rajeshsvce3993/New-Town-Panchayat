@@ -1,8 +1,11 @@
 'use client';
 import ThemeSelect from './ThemeSelect';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useGeoCascade } from '@/lib/hooks/useGeoCascade';
+import { useLazyGeoTree } from '@/lib/hooks/useLazyGeoTree';
+import GeoTreeBranchLoader from '@/components/GeoTreeBranchLoader';
+import { geoEntityId, isTownPanchayatMasterRow } from '@/lib/geoEntityId';
 import { jsPDF } from 'jspdf';
 import { motion } from 'motion/react';
 import { 
@@ -84,6 +87,31 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
   const [districtTa, setDistrictTa] = useState('');
   const [districtCode, setDistrictCode] = useState('');
   const geo = useGeoCascade();
+  const lazyTree = useLazyGeoTree();
+
+  const handleMasterZoneClick = (zoneId: string) => {
+    const zid = geoEntityId({ id: zoneId });
+    if (!zid) return;
+    const willOpen = !openZones[zid];
+    setOpenZones((prev) => ({ ...prev, [zid]: willOpen }));
+    if (willOpen) void lazyTree.ensureDistricts(zid);
+  };
+
+  const handleMasterDistrictClick = (districtId: string) => {
+    const did = geoEntityId({ id: districtId });
+    if (!did) return;
+    const willOpen = !openDistricts[did];
+    setOpenDistricts((prev) => ({ ...prev, [did]: willOpen }));
+    if (willOpen) void lazyTree.ensureTownPanchayats(did);
+  };
+
+  const handleMasterTpClick = (tpId: string) => {
+    const tid = geoEntityId({ id: tpId });
+    if (!tid) return;
+    const willOpen = !openTps[tid];
+    setOpenTps((prev) => ({ ...prev, [tid]: willOpen }));
+    if (willOpen) void lazyTree.ensureWards(tid);
+  };
   const {
     zones: cascadeZones,
     districts: cascadeDistricts,
@@ -105,20 +133,24 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
     refreshWards,
   } = geo;
 
-  const zones =
-    (state?.zones?.length ?? 0) >= (cascadeZones?.length ?? 0) ? state.zones || [] : cascadeZones;
+  const treeZones = lazyTree.zones;
+  const lazyDistricts = lazyTree.allDistricts?.() || [];
+  const lazyTps = lazyTree.allTownPanchayats?.() || [];
+  const zones = cascadeZones.length > 0 ? cascadeZones : treeZones.length > 0 ? treeZones : state.zones || [];
   const districts =
-    (state?.districts?.length ?? 0) >= (cascadeDistricts?.length ?? 0)
-      ? state.districts || []
-      : cascadeDistricts;
+    cascadeDistricts.length > 0 ? cascadeDistricts : lazyDistricts.length > 0 ? lazyDistricts : state.districts || [];
   const townPanchayats =
-    (state?.townPanchayats?.length ?? 0) >= (cascadeTownPanchayats?.length ?? 0)
-      ? state.townPanchayats || []
-      : cascadeTownPanchayats;
+    cascadeTownPanchayats.length > 0
+      ? cascadeTownPanchayats
+      : lazyTps.length > 0
+        ? lazyTps
+        : state.townPanchayats || [];
   const wardsAndStreets =
-    (state?.wardsAndStreets?.length ?? 0) >= (cascadeWards?.length ?? 0)
-      ? state.wardsAndStreets || []
-      : cascadeWards;
+    cascadeWards.length > 0
+      ? cascadeWards
+      : Object.values(lazyTree.wardsByTp).flat().length > 0
+        ? Object.values(lazyTree.wardsByTp).flat()
+        : state.wardsAndStreets || [];
 
   const [tpEn, setTpEn] = useState('');
   const [tpTa, setTpTa] = useState('');
@@ -1594,20 +1626,27 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
               );
             })() : (
               <div className="portal-wt-tree is-scroll">
-                {zones.length === 0 && (
+                {lazyTree.isLoading('zones') && treeZones.length === 0 && (
+                  <GeoTreeBranchLoader label={lang === 'ta' ? 'மண்டலங்கள் ஏற்றப்படுகின்றன…' : 'Loading zones…'} />
+                )}
+                {treeZones.length === 0 && !lazyTree.isLoading('zones') && (
                   <p className="portal-wt-empty is-center">
                     {lang === 'ta'
                       ? 'அதிகார வரம்புகள் எதுவும் இல்லை. மேலே உள்ள CSV மூலம் பதிவேற்றவும் அல்லது மண்டலம் சேர்க்கவும்.'
                       : 'No jurisdictional data. Upload a CSV above or create a zone to populate this tree.'}
                   </p>
                 )}
-                {(selectedZoneId ? zones.filter((z: any) => z.id === selectedZoneId) : zones).map((zone: any, zIdx: number) => {
-                  const zoneDistricts = districts.filter((d: any) => d.zoneId === zone.id);
-                  const zoneOpen = Boolean(openZones[zone.id]);
+                {(selectedZoneId ? treeZones.filter((z: any) => geoEntityId(z) === selectedZoneId) : treeZones).map(
+                  (zone: any, zIdx: number) => {
+                  const zoneId = geoEntityId(zone);
+                  if (!zoneId) return null;
+                  const zoneDistricts = lazyTree.districtsForZone(zoneId);
+                  const zoneOpen = Boolean(openZones[zoneId]);
                   const zoneTone = ZONE_TONES[zIdx % ZONE_TONES.length];
+                  const zoneLoading = lazyTree.isLoading(`districts:${zoneId}`);
                   return (
                     <div
-                      key={zone.id}
+                      key={zoneId}
                       className={`portal-wt-node${zoneOpen ? ' is-open' : ''}`}
                       style={{ ['--wt-tone' as string]: zoneTone }}
                     >
@@ -1615,7 +1654,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
                         <button
                           type="button"
                           className="portal-wt-toggle"
-                          onClick={() => setOpenZones((prev) => ({ ...prev, [zone.id]: !prev[zone.id] }))}
+                          onClick={() => handleMasterZoneClick(zoneId)}
                           aria-expanded={zoneOpen}
                         >
                           <ChevronRight className={`portal-wt-caret${zoneOpen ? ' is-open' : ''}`} />
@@ -1654,16 +1693,24 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
 
                       {zoneOpen && (
                         <div className="portal-wt-cats">
-                          {zoneDistricts.length === 0 && (
+                          {zoneLoading && (
+                            <GeoTreeBranchLoader
+                              label={lang === 'ta' ? 'மாவட்டங்கள் ஏற்றப்படுகின்றன…' : 'Loading districts…'}
+                            />
+                          )}
+                          {!zoneLoading && zoneDistricts.length === 0 && (
                             <p className="portal-wt-empty">{lang === 'ta' ? 'மாவட்டங்கள் இல்லை' : 'No districts mapped to this zone yet'}</p>
                           )}
                           {zoneDistricts.map((dist: any, dIdx: number) => {
-                            const distTPs = townPanchayats.filter((tp: any) => tp.districtId === dist.id);
-                            const distOpen = Boolean(openDistricts[dist.id]);
+                            const distId = geoEntityId(dist);
+                            if (!distId) return null;
+                            const distTPs = lazyTree.tpsForDistrict(distId);
+                            const distOpen = Boolean(openDistricts[distId]);
                             const distTone = DISTRICT_TONES[dIdx % DISTRICT_TONES.length];
+                            const distLoading = lazyTree.isLoading(`tps:${distId}`);
                             return (
                               <div
-                                key={dist.id}
+                                key={distId}
                                 className={`portal-wt-cat${distOpen ? ' is-open' : ''}`}
                                 style={{ ['--wt-tone' as string]: distTone }}
                               >
@@ -1671,7 +1718,7 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
                                   <button
                                     type="button"
                                     className="portal-wt-toggle"
-                                    onClick={() => setOpenDistricts((prev) => ({ ...prev, [dist.id]: !prev[dist.id] }))}
+                                    onClick={() => handleMasterDistrictClick(distId)}
                                     aria-expanded={distOpen}
                                   >
                                     <ChevronRight className={`portal-wt-caret${distOpen ? ' is-open' : ''}`} />
@@ -1713,19 +1760,27 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
 
                                 {distOpen && (
                                   <div className="portal-wt-fields">
-                                    {distTPs.length === 0 && (
+                                    {distLoading && (
+                                      <GeoTreeBranchLoader
+                                        label={lang === 'ta' ? 'பேரூராட்சிகள் ஏற்றப்படுகின்றன…' : 'Loading town panchayats…'}
+                                      />
+                                    )}
+                                    {!distLoading && distTPs.length === 0 && (
                                       <p className="portal-wt-empty">{lang === 'ta' ? 'பேரூராட்சிகள் இல்லை' : 'No town panchayats added yet'}</p>
                                     )}
-                                    {distTPs.map((tp: any) => {
-                                      const tpWards = wardsAndStreets.filter((ws: any) => ws.tpId === tp.id);
-                                      const tpOpen = Boolean(openTps[tp.id]);
+                                    {distTPs.filter(isTownPanchayatMasterRow).map((tp: any) => {
+                                      const tpId = geoEntityId(tp);
+                                      if (!tpId) return null;
+                                      const tpWards = lazyTree.wardsForTp(tpId);
+                                      const tpOpen = Boolean(openTps[tpId]);
+                                      const tpWardsLoading = lazyTree.isLoading(`wards:${tpId}`);
                                       return (
-                                        <div key={tp.id} className={`portal-wt-cat${tpOpen ? ' is-open' : ''}`}>
+                                        <div key={tpId} className={`portal-wt-cat${tpOpen ? ' is-open' : ''}`}>
                                           <div className="portal-wt-cat-head">
                                             <button
                                               type="button"
                                               className="portal-wt-toggle"
-                                              onClick={() => setOpenTps((prev) => ({ ...prev, [tp.id]: !prev[tp.id] }))}
+                                              onClick={() => handleMasterTpClick(tpId)}
                                               aria-expanded={tpOpen}
                                             >
                                               <ChevronRight className={`portal-wt-caret${tpOpen ? ' is-open' : ''}`} />
@@ -1767,7 +1822,12 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
                                           </div>
                                           {tpOpen && (
                                             <div className="portal-wt-fields is-leaves">
-                                              {tpWards.length === 0 && (
+                                              {tpWardsLoading && (
+                                                <GeoTreeBranchLoader
+                                                  label={lang === 'ta' ? 'வார்டு/தெரு ஏற்றப்படுகின்றன…' : 'Loading wards & streets…'}
+                                                />
+                                              )}
+                                              {!tpWardsLoading && tpWards.length === 0 && (
                                                 <p className="portal-wt-empty">{lang === 'ta' ? 'வார்டு/தெரு சேர்க்கப்படவில்லை' : 'No wards/streets mapped yet'}</p>
                                               )}
                                               {groupStreetsByWard(tpWards).map(([wardNo, streets]) => (

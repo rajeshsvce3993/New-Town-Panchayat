@@ -6,14 +6,24 @@ import { fetchGeoMasters } from '@/lib/geoMastersClient';
 
 const listInflight = new Map<string, Promise<any>>();
 
+export async function fetchMastersListTotal(collection: string, opts?: { lean?: boolean }): Promise<number> {
+  const lean = opts?.lean === true;
+  const qs = new URLSearchParams({ collection, page: '1', limit: '1' });
+  if (lean) qs.set('lean', '1');
+  const res = await fetch(`/api/masters/list?${qs.toString()}`, { cache: 'no-store' });
+  const json = await res.json().catch(() => ({}));
+  if (!json?.success) return 0;
+  return typeof json.total === 'number' ? json.total : Array.isArray(json.items) ? json.items.length : 0;
+}
+
 export async function fetchMastersList(
   collection: string,
-  opts?: { page?: number; limit?: number; lean?: boolean }
+  opts?: { page?: number; limit?: number; lean?: boolean; tpId?: string; tpNameEn?: string }
 ): Promise<any[]> {
   const page = opts?.page && opts.page > 0 ? opts.page : 1;
   const limit = opts?.limit && opts.limit > 0 ? opts.limit : 500;
   const lean = opts?.lean === true;
-  const key = `${collection}|${page}|${limit}|${lean ? '1' : '0'}`;
+  const key = `${collection}|${page}|${limit}|${lean ? '1' : '0'}|${opts?.tpId || ''}|${opts?.tpNameEn || ''}`;
   const pending = listInflight.get(key);
   if (pending) {
     const json = await pending;
@@ -25,6 +35,8 @@ export async function fetchMastersList(
     limit: String(limit),
   });
   if (lean) qs.set('lean', '1');
+  if (opts?.tpId) qs.set('tpId', opts.tpId);
+  if (opts?.tpNameEn) qs.set('tpNameEn', opts.tpNameEn);
   const load = fetch(`/api/masters/list?${qs.toString()}`, { cache: 'no-store' })
     .then((r) => r.json())
     .catch(() => ({}))
@@ -67,6 +79,33 @@ export async function loadPortalGeoMasters(): Promise<{
   );
   const townPanchayats = tpRes.flatMap((r) => (r.success ? r.items || [] : []));
   return { zones, districts, townPanchayats };
+}
+
+export async function loadPortalZonesOnly(): Promise<any[]> {
+  const zonesRes = await fetchGeoMasters({ level: 'zones' });
+  return zonesRes.success ? zonesRes.items || [] : [];
+}
+
+export async function fetchInspectionUsersForTp(
+  tpId: string,
+  opts?: { tpNameEn?: string; pageSize?: number; maxPages?: number },
+): Promise<any[]> {
+  if (!tpId) return [];
+  const pageSize = opts?.pageSize && opts.pageSize > 0 ? opts.pageSize : 500;
+  const maxPages = opts?.maxPages && opts.maxPages > 0 ? opts.maxPages : 5;
+  const out: any[] = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const batch = await fetchMastersList('inspectionUsers', {
+      page,
+      limit: pageSize,
+      lean: true,
+      tpId,
+    });
+    if (!batch.length) break;
+    out.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+  return out;
 }
 
 export async function loadPortalEmployeePostMasters(): Promise<Record<string, any[]>> {

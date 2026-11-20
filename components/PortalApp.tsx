@@ -42,6 +42,7 @@ import {
   loadPortalBootstrap,
   loadPortalHeavyCollections,
   loadPortalAdminBundles,
+  loadPortalAdminLite,
   loadPortalUserDirectory,
   invalidatePortalBootstrapCache,
   onPortalBootstrapFresh,
@@ -388,10 +389,8 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
         'employeeManagement',
         'employees',
         'appManagement',
-        'masters',
         'pendingIssues',
         'transferCounseling',
-        'inspectionEmployees',
         'users',
       ]),
     []
@@ -406,16 +405,11 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
 
   useEffect(() => {
     if (!currentUser || !ADMIN_BUNDLE_TABS.has(activeTab)) return;
-    const geoReady =
-      (state.zones?.length ?? 0) > 0 &&
-      (state.districts?.length ?? 0) > 0 &&
-      (state.townPanchayats?.length ?? 0) > 0;
+    const zonesReady = (state.zones?.length ?? 0) > 0;
     const postsReady = (state.posts?.length ?? 0) > 0 || (state.employeeGroups?.length ?? 0) > 0;
-    const staffReady = (state.inspectionUsers?.length ?? 0) > 0 && state.inspectionUsers.some(
-      (u: any) => !!(u?.zoneId || u?.districtId || u?.townPanchayat || u?.district),
-    );
-    if (geoReady && staffReady && (activeTab !== 'masters' || postsReady)) return;
-    void loadPortalAdminBundles()
+    if (zonesReady && (activeTab !== 'masters' || postsReady)) return;
+    const includePfMasters = activeTab === 'masters';
+    void loadPortalAdminLite(includePfMasters)
       .then((bundle) => {
         setState((prev: any) => mergePortalState(prev, bundle));
         if (typeof window !== 'undefined') {
@@ -423,7 +417,7 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
         }
       })
       .catch((err) => console.warn('Admin tab bundle load failed:', err));
-  }, [activeTab, currentUser, ADMIN_BUNDLE_TABS, state.zones?.length, state.districts?.length, state.townPanchayats?.length, state.posts?.length, state.employeeGroups?.length, state.inspectionUsers?.length]);
+  }, [activeTab, currentUser, ADMIN_BUNDLE_TABS, state.zones?.length, state.posts?.length, state.employeeGroups?.length]);
 
   useEffect(() => {
     if (!currentUser) return;

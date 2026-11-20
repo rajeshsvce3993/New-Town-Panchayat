@@ -228,6 +228,20 @@ export type PortalAdminBundle = {
 
 let adminBundleInflight: Promise<PortalAdminBundle> | null = null;
 
+/** Lazy admin tabs: zones only + PF masters — geo/users load on tree expand. */
+export async function loadPortalAdminLite(includeEmployeeMasters: boolean): Promise<PortalAdminBundle> {
+  const { loadPortalZonesOnly, loadPortalEmployeePostMasters } = await import('@/lib/portalMastersClient');
+  const zones = await loadPortalZonesOnly();
+  const employeeMasters = includeEmployeeMasters ? await loadPortalEmployeePostMasters() : {};
+  return {
+    zones,
+    districts: [],
+    townPanchayats: [],
+    inspectionUsers: [],
+    ...employeeMasters,
+  };
+}
+
 /** Masters + field-staff tabs: geo, PF masters, full inspection user directory. */
 export async function loadPortalAdminBundles(): Promise<PortalAdminBundle> {
   if (adminBundleInflight) return adminBundleInflight;
