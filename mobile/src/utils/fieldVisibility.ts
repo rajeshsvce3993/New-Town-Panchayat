@@ -121,13 +121,27 @@ export function fieldOrderIndex(fields: FieldDefinition[], key: string, category
   return i < 0 ? Number.MAX_SAFE_INTEGER : i;
 }
 
+export function fieldTypeNorm(f: FieldDefinition): string {
+  return String(f.fieldType || f.type || '').trim().toLowerCase();
+}
+
+export function isCameraGalleryField(f: FieldDefinition): boolean {
+  const t = fieldTypeNorm(f);
+  return t === 'camera_gallery' || t === 'camera_or_gallery' || t === 'camera_and_gallery';
+}
+
 export function isCameraField(f: FieldDefinition): boolean {
-  return (f.fieldType || '').toLowerCase() === 'camera' || (f.type || '').toLowerCase() === 'camera';
+  const t = fieldTypeNorm(f);
+  return t === 'camera' || isCameraGalleryField(f);
 }
 
 export function isImageUploadField(f: FieldDefinition): boolean {
-  const type = String(f.fieldType || f.type || '').toLowerCase();
-  return type === 'image' || type === 'image_upload' || type === 'gallery';
+  const t = fieldTypeNorm(f);
+  return (t === 'image' || t === 'image_upload' || t === 'gallery') && !isCameraGalleryField(f);
+}
+
+export function isPhotoInputField(f: FieldDefinition): boolean {
+  return isCameraField(f) || isImageUploadField(f);
 }
 
 function yesNoMatch(currentVal: string, triggerVal: string): boolean {

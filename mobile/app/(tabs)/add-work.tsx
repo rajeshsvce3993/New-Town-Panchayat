@@ -42,6 +42,7 @@ import { effectiveCategoryIds, effectiveSubjectIds, effectiveWards, portalCatego
 import {
   fieldKey,
   isCameraField,
+  isCameraGalleryField,
   isImageUploadField,
   orderedCategoryFields,
   stableFieldListKey,
@@ -631,6 +632,27 @@ export default function AddWorkScreen() {
     const type = (f.fieldType || f.type || 'text').toLowerCase();
     const label = String(fieldLabel(f) || k || 'Field');
     const currentVal = values[k] || '';
+    if (isCameraGalleryField(f)) {
+      return (
+        <FormPhotoField
+          key={listKey}
+          label={label}
+          uri={photos[k] || null}
+          primary={palette.primary}
+          source="camera_gallery"
+          onPress={() => void capture(k)}
+          onPressGallery={() => void pickGalleryImage(k)}
+          emptyTitle={isTamil ? 'கேமரா அல்லது தொகுப்பு' : 'Camera or gallery'}
+          emptySubtitle={
+            isTamil ? 'புகைப்படம் எடுக்கவும் அல்லது தொகுப்பிலிருந்து தேர்வு செய்யவும்' : 'Take a photo or pick one from your gallery'
+          }
+          capturedBadge={isTamil ? 'படம் சேர்க்கப்பட்டது' : 'Image added'}
+          retakeLabel={isTamil ? 'கேமரா' : 'Camera'}
+          ctaLabel={isTamil ? 'கேமரா' : 'Camera'}
+          galleryCtaLabel={isTamil ? 'தொகுப்பு' : 'Gallery'}
+        />
+      );
+    }
     if (isCameraField(f)) {
       return (
         <FormPhotoField

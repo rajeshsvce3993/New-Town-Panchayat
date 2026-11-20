@@ -127,12 +127,14 @@ type PhotoFieldProps = {
   uri: string | null;
   primary: string;
   onPress: () => void;
+  onPressGallery?: () => void;
   emptyTitle?: string;
   emptySubtitle?: string;
   capturedBadge?: string;
   retakeLabel?: string;
   ctaLabel?: string;
-  source?: 'camera' | 'gallery';
+  galleryCtaLabel?: string;
+  source?: 'camera' | 'gallery' | 'camera_gallery';
 };
 
 export function FormPhotoField({
@@ -140,20 +142,23 @@ export function FormPhotoField({
   uri,
   primary,
   onPress,
+  onPressGallery,
   emptyTitle = 'Take photo',
   emptySubtitle = 'Capture a clear picture for this inspection',
   capturedBadge = 'Photo added',
   retakeLabel = 'Retake',
   ctaLabel = 'Open camera',
+  galleryCtaLabel = 'Open gallery',
   source = 'camera',
 }: PhotoFieldProps) {
   const themeBorder = formSelectBorder(primary);
   const themeSoft = withAlpha(primary, 0.12);
   const themeRing = withAlpha(primary, 0.28);
-  const isGallery = source === 'gallery';
-  const tagIcon = isGallery ? 'images' : 'camera';
-  const tagText = isGallery ? 'IMAGE' : 'PHOTO';
-  const emptyIcon = isGallery ? 'images' : 'camera';
+  const dualSource = source === 'camera_gallery' || (!!onPressGallery && source !== 'gallery');
+  const isGallery = !dualSource && source === 'gallery';
+  const tagIcon = dualSource ? 'camera' : isGallery ? 'images' : 'camera';
+  const tagText = dualSource ? 'CAM/GAL' : isGallery ? 'IMAGE' : 'PHOTO';
+  const emptyIcon = dualSource ? 'camera' : isGallery ? 'images' : 'camera';
   const ctaIcon = isGallery ? 'images-outline' : 'aperture-outline';
   const changeIcon = isGallery ? 'image-outline' : 'camera-reverse';
 
@@ -174,18 +179,106 @@ export function FormPhotoField({
               <Ionicons name="checkmark-circle" size={14} color="#fff" />
               <Text style={styles.photoPreviewBadgeText}>{capturedBadge}</Text>
             </View>
-            <Pressable
-              onPress={onPress}
-              style={({ pressed }) => [
-                styles.photoPreviewRetake,
-                { borderColor: themeBorder },
-                pressed && { opacity: 0.88 },
-              ]}
-            >
-              <Ionicons name={changeIcon} size={14} color={primary} />
-              <Text style={[styles.photoPreviewRetakeText, { color: primary }]}>{retakeLabel}</Text>
-            </Pressable>
+            {dualSource && onPressGallery ? (
+              <View style={styles.photoDualRetakeRow}>
+                <Pressable
+                  onPress={onPress}
+                  style={({ pressed }) => [
+                    styles.photoPreviewRetake,
+                    { borderColor: themeBorder, flex: 1 },
+                    pressed && { opacity: 0.88 },
+                  ]}
+                >
+                  <Ionicons name="camera-reverse" size={14} color={primary} />
+                  <Text style={[styles.photoPreviewRetakeText, { color: primary }]} numberOfLines={1}>
+                    {retakeLabel}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={onPressGallery}
+                  style={({ pressed }) => [
+                    styles.photoPreviewRetake,
+                    { borderColor: themeBorder, flex: 1 },
+                    pressed && { opacity: 0.88 },
+                  ]}
+                >
+                  <Ionicons name="image-outline" size={14} color={primary} />
+                  <Text style={[styles.photoPreviewRetakeText, { color: primary }]} numberOfLines={1}>
+                    {galleryCtaLabel}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                onPress={onPress}
+                style={({ pressed }) => [
+                  styles.photoPreviewRetake,
+                  { borderColor: themeBorder },
+                  pressed && { opacity: 0.88 },
+                ]}
+              >
+                <Ionicons name={changeIcon} size={14} color={primary} />
+                <Text style={[styles.photoPreviewRetakeText, { color: primary }]}>{retakeLabel}</Text>
+              </Pressable>
+            )}
           </View>
+        </View>
+      ) : dualSource && onPressGallery ? (
+        <View style={[styles.photoCaptureCard, { borderColor: themeBorder }]}>
+          <LinearGradient
+            colors={[withAlpha(primary, 0.16), withAlpha(primary, 0.06), '#FFFFFF']}
+            locations={[0, 0.45, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.photoEmptyGradient}
+          >
+            <View style={[styles.photoCorner, styles.photoCornerTL, { borderColor: themeRing }]} />
+            <View style={[styles.photoCorner, styles.photoCornerTR, { borderColor: themeRing }]} />
+            <View style={[styles.photoOrbitRing, { borderColor: themeRing }]}>
+              <View style={[styles.photoOrbitCore, { shadowColor: primary }]}>
+                <LinearGradient
+                  colors={['#FFFFFF', withAlpha(primary, 0.08)]}
+                  style={styles.photoOrbitGradient}
+                >
+                  <Ionicons name={emptyIcon} size={18} color={primary} />
+                </LinearGradient>
+              </View>
+            </View>
+            <Text style={styles.photoEmptyTitle} numberOfLines={2}>
+              {emptyTitle}
+            </Text>
+            <Text style={styles.photoEmptySubtitle} numberOfLines={2}>
+              {emptySubtitle}
+            </Text>
+            <View style={styles.photoDualCtaRow}>
+              <Pressable
+                onPress={onPress}
+                style={({ pressed }) => [
+                  styles.photoCta,
+                  { backgroundColor: primary, flex: 1 },
+                  pressed && { opacity: 0.92 },
+                ]}
+              >
+                <Ionicons name="aperture-outline" size={14} color="#fff" />
+                <Text style={styles.photoCtaText} numberOfLines={1}>
+                  {ctaLabel}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={onPressGallery}
+                style={({ pressed }) => [
+                  styles.photoCta,
+                  { backgroundColor: withAlpha(primary, 0.88), flex: 1 },
+                  pressed && { opacity: 0.92 },
+                ]}
+              >
+                <Ionicons name="images-outline" size={14} color="#fff" />
+                <Text style={styles.photoCtaText} numberOfLines={1}>
+                  {galleryCtaLabel}
+                </Text>
+              </Pressable>
+            </View>
+          </LinearGradient>
         </View>
       ) : (
         <Pressable
@@ -466,6 +559,19 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   photoCtaText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  photoDualCtaRow: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    gap: 8,
+    marginTop: 5,
+    paddingHorizontal: 8,
+  },
+  photoDualRetakeRow: {
+    flexDirection: 'row',
+    alignSelf: 'stretch',
+    gap: 8,
+    width: '100%',
+  },
   photoPreviewImage: { width: '100%', height: 84, backgroundColor: '#F1F5F9' },
   photoPreviewFooter: {
     alignItems: 'center',

@@ -1,5 +1,5 @@
 import type { FieldDefinition, InspectionWork, ValidationRule } from '../types/models';
-import { fieldKey, isCameraField, isImageUploadField } from './fieldVisibility';
+import { fieldKey, isPhotoInputField } from './fieldVisibility';
 
 export function validateVisibleFields(opts: {
   fields: FieldDefinition[];
@@ -27,12 +27,12 @@ export function validateVisibleFields(opts: {
       (field.fieldName || '').toLowerCase().includes('mandatory') ||
       label.includes('*');
 
-    if (isMandatory && !enteredValue && !isCameraField(field) && !isImageUploadField(field)) {
+    if (isMandatory && !enteredValue && !isPhotoInputField(field)) {
       return isTamil
         ? serverRule?.errorMessageTa || `பிழை: ${label} கட்டாய புலமாகும்!`
         : serverRule?.errorMessageEn || `Error: ${label} is a mandatory field!`;
     }
-    if (isMandatory && (isCameraField(field) || isImageUploadField(field)) && !enteredValue) {
+    if (isMandatory && isPhotoInputField(field) && !enteredValue) {
       return isTamil
         ? serverRule?.errorMessageTa || `பிழை: ${label} கட்டாய புலமாகும்!`
         : serverRule?.errorMessageEn || `Error: ${label} is a mandatory field!`;

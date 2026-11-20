@@ -192,6 +192,9 @@ function buildFieldValidationRules(fields: any[]): { enrichedFields: CompactFiel
       field.mandatory === true ||
       field.isMandatory === true ||
       fieldType === 'photo' ||
+      fieldType === 'camera' ||
+      fieldType === 'image_upload' ||
+      fieldType === 'camera_gallery' ||
       fieldId === 'photo_proof' ||
       String(rawNameEn).includes('*') ||
       String(rawNameTa).includes('*');

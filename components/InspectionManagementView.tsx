@@ -533,9 +533,14 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
           if (catObj && fldEn) {
             const existingField = uploadedFields.find(f => f.categoryId === catObj!.id && f.nameEn.toLowerCase() === fldEn.toLowerCase());
             if (!existingField) {
-              const validTypes = ['text', 'number', 'mobile', 'dropdown', 'yes_no', 'camera', 'image', 'image_upload', 'file', 'date'];
+              const validTypes = ['text', 'number', 'mobile', 'dropdown', 'yes_no', 'camera', 'image', 'image_upload', 'camera_gallery', 'file', 'date'];
               const rawType = (fldType || '').toLowerCase();
-              const aliasedType = rawType === 'image' || rawType === 'gallery' ? 'image_upload' : rawType;
+              const aliasedType =
+                rawType === 'image' || rawType === 'gallery'
+                  ? 'image_upload'
+                  : rawType === 'camera_or_gallery' || rawType === 'camera_and_gallery'
+                    ? 'camera_gallery'
+                    : rawType;
               const normalizedType = validTypes.includes(aliasedType) ? aliasedType : 'text';
               const isMandFlag = isMand?.toLowerCase() === 'true' || isMand === '1';
 
@@ -585,6 +590,13 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
       case 'dropdown': return <ListFilter className="w-3.5 h-3.5 text-purple-500" />;
       case 'yes_no': return <CheckSquare className="w-3.5 h-3.5 text-amber-500" />;
       case 'camera': return <Camera className="w-3.5 h-3.5 text-rose-500" />;
+      case 'camera_gallery':
+        return (
+          <span className="inline-flex items-center gap-0.5">
+            <Camera className="w-3.5 h-3.5 text-rose-500" />
+            <Image className="w-3.5 h-3.5 text-cyan-600" />
+          </span>
+        );
       case 'image':
       case 'image_upload': return <Image className="w-3.5 h-3.5 text-cyan-600" />;
       case 'file': return <FileUp className="w-3.5 h-3.5 text-indigo-500" />;
@@ -600,6 +612,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
       case 'dropdown': return t('fieldTypeDropdown');
       case 'yes_no': return t('fieldTypeYesNo');
       case 'camera': return t('fieldTypeCamera');
+      case 'camera_gallery': return t('fieldTypeCameraGallery');
       case 'image':
       case 'image_upload': return t('fieldTypeImageUpload');
       case 'file': return t('fieldTypeFile');
@@ -887,6 +900,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                     <option value="yes_no">{t('fieldTypeYesNo')}</option>
                     <option value="camera">{t('fieldTypeCamera')}</option>
                     <option value="image_upload">{t('fieldTypeImageUpload')}</option>
+                    <option value="camera_gallery">{t('fieldTypeCameraGallery')}</option>
                     <option value="file">{t('fieldTypeFile')}</option>
                     <option value="date">{t('fieldTypeDate')}</option>
                   </ThemeSelect>
@@ -1678,7 +1692,12 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
               <div>
                 <label className="text-xs font-semibold text-gray-600">{t('fieldType')}</label>
                 <ThemeSelect
-                  value={['image', 'gallery'].includes(String(editingField.type || editingField.fieldType || '')) ? 'image_upload' : (editingField.type || editingField.fieldType || 'text')}
+                  value={(() => {
+                    const raw = String(editingField.type || editingField.fieldType || '').toLowerCase();
+                    if (raw === 'image' || raw === 'gallery') return 'image_upload';
+                    if (raw === 'camera_or_gallery' || raw === 'camera_and_gallery') return 'camera_gallery';
+                    return editingField.type || editingField.fieldType || 'text';
+                  })()}
                   onChange={(e) => setEditingField({ ...editingField, type: e.target.value, fieldType: e.target.value })}
                   className="w-full border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none bg-white"
                 >
@@ -1689,6 +1708,7 @@ export default function InspectionManagementView({ state, lang, onSaveCollection
                   <option value="yes_no">{t('fieldTypeYesNo')}</option>
                   <option value="camera">{t('fieldTypeCamera')}</option>
                   <option value="image_upload">{t('fieldTypeImageUpload')}</option>
+                  <option value="camera_gallery">{t('fieldTypeCameraGallery')}</option>
                   <option value="file">{t('fieldTypeFile')}</option>
                   <option value="date">{t('fieldTypeDate')}</option>
                 </ThemeSelect>
