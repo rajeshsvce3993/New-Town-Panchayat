@@ -275,9 +275,22 @@ export async function buildSingleUserScope(
   // Determine user's assigned wards
   const rawAssignedWards: string[] = Array.isArray(user.assignedWards) ? user.assignedWards : [];
   const rawSelectedWards: string[] = Array.isArray(user.selectedWards) ? user.selectedWards : [];
-  const assignedWards = Array.from(new Set([...rawAssignedWards, ...rawSelectedWards]))
+  let assignedWards = Array.from(new Set([...rawAssignedWards, ...rawSelectedWards]))
     .map((w) => String(w).trim().replace(/[^0-9]/g, ''))
     .filter((w) => w.length > 0);
+
+  if (assignedWards.length === 0 && matchedTp?.id) {
+    const tpWards = masters.wardsAndStreets
+      .filter(
+        (ws: any) =>
+          String(ws.tpId || ws.townPanchayatId || '')
+            .trim()
+            .toLowerCase() === String(matchedTp.id).toLowerCase(),
+      )
+      .map((ws: any) => String(ws.wardNo || ws.wardNumber || '').trim().replace(/[^0-9]/g, ''))
+      .filter(Boolean);
+    assignedWards = Array.from(new Set(tpWards)).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
+  }
 
   // Filter streets strictly for this user's TP and assigned wards
   const userStreets = masters.wardsAndStreets.filter((ws: any) => {

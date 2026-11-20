@@ -67,9 +67,54 @@ function wardFromFields(fields) {
   return '';
 }
 
+function parseCaption(caption) {
+  const s = String(caption || '').trim();
+  const en = s.match(/(?:at\s+)?ward\s*(\d+)\s+(.+?)\s*\.?\s*$/i);
+  if (en) return { ward: normWard(en[1]), street: String(en[2] || '').trim() };
+  return { ward: '', street: '' };
+}
+
+function pickStreetRow(candidates, preferredWard) {
+  if (!candidates.length) return null;
+  if (candidates.length === 1) return candidates[0];
+  if (preferredWard) {
+    const inWard = candidates.filter((r) => wardOnRow(r) === preferredWard);
+    if (inWard.length === 1) return inWard[0];
+    if (inWard.length > 1) return inWard[0];
+    return null;
+  }
+  return null;
+}
+
+function streetHits(rows, needle) {
+  if (!needle || isPlaceholder(needle)) return [];
+  return rows.filter((r) => namesMatch(r, needle));
+}
+
 async function resolveStreet(db, work, inspector) {
-  const tpId = String(work.tpId || work.townPanchayatId || '').trim();
+  const tpId = String(work.tpId || work.townPanchayatId || inspector?.tpId || '').trim();
   if (!tpId) return null;
+
+  const masterStreetId = String(work.streetId || '').trim();
+  if (masterStreetId) {
+    const byId = await db.collection('wardsAndStreets').findOne({ id: masterStreetId });
+    if (byId) {
+      const w = wardOnRow(byId);
+      const en = String(byId.streetNameEn || byId.streetName || '').trim();
+      const ta = String(byId.streetNameTa || '').trim();
+      const display = en || ta;
+      return {
+        streetName: display,
+        streetNameEn: en || display,
+        streetNameTa: ta || en || display,
+        street: display,
+        streetId: byId.id,
+        wardNumber: w,
+        wardNo: w,
+        ward: w,
+      };
+    }
+  }
 
   const allRows = await db
     .collection('wardsAndStreets')
@@ -78,14 +123,62 @@ async function resolveStreet(db, work, inspector) {
     .toArray();
   if (!allRows.length) return null;
 
+  const fromCaption = parseCaption(work.imageCaption);
+
   let needle = String(work.streetName || work.street || '').trim();
-  if (isPlaceholder(needle)) {
+  const placeholder = isPlaceholder(needle);
+  if (placeholder) {
     const alt = streetFromFields(work.fieldsData);
     if (alt) needle = alt;
+    else if (fromCaption.street && !isPlaceholder(fromCaption.street)) needle = fromCaption.street;
   }
 
   const masterWards = new Set(allRows.map(wardOnRow).filter(Boolean));
   let ward = normWard(work.wardNumber || work.wardNo || work.ward) || wardFromFields(work.fieldsData);
+  if ((!ward || (ward === '1' && placeholder)) && fromCaption.ward) ward = fromCaption.ward;
+
+  if (needle && !isPlaceholder(needle)) {
+    const globalHits = streetHits(allRows, needle);
+    if (globalHits.length === 1) {
+      const match = globalHits[0];
+      const w = wardOnRow(match);
+      const en = String(match.streetNameEn || match.streetName || '').trim();
+      const ta = String(match.streetNameTa || '').trim();
+      const display = en || ta;
+      return {
+        streetName: display,
+        streetNameEn: en || display,
+        streetNameTa: ta || en || display,
+        street: display,
+        streetId: match.id,
+        wardNumber: w,
+        wardNo: w,
+        ward: w,
+      };
+    }
+    if (ward) {
+      const inWardHits = streetHits(
+        allRows.filter((r) => wardOnRow(r) === ward),
+        needle,
+      );
+      if (inWardHits.length === 1) {
+        const match = inWardHits[0];
+        const en = String(match.streetNameEn || match.streetName || '').trim();
+        const ta = String(match.streetNameTa || '').trim();
+        const display = en || ta;
+        return {
+          streetName: display,
+          streetNameEn: en || display,
+          streetNameTa: ta || en || display,
+          street: display,
+          streetId: match.id,
+          wardNumber: ward,
+          wardNo: ward,
+          ward,
+        };
+      }
+    }
+  }
 
   if (ward && !masterWards.has(ward) && needle && !isPlaceholder(needle)) {
     const hit = allRows.find((r) => namesMatch(r, needle));
@@ -107,12 +200,13 @@ async function resolveStreet(db, work, inspector) {
   let match = null;
   let matchInWard = false;
   if (needle && !isPlaceholder(needle)) {
-    match = ward ? wardRows.find((r) => namesMatch(r, needle)) : null;
-    if (match) matchInWard = true;
-    else match = allRows.find((r) => namesMatch(r, needle));
+    const named = (ward ? wardRows : allRows).filter((r) => namesMatch(r, needle));
+    const pool = named.length ? named : allRows.filter((r) => namesMatch(r, needle));
+    match = pickStreetRow(pool, ward) || (pool.length === 1 ? pool[0] : null);
+    matchInWard = !!(ward && match && wardOnRow(match) === ward);
   }
   const wardOkForInspector = !assigned.size || !ward || assigned.has(ward);
-  if (!match && isPlaceholder(needle) && ward && wardRows.length === 1 && wardOkForInspector) {
+  if (!match && isPlaceholder(needle) && ward && ward !== '1' && wardRows.length === 1 && wardOkForInspector) {
     match = wardRows[0];
     matchInWard = true;
   }
@@ -168,6 +262,10 @@ for await (const work of cursor) {
     : null;
   const patch = await resolveStreet(db, work, inspector);
   if (!patch) continue;
+  const same =
+    String(work.streetName || '') === patch.streetName &&
+    String(work.wardNumber || work.wardNo || work.ward || '') === String(patch.wardNumber || '');
+  if (same) continue;
   await db.collection('inspectionWorks').updateOne({ _id: work._id }, { $set: patch });
   updated += 1;
 }

@@ -4369,7 +4369,7 @@ async function stampWorkGeoForSave(work: any): Promise<any> {
 }
 
 // Save a single inspection work atomically to MongoDB and local cache
-export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
+export async function saveSingleInspectionWork(newWork: any): Promise<any | false> {
   let mongoSaved = false;
   const { attachInspectionWorkReportIndexFields } = await import('@/lib/inspectionWorkReportIndex');
   const indexedWork = attachInspectionWorkReportIndexFields(await stampWorkGeoForSave(newWork));
@@ -4454,7 +4454,7 @@ export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
     }
   }
 
-  return mongoSaved;
+  return mongoSaved ? indexedWork : false;
 }
 
 // Sync inspection work details and files to S3 under folder pattern: inspection/{username}/

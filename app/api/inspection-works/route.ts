@@ -1060,14 +1060,14 @@ export async function POST(req: NextRequest) {
       status: data.status || 'Completed',
     };
 
-    // 4. Save to MongoDB
-    await saveSingleInspectionWork(finalWork);
+    // 4. Save to MongoDB (geo + street stamped on indexed document)
+    const storedWork = (await saveSingleInspectionWork(finalWork)) || finalWork;
 
     // 5. Strictly save only one details JSON to AWS S3 (folder pattern: inspection/username/{workId}_details.json)
-    await saveInspectionDetailsToS3(finalWork, username);
+    await saveInspectionDetailsToS3(storedWork, username);
 
     // Normalize URLs in returned payload for immediate Android rendering
-    const responseWork = { ...finalWork };
+    const responseWork = { ...storedWork };
     if (responseWork.imageUrl) {
       if (responseWork.imageUrl.startsWith('/uploads')) {
         responseWork.imageUrl = `${origin}${responseWork.imageUrl}`;
@@ -1169,13 +1169,13 @@ export async function PUT(req: NextRequest) {
       updatedAt: new Date().toISOString(),
     };
 
-    await saveSingleInspectionWork(updatedWork);
-    await saveInspectionDetailsToS3(updatedWork, username);
+    const storedWork = (await saveSingleInspectionWork(updatedWork)) || updatedWork;
+    await saveInspectionDetailsToS3(storedWork, username);
 
     return NextResponse.json({
       success: true,
       message: 'Inspection work updated successfully in MongoDB and S3',
-      work: updatedWork,
+      work: storedWork,
     }, { headers: CORS_HEADERS });
   } catch (err: any) {
     console.error('Update inspection work error:', err);
