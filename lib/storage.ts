@@ -4345,6 +4345,8 @@ async function stampWorkGeoForSave(work: any): Promise<any> {
           }
         }
       }
+      const { stampInspectionWorkStreet } = await import('@/lib/inspectionWorkStreetStamp');
+      next = await stampInspectionWorkStreet(db, next);
       return next;
     }
   } catch (err) {
