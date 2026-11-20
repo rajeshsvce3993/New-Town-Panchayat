@@ -85,10 +85,10 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
   const [districtCode, setDistrictCode] = useState('');
   const geo = useGeoCascade();
   const {
-    zones,
-    districts,
-    townPanchayats,
-    wardsAndStreets,
+    zones: cascadeZones,
+    districts: cascadeDistricts,
+    townPanchayats: cascadeTownPanchayats,
+    wardsAndStreets: cascadeWards,
     selectedZoneId,
     selectedDistrictId,
     selectedTpId: wardStreetTpId,
@@ -104,6 +104,21 @@ export default function MasterManagementView({ state, lang, onSaveCollection, on
     refreshTownPanchayats,
     refreshWards,
   } = geo;
+
+  const zones =
+    (state?.zones?.length ?? 0) >= (cascadeZones?.length ?? 0) ? state.zones || [] : cascadeZones;
+  const districts =
+    (state?.districts?.length ?? 0) >= (cascadeDistricts?.length ?? 0)
+      ? state.districts || []
+      : cascadeDistricts;
+  const townPanchayats =
+    (state?.townPanchayats?.length ?? 0) >= (cascadeTownPanchayats?.length ?? 0)
+      ? state.townPanchayats || []
+      : cascadeTownPanchayats;
+  const wardsAndStreets =
+    (state?.wardsAndStreets?.length ?? 0) >= (cascadeWards?.length ?? 0)
+      ? state.wardsAndStreets || []
+      : cascadeWards;
 
   const [tpEn, setTpEn] = useState('');
   const [tpTa, setTpTa] = useState('');

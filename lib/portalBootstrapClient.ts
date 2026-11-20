@@ -212,3 +212,43 @@ export async function loadPortalHeavyCollections(): Promise<HeavyCollections> {
 
   return heavyInflight;
 }
+
+export type PortalAdminBundle = {
+  zones: any[];
+  districts: any[];
+  townPanchayats: any[];
+  inspectionUsers: any[];
+  employeeGroups?: any[];
+  employeeCategories?: any[];
+  postNatures?: any[];
+  payLevels?: any[];
+  posts?: any[];
+  transferReasons?: any[];
+};
+
+let adminBundleInflight: Promise<PortalAdminBundle> | null = null;
+
+/** Masters + field-staff tabs: geo, PF masters, full inspection user directory. */
+export async function loadPortalAdminBundles(): Promise<PortalAdminBundle> {
+  if (adminBundleInflight) return adminBundleInflight;
+
+  adminBundleInflight = (async () => {
+    const { loadPortalGeoMasters, loadPortalEmployeePostMasters, fetchAllMastersList } = await import(
+      '@/lib/portalMastersClient'
+    );
+    const geo = await loadPortalGeoMasters();
+    const [employeeMasters, inspectionUsers] = await Promise.all([
+      loadPortalEmployeePostMasters(),
+      fetchAllMastersList('inspectionUsers', { pageSize: 1000, lean: false, maxPages: 5 }),
+    ]);
+    return {
+      ...geo,
+      ...employeeMasters,
+      inspectionUsers,
+    };
+  })().finally(() => {
+    adminBundleInflight = null;
+  });
+
+  return adminBundleInflight;
+}

@@ -36,11 +36,12 @@ import { Language, translations } from '@/components/translations';
 import { ThemeType, themesConfig, CustomThemeColors, defaultCustomThemeColors, getThemeSidebarGradient, getThemeCanvasColor, getThemeHeaderColor } from '@/lib/themeConfig';
 import { getUserEffectiveAllowedPages } from '@/lib/pageAccessControl';
 import { LoginPortal } from '@/components/LoginPortal';
-import { normalizePortalSessionUser } from '@/lib/userScope';
+import { getPortalFilterScopeIds, normalizePortalSessionUser } from '@/lib/userScope';
 import { PortalSplash } from '@/components/PortalSplash';
 import {
   loadPortalBootstrap,
   loadPortalHeavyCollections,
+  loadPortalAdminBundles,
   loadPortalUserDirectory,
   invalidatePortalBootstrapCache,
   onPortalBootstrapFresh,
@@ -302,6 +303,23 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
         return p ? { ...u, password: p, passwordHash: p } : u;
       });
     }
+    if (Array.isArray(next?.inspectionUsers) && Array.isArray(prev?.inspectionUsers)) {
+      const prevById = new Map(prev.inspectionUsers.map((u: any) => [String(u.id), u]));
+      merged.inspectionUsers = next.inspectionUsers.map((u: any) => {
+        const p = prevById.get(String(u.id));
+        if (!p) return u;
+        return {
+          ...p,
+          ...u,
+          zoneId: u.zoneId || p.zoneId,
+          districtId: u.districtId || p.districtId,
+          townPanchayat: u.townPanchayat || p.townPanchayat,
+          townPanchayatTa: u.townPanchayatTa || p.townPanchayatTa,
+          district: u.district || p.district,
+          zone: u.zone || p.zone,
+        };
+      });
+    }
     if (next?.settings && typeof next.settings === 'object') {
       merged.settings = { ...(prev?.settings || {}), ...next.settings };
     }
@@ -378,12 +396,69 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
       ]),
     []
   );
+  const ADMIN_BUNDLE_TABS = useMemo(() => new Set(['masters', 'inspectionEmployees', 'employeeManagement']), []);
 
   useEffect(() => {
     if (!currentUser || !HEAVY_PORTAL_TABS.has(activeTab) || heavyCollectionsLoadedRef.current) return;
     heavyCollectionsLoadedRef.current = true;
     void loadExtendedState();
   }, [activeTab, currentUser, HEAVY_PORTAL_TABS]);
+
+  useEffect(() => {
+    if (!currentUser || !ADMIN_BUNDLE_TABS.has(activeTab)) return;
+    const geoReady =
+      (state.zones?.length ?? 0) > 0 &&
+      (state.districts?.length ?? 0) > 0 &&
+      (state.townPanchayats?.length ?? 0) > 0;
+    const postsReady = (state.posts?.length ?? 0) > 0 || (state.employeeGroups?.length ?? 0) > 0;
+    const staffReady = (state.inspectionUsers?.length ?? 0) > 0 && state.inspectionUsers.some(
+      (u: any) => !!(u?.zoneId || u?.districtId || u?.townPanchayat || u?.district),
+    );
+    if (geoReady && staffReady && (activeTab !== 'masters' || postsReady)) return;
+    void loadPortalAdminBundles()
+      .then((bundle) => {
+        setState((prev: any) => mergePortalState(prev, bundle));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('portal:masters-updated'));
+        }
+      })
+      .catch((err) => console.warn('Admin tab bundle load failed:', err));
+  }, [activeTab, currentUser, ADMIN_BUNDLE_TABS, state.zones?.length, state.districts?.length, state.townPanchayats?.length, state.posts?.length, state.employeeGroups?.length, state.inspectionUsers?.length]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const geoLoaded =
+      (state.townPanchayats?.length ?? 0) > 0 ||
+      (state.districts?.length ?? 0) > 0 ||
+      (state.zones?.length ?? 0) > 0;
+    if (!geoLoaded) return;
+    const masters = {
+      townPanchayats: state.townPanchayats || [],
+      districts: state.districts || [],
+      zones: state.zones || [],
+    };
+    const nextScope = getPortalFilterScopeIds(currentUser, masters);
+    const prev = currentUser.portalScope;
+    const unchanged =
+      String(prev?.tpId || '') === String(nextScope.tpId || '') &&
+      String(prev?.districtId || '') === String(nextScope.districtId || '') &&
+      String(prev?.zoneId || '') === String(nextScope.zoneId || '');
+    if (unchanged) return;
+    const nextUser = normalizePortalSessionUser({ ...currentUser, portalScope: nextScope }, masters);
+    setCurrentUser(nextUser);
+    try {
+      localStorage.setItem('ems_current_user', JSON.stringify(nextUser));
+    } catch {
+      /* quota */
+    }
+  }, [
+    currentUser?.id,
+    currentUser?.tpId,
+    currentUser?.townPanchayatId,
+    state.townPanchayats?.length,
+    state.districts?.length,
+    state.zones?.length,
+  ]);
 
   useEffect(() => {
     if (activeTab !== 'inspectionReports' || !currentUser) return;

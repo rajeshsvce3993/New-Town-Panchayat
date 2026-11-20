@@ -10,7 +10,12 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-const LEVELS = new Set<GeoLevel>(['zones', 'districts', 'townPanchayats', 'wards']);
+const LEVEL_BY_KEY: Record<string, GeoLevel> = {
+  zones: 'zones',
+  districts: 'districts',
+  townpanchayats: 'townPanchayats',
+  wards: 'wards',
+};
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: CORS_HEADERS });
@@ -27,8 +32,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const { searchParams } = req.nextUrl;
-    const levelRaw = (searchParams.get('level') || 'zones').toLowerCase();
-    if (!LEVELS.has(levelRaw as GeoLevel)) {
+    const levelKey = (searchParams.get('level') || 'zones').toLowerCase();
+    const level = LEVEL_BY_KEY[levelKey];
+    if (!level) {
       return NextResponse.json(
         { success: false, message: 'level must be zones | districts | townPanchayats | wards' },
         { status: 400, headers: CORS_HEADERS },
@@ -36,7 +42,7 @@ export async function GET(req: NextRequest) {
     }
 
     const result = await queryGeoMasters({
-      level: levelRaw as GeoLevel,
+      level,
       zoneId: searchParams.get('zoneId') || undefined,
       districtId: searchParams.get('districtId') || undefined,
       tpId: searchParams.get('tpId') || undefined,

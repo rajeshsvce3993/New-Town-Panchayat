@@ -2634,22 +2634,15 @@ export default function InspectionReportsView({
       );
       if (matched.length > 0) return matched;
 
-      // Clean fallback name mapping for demo EO / Arani / csv town panchayat IDs (extremely robust to prevent tp_csv_36u9 showing on refresh)
-      const isAraniLike = String(currentUser?.username).toLowerCase().includes('eo') || 
-                          String(currentUser?.username).toLowerCase().includes('arani') || 
-                          String(userTpId).toLowerCase().includes('arani') || 
-                          String(userTpId).toLowerCase().includes('36u9');
-      const fallbackNameEn = currentUser?.townPanchayat || currentUser?.tpName || (isAraniLike ? 'Arani' : userTpId);
-      const fallbackNameTa = currentUser?.townPanchayatTa || currentUser?.tpNameTa || (isAraniLike ? 'ஆரணி' : fallbackNameEn);
+      const fallbackNameEn =
+        currentUser?.townPanchayat ||
+        currentUser?.tpName ||
+        currentUser?.townPanchayatNameEn ||
+        String(userTpId || '');
+      const fallbackNameTa =
+        currentUser?.townPanchayatTa || currentUser?.tpNameTa || fallbackNameEn;
 
-      const cleanLabelEn = (String(fallbackNameEn).startsWith('tp_') || String(userTpId).startsWith('tp_csv_') || String(userTpId).includes('36u9')) 
-        ? (currentUser?.townPanchayat || 'Arani') 
-        : fallbackNameEn;
-      const cleanLabelTa = (String(fallbackNameTa).startsWith('tp_') || String(userTpId).startsWith('tp_csv_') || String(userTpId).includes('36u9')) 
-        ? (currentUser?.townPanchayatTa || 'ஆரணி') 
-        : fallbackNameTa;
-
-      return [{ id: userTpId, nameEn: cleanLabelEn, nameTa: cleanLabelTa }];
+      return [{ id: userTpId, nameEn: fallbackNameEn, nameTa: fallbackNameTa }];
     }
     if (selectedDistrictId !== 'all') {
       const sDist = String(selectedDistrictId).toLowerCase();
@@ -2673,7 +2666,16 @@ export default function InspectionReportsView({
       }
     }
     return list;
-  }, [state.townPanchayats, state.districts, state.zones, selectedDistrictId, selectedZoneId, userZoneId, userTpId]);
+  }, [
+    state.townPanchayats,
+    state.districts,
+    state.zones,
+    selectedDistrictId,
+    selectedZoneId,
+    userZoneId,
+    userTpId,
+    currentUser,
+  ]);
 
   // Wards available from state, filtered strictly by selected town panchayat if applicable
   const availableWards = useMemo(() => {

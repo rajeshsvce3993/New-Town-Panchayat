@@ -157,3 +157,16 @@ export async function loadPaginatedCollection(
 
   return { items, total, page, limit, hasMore: skip + items.length < total };
 }
+
+/** PF / post reference tables (masters → employee masters tab). */
+export async function loadEmployeePostMasters(db: Db) {
+  const [employeeGroups, employeeCategories, postNatures, payLevels, posts, transferReasons] = await Promise.all([
+    db.collection('employeeGroups').find({}, { projection: { _id: 0 }, maxTimeMS: QUERY_MS }).toArray(),
+    db.collection('employeeCategories').find({}, { projection: { _id: 0 }, maxTimeMS: QUERY_MS }).toArray(),
+    db.collection('postNatures').find({}, { projection: { _id: 0 }, maxTimeMS: QUERY_MS }).toArray(),
+    db.collection('payLevels').find({}, { projection: { _id: 0 }, maxTimeMS: QUERY_MS }).toArray(),
+    db.collection('posts').find({}, { projection: { _id: 0 }, maxTimeMS: QUERY_MS }).toArray(),
+    db.collection('transferReasons').find({}, { projection: { _id: 0 }, maxTimeMS: QUERY_MS }).toArray(),
+  ]);
+  return { employeeGroups, employeeCategories, postNatures, payLevels, posts, transferReasons };
+}

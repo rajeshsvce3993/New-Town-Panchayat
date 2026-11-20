@@ -98,22 +98,29 @@ export type PortalGeoMasters = {
   zones?: any[];
 };
 
-/** Scope ids for dashboard KPIs and inspection-works API (works without full geo in bootstrap). */
-export function getPortalFilterScopeIds(
-  user: any,
-  masters: PortalGeoMasters = {},
-): { tpId: string | null; districtId: string | null; zoneId: string | null } {
+export type PortalFilterScope = {
+  tpId: string | null;
+  districtId: string | null;
+  zoneId: string | null;
+};
+
+function scopeIdsFromSnap(snap: any): PortalFilterScope | null {
+  if (!snap || !(snap.tpId || snap.zoneId || snap.districtId)) return null;
+  return {
+    tpId: snap.tpId ? String(snap.tpId) : null,
+    districtId: snap.districtId ? String(snap.districtId) : null,
+    zoneId: snap.zoneId ? String(snap.zoneId) : null,
+  };
+}
+
+function eqId(a: unknown, b: unknown): boolean {
+  return String(a ?? '').toLowerCase().trim() === String(b ?? '').toLowerCase().trim();
+}
+
+/** Resolve scope from user record + geo masters (ignores stale portalScope snapshot). */
+function resolvePortalFilterScopeIds(user: any, masters: PortalGeoMasters): PortalFilterScope {
   if (!user || isHodLikeUser(user)) {
     return { tpId: null, districtId: null, zoneId: null };
-  }
-
-  const snap = user.portalScope;
-  if (snap && (snap.tpId || snap.zoneId || snap.districtId)) {
-    return {
-      tpId: snap.tpId ? String(snap.tpId) : null,
-      districtId: snap.districtId ? String(snap.districtId) : null,
-      zoneId: snap.zoneId ? String(snap.zoneId) : null,
-    };
   }
 
   const scoped = normalizePortalUserScope(user);
@@ -209,21 +216,60 @@ export function getPortalFilterScopeIds(
   return { tpId: null, districtId: null, zoneId: null };
 }
 
-/** Hydrate localStorage / SSR session — always a web portal identity (never field-only). */
-export function normalizePortalSessionUser(user: any): any {
-  if (!user) return user;
-  const scoped = normalizePortalUserScope(user);
-  const snap = user.portalScope;
-  let portalScope = snap;
-  if (!snap || !(snap.tpId || snap.zoneId || snap.districtId)) {
-    const ids = getPortalFilterScopeIds(scoped, {});
-    if (ids.tpId || ids.zoneId || ids.districtId) {
-      portalScope = ids;
+/**
+ * Scope ids for dashboard KPIs and inspection-works API.
+ * When geo masters are loaded, stale login snapshots that point at unknown TPs are discarded.
+ */
+export function getPortalFilterScopeIds(user: any, masters: PortalGeoMasters = {}): PortalFilterScope {
+  const resolved = resolvePortalFilterScopeIds(user, masters);
+  const fromSnap = scopeIdsFromSnap(user?.portalScope);
+  if (!fromSnap) return resolved;
+
+  const tps = masters.townPanchayats || [];
+  const districts = masters.districts || [];
+  const zones = masters.zones || [];
+
+  if (fromSnap.tpId) {
+    if (tps.length > 0) {
+      const snapValid = tps.some((t) => eqId(t.id, fromSnap.tpId));
+      if (snapValid) return fromSnap;
+    } else if (resolved.tpId && !eqId(resolved.tpId, fromSnap.tpId)) {
+      return resolved;
+    } else {
+      return fromSnap;
     }
   }
+
+  if (fromSnap.districtId) {
+    if (districts.length > 0) {
+      if (districts.some((d) => eqId(d.id, fromSnap.districtId))) return fromSnap;
+    } else {
+      return fromSnap;
+    }
+  }
+
+  if (fromSnap.zoneId) {
+    if (zones.length > 0) {
+      if (zones.some((z) => eqId(z.id, fromSnap.zoneId))) return fromSnap;
+    } else {
+      return fromSnap;
+    }
+  }
+
+  if (resolved.tpId || resolved.districtId || resolved.zoneId) return resolved;
+  return fromSnap;
+}
+
+/** Hydrate localStorage / SSR session — always a web portal identity (never field-only). */
+export function normalizePortalSessionUser(user: any, masters: PortalGeoMasters = {}): any {
+  if (!user) return user;
+  const scoped = normalizePortalUserScope(user);
+  const ids = getPortalFilterScopeIds(scoped, masters);
+  const portalScope =
+    ids.tpId || ids.zoneId || ids.districtId ? ids : scopeIdsFromSnap(user.portalScope) || null;
   return {
     ...scoped,
-    portalScope: portalScope || null,
+    portalScope,
     isInspectionUser: false,
     isPortalUser: true,
     portalLogin: scoped.portalLogin !== false,

@@ -85,6 +85,12 @@ function extractCalendarDateYMD(dateVal: any): string | null {
   return null;
 }
 import { Language, translations } from './translations';
+import {
+  enrichInspectionUsersForPortal,
+  userBelongsToDistrict,
+  userBelongsToTp,
+  userBelongsToZone,
+} from '@/lib/inspectionUserPortalEnrich';
 
 interface InspectionEmployeeManagementViewProps {
   state: any;
@@ -170,6 +176,42 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
   }, [state.userActivities, state.users, state.inspectionUsers, state.userSessions]);
 
   React.useEffect(() => {
+    let cancelled = false;
+    const loadStaff = async () => {
+      try {
+        const { fetchAllMastersList } = await import('@/lib/portalMastersClient');
+        const items = await fetchAllMastersList('inspectionUsers', { pageSize: 1000, lean: false, maxPages: 5 });
+        if (!cancelled && items.length) {
+          setLocalInspectionUsers(items);
+        }
+      } catch {
+        /* keep bootstrap list */
+      }
+    };
+    void loadStaff();
+    return () => {
+      cancelled = true;
+    };
+  }, [state?.zones?.length, state?.districts?.length, state?.townPanchayats?.length]);
+
+  React.useEffect(() => {
+    if (activeTab !== 'employees' && activeTab !== 'roles' && activeTab !== 'designations') return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { fetchAllMastersList } = await import('@/lib/portalMastersClient');
+        const items = await fetchAllMastersList('inspectionUsers', { pageSize: 1000, lean: false, maxPages: 5 });
+        if (!cancelled && items.length) setLocalInspectionUsers(items);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, state?.zones?.length, state?.districts?.length]);
+
+  React.useEffect(() => {
     if (activeTab !== 'employees') return;
     setCredentialIndex((prev) => ({
       ...buildUserCredentialIndex(state.inspectionUsers || []),
@@ -188,7 +230,11 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
         const [actRes, users, inspectionUsers, sessions, activities] = await Promise.all([
           fetch(`/api/users/user-activity?date=${actDateFilter}`).then((r) => r.json()).catch(() => null),
           fetchMastersList('users', { page: 1, limit: 500, lean: true }),
-          fetchMastersList('inspectionUsers', { page: 1, limit: 1000, lean: true }),
+          (await import('@/lib/portalMastersClient')).fetchAllMastersList('inspectionUsers', {
+            pageSize: 1000,
+            lean: false,
+            maxPages: 5,
+          }),
           fetchMastersList('userSessions', { page: 1, limit: 500 }),
           fetchMastersList('userActivities', { page: 1, limit: 200 }),
         ]);
@@ -219,16 +265,36 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
   }, [activeTab, actDateFilter]);
 
   const {
-    zones = [],
-    districts = [],
-    townPanchayats = [],
-    wardsAndStreets = [],
     inspectionSubjects = [],
     inspectionCategories = [],
     inspectionRoles = [],
     inspectionDesignations = [],
-    inspectionUsers = []
+    inspectionUsers: bootstrapInspectionUsers = [],
   } = state || {};
+
+  const geoMasters = React.useMemo(
+    () => ({
+      zones: state?.zones || [],
+      districts: state?.districts || [],
+      townPanchayats: state?.townPanchayats || [],
+    }),
+    [state?.zones, state?.districts, state?.townPanchayats],
+  );
+
+  const inspectionUsersRaw = React.useMemo(() => {
+    const fromBootstrap = bootstrapInspectionUsers || [];
+    return localInspectionUsers.length > fromBootstrap.length ? localInspectionUsers : fromBootstrap;
+  }, [bootstrapInspectionUsers, localInspectionUsers]);
+
+  const inspectionUsers = React.useMemo(
+    () => enrichInspectionUsersForPortal(inspectionUsersRaw, geoMasters),
+    [inspectionUsersRaw, geoMasters],
+  );
+
+  const zones = state?.zones || [];
+  const districts = state?.districts || [];
+  const townPanchayats = state?.townPanchayats || [];
+  const wardsAndStreets = state?.wardsAndStreets || [];
 
   // Form states - Roles
   const [roleCode, setRoleCode] = useState('');
@@ -627,9 +693,17 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
 
     const actualZone = zones[0]?.nameEn || 'Kanchipuram';
     const actualDist = districts[0]?.nameEn || 'Tiruvallur';
-    const actualTps = (townPanchayats && townPanchayats.length > 0) ? townPanchayats : [{ nameEn: 'Thirumazhisai' }, { nameEn: 'Arani' }];
-    const tp1 = actualTps[0]?.nameEn || 'Thirumazhisai';
-    const tp2 = actualTps[1]?.nameEn || actualTps[0]?.nameEn || 'Arani';
+    if (!townPanchayats?.length) {
+      alert(
+        lang === 'ta'
+          ? 'மாதிரி பதிவிறக்கம் — முதலில் பேரூராட்சி தரவு ஏற்றப்பட வேண்டும் (மாஸ்டர்ஸ் தாவல்).'
+          : 'Download template after Town Panchayat masters are loaded (open Masters tab first).',
+      );
+      return;
+    }
+    const actualTps = townPanchayats;
+    const tp1 = actualTps[0]?.nameEn || '';
+    const tp2 = actualTps[1]?.nameEn || tp1;
 
     const desigAnimator = inspectionDesignations.find((d: any) => d.nameEn?.toLowerCase().includes('animator')) || inspectionDesignations[1] || { nameEn: 'Animators', nameTa: 'அனிமேட்டர்கள்' };
     const desigDbc = inspectionDesignations.find((d: any) => d.nameEn?.toLowerCase().includes('dbc')) || inspectionDesignations[2] || { nameEn: 'DBC Workers', nameTa: 'டெங்கு கொசுப்புழு தடுப்பு பணியாளர்கள்' };
@@ -2110,7 +2184,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                   <div className="portal-wt-tree">
                     {zones.map((zone: any, zIdx: number) => {
                       const zoneDists = districts.filter((d: any) => d.zoneId === zone.id);
-                      const zoneUsers = filteredUsers.filter((u: any) => u.zoneId === zone.id);
+                      const zoneUsers = filteredUsers.filter((u: any) => userBelongsToZone(u, zone.id, geoMasters));
                       if (zoneUsers.length === 0) return null;
                       const zoneOpen = Boolean(openZones[zone.id]);
                       const zoneTone = ZONE_TONES[zIdx % ZONE_TONES.length];
@@ -2142,7 +2216,9 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                           <div className="portal-wt-cats">
                             {zoneDists.map((dist: any, dIdx: number) => {
                               const distTps = townPanchayats.filter((tp: any) => tp.districtId === dist.id);
-                              const distUsers = zoneUsers.filter((u: any) => u.districtId === dist.id);
+                              const distUsers = zoneUsers.filter((u: any) =>
+                                userBelongsToDistrict(u, dist.id, geoMasters),
+                              );
                               if (distUsers.length === 0) return null;
                               const distOpen = Boolean(openDistricts[dist.id]);
                               const distTone = DISTRICT_TONES[dIdx % DISTRICT_TONES.length];
@@ -2173,9 +2249,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                                   {distOpen && (
                                   <div className="portal-wt-cats">
                                     {distTps.map((tp: any, tIdx: number) => {
-                                      const tpUsers = distUsers.filter((u: any) => 
-                                        (u.townPanchayatIds || u.selectedTpIds || (u.tpId ? [u.tpId] : []))?.includes(tp.id)
-                                      );
+                                      const tpUsers = distUsers.filter((u: any) => userBelongsToTp(u, tp.id));
                                       if (tpUsers.length === 0) return null;
                                       const tpOpen = Boolean(openTps[tp.id]);
                                       const tpTone = TP_TONES[tIdx % TP_TONES.length];

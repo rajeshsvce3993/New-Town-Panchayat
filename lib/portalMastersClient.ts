@@ -2,6 +2,8 @@
 
 /** Production reads — use masters/list instead of GET /api/state (full blob). */
 
+import { fetchGeoMasters } from '@/lib/geoMastersClient';
+
 const listInflight = new Map<string, Promise<any>>();
 
 export async function fetchMastersList(
@@ -30,6 +32,48 @@ export async function fetchMastersList(
   listInflight.set(key, load);
   const json = await load;
   return json?.success && Array.isArray(json.items) ? json.items : [];
+}
+
+export async function fetchAllMastersList(
+  collection: string,
+  opts?: { pageSize?: number; lean?: boolean; maxPages?: number },
+): Promise<any[]> {
+  const pageSize = opts?.pageSize && opts.pageSize > 0 ? opts.pageSize : 1000;
+  const maxPages = opts?.maxPages && opts.maxPages > 0 ? opts.maxPages : 20;
+  const out: any[] = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const batch = await fetchMastersList(collection, { page, limit: pageSize, lean: opts?.lean });
+    if (!batch.length) break;
+    out.push(...batch);
+    if (batch.length < pageSize) break;
+  }
+  return out;
+}
+
+/** Slim bootstrap omits geo — load zones → districts → TPs for admin trees. */
+export async function loadPortalGeoMasters(): Promise<{
+  zones: any[];
+  districts: any[];
+  townPanchayats: any[];
+}> {
+  const zonesRes = await fetchGeoMasters({ level: 'zones' });
+  const zones = zonesRes.success ? zonesRes.items || [] : [];
+  const districtRes = await Promise.all(
+    zones.map((z) => fetchGeoMasters({ level: 'districts', zoneId: String(z.id || '') })),
+  );
+  const districts = districtRes.flatMap((r) => (r.success ? r.items || [] : []));
+  const tpRes = await Promise.all(
+    districts.map((d) => fetchGeoMasters({ level: 'townPanchayats', districtId: String(d.id || '') })),
+  );
+  const townPanchayats = tpRes.flatMap((r) => (r.success ? r.items || [] : []));
+  return { zones, districts, townPanchayats };
+}
+
+export async function loadPortalEmployeePostMasters(): Promise<Record<string, any[]>> {
+  const res = await fetch('/api/masters/employee', { cache: 'no-store' });
+  const json = await res.json().catch(() => ({}));
+  if (!json?.success || !json.data) return {};
+  return json.data;
 }
 
 export async function fetchPortalSettings(): Promise<Record<string, unknown> | null> {
