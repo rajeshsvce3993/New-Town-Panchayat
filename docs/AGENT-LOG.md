@@ -1,5 +1,11 @@
 # Agent log
 
+## 2026-11-20 — Zonal user default TP overwrite
+
+- Saving a zonal employee no longer stamps a leftover/default town panchayat (that TP’s district/zone was replacing the selected zone).
+- Live geo loads districts/TPs by the assigned zone id/name only; empty zone no longer returns every district.
+- Mobile Add Work only selects a district/TP that exists in the live scoped lists.
+
 ## 2026-11-20 — Role-scoped live districts / TPs
 
 - Inspection role catalog (`role_single_tp`, `role_multi_tp`, `role_zonal`, field worker) now wins over a stale HOD/all `scopeType`.

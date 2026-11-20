@@ -75,7 +75,7 @@ export function applyResolvedGeoToInspectionUser(user: any, geo: ResolvedGeo): a
   };
 }
 
-/** Stamp from in-memory masters (form save). TP row is authoritative for district / zone. */
+/** Stamp from in-memory masters (form save). TP row is authoritative for district / zone except zonal/HOD. */
 export function stampInspectionUserFromMasters(
   user: any,
   masters: { zones?: any[]; districts?: any[]; townPanchayats?: any[] },
@@ -83,6 +83,34 @@ export function stampInspectionUserFromMasters(
   const zones = masters.zones || [];
   const districts = masters.districts || [];
   const tps = masters.townPanchayats || [];
+  const st = String(user.scopeType || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_-]+/g, '_');
+
+  if (st === 'zonal' || st === 'zone' || st === 'hod') {
+    const zoneKey = norm(user.zoneId);
+    const zone =
+      zones.find((z) => geoEntityId(z) === zoneKey) ||
+      pickByName(zones, user.zone || zoneKey);
+    const zid = geoEntityId(zone) || zoneKey;
+    return {
+      ...user,
+      zoneId: zid,
+      districtId: '',
+      tpId: '',
+      townPanchayatId: '',
+      scopeId: zid,
+      selectedTpIds: [],
+      townPanchayatIds: [],
+      townPanchayat: '',
+      townPanchayatTa: '',
+      district: '',
+      districtTa: '',
+      zone: norm(zone?.nameEn || user.zone),
+      zoneTa: norm(zone?.nameTa || user.zoneTa),
+    };
+  }
 
   const tpKey = norm(
     user.tpId ||

@@ -2032,7 +2032,11 @@ export function enrichUserForApp(user: any, masters?: any): any {
     districtId: resolvedDistId,
     tpId: resolvedTpId,
     townPanchayatId: resolvedTpId,
-    scopeType: matchedRole?.scopeType || matchedRole?.scope || user.scopeType || 'single_tp',
+    scopeType: (() => {
+      const existing = String(user.scopeType || '').toLowerCase().replace(/[\s_-]+/g, '_');
+      if (['zone', 'zonal', 'hod', 'district', 'multi_tp'].includes(existing)) return user.scopeType;
+      return matchedRole?.scopeType || matchedRole?.scope || user.scopeType || 'single_tp';
+    })(),
     selectedTpIds: user.selectedTpIds || (user.townPanchayatIds ? user.townPanchayatIds : (resolvedTpId ? [resolvedTpId] : [])),
     assignedWards: cleanWards,
     selectedWards: cleanWards,

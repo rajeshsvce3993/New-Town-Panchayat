@@ -714,6 +714,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
       return;
     }
 
+    if (scopeType === 'zonal' && userZoneId) await lazyGeo.ensureDistricts(userZoneId);
     if (userDistrictId) await lazyGeo.ensureTownPanchayats(userDistrictId);
     const mastersForStamp = {
       zones,
@@ -724,8 +725,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     // Resolved town panchayat IDs based on scope
     let resolvedTpIds: string[] = [];
     if (scopeType === 'zonal') {
-      const zoneDistricts = districts.filter((d: any) => d.zoneId === userZoneId).map((d: any) => d.id);
-      resolvedTpIds = townPanchayats.filter((tp: any) => zoneDistricts.includes(tp.districtId)).map((tp: any) => tp.id);
+      resolvedTpIds = [];
     } else if (scopeType === 'single_tp') {
       resolvedTpIds = userTpId ? [userTpId] : [];
     } else if (scopeType === 'multi_tp') {
@@ -734,13 +734,14 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
       resolvedTpIds = userTpId ? [userTpId] : [];
     }
 
-    const primaryTpId = userTpId || resolvedTpIds[0] || '';
+    const zonalLike = scopeType === 'zonal' || scopeType === 'hod';
+    const primaryTpId = zonalLike ? '' : (userTpId || resolvedTpIds[0] || '');
     const { stampInspectionUserFromMasters } = await import('@/lib/inspectionUserGeoStamp');
     const scopeFields = stampInspectionUserFromMasters(
       {
         scopeType,
         zoneId: userZoneId,
-        districtId: userDistrictId,
+        districtId: zonalLike ? '' : userDistrictId,
         tpId: primaryTpId,
         townPanchayatIds: resolvedTpIds,
         selectedTpIds: resolvedTpIds,
@@ -2107,6 +2108,9 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                         onChange={(e) => {
                           setUserRoleId(e.target.value);
                           setUserDesigId('');
+                          setUserDistrictId('');
+                          setUserTpId('');
+                          setUserSelectedTpIds([]);
                         }}
                         required
                       >

@@ -27,10 +27,42 @@ export async function loadAllDistricts(db: Db) {
 
 export async function loadDistrictsByZone(db: Db, zoneId: string) {
   const ids = idOrVariants(zoneId);
-  if (!ids.length) return loadAllDistricts(db);
-  return db
+  if (!ids.length) return [];
+  const direct = await db
     .collection('districts')
     .find({ $or: [{ zoneId: { $in: ids } }, { zone_id: { $in: ids } }] }, PROJ)
+    .sort({ nameEn: 1 })
+    .toArray();
+  if (direct.length) return direct;
+
+  const zone = await db.collection('zones').findOne(
+    {
+      $or: [
+        { id: { $in: ids } },
+        { code: { $in: ids } },
+        { nameEn: norm(zoneId) },
+        { nameTa: norm(zoneId) },
+      ],
+    },
+    PROJ,
+  );
+  const aliases = [
+    ...ids,
+    ...idOrVariants(zone?.id),
+    ...idOrVariants(zone?.code),
+    norm(zone?.nameEn),
+    norm(zone?.nameTa),
+  ].filter(Boolean);
+  if (!aliases.length) return [];
+  return db
+    .collection('districts')
+    .find({
+      $or: [
+        { zoneId: { $in: aliases } },
+        { zone_id: { $in: aliases } },
+        { zone: { $in: aliases } },
+      ],
+    }, PROJ)
     .sort({ nameEn: 1 })
     .toArray();
 }

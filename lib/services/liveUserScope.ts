@@ -53,10 +53,17 @@ export async function buildLiveUserScope(userIdOrUsername: string, maxTimeMS = 1
       String(r.code || '').toLowerCase() === roleKey ||
       String(r.nameEn || '').toLowerCase() === roleKey,
   );
+  const existingScope = String(foundUser.scopeType || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_-]+/g, '_');
+  const keepAssigned = ['zone', 'zonal', 'hod', 'district', 'multi_tp'].includes(existingScope);
   const userForScope = {
     ...foundUser,
     roleId: foundUser.roleId || matchedRole?.id || foundUser.role,
-    scopeType: matchedRole?.scopeType || matchedRole?.scope || foundUser.scopeType,
+    scopeType: keepAssigned
+      ? foundUser.scopeType
+      : matchedRole?.scopeType || matchedRole?.scope || foundUser.scopeType,
   };
 
   const scopeGeo = await resolveInspectionScopeMasters(db, userForScope);

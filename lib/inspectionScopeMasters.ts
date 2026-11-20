@@ -76,26 +76,27 @@ export function resolveInspectionScopeKind(user: any): InspectionScopeKind {
 }
 
 async function resolveZoneId(db: Db, user: any): Promise<string> {
-  const candidates = [
-    user.zoneId,
-    user.scopeId,
-    user.zone,
-    user.zoneNameEn,
-    user.zoneName,
-  ].map(norm).filter(Boolean);
+  const candidates = [user.zoneId, user.zone, user.zoneNameEn, user.zoneName, user.zoneTa, user.scopeId]
+    .map(norm)
+    .filter((c) => c && c.toLowerCase() !== 'all');
+
+  const zones = await db
+    .collection('zones')
+    .find({}, { projection: { id: 1, code: 1, nameEn: 1, nameTa: 1 }, maxTimeMS: 4000 })
+    .limit(100)
+    .toArray();
+
   for (const cand of candidates) {
-    const hit = await db.collection('zones').findOne(
-      {
-        $or: [
-          { id: { $in: idVariants(cand) } },
-          { nameEn: { $regex: new RegExp(`^${cand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
-        ],
-      },
-      { projection: { id: 1 }, maxTimeMS: 3000 },
+    const hit = zones.find(
+      (z: any) =>
+        String(z.id || '').toLowerCase() === cand.toLowerCase() ||
+        String(z.code || '').toLowerCase() === cand.toLowerCase() ||
+        geoNamesEqual(z.nameEn, cand) ||
+        geoNamesEqual(z.nameTa, cand),
     );
     if (hit?.id) return String(hit.id);
   }
-  return norm(user.zoneId || user.scopeId);
+  return '';
 }
 
 async function resolveDistrictId(db: Db, user: any): Promise<string> {
@@ -181,10 +182,17 @@ async function applyInspectionRole(db: Db, user: any): Promise<any> {
         String(r.nameEn || '').toLowerCase() === roleKey,
     );
     if (!matched) return user;
+    const existing = scopeTypeKey(user.scopeType);
+    const keepAssigned =
+      existing === 'zone' ||
+      existing === 'zonal' ||
+      existing === 'hod' ||
+      existing === 'district' ||
+      existing === 'multi_tp';
     return {
       ...user,
       roleId: user.roleId || matched.id,
-      scopeType: matched.scopeType || matched.scope || user.scopeType,
+      scopeType: keepAssigned ? user.scopeType : matched.scopeType || matched.scope || user.scopeType,
     };
   } catch {
     return user;
@@ -209,7 +217,7 @@ export async function resolveInspectionScopeMasters(db: Db, user: any): Promise<
     zones = z;
     districts = d;
     townPanchayats = tps;
-    zoneId = norm(zones[0]?.id);
+    zoneId = '';
     districtIds = districts.map((x: any) => norm(x.id)).filter(Boolean);
   } else if (scopeKind === 'zonal') {
     zoneId = await resolveZoneId(db, scoped);
@@ -260,7 +268,7 @@ export async function resolveInspectionScopeMasters(db: Db, user: any): Promise<
   }
 
   if (!zoneId) {
-    zoneId = norm(scoped.zoneId) || norm(zones[0]?.id) || norm(districts[0]?.zoneId);
+    zoneId = scopeKind === 'hod' ? '' : norm(scoped.zoneId);
   }
 
   const tpIds = townPanchayats.map((t: any) => norm(t.id)).filter(Boolean);
