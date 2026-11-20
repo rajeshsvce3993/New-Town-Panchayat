@@ -1,5 +1,12 @@
 # Agent log
 
+## 2026-11-20 — Role District/TP pickers and profile
+
+- Add Work: zonal = two unlocked live dropdowns; multi-TP = district locked, TP changeable; single-TP / field worker = both locked to assigned place.
+- Profile (home + settings) reads live `/api/geo/me` lists: zone + counts for zonal, assigned district + TPs for multi-TP, assigned district + TP for single-TP.
+- Login/scope no longer copies every zone TP onto `selectedTpIds` or a leftover default TP name for zonal users.
+- Tests: `node --test scripts/test-role-place.mjs`. App version remains **2.0.11 / 111**. Deploy API then log out/in on the app.
+
 ## 2026-11-20 — Zonal user default TP overwrite
 
 - Saving a zonal employee no longer stamps a leftover/default town panchayat (that TP’s district/zone was replacing the selected zone).

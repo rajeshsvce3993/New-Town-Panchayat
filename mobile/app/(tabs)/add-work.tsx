@@ -54,7 +54,17 @@ import * as Location from 'expo-location';
 import { acquireGpsFix, gpsFixFromLocation, isPlaceholderCoord, type GpsFix } from '../../src/utils/gpsLocation';
 import { nextWorkId } from '../../src/utils/workId';
 import { resolveWorkGeoLabels } from '../../src/utils/workGeo';
-import { resolveInspectionScopeMode } from '../../src/utils/inspectionScopeMode';
+import {
+  districtPickerLocked,
+  resolveInspectionScopeMode,
+  tpPickerLocked,
+} from '../../src/utils/inspectionScopeMode';
+import {
+  addWorkDistrictOptions,
+  addWorkTpOptions,
+  resolveAssignedDistrict,
+  resolveAssignedTownPanchayat,
+} from '../../src/utils/profilePlace';
 
 function toast(msg: string) {
   if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.LONG);
@@ -123,82 +133,39 @@ export default function AddWorkScreen() {
 
   const activeTpId = useMemo(() => {
     if (tpId) return tpId;
+    if (scopeMode === 'zonal') return '';
     return resolveUserTpId(user, portalTps, undefined);
-  }, [tpId, user, portalTps]);
+  }, [tpId, user, portalTps, scopeMode]);
 
-  const districtOptions = useMemo(() => {
-    if (scopeMode === 'multi_tp' || scopeMode === 'single_tp') {
-      const d =
-        portalDistricts.find((x) => user?.districtId && x.id === user.districtId) ||
-        portalDistricts.find(
-          (x) =>
-            user?.district &&
-            (x.nameEn.toLowerCase() === user.district.toLowerCase() ||
-              x.nameTa.toLowerCase() === user.district.toLowerCase()),
-        );
-      return d ? [{ id: d.id, label: isTamil ? d.nameTa || d.nameEn : d.nameEn || d.nameTa }] : [];
-    }
-    return portalDistricts.map((d) => ({
-      id: d.id,
-      label: isTamil ? d.nameTa || d.nameEn : d.nameEn || d.nameTa,
-    }));
-  }, [scopeMode, portalDistricts, user, isTamil]);
+  const districtOptions = useMemo(
+    () => addWorkDistrictOptions(user, portal, scopeMode, isTamil),
+    [user, portal, scopeMode, isTamil],
+  );
 
-  const tpOptions = useMemo(() => {
-    if (scopeMode === 'single_tp') {
-      const t =
-        portalTps.find((x) => x.id === activeTpId) ||
-        portalTps.find(
-          (x) =>
-            user?.townPanchayat &&
-            (x.nameEn.toLowerCase() === user.townPanchayat.toLowerCase() ||
-              x.nameTa.toLowerCase() === user.townPanchayat.toLowerCase()),
-        );
-      if (!t) return [];
-      return [{ id: t.id, label: isTamil ? t.nameTa || t.nameEn : t.nameEn || t.nameTa }];
-    }
-    let list = portalTps;
-    if (scopeMode === 'zonal' && districtId) {
-      list = list.filter((t) => String(t.districtId || '') === String(districtId));
-    }
-    if (scopeMode === 'multi_tp') {
-      const allowed = new Set((user?.selectedTpIds || []).map(String));
-      if (allowed.size) list = list.filter((t) => allowed.has(String(t.id)));
-      else if (districtId) list = list.filter((t) => String(t.districtId || '') === String(districtId));
-    }
-    return list.map((t) => ({
-      id: t.id,
-      label: isTamil ? t.nameTa || t.nameEn : t.nameEn || t.nameTa,
-    }));
-  }, [scopeMode, portalTps, districtId, activeTpId, user, isTamil]);
+  const tpOptions = useMemo(
+    () => addWorkTpOptions(user, portal, scopeMode, districtId, isTamil),
+    [user, portal, scopeMode, districtId, isTamil],
+  );
 
   useEffect(() => {
     const dists = portalDistricts;
     const tps = portalTps;
     const mode = resolveInspectionScopeMode(user, portal);
     if (mode === 'single_tp') {
-      const d =
-        (user?.districtId && dists.some((x) => x.id === user.districtId) ? user.districtId : '') ||
-        dists.find((x) => user?.district && x.nameEn.toLowerCase() === user.district.toLowerCase())?.id ||
-        (dists.length === 1 ? dists[0].id : '');
-      const t =
-        resolveUserTpId(user, tps) ||
-        (tps.length === 1 ? tps[0].id : '');
-      setDistrictId(d);
-      setTpId(tps.some((x) => x.id === t) ? t : tps.length === 1 ? tps[0].id : '');
+      const d = resolveAssignedDistrict(user, portal);
+      const t = resolveAssignedTownPanchayat(user, portal);
+      setDistrictId(d?.id || '');
+      setTpId(t?.id || (tps.length === 1 ? tps[0].id : ''));
       return;
     }
     if (mode === 'multi_tp') {
-      const d =
-        (user?.districtId && dists.some((x) => x.id === user.districtId) ? user.districtId : '') ||
-        dists.find((x) => user?.district && x.nameEn.toLowerCase() === user.district.toLowerCase())?.id ||
-        (dists.length === 1 ? dists[0].id : '');
-      setDistrictId(d);
-      const allowed = new Set((user?.selectedTpIds || []).map(String));
+      const d = resolveAssignedDistrict(user, portal);
+      setDistrictId(d?.id || '');
+      const allowed = new Set((user?.selectedTpIds || []).map(String).filter(Boolean));
       const pool = allowed.size
         ? tps.filter((t) => allowed.has(String(t.id)))
-        : tps.filter((t) => !d || String(t.districtId) === String(d));
-      setTpId((prev) => (pool.some((t) => t.id === prev) ? prev : pool.length === 1 ? pool[0].id : ''));
+        : tps.filter((t) => !d?.id || String(t.districtId) === String(d.id));
+      setTpId((prev) => (pool.some((row) => row.id === prev) ? prev : pool.length === 1 ? pool[0].id : ''));
       return;
     }
     const allowedDist = new Set(dists.map((d) => String(d.id)));
@@ -207,7 +174,8 @@ export default function AddWorkScreen() {
       return;
     }
     setDistrictId((prev) => (allowedDist.has(String(prev)) ? prev : ''));
-  }, [user?.id, user?.scopeType, user?.districtId, user?.selectedTpIds, portal.scopeKind, portalDistricts, portalTps]);
+    setTpId((prev) => (tps.some((t) => t.id === prev) ? prev : ''));
+  }, [user, portal, portalDistricts, portalTps]);
 
   useEffect(() => {
     if (scopeMode !== 'zonal') return;
@@ -895,15 +863,21 @@ export default function AddWorkScreen() {
               districtOptions,
               (id) => setDistrictId(id),
               'geo-dist',
-              scopeMode !== 'zonal',
+              districtPickerLocked(scopeMode),
             )}
             {dropdown(
               isTamil ? 'பேரூராட்சி (Town Panchayat)' : 'Select TP (Town Panchayat)',
               tpId,
               tpOptions,
-              (id) => setTpId(id),
+              (id) => {
+                setTpId(id);
+                if (scopeMode === 'zonal') {
+                  const picked = portalTps.find((t) => t.id === id);
+                  if (picked?.districtId) setDistrictId(String(picked.districtId));
+                }
+              },
               'geo-tp',
-              scopeMode === 'single_tp',
+              tpPickerLocked(scopeMode),
             )}
             {!subjects.length ? (
               <View style={[styles.scopeAlert, { borderColor: '#FECACA' }]}>

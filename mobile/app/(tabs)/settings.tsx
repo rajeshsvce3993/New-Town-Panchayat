@@ -31,11 +31,10 @@ import { syncProfilePhotoFromServer } from '../../src/services/userProfilePhoto'
 import { palettes } from '../../src/theme/palettes';
 import {
   effectivePhotoUrl,
-  effectiveWards,
   resolveOfficerDesignation,
   resolveUserDisplayName,
-  resolveUserTownPanchayatLabel,
 } from '../../src/types/models';
+import { resolveProfilePlace } from '../../src/utils/profilePlace';
 
 function toast(msg: string) {
   if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.LONG);
@@ -116,8 +115,7 @@ export default function SettingsScreen() {
   ] as const;
 
   const photoUri = resolveProfilePhotoUrl(photo);
-  const wards = effectiveWards(user);
-  const tpDisplay = resolveUserTownPanchayatLabel(user, isTamil);
+  const place = resolveProfilePlace(user, portal, isTamil);
   const designationLabel = resolveOfficerDesignation(user, portal, isTamil);
   const versionName = APP_VERSION_NAME;
   const versionCode = String(APP_VERSION_CODE);
@@ -230,20 +228,15 @@ export default function SettingsScreen() {
           </View>
         </View>
         <View style={styles.detailGrid}>
-          <View style={styles.detailCol}>
-            <Text style={styles.miniLbl}>{isTamil ? 'பேரூராட்சி' : 'TP'}</Text>
-            <Text style={styles.miniVal} numberOfLines={2}>{tpDisplay}</Text>
-          </View>
-          <View style={styles.detailCol}>
-            <Text style={styles.miniLbl}>{isTamil ? 'வார்டுகள்' : 'Wards'}</Text>
-            <Text style={styles.miniVal} numberOfLines={2}>{!wards.length ? (isTamil ? 'அனைத்தும்' : 'All') : wards.join(', ')}</Text>
-          </View>
-          <View style={[styles.detailCol, { borderRightWidth: 0 }]}>
-            <Text style={styles.miniLbl}>{isTamil ? 'பதவி' : 'Designation'}</Text>
-            <Text style={styles.miniVal} numberOfLines={2}>
-              {designationLabel || '—'}
-            </Text>
-          </View>
+          {place.items.map((item, idx) => (
+            <View
+              key={item.label}
+              style={[styles.detailCol, idx === place.items.length - 1 && { borderRightWidth: 0 }]}
+            >
+              <Text style={styles.miniLbl}>{item.label}</Text>
+              <Text style={styles.miniVal} numberOfLines={2}>{item.value}</Text>
+            </View>
+          ))}
         </View>
       </View>
 

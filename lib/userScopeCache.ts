@@ -470,24 +470,42 @@ export async function buildSingleUserScope(
   delete cleanUser.password;
   delete cleanUser.passwordHash;
 
-  if (multiScope) {
+  if (scopeKind === 'zonal' || scopeKind === 'hod') {
     cleanUser.tpId = '';
     cleanUser.townPanchayatId = '';
-    cleanUser.townPanchayat = matchedTp.nameEn;
-    cleanUser.townPanchayatTa = matchedTp.nameTa;
-    cleanUser.district =
-      matchedTp.districtNameEn ||
-      matchedDistMaster?.nameEn ||
-      (scopeKind === 'zonal' ? zoneRow?.nameEn || cleanUser.district : cleanUser.district);
-    cleanUser.districtTa =
-      matchedTp.districtNameTa || matchedDistMaster?.nameTa || cleanUser.districtTa;
-    cleanUser.zoneId = String(zoneRow?.id || matchedTp.zoneId || cleanUser.zoneId || '');
+    cleanUser.townPanchayat = '';
+    cleanUser.townPanchayatTa = '';
+    cleanUser.districtId = '';
+    cleanUser.district = '';
+    cleanUser.districtTa = '';
+    cleanUser.zoneId = String(zoneRow?.id || masters.scopeZoneId || cleanUser.zoneId || '');
+    cleanUser.zone = String(zoneRow?.nameEn || cleanUser.zone || '');
+    cleanUser.zoneTa = String(zoneRow?.nameTa || cleanUser.zoneTa || '');
+    cleanUser.assignedWards = assignedWards;
+    cleanUser.selectedWards = assignedWards;
+    cleanUser.selectedTpIds = [];
+    cleanUser.scopeType = scopeKind === 'hod' ? 'hod' : 'zonal';
+  } else if (scopeKind === 'multi_tp' || scopeKind === 'district') {
+    const assignedDistrict =
+      (masters.districts || []).find(
+        (d: any) =>
+          String(d.id || '').toLowerCase() ===
+          String(user.districtId || matchedTp.districtId || '').toLowerCase(),
+      ) || (masters.districts || [])[0];
+    cleanUser.tpId = '';
+    cleanUser.townPanchayatId = '';
+    cleanUser.townPanchayat = '';
+    cleanUser.townPanchayatTa = '';
+    cleanUser.districtId = String(assignedDistrict?.id || user.districtId || '');
+    cleanUser.district = String(assignedDistrict?.nameEn || user.district || '');
+    cleanUser.districtTa = String(assignedDistrict?.nameTa || user.districtTa || '');
+    cleanUser.zoneId = String(assignedDistrict?.zoneId || zoneRow?.id || cleanUser.zoneId || '');
     cleanUser.zone = String(zoneRow?.nameEn || cleanUser.zone || '');
     cleanUser.zoneTa = String(zoneRow?.nameTa || cleanUser.zoneTa || '');
     cleanUser.assignedWards = assignedWards;
     cleanUser.selectedWards = assignedWards;
     cleanUser.selectedTpIds = masters.townPanchayats.map((t: any) => t.id).filter(Boolean);
-    cleanUser.scopeType = scopeKind === 'zonal' ? 'zonal' : user.scopeType || scopeKind;
+    cleanUser.scopeType = scopeKind === 'district' ? 'district' : 'multi_tp';
   }
 
   const compactGeo = (rows: any[], pick: (r: any) => CompactGeoNode): CompactGeoNode[] =>

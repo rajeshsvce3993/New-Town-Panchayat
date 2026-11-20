@@ -1719,7 +1719,23 @@ export function enrichUserForApp(user: any, masters?: any): any {
   const roles = masters?.inspectionRoles || masters?.roles || [];
   const designations = masters?.inspectionDesignations || [];
 
-  const rawTp = user.tpId || user.townPanchayatId || user.townPanchayat || (Array.isArray(user.townPanchayatIds) ? user.townPanchayatIds[0] : '') || (Array.isArray(user.selectedTpIds) ? user.selectedTpIds[0] : '') || '';
+  const scopeKey = String(user.scopeType || '')
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '_');
+  const roleKey = String(user.roleId || user.role || '')
+    .toLowerCase()
+    .trim();
+  const multiPlaceUser =
+    ['zone', 'zonal', 'hod', 'district', 'multi_tp'].includes(scopeKey) ||
+    ['role_zonal', 'role_multi_tp', 'role_district'].includes(roleKey);
+  const rawTp = multiPlaceUser
+    ? user.tpId || user.townPanchayatId || ''
+    : user.tpId ||
+      user.townPanchayatId ||
+      user.townPanchayat ||
+      (Array.isArray(user.townPanchayatIds) ? user.townPanchayatIds[0] : '') ||
+      (Array.isArray(user.selectedTpIds) ? user.selectedTpIds[0] : '') ||
+      '';
   const rawTpStr = String(rawTp).trim().toLowerCase();
   const matchedTp = tps.find((t: any) =>
     String(t.id || '').toLowerCase() === rawTpStr ||

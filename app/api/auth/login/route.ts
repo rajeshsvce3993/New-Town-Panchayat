@@ -35,6 +35,79 @@ async function parseLoginBody(req: NextRequest): Promise<Record<string, unknown>
   }
 }
 
+function scopeKindKey(value: unknown): string {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_-]+/g, '_');
+}
+
+/** Stamp mobile login user with live role place — never a leftover default TP. */
+function applyMobileLoginPlace(user: any, userScope: any) {
+  if (!user) return;
+  const kind = scopeKindKey(userScope?.scopeKind || user.scopeType);
+  const zones = Array.isArray(userScope?.zones) ? userScope.zones : [];
+  const districts = Array.isArray(userScope?.districts) ? userScope.districts : [];
+  const tps = Array.isArray(userScope?.townPanchayats) ? userScope.townPanchayats : [];
+  const zone = zones[0];
+
+  if (kind === 'zonal' || kind === 'zone' || kind === 'hod') {
+    user.tpId = '';
+    user.townPanchayatId = '';
+    user.townPanchayat = '';
+    user.townPanchayatTa = '';
+    user.districtId = '';
+    user.district = '';
+    user.districtTa = '';
+    user.selectedTpIds = [];
+    if (zone) {
+      user.zoneId = zone.id || user.zoneId;
+      user.zone = zone.nameEn || user.zone;
+      user.zoneTa = zone.nameTa || user.zoneTa;
+    }
+    user.scopeType = kind === 'hod' ? 'hod' : 'zonal';
+    return;
+  }
+
+  if (kind === 'multi_tp' || kind === 'district') {
+    const assignedDistrict =
+      districts.find((d: any) => user.districtId && String(d.id) === String(user.districtId)) || districts[0];
+    user.tpId = '';
+    user.townPanchayatId = '';
+    user.townPanchayat = '';
+    user.townPanchayatTa = '';
+    if (assignedDistrict) {
+      user.districtId = assignedDistrict.id;
+      user.district = assignedDistrict.nameEn || user.district;
+      user.districtTa = assignedDistrict.nameTa || user.districtTa;
+    }
+    user.selectedTpIds = tps.map((t: any) => t.id).filter(Boolean);
+    user.scopeType = kind === 'district' ? 'district' : 'multi_tp';
+    return;
+  }
+
+  const tp =
+    tps.find((t: any) => user.tpId && String(t.id) === String(user.tpId)) ||
+    tps.find((t: any) => user.townPanchayatId && String(t.id) === String(user.townPanchayatId)) ||
+    tps[0];
+  const district =
+    districts.find((d: any) => tp?.districtId && String(d.id) === String(tp.districtId)) ||
+    districts.find((d: any) => user.districtId && String(d.id) === String(user.districtId)) ||
+    districts[0];
+  if (tp) {
+    user.tpId = tp.id;
+    user.townPanchayatId = tp.id;
+    user.townPanchayat = tp.nameEn || user.townPanchayat;
+    user.townPanchayatTa = tp.nameTa || user.townPanchayatTa;
+  }
+  if (district) {
+    user.districtId = district.id;
+    user.district = district.nameEn || user.district;
+    user.districtTa = district.nameTa || user.districtTa;
+  }
+  user.selectedTpIds = tp?.id ? [tp.id] : [];
+}
+
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
   try {
@@ -307,9 +380,6 @@ export async function POST(req: NextRequest) {
         returnUser.selectedWards = userScope.assignedWards || su.selectedWards || returnUser.selectedWards;
         returnUser.scopeType = userScope.scopeKind || userScope.scopeType || su.scopeType || returnUser.scopeType;
         if (su.selectedTpIds?.length) returnUser.selectedTpIds = su.selectedTpIds;
-        else if (userScope.townPanchayats?.length) {
-          returnUser.selectedTpIds = userScope.townPanchayats.map((t: any) => t.id).filter(Boolean);
-        }
       } else {
         returnUser.designation = su.designation || returnUser.designation;
         returnUser.designationNameEn = su.designationNameEn || returnUser.designationNameEn;
@@ -335,6 +405,10 @@ export async function POST(req: NextRequest) {
     const sessionUser = webPortal
       ? normalizePortalSessionUser(returnUser)
       : normalizePortalUserScope(returnUser);
+
+    if (mobileClient && userScope) {
+      applyMobileLoginPlace(sessionUser, userScope);
+    }
 
     if (mobileClient && !userMayUseMobileApp(sessionUser, sourceCollection)) {
       logServerProcess({

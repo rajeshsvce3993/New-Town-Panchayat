@@ -15,9 +15,14 @@ export function resolveInspectionScopeMode(
   portal?: PortalState | null,
 ): InspectionScopeMode {
   const fromPortal = key(portal?.scopeKind);
-  if (fromPortal === 'hod' || fromPortal === 'zonal' || fromPortal === 'district') return 'zonal';
-  if (fromPortal === 'multi_tp') return 'multi_tp';
-  if (fromPortal === 'single_tp' || fromPortal === 'field_worker' || fromPortal === 'field_workers') {
+  if (fromPortal === 'hod' || fromPortal === 'zonal' || fromPortal === 'zone') return 'zonal';
+  if (fromPortal === 'district' || fromPortal === 'multi_tp') return 'multi_tp';
+  if (
+    fromPortal === 'single_tp' ||
+    fromPortal === 'field_worker' ||
+    fromPortal === 'field_workers' ||
+    fromPortal === 'townpanchayat'
+  ) {
     return 'single_tp';
   }
 
@@ -28,13 +33,34 @@ export function resolveInspectionScopeMode(
   if (
     st === 'zonal' ||
     st === 'zone' ||
-    st === 'district' ||
     role === 'role_zonal' ||
     role === 'ad' ||
     /zonal|assistant_director|assistant director/i.test(String(user.role || ''))
   ) {
     return 'zonal';
   }
-  if (st === 'multi_tp' || role === 'role_multi_tp' || (user.selectedTpIds?.length ?? 0) > 1) return 'multi_tp';
+  if (
+    st === 'single_tp' ||
+    st === 'field_worker' ||
+    st === 'field_workers' ||
+    st === 'townpanchayat' ||
+    role === 'role_single_tp' ||
+    role === 'role_field_worker' ||
+    role === 'role_field_workers'
+  ) {
+    return 'single_tp';
+  }
+  if (st === 'district' || st === 'multi_tp' || role === 'role_multi_tp' || role === 'role_district') {
+    return 'multi_tp';
+  }
+  if ((user.selectedTpIds?.length ?? 0) > 1) return 'multi_tp';
   return 'single_tp';
+}
+
+export function districtPickerLocked(mode: InspectionScopeMode): boolean {
+  return mode !== 'zonal';
+}
+
+export function tpPickerLocked(mode: InspectionScopeMode): boolean {
+  return mode === 'single_tp';
 }

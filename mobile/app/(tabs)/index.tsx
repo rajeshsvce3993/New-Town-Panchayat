@@ -24,13 +24,13 @@ import { syncProfilePhotoFromServer } from '../../src/services/userProfilePhoto'
 import {
   QUEUE_STATUS,
   effectivePhotoUrl,
-  effectiveWards,
   queuedDisplayStatus,
   resolveOfficerDesignation,
   resolveUserDisplayName,
   type QueuedWorkEntry,
 } from '../../src/types/models';
 import { formatTo12Hr, todayDdMmYyyy } from '../../src/utils/dates';
+import { resolveProfilePlace } from '../../src/utils/profilePlace';
 import { normalizeWard } from '../../src/utils/wards';
 import { filterByDateRange, filterUserWorks, sortRecentFirst } from '../../src/utils/workFilters';
 
@@ -211,11 +211,8 @@ export default function DashboardScreen() {
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
   }, [filtered, selectedWard]);
 
-  const tpName = isTamil ? user?.townPanchayatTa || user?.townPanchayat || '—' : user?.townPanchayat || '—';
-  const districtName = isTamil ? user?.districtTa || user?.district || '—' : user?.district || '—';
   const designationLabel = resolveOfficerDesignation(user, portal, isTamil);
-  const wardList = effectiveWards(user);
-  const wardText = wardList.length ? wardList.join(', ') : isTamil ? 'அனைத்தும்' : 'All';
+  const place = resolveProfilePlace(user, portal, isTamil);
   const isAdmin = (user?.role || '').toLowerCase().includes('admin');
   const photoUri = resolveProfilePhotoUrl(photo);
   const heroEnd = palette.isGradient && palette.gradientColors[1] ? palette.gradientColors[1] : palette.secondary;
@@ -353,18 +350,15 @@ export default function DashboardScreen() {
             </View>
           </View>
           <View style={styles.detailGrid}>
-            <View style={styles.detailCol}>
-              <Text style={styles.detailLabel}>{isTamil ? 'பேரூராட்சி' : 'TP'}</Text>
-              <Text style={styles.detailValue} numberOfLines={2}>{tpName}</Text>
-            </View>
-            <View style={styles.detailCol}>
-              <Text style={styles.detailLabel}>{isTamil ? 'மாவட்டம்' : 'District'}</Text>
-              <Text style={styles.detailValue} numberOfLines={2}>{districtName}</Text>
-            </View>
-            <View style={[styles.detailCol, { borderRightWidth: 0 }]}>
-              <Text style={styles.detailLabel}>{isTamil ? 'வார்டு' : 'Wards'}</Text>
-              <Text style={styles.detailValue} numberOfLines={2}>{wardText}</Text>
-            </View>
+            {place.items.map((item, idx) => (
+              <View
+                key={item.label}
+                style={[styles.detailCol, idx === place.items.length - 1 && { borderRightWidth: 0 }]}
+              >
+                <Text style={styles.detailLabel}>{item.label}</Text>
+                <Text style={styles.detailValue} numberOfLines={2}>{item.value}</Text>
+              </View>
+            ))}
           </View>
         </View>
       </View>
