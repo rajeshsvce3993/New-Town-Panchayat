@@ -24,13 +24,11 @@ export function toSavedWork(
 ): InspectionWork | null {
   const workId = readAssignedWorkId(payload);
   if (!isAssignedWorkId(workId)) return null;
-  const returnedId = String(payload?.work?.id || '').trim();
-  if (returnedId && returnedId !== clientId) return null;
-  return {
-    ...(payload?.work || {}),
-    id: returnedId || clientId,
-    workId,
-  };
+  const saved = payload?.work;
+  if (!saved) return { id: clientId, workId } as InspectionWork;
+  // Keep the client uuid as `id` so queue merge/dedupe still matches the local row
+  // even when Mongo returns a different document id or WRK- as id.
+  return { ...saved, id: clientId, workId };
 }
 
 export function isNetworkFailure(message?: string): boolean {

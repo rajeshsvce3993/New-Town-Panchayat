@@ -244,10 +244,9 @@ async function processInspectionJob(jobData: InspectionJobData): Promise<any> {
 
   if (lastCameraPhotoUrl) {
     imageUrl = lastCameraPhotoUrl;
-    // Replace any field that holds a local mobile path with the valid S3 photo URL
     for (const [k, v] of Object.entries(updatedFieldsData)) {
-      if (isMobilePath(v) || v === data.imageUrl) {
-        updatedFieldsData[k] = lastCameraPhotoUrl;
+      if (isMobilePath(v)) {
+        updatedFieldsData[k] = '';
       }
     }
   } else if (isMobilePath(imageUrl)) {
@@ -296,7 +295,7 @@ async function processInspectionJob(jobData: InspectionJobData): Promise<any> {
   }
   for (const [k, v] of Object.entries(updatedFieldsData)) {
     if (isMobilePath(v)) {
-      updatedFieldsData[k] = imageUrl || '';
+      updatedFieldsData[k] = '';
     }
   }
 

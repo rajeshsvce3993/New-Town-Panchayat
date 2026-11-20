@@ -317,17 +317,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       );
       const remoteIds = new Set(remoteWorks.map((w) => w.id));
       const remoteWorkIds = new Set(remoteWorks.map((w) => w.workId).filter(Boolean));
-      setWorks((prev) =>
-        dedupeInspectionWorks([
-          ...remoteWorks,
+      setWorks((prev) => {
+        const prevById = new Map(prev.map((w) => [w.id, w]));
+        const prevByWorkId = new Map(prev.filter((w) => w.workId).map((w) => [w.workId, w]));
+        const mergedRemote = remoteWorks.map((rw) => {
+          const local = prevByWorkId.get(rw.workId) || prevById.get(rw.id);
+          const localFields = local?.fieldsData && Object.keys(local.fieldsData).length ? local.fieldsData : null;
+          const remoteFields = rw.fieldsData && Object.keys(rw.fieldsData).length ? rw.fieldsData : null;
+          if (!localFields) return rw;
+          return {
+            ...rw,
+            fieldsData: { ...localFields, ...(remoteFields || {}) },
+            imageUrl: rw.imageUrl || local?.imageUrl,
+          };
+        });
+        return dedupeInspectionWorks([
+          ...mergedRemote,
           ...prev.filter(
             (w) =>
               isAssignedWorkId(w.workId) &&
               !remoteIds.has(w.id) &&
               !remoteWorkIds.has(w.workId)
           ),
-        ])
-      );
+        ]);
+      });
       const resolve = (raw?: string | null) => {
         if (!raw?.trim()) return '';
         if (raw.startsWith('http')) return raw;
@@ -512,12 +525,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user?.username) return;
     let cancelled = false;
-    const run = async () => {
-      if (cancelled || AppState.currentState !== 'active') return;
-      const synced = await syncPendingWorks();
-      if (cancelled || !synced.length) return;
+    const mergeSynced = (synced: InspectionWork[]) => {
+      if (!synced.length || !userRef.current) return;
       setWorks((prev) => {
         const ids = new Set(synced.map((s) => s.id));
         const workIds = new Set(synced.map((s) => s.workId).filter(Boolean));
@@ -526,6 +537,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...prev.filter((w) => isAssignedWorkId(w.workId) && !ids.has(w.id) && !workIds.has(w.workId)),
         ]);
       });
+    };
+    const run = async () => {
+      if (AppState.currentState !== 'active') return;
+      const synced = await syncPendingWorks();
+      // Always merge after a successful drain — do not drop the result if a
+      // profile refresh replaced `user` while this await was in flight.
+      if (cancelled && !userRef.current) return;
+      mergeSynced(synced);
     };
     void run();
     const t = setInterval(() => void run(), OFFLINE_SYNC_MS);
@@ -537,7 +556,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       clearInterval(t);
       sub.remove();
     };
-  }, [user, refreshPortal]);
+  }, [user?.username]);
 
   const performLogin = useCallback(
     async (req: LoginRequest): Promise<LoginResponse> => {

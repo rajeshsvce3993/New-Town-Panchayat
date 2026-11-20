@@ -19,6 +19,8 @@ export type InspectionWorksFilterQuery = {
   scopeTpId?: string | null;
   scopeZoneId?: string | null;
   scopeDistrictId?: string | null;
+  /** Mobile details/share need camera + table answers; web dashboard keeps this off. */
+  includeFields?: boolean | null;
 };
 
 export type InspectionWorksFilterMasters = {

@@ -219,7 +219,7 @@ export const api = {
       this.getAppSettings(),
       this.getMobileConfig(),
       fetchWithTimeout(
-        `${baseUrl}/api/inspection-works?username=${encodeURIComponent(u)}&lite=1&limit=${worksLimit}`,
+        `${baseUrl}/api/inspection-works?username=${encodeURIComponent(u)}&lite=1&limit=${worksLimit}&includeFields=1`,
         { headers: { ...mobileClientHeaders(), 'Cache-Control': 'no-cache' } },
         BOOTSTRAP_API_TIMEOUT_MS,
       ),
@@ -458,16 +458,19 @@ export const api = {
     try {
       const response = await fetchWithTimeout(
         `${baseUrl}/api/inspection-works?lookupId=${encodeURIComponent(id)}`,
-        { headers: { 'Cache-Control': 'no-cache, no-store' } },
+        { headers: { ...mobileClientHeaders(), 'Cache-Control': 'no-cache, no-store' } },
         REQUEST_TIMEOUT_MS
       );
       const json = (await response.json().catch(() => null)) as {
-        work?: InspectionWork;
-        works?: unknown;
+        work?: InspectionWork | null;
+        works?: InspectionWork[] | unknown;
       } | null;
-      if (!json?.work || Array.isArray(json.works)) return null;
-      if (!/^WRK-/i.test(String(json.work.workId || '').trim())) return null;
-      return json.work;
+      const fromWork = json?.work && !Array.isArray(json.work) ? json.work : null;
+      if (fromWork && /^WRK-/i.test(String(fromWork.workId || '').trim())) return fromWork;
+      const list = Array.isArray(json?.works) ? json.works : [];
+      const found = list.find((w) => String(w?.id || '') === id || String(w?.workId || '') === id) || null;
+      if (found && /^WRK-/i.test(String(found.workId || '').trim())) return found;
+      return null;
     } catch {
       return null;
     }

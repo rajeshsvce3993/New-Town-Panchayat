@@ -1839,52 +1839,80 @@ export function WorkDetailModal({
   const [exportOfficerUri, setExportOfficerUri] = useState<string | null>(null);
   const [shareThemeId, setShareThemeId] = useState(DEFAULT_SHARE_CARD_THEME_ID);
   const sharePaint = resolveShareCardPaint(shareThemeId);
+  const [detailWork, setDetailWork] = useState<InspectionWork>(work);
+
+  useEffect(() => {
+    setDetailWork(work);
+  }, [work]);
+
+  useEffect(() => {
+    let live = true;
+    const ids = [...new Set([work.id, work.workId].map((s) => String(s || '').trim()).filter(Boolean))];
+    void (async () => {
+      for (const id of ids) {
+        const found = await api.lookupInspectionWork(id);
+        if (!live || !found) continue;
+        setDetailWork((prev) => ({
+          ...prev,
+          fieldsData: { ...(prev.fieldsData || {}), ...(found.fieldsData || {}) },
+          imageUrl: found.imageUrl || prev.imageUrl,
+        }));
+        break;
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [work.id, work.workId]);
 
   const images = useMemo(() => {
     const list: { url: string; name: string; fieldKey: string }[] = [];
     const fields = portalFields(portal);
-    const resolveName = (key: string) => localizedFieldLabel(matchWorkField(fields, key, work.categoryId), isTamil, key);
-    Object.entries(work.fieldsData || {}).forEach(([key, value]) => {
+    const resolveName = (key: string) => localizedFieldLabel(matchWorkField(fields, key, detailWork.categoryId), isTamil, key);
+    Object.entries(detailWork.fieldsData || {}).forEach(([key, value]) => {
       const v = String(value || '');
       if (isImageValue(v)) list.push({ url: v, name: resolveName(key), fieldKey: key });
     });
-    if (work.imageUrl && isImageValue(String(work.imageUrl))) {
-      const primaryKey = mediaFingerprint(work.imageUrl);
-      const i = list.findIndex((x) => mediaFingerprint(x.url) === primaryKey);
-      if (i < 0) {
+    if (detailWork.imageUrl && isImageValue(String(detailWork.imageUrl))) {
+      const already = list.some(
+        (x) => x.url === detailWork.imageUrl || mediaFingerprint(x.url) === mediaFingerprint(String(detailWork.imageUrl))
+      );
+      if (!already) {
         list.push({
-          url: work.imageUrl,
+          url: detailWork.imageUrl,
           name: isTamil ? 'கள ஆய்வு புகைப்படம்' : 'Field photo',
           fieldKey: '__imageUrl__',
         });
       }
     }
-    const unique = list.filter((x, i, a) => a.findIndex((y) => mediaFingerprint(y.url) === mediaFingerprint(x.url)) === i);
+    // Keep one tile per field. Do not collapse different camera fields that
+    // happen to share a proxy URL fingerprint.
+    const unique = list.filter((x, i, a) => a.findIndex((y) => y.fieldKey === x.fieldKey) === i);
     return unique
       .map((item, index) => ({ item, index }))
       .sort((a, b) => {
-        const rank = fieldOrderIndex(fields, a.item.fieldKey, work.categoryId) - fieldOrderIndex(fields, b.item.fieldKey, work.categoryId);
+        const rank = fieldOrderIndex(fields, a.item.fieldKey, detailWork.categoryId) - fieldOrderIndex(fields, b.item.fieldKey, detailWork.categoryId);
         return rank !== 0 ? rank : a.index - b.index;
       })
       .map((x) => x.item);
-  }, [work, portal, isTamil]);
+  }, [detailWork, portal, isTamil]);
 
   const fieldRows = useMemo(() => {
     const fields = portalFields(portal);
-    return Object.entries(work.fieldsData || {})
+    return Object.entries(detailWork.fieldsData || {})
       .map(([key, value], index) => {
         const v = String(value ?? '').trim();
         if (!v || isImageValue(v)) return null;
-        const label = localizedFieldLabel(matchWorkField(fields, key, work.categoryId), isTamil, key);
+        const label = localizedFieldLabel(matchWorkField(fields, key, detailWork.categoryId), isTamil, key);
         return { key, label, value: v, index };
       })
       .filter((row): row is { key: string; label: string; value: string; index: number } => !!row)
       .sort((a, b) => {
-        const rank = fieldOrderIndex(fields, a.key, work.categoryId) - fieldOrderIndex(fields, b.key, work.categoryId);
+        const rank = fieldOrderIndex(fields, a.key, detailWork.categoryId) - fieldOrderIndex(fields, b.key, detailWork.categoryId);
         return rank !== 0 ? rank : a.index - b.index;
       })
       .map(({ key, label, value }) => ({ key, label, value }));
-  }, [work, portal, isTamil]);
+  }, [detailWork, portal, isTamil]);
 
   const portraitPhotoAreaH = useMemo(
     () => estimatePortraitPhotoAreaHeight(portraitHeaderH),

@@ -28,6 +28,8 @@ export function parseInspectionWorksViewQuery(searchParams: URLSearchParams) {
     scopeTpId: pick('scopeTpId'),
     scopeZoneId: pick('scopeZoneId'),
     scopeDistrictId: pick('scopeDistrictId'),
+    includeFields:
+      searchParams.get('includeFields') === '1' || searchParams.get('fields') === '1',
     lite: searchParams.get('lite') === '1',
     countsOnly: searchParams.get('countsOnly') === '1',
     rowsOnly: searchParams.get('rowsOnly') === '1',
@@ -68,6 +70,7 @@ export function buildInspectionWorksCacheKey(searchParams: URLSearchParams): str
     q.scopeTpId || '',
     q.scopeZoneId || '',
     q.scopeDistrictId || '',
+    q.includeFields ? 'fields' : 'nofields',
     q.lite ? 'lite' : 'full',
     q.countsOnly ? 'counts' : q.rowsOnly ? 'rows-only' : 'rows',
     q.limit || '',
@@ -108,5 +111,6 @@ export function toInspectionWorksFilterQuery(
     scopeTpId: v.scopeTpId,
     scopeZoneId: v.scopeZoneId,
     scopeDistrictId: v.scopeDistrictId,
+    includeFields: v.includeFields,
   };
 }

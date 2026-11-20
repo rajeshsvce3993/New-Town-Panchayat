@@ -45,7 +45,7 @@ import {
 } from '@/lib/inspectionWorksLiteLoader';
 import { applyDefaultReportsDateWindow } from '@/lib/inspectionWorksMongoRepository';
 import { aggregateSwmReport, aggregateSwmStreetGroups } from '@/lib/swmReportsAggregate';
-import { toMediaProxyPath } from '@/lib/s3MediaKey';
+import { rewriteWorkMediaFields, toMediaProxyPath } from '@/lib/s3MediaKey';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -181,7 +181,13 @@ export async function GET(req: NextRequest) {
       const { _id, ...rest } = found as { _id?: unknown } & Record<string, unknown>;
       void _id;
       return NextResponse.json(
-        { success: true, work: { ...rest, id: found.id || found.workId || lookupId } },
+        {
+          success: true,
+          work: rewriteWorkMediaFields(
+            { ...rest, id: found.id || found.workId || lookupId },
+            requestOrigin
+          ),
+        },
         { headers: CORS_HEADERS }
       );
     }
@@ -1041,7 +1047,9 @@ export async function POST(req: NextRequest) {
     }
     for (const [k, v] of Object.entries(updatedFieldsData)) {
       if (isMobilePath(v)) {
-        updatedFieldsData[k] = imageUrl || '';
+        // Never copy the last camera URL onto every leftover local path — that
+        // collapsed all field photos to a single image on details/share.
+        updatedFieldsData[k] = '';
       }
     }
 

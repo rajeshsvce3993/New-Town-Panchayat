@@ -1,6 +1,6 @@
 {
   "name": "town-panchayat-ems",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/metro-runtime": "~57.0.16",

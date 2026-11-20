@@ -108,6 +108,7 @@ function reportsDataCacheKey(filter: InspectionWorksFilterQuery, limit: number, 
     scopeTpId: filter.scopeTpId ?? '',
     scopeZoneId: filter.scopeZoneId ?? '',
     scopeDistrictId: filter.scopeDistrictId ?? '',
+    includeFields: filter.includeFields ? 1 : 0,
     limit,
     page,
     pageSize,
@@ -115,7 +116,7 @@ function reportsDataCacheKey(filter: InspectionWorksFilterQuery, limit: number, 
 }
 
 function reportsMongoProjection(filter: InspectionWorksFilterQuery) {
-  if (filter.adminFieldId) return LITE_INSPECTION_WORKS_PROJECTION;
+  if (filter.adminFieldId || filter.includeFields || filter.username) return LITE_INSPECTION_WORKS_PROJECTION;
   return { ...LITE_INSPECTION_WORKS_PROJECTION, fieldsData: 0 as const };
 }
 
@@ -133,7 +134,7 @@ function enrichReportsCandidateRows(
     adminFieldValue: null,
   };
   const narrowed = filterInspectionWorksPostMongo(rows, dateAndTextQuery, masters);
-  return normalizeAndEnrichWorks(narrowed, masters);
+  return normalizeAndEnrichWorks(narrowed, masters).map((w) => rewriteWorkMediaFields(w));
 }
 
 /** Paginated Mongo rows are already matched — do not re-filter or rows disappear from that page. */
@@ -141,7 +142,7 @@ function enrichReportsPageRows(rows: any[], masters: InspectionWorksFilterMaster
   const withoutFallback = (rows || []).filter((w) => !isFallbackInspectionWork(w));
   return normalizeAndEnrichWorks(withoutFallback, masters)
     .map(stripInspectionWorkForLite)
-    .map(rewriteWorkMediaFields);
+    .map((w) => rewriteWorkMediaFields(w));
 }
 
 type RawLiteLoadResult = Omit<LiteWorksLoadResult, 'enriched'> & { rows: any[] };
