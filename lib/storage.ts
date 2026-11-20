@@ -4317,42 +4317,57 @@ async function pickTpByWardStreet(candidates: any[], work: any): Promise<any | n
   }
 }
 
-async function stampWorkGeoForSave(
-  work: any,
-  masters: { townPanchayats: any[]; districts: any[]; zones: any[] }
-): Promise<any> {
-  const canonical = applyCanonicalDistrictNames(work, masters.districts);
-  let next = stampWorkGeoFromMasters(canonical, masters);
-  if (workHasMasterTpId(next)) return next;
-
-  const inspector = await findInspectorForGeoStamp(next);
-  if (inspector) {
-    next = stampWorkGeoFromMasters(canonical, { ...masters, inspector });
-    if (workHasMasterTpId(next)) return next;
-  }
-
-  const candidates = listTpNameCandidates(next, masters);
-  if (candidates.length > 1) {
-    const picked = await pickTpByWardStreet(candidates, next);
-    if (picked?.id) {
-      next = stampWorkGeoFromMasters({ ...canonical, ...next, tpId: picked.id, townPanchayatId: picked.id }, masters);
+async function stampWorkGeoForSave(work: any): Promise<any> {
+  const canonical = applyCanonicalDistrictNames(work, []);
+  const inspector = await findInspectorForGeoStamp(canonical);
+  try {
+    const client = await getMongoClient();
+    if (client) {
+      const db = await getActiveMongoDb(client);
+      const { stampInspectionWorkGeo } = await import('@/lib/inspectionWorkGeoStamp');
+      let next = await stampInspectionWorkGeo(db, canonical, inspector);
+      if (!workHasMasterTpId(next)) {
+        const [districts, townPanchayats, zones] = await Promise.all([
+          getCollectionData('districts').catch(() => []),
+          getCollectionData('townPanchayats').catch(() => []),
+          getCollectionData('zones').catch(() => []),
+        ]);
+        const masters = { townPanchayats, districts, zones };
+        next = stampWorkGeoFromMasters(next, { ...masters, inspector: inspector || undefined });
+        const candidates = listTpNameCandidates(next, masters);
+        if (candidates.length > 1) {
+          const picked = await pickTpByWardStreet(candidates, next);
+          if (picked?.id) {
+            next = stampWorkGeoFromMasters(
+              { ...next, tpId: picked.id, townPanchayatId: picked.id },
+              { ...masters, inspector: inspector || undefined },
+            );
+          }
+        }
+      }
+      return next;
     }
+  } catch (err) {
+    console.warn('[geo-stamp] stampInspectionWorkGeo failed:', (err as any)?.message || err);
   }
-  return next;
+  const [districts, townPanchayats, zones] = await Promise.all([
+    getCollectionData('districts').catch(() => []),
+    getCollectionData('townPanchayats').catch(() => []),
+    getCollectionData('zones').catch(() => []),
+  ]);
+  return stampWorkGeoFromMasters(canonical, {
+    townPanchayats,
+    districts,
+    zones,
+    inspector: inspector || undefined,
+  });
 }
 
 // Save a single inspection work atomically to MongoDB and local cache
 export async function saveSingleInspectionWork(newWork: any): Promise<boolean> {
   let mongoSaved = false;
   const { attachInspectionWorkReportIndexFields } = await import('@/lib/inspectionWorkReportIndex');
-  const [districts, townPanchayats, zones] = await Promise.all([
-    getCollectionData('districts').catch(() => []),
-    getCollectionData('townPanchayats').catch(() => []),
-    getCollectionData('zones').catch(() => []),
-  ]);
-  const indexedWork = attachInspectionWorkReportIndexFields(
-    await stampWorkGeoForSave(newWork, { townPanchayats, districts, zones })
-  );
+  const indexedWork = attachInspectionWorkReportIndexFields(await stampWorkGeoForSave(newWork));
   let previousWork: any | null = null;
   try {
     const client = await getMongoClient();
