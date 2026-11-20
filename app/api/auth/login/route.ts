@@ -197,7 +197,8 @@ export async function POST(req: NextRequest) {
       resolvedPortalGeo = await resolveGeoForPortalUser(mongoDb, userDoc);
       resolvedGeo = resolvedPortalGeo;
     } else if (mongoDb && (sourceCollection === 'inspectionUsers' || sourceCollection === 'users')) {
-      resolvedGeo = await resolveGeoForUser(mongoDb, userDoc);
+      resolvedPortalGeo = await resolveGeoForPortalUser(mongoDb, userDoc);
+      resolvedGeo = resolvedPortalGeo;
     }
 
     let designationNameEn = String(userDoc.designationNameEn || userDoc.designation || '').trim();
@@ -285,6 +286,23 @@ export async function POST(req: NextRequest) {
     if (isHodLikeUser(returnUser)) {
       returnUser.scopeType = 'HOD';
       returnUser.scopeId = 'all';
+    }
+
+    if (userScope?.user && (mobileClient || sourceCollection === 'inspectionUsers')) {
+      const su = userScope.user;
+      returnUser.townPanchayat = su.townPanchayat || returnUser.townPanchayat;
+      returnUser.townPanchayatTa = su.townPanchayatTa || returnUser.townPanchayatTa;
+      returnUser.district = su.district || returnUser.district;
+      returnUser.districtTa = su.districtTa || returnUser.districtTa;
+      returnUser.zone = su.zone || returnUser.zone;
+      returnUser.zoneTa = su.zoneTa || returnUser.zoneTa;
+      returnUser.zoneId = su.zoneId || returnUser.zoneId;
+      returnUser.tpId = su.tpId ?? returnUser.tpId ?? '';
+      returnUser.townPanchayatId = su.townPanchayatId ?? returnUser.townPanchayatId ?? '';
+      returnUser.selectedTpIds = su.selectedTpIds || returnUser.selectedTpIds;
+      returnUser.assignedWards = userScope.assignedWards || su.assignedWards || returnUser.assignedWards;
+      returnUser.selectedWards = userScope.assignedWards || su.selectedWards || returnUser.selectedWards;
+      returnUser.scopeType = userScope.scopeType || su.scopeType || returnUser.scopeType;
     }
 
     const sessionUser = webPortal

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { findUserForLogin } from '@/lib/loginUserLookup';
 import { getDb } from '@/lib/repositories/mastersRepository';
-import { resolveGeoForUser } from '@/lib/domain/geoResolver';
+import { resolveGeoForPortalUser, resolveGeoForUser } from '@/lib/domain/geoResolver';
+import { resolveInspectionScopeMasters } from '@/lib/inspectionScopeMasters';
+import { isHodLikeUser, isZonalScopedUser, normalizePortalUserScope } from '@/lib/userScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,14 +51,70 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'User not found' }, { status: 404, headers: CORS_HEADERS });
     }
 
-    const geo = await resolveGeoForUser(db, userDoc);
+    const scopedUser = normalizePortalUserScope(userDoc);
+    const scopeGeo = await resolveInspectionScopeMasters(db, scopedUser);
+    const portalGeo = await resolveGeoForPortalUser(db, scopedUser);
+    const chainGeo = await resolveGeoForUser(db, scopedUser);
+
+    const geo = {
+      ...chainGeo,
+      scopeType: portalGeo.scopeType,
+      scopeId: portalGeo.scopeId,
+      portalScope: portalGeo.portalScope,
+    };
+
+    if (isZonalScopedUser(scopedUser) || scopeGeo.scopeKind === 'zonal') {
+      const zone = scopeGeo.zones[0];
+      geo.tpId = '';
+      geo.tpNameEn = zone?.nameEn ? `${zone.nameEn} — All Town Panchayats` : 'All Town Panchayats';
+      geo.tpNameTa = zone?.nameTa ? `${zone.nameTa} — அனைத்து பேரூராட்சிகள்` : 'அனைத்து பேரூராட்சிகள்';
+      geo.districtId = '';
+      geo.districtNameEn = zone?.nameEn ? `All districts in ${zone.nameEn}` : 'All Districts';
+      geo.districtNameTa = zone?.nameTa ? `${zone.nameTa} — அனைத்து மாவட்டங்கள்` : 'அனைத்து மாவட்டங்கள்';
+      geo.zoneId = zone?.id || scopeGeo.zoneId || geo.zoneId;
+      geo.zoneNameEn = zone?.nameEn || geo.zoneNameEn;
+      geo.zoneNameTa = zone?.nameTa || geo.zoneNameTa;
+    } else if (isHodLikeUser(scopedUser) || scopeGeo.scopeKind === 'hod') {
+      geo.tpId = '';
+      geo.districtId = '';
+      geo.tpNameEn = 'All Town Panchayats';
+      geo.tpNameTa = 'அனைத்து பேரூராட்சிகள்';
+      geo.districtNameEn = 'All Districts';
+      geo.districtNameTa = 'அனைத்து மாவட்டங்கள்';
+    } else if (scopeGeo.scopeKind === 'multi_tp') {
+      geo.tpId = '';
+      geo.tpNameEn = `Selected Town Panchayats (${scopeGeo.townPanchayats.length})`;
+      geo.tpNameTa = `தேர்ந்தெடுத்த பேரூராட்சிகள் (${scopeGeo.townPanchayats.length})`;
+    }
+
+    const mapGeo = (rows: any[], extra?: (r: any) => Record<string, string>) =>
+      rows.map((r) => ({
+        id: r.id,
+        nameEn: r.nameEn || '',
+        nameTa: r.nameTa || '',
+        code: r.code || '',
+        ...(extra ? extra(r) : {}),
+      }));
+
     return NextResponse.json(
       {
         success: true,
         source: 'mongo-live',
         username: userDoc.username || clean,
         geo,
-        complete: geo.missing.length === 0,
+        zones: mapGeo(scopeGeo.zones),
+        districts: mapGeo(scopeGeo.districts, (d) => ({ zoneId: d.zoneId || '' })),
+        townPanchayats: mapGeo(scopeGeo.townPanchayats, (t) => ({
+          districtId: t.districtId || '',
+          zoneId: t.zoneId || '',
+        })),
+        scopeKind: scopeGeo.scopeKind,
+        complete:
+          isZonalScopedUser(scopedUser) ||
+          isHodLikeUser(scopedUser) ||
+          scopeGeo.scopeKind !== 'single_tp'
+            ? scopeGeo.townPanchayats.length > 0
+            : geo.missing.length === 0,
       },
       { headers: { ...CORS_HEADERS, 'Cache-Control': 'private, no-store' } },
     );

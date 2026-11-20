@@ -33,6 +33,19 @@ export interface CompactStreet {
   wardNo: string;
   streetNameEn: string;
   streetNameTa: string;
+  tpId?: string;
+  tpNameEn?: string;
+  tpNameTa?: string;
+  townPanchayatId?: string;
+}
+
+export interface CompactGeoNode {
+  id: string;
+  nameEn: string;
+  nameTa: string;
+  code?: string;
+  zoneId?: string;
+  districtId?: string;
 }
 
 export interface CompactSubject {
@@ -73,6 +86,8 @@ export interface CachedUserScope {
   username: string;
   scopeVersion: number;
   updatedAt: string;
+  scopeType?: string;
+  scopeKind?: string;
   user: any;
   townPanchayat: {
     id: string;
@@ -81,7 +96,13 @@ export interface CachedUserScope {
     districtId?: string;
     districtNameEn?: string;
     districtNameTa?: string;
+    zoneId?: string;
+    zoneNameEn?: string;
+    zoneNameTa?: string;
   };
+  zones?: CompactGeoNode[];
+  districts?: CompactGeoNode[];
+  townPanchayats?: CompactGeoNode[];
   assignedWards: string[];
   wardsAndStreets: CompactStreet[];
   subjects: CompactSubject[];
@@ -235,18 +256,33 @@ export async function buildSingleUserScope(
     subjects: any[];
     categories: any[];
     fields: any[];
+    scopeKind?: string;
+    scopeZoneId?: string;
+    scopeTpIds?: string[];
   },
   scopeVersion: number
 ): Promise<CachedUserScope> {
   const uId = user.id || user._id ? String(user.id || user._id) : '';
   const username = (user.username || '').trim().toLowerCase();
+  const scopeKind = String(masters.scopeKind || user.scopeType || 'single_tp').toLowerCase();
+  const scopeTpIdSet = new Set(
+    (masters.scopeTpIds?.length ? masters.scopeTpIds : masters.townPanchayats.map((t: any) => t.id))
+      .map((id: string) => String(id || '').toLowerCase())
+      .filter(Boolean),
+  );
+
+  const tpById = new Map<string, any>();
+  for (const t of masters.townPanchayats) {
+    const id = String(t.id || '').toLowerCase();
+    if (id) tpById.set(id, t);
+  }
 
   // Determine user's TP
   const userTpId = (user.tpId || user.townPanchayatId || user.resolvedTpId || '').trim();
   const userTpName = (user.townPanchayat || '').trim().toLowerCase();
 
   const tpNameNorm = userTpName.replace(/\s+(tp|town panchayat|பேரூராட்சி)$/i, '').trim();
-  const matchedTp =
+  let matchedTp =
     masters.townPanchayats.find((t: any) => {
       const nameEn = String(t.nameEn || '').trim().toLowerCase();
       const nameTa = String(t.nameTa || '').trim().toLowerCase();
@@ -257,8 +293,47 @@ export async function buildSingleUserScope(
             String(t._id).toLowerCase() === userTpId.toLowerCase())) ||
         (userTpName && (nameEn === userTpName || nameTa === userTpName || nameEnNorm === tpNameNorm))
       );
-    }) ||
-    ({
+    }) || masters.townPanchayats[0];
+
+  const zoneRow =
+    (masters.zones || []).find(
+      (z: any) =>
+        String(z.id || '').toLowerCase() === String(masters.scopeZoneId || user.zoneId || '').toLowerCase(),
+    ) || (masters.zones || [])[0];
+
+  if (scopeKind === 'zonal' || scopeKind === 'hod') {
+    const zNameEn = String(zoneRow?.nameEn || user.zone || user.zoneNameEn || 'Zone').trim();
+    const zNameTa = String(zoneRow?.nameTa || user.zoneTa || user.zoneNameTa || zNameEn).trim();
+    matchedTp = {
+      id: String(zoneRow?.id || masters.scopeZoneId || user.zoneId || 'zone_scope'),
+      nameEn: scopeKind === 'hod' ? 'All Town Panchayats (State)' : `${zNameEn} — All Town Panchayats`,
+      nameTa: scopeKind === 'hod' ? 'அனைத்து பேரூராட்சிகள்' : `${zNameTa} — அனைத்து பேரூராட்சிகள்`,
+      districtId: '',
+      zoneId: String(zoneRow?.id || masters.scopeZoneId || user.zoneId || ''),
+      districtNameEn: scopeKind === 'zonal' ? `All districts in ${zNameEn}` : 'All Districts',
+      districtNameTa: scopeKind === 'zonal' ? `${zNameTa} — அனைத்து மாவட்டங்கள்` : 'அனைத்து மாவட்டங்கள்',
+    };
+  } else if (scopeKind === 'district' && !matchedTp) {
+    const d = (masters.districts || [])[0];
+    matchedTp = {
+      id: String(d?.id || user.districtId || 'district_scope'),
+      nameEn: `${d?.nameEn || user.district || 'District'} — All Town Panchayats`,
+      nameTa: `${d?.nameTa || user.districtTa || 'மாவட்டம்'} — அனைத்து பேரூராட்சிகள்`,
+      districtId: String(d?.id || user.districtId || ''),
+      zoneId: String(d?.zoneId || user.zoneId || ''),
+    };
+  } else if (scopeKind === 'multi_tp' && masters.townPanchayats.length > 1) {
+    matchedTp = {
+      id: 'multi_tp_scope',
+      nameEn: `Selected Town Panchayats (${masters.townPanchayats.length})`,
+      nameTa: `தேர்ந்தெடுத்த பேரூராட்சிகள் (${masters.townPanchayats.length})`,
+      districtId: String(masters.townPanchayats[0]?.districtId || user.districtId || ''),
+      zoneId: String(zoneRow?.id || masters.townPanchayats[0]?.zoneId || user.zoneId || ''),
+    };
+  }
+
+  if (!matchedTp) {
+    matchedTp = {
       id: userTpId || userTpName || 'unknown_tp',
       nameEn: user.townPanchayat || userTpName || 'Town Panchayat',
       nameTa: user.townPanchayatTa || 'பேரூராட்சி',
@@ -266,7 +341,8 @@ export async function buildSingleUserScope(
       districtNameEn: user.district || user.districtNameEn || '',
       districtNameTa: user.districtTa || user.districtNameTa || '',
       zoneId: user.zoneId || '',
-    } as any);
+    } as any;
+  }
 
   const matchedDistMaster = (masters.districts || []).find(
     (d: any) => String(d.id || '').toLowerCase() === String(matchedTp.districtId || '').toLowerCase(),
@@ -279,37 +355,48 @@ export async function buildSingleUserScope(
     .map((w) => String(w).trim().replace(/[^0-9]/g, ''))
     .filter((w) => w.length > 0);
 
-  if (assignedWards.length === 0 && matchedTp?.id) {
+  const multiScope =
+    scopeKind === 'zonal' || scopeKind === 'hod' || scopeKind === 'district' || scopeKind === 'multi_tp';
+
+  if (assignedWards.length === 0) {
     const tpWards = masters.wardsAndStreets
-      .filter(
-        (ws: any) =>
-          String(ws.tpId || ws.townPanchayatId || '')
-            .trim()
-            .toLowerCase() === String(matchedTp.id).toLowerCase(),
-      )
+      .filter((ws: any) => {
+        const wsTp = String(ws.tpId || ws.townPanchayatId || '').trim().toLowerCase();
+        if (multiScope) return !wsTp || scopeTpIdSet.has(wsTp);
+        return wsTp === String(matchedTp.id).toLowerCase();
+      })
       .map((ws: any) => String(ws.wardNo || ws.wardNumber || '').trim().replace(/[^0-9]/g, ''))
       .filter(Boolean);
     assignedWards = Array.from(new Set(tpWards)).sort((a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0));
   }
 
-  // Filter streets strictly for this user's TP and assigned wards
   const userStreets = masters.wardsAndStreets.filter((ws: any) => {
     const wsTp = String(ws.tpId || ws.tp_id || ws.townPanchayatId || '').trim().toLowerCase();
-    const tpMatches = !wsTp || wsTp === String(matchedTp.id).toLowerCase();
-    if (!tpMatches) return false;
+    if (multiScope) {
+      if (wsTp && scopeTpIdSet.size && !scopeTpIdSet.has(wsTp)) return false;
+    } else if (wsTp && wsTp !== String(matchedTp.id).toLowerCase()) {
+      return false;
+    }
 
-    if (assignedWards.length === 0) return true; // If officer oversees all TP wards
+    if (assignedWards.length === 0) return true;
     const wsWard = String(ws.wardNo || ws.wardNumber || '').trim().replace(/[^0-9]/g, '');
     return assignedWards.includes(wsWard);
   });
 
-  // Make compact streets list - only essential fields, no heavy geo-polygons or duplicates
-  const compactStreets: CompactStreet[] = userStreets.map((ws: any, idx: number) => ({
-    id: String(ws.id || ws._id || `st_${idx}`),
-    wardNo: String(ws.wardNo || ws.wardNumber || '1').trim().replace(/[^0-9]/g, '') || '1',
-    streetNameEn: String(ws.streetNameEn || ws.streetName || ws.nameEn || `Street ${idx + 1}`).trim(),
-    streetNameTa: String(ws.streetNameTa || ws.nameTa || ws.streetNameEn || `தெரு ${idx + 1}`).trim(),
-  }));
+  const compactStreets: CompactStreet[] = userStreets.map((ws: any, idx: number) => {
+    const wsTp = String(ws.tpId || ws.townPanchayatId || '').trim();
+    const tpMaster = wsTp ? tpById.get(wsTp.toLowerCase()) : undefined;
+    return {
+      id: String(ws.id || ws._id || `st_${idx}`),
+      wardNo: String(ws.wardNo || ws.wardNumber || '1').trim().replace(/[^0-9]/g, '') || '1',
+      streetNameEn: String(ws.streetNameEn || ws.streetName || ws.nameEn || `Street ${idx + 1}`).trim(),
+      streetNameTa: String(ws.streetNameTa || ws.nameTa || ws.streetNameEn || `தெரு ${idx + 1}`).trim(),
+      tpId: wsTp || undefined,
+      townPanchayatId: wsTp || undefined,
+      tpNameEn: tpMaster?.nameEn || ws.tpNameEn || undefined,
+      tpNameTa: tpMaster?.nameTa || ws.tpNameTa || undefined,
+    };
+  });
 
   // Filter subjects and categories
   const userSubjectIds = Array.isArray(user.subjectIds) ? user.subjectIds : Array.isArray(user.assignedSubjects) ? user.assignedSubjects : [];
@@ -348,18 +435,65 @@ export async function buildSingleUserScope(
     inspectionDesignations: [],
     inspectionSubjects: masters.subjects,
     inspectionCategories: masters.categories,
-    wardsAndStreets: [], // DO NOT duplicate entire streets array inside user object!
+    wardsAndStreets: [],
   });
   delete cleanUser.wardsAndStreets;
   delete cleanUser.assignedStreets;
   delete cleanUser.password;
   delete cleanUser.passwordHash;
 
+  if (multiScope) {
+    cleanUser.tpId = '';
+    cleanUser.townPanchayatId = '';
+    cleanUser.townPanchayat = matchedTp.nameEn;
+    cleanUser.townPanchayatTa = matchedTp.nameTa;
+    cleanUser.district =
+      matchedTp.districtNameEn ||
+      matchedDistMaster?.nameEn ||
+      (scopeKind === 'zonal' ? zoneRow?.nameEn || cleanUser.district : cleanUser.district);
+    cleanUser.districtTa =
+      matchedTp.districtNameTa || matchedDistMaster?.nameTa || cleanUser.districtTa;
+    cleanUser.zoneId = String(zoneRow?.id || matchedTp.zoneId || cleanUser.zoneId || '');
+    cleanUser.zone = String(zoneRow?.nameEn || cleanUser.zone || '');
+    cleanUser.zoneTa = String(zoneRow?.nameTa || cleanUser.zoneTa || '');
+    cleanUser.assignedWards = assignedWards;
+    cleanUser.selectedWards = assignedWards;
+    cleanUser.selectedTpIds = masters.townPanchayats.map((t: any) => t.id).filter(Boolean);
+    cleanUser.scopeType = scopeKind === 'zonal' ? 'zonal' : user.scopeType || scopeKind;
+  }
+
+  const compactGeo = (rows: any[], pick: (r: any) => CompactGeoNode): CompactGeoNode[] =>
+    rows.map(pick).filter((r) => r.id);
+
+  const compactZones = compactGeo(masters.zones || [], (z) => ({
+    id: String(z.id || ''),
+    nameEn: String(z.nameEn || ''),
+    nameTa: String(z.nameTa || ''),
+    code: z.code,
+  }));
+  const compactDistricts = compactGeo(masters.districts || [], (d) => ({
+    id: String(d.id || ''),
+    nameEn: String(d.nameEn || ''),
+    nameTa: String(d.nameTa || ''),
+    code: d.code,
+    zoneId: String(d.zoneId || ''),
+  }));
+  const compactTps = compactGeo(masters.townPanchayats || [], (t) => ({
+    id: String(t.id || ''),
+    nameEn: String(t.nameEn || ''),
+    nameTa: String(t.nameTa || ''),
+    code: t.code,
+    districtId: String(t.districtId || ''),
+    zoneId: String(t.zoneId || ''),
+  }));
+
   return {
     userId: uId,
     username,
     scopeVersion,
     updatedAt: new Date().toISOString(),
+    scopeType: cleanUser.scopeType,
+    scopeKind,
     user: cleanUser,
     townPanchayat: {
       id: matchedTp.id,
@@ -368,7 +502,13 @@ export async function buildSingleUserScope(
       districtId: matchedTp.districtId || matchedDistMaster?.id || '',
       districtNameEn: matchedDistMaster?.nameEn || matchedTp.districtNameEn || cleanUser.district || '',
       districtNameTa: matchedDistMaster?.nameTa || matchedTp.districtNameTa || cleanUser.districtTa || '',
+      zoneId: String(zoneRow?.id || matchedTp.zoneId || ''),
+      zoneNameEn: String(zoneRow?.nameEn || cleanUser.zone || ''),
+      zoneNameTa: String(zoneRow?.nameTa || cleanUser.zoneTa || ''),
     },
+    zones: compactZones,
+    districts: compactDistricts,
+    townPanchayats: compactTps,
     assignedWards,
     wardsAndStreets: compactStreets,
     subjects: compactSubjects,
@@ -606,26 +746,9 @@ export async function getUserScopeDetails(userIdOrUsername: string): Promise<Cac
 
       console.log(`[UserScopeCache] Building on-demand compact scope for verified user '${cleanKey}'...`);
 
-      const userTpId = (foundUser.tpId || foundUser.townPanchayatId || '').trim();
-      const userTpName = (foundUser.townPanchayat || '').trim();
-
-      // Targeted TP queries only (Takes ~5ms instead of loading whole database!)
-      const [townPanchayats, districts, zones, userStreets, subjects, categories, fields] = await Promise.all([
-        db.collection('townPanchayats').find({}).limit(500).toArray().catch(() => []),
-        db.collection('districts').find({}).limit(200).toArray().catch(() => []),
-        db.collection('zones').find({}).limit(100).toArray().catch(() => []),
-        db.collection('wardsAndStreets').find(
-          userTpId || userTpName
-            ? {
-                $or: [
-                  { tpId: userTpId },
-                  { townPanchayatId: userTpId },
-                  { tpName: { $regex: new RegExp(`^${userTpName}$`, 'i') } },
-                  { townPanchayat: { $regex: new RegExp(`^${userTpName}$`, 'i') } }
-                ]
-              }
-            : {}
-        ).limit(300).toArray().catch(() => []),
+      const { resolveInspectionScopeMasters } = await import('@/lib/inspectionScopeMasters');
+      const scopeGeo = await resolveInspectionScopeMasters(db, foundUser);
+      const [subjects, categories, fields] = await Promise.all([
         db.collection('inspectionSubjects').find({}).limit(50).toArray().catch(() => []),
         db.collection('inspectionCategories').find({}).limit(100).toArray().catch(() => []),
         db.collection('inspectionFields').find({}).limit(100).toArray().catch(() => []),
@@ -635,13 +758,16 @@ export async function getUserScopeDetails(userIdOrUsername: string): Promise<Cac
       const newScope = await buildSingleUserScope(
         foundUser,
         {
-          townPanchayats: townPanchayats || [],
-          districts: districts || [],
-          zones: zones || [],
-          wardsAndStreets: userStreets || [],
+          townPanchayats: scopeGeo.townPanchayats,
+          districts: scopeGeo.districts,
+          zones: scopeGeo.zones,
+          wardsAndStreets: scopeGeo.wardsAndStreets,
           subjects: subjects || [],
           categories: categories || [],
           fields: fields || [],
+          scopeKind: scopeGeo.scopeKind,
+          scopeZoneId: scopeGeo.zoneId,
+          scopeTpIds: scopeGeo.tpIds,
         },
         meta.version
       );
