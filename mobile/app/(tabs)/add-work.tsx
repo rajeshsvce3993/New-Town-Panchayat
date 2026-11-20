@@ -20,7 +20,6 @@ import {
   ToastAndroid,
   View,
 } from 'react-native';
-import { api } from '../../src/api/client';
 import { HeaderActions } from '../../src/components/AppHeader';
 import {
   FormPhotoField,
@@ -30,12 +29,10 @@ import {
   type FormPickerState,
 } from '../../src/components/FormControls';
 import { HeaderBrand } from '../../src/components/HeaderBrand';
-import { SAMPLE_PHOTO } from '../../src/constants/config';
 import { useApp } from '../../src/context/AppContext';
 import { scheduleQueueDrain, submitAddWork } from '../../src/services/workPipeline';
 import { showInspectionNotification } from '../../src/services/notifications';
 import { dedupeInspectionWorks } from '../../src/utils/dedupeWorks';
-import { prefs } from '../../src/storage/preferences';
 import { portalHasInspectionScope } from '../../src/utils/livePortal';
 import type { Category, FieldDefinition, InspectionWork, Subject } from '../../src/types/models';
 import { effectiveCategoryIds, effectiveSubjectIds, effectiveWards, portalCategories, portalFields, portalSubjects, portalWorks } from '../../src/types/models';
@@ -257,7 +254,6 @@ export default function AddWorkScreen() {
     const userW = effectiveWards(user).map(normalizeWard).filter((w) => w && w !== '0');
     const combined = [...new Set([...userW, ...mongo])].sort((a, b) => Number(a) - Number(b));
     if (combined.length) return combined;
-    if ((user?.role || '').toLowerCase().includes('admin')) return Array.from({ length: 18 }, (_, i) => String(i + 1));
     return [];
   }, [streetsDb, user, activeTpId, portalTps, scopeMode]);
 
@@ -458,11 +454,10 @@ export default function AddWorkScreen() {
     const fallbackFix = lastGpsFixRef.current;
     const submitLat = liveGps?.lat ?? fallbackFix?.lat ?? lat;
     const submitLng = liveGps?.lng ?? fallbackFix?.lng ?? lng;
-    const scope = await prefs.getUserScope();
     const err = validateVisibleFields({
       fields: visible,
       values: { ...values, ...Object.fromEntries(Object.entries(photos).map(([k, u]) => [k, u])) },
-      rules: scope?.validationRules,
+      rules: portal.validationRules,
       isTamil,
       works: portalWorks(portal),
       categoryId,
@@ -473,6 +468,14 @@ export default function AddWorkScreen() {
     }
     const subject = subjects.find((s) => s.id === subjectId);
     const category = categories.find((c) => c.id === categoryId);
+    if (!subject?.nameEn && !subject?.nameTa) {
+      toast(isTamil ? 'ஆய்வுப் பொருளைத் தேர்ந்தெடுக்கவும்.' : 'Please select a live inspection subject.');
+      return;
+    }
+    if (!category?.nameEn && !category?.nameTa) {
+      toast(isTamil ? 'பிரிவைத் தேர்ந்தெடுக்கவும்.' : 'Please select a live inspection category.');
+      return;
+    }
     if (scopeMode === 'zonal' && !districtId) {
       toast(isTamil ? 'மாவட்டத்தைத் தேர்ந்தெடுக்கவும்.' : 'Please select a district.');
       return;
@@ -498,7 +501,7 @@ export default function AddWorkScreen() {
     let actualWorkId = '';
     const { zoneNameEn: zoneName, districtNameEn: districtName, tpNameEn: tpName } = geoLabels;
     const fieldCopy = { ...values };
-    let s3 = SAMPLE_PHOTO;
+    let s3 = '';
     const clientWorkId = ensureDraftClientWorkId();
     const photoMeta = {
       workId: clientWorkId,
@@ -518,11 +521,11 @@ export default function AddWorkScreen() {
       districtCode: ids.distCode,
       tpCode: ids.townCode,
       subjectId,
-      subjectNameEn: subject?.nameEn || 'General Inspection',
-      subjectNameTa: subject?.nameTa || 'பொது ஆய்வு',
+      subjectNameEn: subject?.nameEn || '',
+      subjectNameTa: subject?.nameTa || '',
       categoryId,
-      categoryNameEn: category?.nameEn || 'Field Check',
-      categoryNameTa: category?.nameTa || 'கள ஆய்வு',
+      categoryNameEn: category?.nameEn || '',
+      categoryNameTa: category?.nameTa || '',
       tpNameEn: tpName,
       tpNameTa: geoLabels.tpNameTa,
       zoneNameEn: zoneName,
@@ -851,13 +854,7 @@ export default function AddWorkScreen() {
                   onPress={async () => {
                     setDlScope(true);
                     try {
-                      await refreshPortal();
-                      const scopeResp = await api.getUserScope(user?.username || '');
-                      if (scopeResp.success && scopeResp.scope) {
-                        await prefs.setUserScope(scopeResp.scope);
-                        await prefs.setScopeVersionInt(scopeResp.scopeVersion || 1);
-                      }
-                      const fresh = await prefs.getPortal();
+                      const fresh = await refreshPortal();
                       const ok = portalHasInspectionScope(fresh);
                       setScopeMissing(!ok);
                       toast(

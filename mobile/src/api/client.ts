@@ -246,59 +246,59 @@ export const api = {
     };
     const worksJson = (await worksRes.json().catch(() => ({}))) as { works?: InspectionWork[]; success?: boolean };
 
-    let scope = scopeJson.scope;
-    if (scope && !scope.fields?.length) {
-      const scopeFallback = await this.getUserScope(u);
-      if (scopeFallback.success && scopeFallback.scope?.fields?.length) {
-        scope = { ...scope, ...scopeFallback.scope, fields: scopeFallback.scope.fields };
-      }
-    }
+    const scope = scopeJson.scope;
     const geo = geoJson.geo;
     const districts: PortalState['districts'] =
       geoJson.districts?.length
         ? geoJson.districts
-        : geo?.districtId
-          ? [
-              {
-                id: geo.districtId,
-                nameEn: geo.districtNameEn || '',
-                nameTa: geo.districtNameTa || '',
-                zoneId: geo.zoneId || '',
-              },
-            ]
-          : [];
-    const townPanchayats: PortalState['townPanchayats'] =
-      geoJson.townPanchayats?.length
-        ? geoJson.townPanchayats
-        : geo?.tpId
-          ? [
-              {
-                id: geo.tpId,
-                nameEn: geo.tpNameEn || '',
-                nameTa: geo.tpNameTa || '',
-                districtId: geo.districtId || '',
-                zoneId: geo.zoneId || '',
-              },
-            ]
-          : scope?.townPanchayat?.id
+        : scope?.districts?.length
+          ? scope.districts
+          : geo?.districtId && (geo.districtNameEn || geo.districtNameTa)
             ? [
                 {
-                  id: scope.townPanchayat.id,
-                  nameEn: scope.townPanchayat.nameEn,
-                  nameTa: scope.townPanchayat.nameTa,
-                  districtId: scope.townPanchayat.districtId || '',
+                  id: geo.districtId,
+                  nameEn: geo.districtNameEn || '',
+                  nameTa: geo.districtNameTa || '',
+                  zoneId: geo.zoneId || '',
                 },
               ]
             : [];
+    const townPanchayats: PortalState['townPanchayats'] =
+      geoJson.townPanchayats?.length
+        ? geoJson.townPanchayats
+        : scope?.townPanchayats?.length
+          ? scope.townPanchayats
+          : geo?.tpId && (geo.tpNameEn || geo.tpNameTa)
+            ? [
+                {
+                  id: geo.tpId,
+                  nameEn: geo.tpNameEn || '',
+                  nameTa: geo.tpNameTa || '',
+                  districtId: geo.districtId || '',
+                  zoneId: geo.zoneId || '',
+                },
+              ]
+            : scope?.townPanchayat?.id && (scope.townPanchayat.nameEn || scope.townPanchayat.nameTa)
+              ? [
+                  {
+                    id: scope.townPanchayat.id,
+                    nameEn: scope.townPanchayat.nameEn,
+                    nameTa: scope.townPanchayat.nameTa,
+                    districtId: scope.townPanchayat.districtId || '',
+                  },
+                ]
+              : [];
 
   return {
       districts,
       townPanchayats,
       zones: geoJson.zones?.length
         ? geoJson.zones
-        : geo?.zoneId
-          ? [{ id: geo.zoneId, nameEn: geo.zoneNameEn || '', nameTa: geo.zoneNameTa || '' }]
-          : [],
+        : scope?.zones?.length
+          ? scope.zones
+          : geo?.zoneId
+            ? [{ id: geo.zoneId, nameEn: geo.zoneNameEn || '', nameTa: geo.zoneNameTa || '' }]
+            : [],
       inspectionSubjects: scope?.subjects || [],
       inspectionCategories: scope?.categories || [],
       inspectionFields: scope?.fields || [],
@@ -312,6 +312,7 @@ export const api = {
       appIconUrl: config?.appIconUrl || null,
       loginLogoUrl: config?.loginLogoUrl || null,
       settings,
+      validationRules: scope?.validationRules || {},
     };
   },
 

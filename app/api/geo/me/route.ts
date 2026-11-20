@@ -69,25 +69,25 @@ export async function GET(req: NextRequest) {
     if (isZonalScopedUser(scopedUser) || scopeGeo.scopeKind === 'zonal') {
       const zone = scopeGeo.zones[0];
       geo.tpId = '';
-      geo.tpNameEn = zone?.nameEn ? `${zone.nameEn} — All Town Panchayats` : 'All Town Panchayats';
-      geo.tpNameTa = zone?.nameTa ? `${zone.nameTa} — அனைத்து பேரூராட்சிகள்` : 'அனைத்து பேரூராட்சிகள்';
+      geo.tpNameEn = '';
+      geo.tpNameTa = '';
       geo.districtId = '';
-      geo.districtNameEn = zone?.nameEn ? `All districts in ${zone.nameEn}` : 'All Districts';
-      geo.districtNameTa = zone?.nameTa ? `${zone.nameTa} — அனைத்து மாவட்டங்கள்` : 'அனைத்து மாவட்டங்கள்';
+      geo.districtNameEn = '';
+      geo.districtNameTa = '';
       geo.zoneId = zone?.id || scopeGeo.zoneId || geo.zoneId;
       geo.zoneNameEn = zone?.nameEn || geo.zoneNameEn;
       geo.zoneNameTa = zone?.nameTa || geo.zoneNameTa;
     } else if (isHodLikeUser(scopedUser) || scopeGeo.scopeKind === 'hod') {
       geo.tpId = '';
       geo.districtId = '';
-      geo.tpNameEn = 'All Town Panchayats';
-      geo.tpNameTa = 'அனைத்து பேரூராட்சிகள்';
-      geo.districtNameEn = 'All Districts';
-      geo.districtNameTa = 'அனைத்து மாவட்டங்கள்';
+      geo.tpNameEn = '';
+      geo.tpNameTa = '';
+      geo.districtNameEn = '';
+      geo.districtNameTa = '';
     } else if (scopeGeo.scopeKind === 'multi_tp') {
       geo.tpId = '';
-      geo.tpNameEn = `Selected Town Panchayats (${scopeGeo.townPanchayats.length})`;
-      geo.tpNameTa = `தேர்ந்தெடுத்த பேரூராட்சிகள் (${scopeGeo.townPanchayats.length})`;
+      geo.tpNameEn = '';
+      geo.tpNameTa = '';
     }
 
     const mapGeo = (rows: any[], extra?: (r: any) => Record<string, string>) =>

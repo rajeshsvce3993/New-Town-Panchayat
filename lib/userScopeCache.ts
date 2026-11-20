@@ -322,50 +322,41 @@ export async function buildSingleUserScope(
             String(t._id).toLowerCase() === userTpId.toLowerCase())) ||
         (userTpName && (nameEn === userTpName || nameTa === userTpName || nameEnNorm === tpNameNorm))
       );
-    }) || masters.townPanchayats[0];
+    });
 
-  const zoneRow =
-    (masters.zones || []).find(
-      (z: any) =>
-        String(z.id || '').toLowerCase() === String(masters.scopeZoneId || user.zoneId || '').toLowerCase(),
-    ) || (masters.zones || [])[0];
+  const zoneRow = (masters.zones || []).find(
+    (z: any) =>
+      String(z.id || '').toLowerCase() === String(masters.scopeZoneId || user.zoneId || '').toLowerCase(),
+  );
 
-  if (scopeKind === 'zonal' || scopeKind === 'hod') {
-    const zNameEn = String(zoneRow?.nameEn || user.zone || user.zoneNameEn || 'Zone').trim();
-    const zNameTa = String(zoneRow?.nameTa || user.zoneTa || user.zoneNameTa || zNameEn).trim();
+  if (scopeKind === 'zonal' || scopeKind === 'hod' || (scopeKind === 'multi_tp' && masters.townPanchayats.length > 1)) {
     matchedTp = {
-      id: String(zoneRow?.id || masters.scopeZoneId || user.zoneId || 'zone_scope'),
-      nameEn: scopeKind === 'hod' ? 'All Town Panchayats (State)' : `${zNameEn} — All Town Panchayats`,
-      nameTa: scopeKind === 'hod' ? 'அனைத்து பேரூராட்சிகள்' : `${zNameTa} — அனைத்து பேரூராட்சிகள்`,
+      id: '',
+      nameEn: '',
+      nameTa: '',
       districtId: '',
       zoneId: String(zoneRow?.id || masters.scopeZoneId || user.zoneId || ''),
-      districtNameEn: scopeKind === 'zonal' ? `All districts in ${zNameEn}` : 'All Districts',
-      districtNameTa: scopeKind === 'zonal' ? `${zNameTa} — அனைத்து மாவட்டங்கள்` : 'அனைத்து மாவட்டங்கள்',
+      districtNameEn: '',
+      districtNameTa: '',
     };
   } else if (scopeKind === 'district' && !matchedTp) {
-    const d = (masters.districts || [])[0];
+    const d = (masters.districts || []).find(
+      (row: any) => String(row.id || '').toLowerCase() === String(user.districtId || '').toLowerCase(),
+    );
     matchedTp = {
-      id: String(d?.id || user.districtId || 'district_scope'),
-      nameEn: `${d?.nameEn || user.district || 'District'} — All Town Panchayats`,
-      nameTa: `${d?.nameTa || user.districtTa || 'மாவட்டம்'} — அனைத்து பேரூராட்சிகள்`,
+      id: '',
+      nameEn: '',
+      nameTa: '',
       districtId: String(d?.id || user.districtId || ''),
       zoneId: String(d?.zoneId || user.zoneId || ''),
-    };
-  } else if (scopeKind === 'multi_tp' && masters.townPanchayats.length > 1) {
-    matchedTp = {
-      id: 'multi_tp_scope',
-      nameEn: `Selected Town Panchayats (${masters.townPanchayats.length})`,
-      nameTa: `தேர்ந்தெடுத்த பேரூராட்சிகள் (${masters.townPanchayats.length})`,
-      districtId: String(masters.townPanchayats[0]?.districtId || user.districtId || ''),
-      zoneId: String(zoneRow?.id || masters.townPanchayats[0]?.zoneId || user.zoneId || ''),
     };
   }
 
   if (!matchedTp) {
     matchedTp = {
-      id: userTpId || userTpName || 'unknown_tp',
-      nameEn: user.townPanchayat || userTpName || 'Town Panchayat',
-      nameTa: user.townPanchayatTa || 'பேரூராட்சி',
+      id: userTpId || '',
+      nameEn: user.townPanchayat || '',
+      nameTa: user.townPanchayatTa || '',
       districtId: user.districtId || '',
       districtNameEn: user.district || user.districtNameEn || '',
       districtNameTa: user.districtTa || user.districtNameTa || '',
@@ -412,20 +403,22 @@ export async function buildSingleUserScope(
     return assignedWards.includes(wsWard);
   });
 
-  const compactStreets: CompactStreet[] = userStreets.map((ws: any, idx: number) => {
-    const wsTp = String(ws.tpId || ws.townPanchayatId || '').trim();
-    const tpMaster = wsTp ? tpById.get(wsTp.toLowerCase()) : undefined;
-    return {
-      id: String(ws.id || ws._id || `st_${idx}`),
-      wardNo: String(ws.wardNo || ws.wardNumber || '1').trim().replace(/[^0-9]/g, '') || '1',
-      streetNameEn: String(ws.streetNameEn || ws.streetName || ws.nameEn || `Street ${idx + 1}`).trim(),
-      streetNameTa: String(ws.streetNameTa || ws.nameTa || ws.streetNameEn || `தெரு ${idx + 1}`).trim(),
-      tpId: wsTp || undefined,
-      townPanchayatId: wsTp || undefined,
-      tpNameEn: tpMaster?.nameEn || ws.tpNameEn || undefined,
-      tpNameTa: tpMaster?.nameTa || ws.tpNameTa || undefined,
-    };
-  });
+  const compactStreets: CompactStreet[] = userStreets
+    .map((ws: any, idx: number) => {
+      const wsTp = String(ws.tpId || ws.townPanchayatId || '').trim();
+      const tpMaster = wsTp ? tpById.get(wsTp.toLowerCase()) : undefined;
+      return {
+        id: String(ws.id || ws._id || `st_${idx}`),
+        wardNo: String(ws.wardNo || ws.wardNumber || '').trim().replace(/[^0-9]/g, ''),
+        streetNameEn: String(ws.streetNameEn || ws.streetName || ws.nameEn || '').trim(),
+        streetNameTa: String(ws.streetNameTa || ws.nameTa || '').trim(),
+        tpId: wsTp || undefined,
+        townPanchayatId: wsTp || undefined,
+        tpNameEn: tpMaster?.nameEn || ws.tpNameEn || undefined,
+        tpNameTa: tpMaster?.nameTa || ws.tpNameTa || undefined,
+      };
+    })
+    .filter((s) => s.wardNo && (s.streetNameEn || s.streetNameTa));
 
   // Filter subjects and categories
   const userSubjectIds = Array.isArray(user.subjectIds) ? user.subjectIds : Array.isArray(user.assignedSubjects) ? user.assignedSubjects : [];
@@ -880,18 +873,6 @@ export async function getUserScopeDetails(userIdOrUsername: string): Promise<Cac
         String(u.id || u._id || '').trim().toLowerCase() === cleanKey ||
         (u.mobile && String(u.mobile).trim() === cleanKey)
     );
-
-    if (!matched && ['admin', 'dtpadmin', 'director'].includes(cleanKey)) {
-      matched = {
-        id: 'admin',
-        username: cleanKey,
-        name: 'Administrator',
-        role: 'Super Admin',
-        designation: 'System Administrator',
-        townPanchayat: 'All Town Panchayats',
-        isInspectionUser: true,
-      };
-    }
 
     if (matched) {
       const meta = getScopeVersionMeta();

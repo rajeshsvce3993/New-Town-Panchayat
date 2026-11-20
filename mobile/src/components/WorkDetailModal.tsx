@@ -39,6 +39,7 @@ import type { FieldDefinition, InspectionWork, PortalState } from '../types/mode
 import { effectivePhotoUrl, portalFields, resolveOfficerDesignation } from '../types/models';
 import { formatTo12Hr } from '../utils/dates';
 import { fieldOrderIndex } from '../utils/fieldVisibility';
+import { mergeLookedUpWorkPlace, resolveWorkPlace } from '../utils/workPlace';
 import { htmlToPlain } from '../utils/shareHtml';
 import { isShareWithCaptionAvailable, shareFileWithCaption } from 'share-with-caption';
 
@@ -1852,11 +1853,7 @@ export function WorkDetailModal({
       for (const id of ids) {
         const found = await api.lookupInspectionWork(id);
         if (!live || !found) continue;
-        setDetailWork((prev) => ({
-          ...prev,
-          fieldsData: { ...(prev.fieldsData || {}), ...(found.fieldsData || {}) },
-          imageUrl: found.imageUrl || prev.imageUrl,
-        }));
+        setDetailWork((prev) => mergeLookedUpWorkPlace(prev, found));
         break;
       }
     })();
@@ -1920,9 +1917,12 @@ export function WorkDetailModal({
   );
 
   const current = images[idx];
-  const locTp = isTamil ? work.tpNameTa || work.tpNameEn : work.tpNameEn;
-  const locZone = isTamil ? work.zoneNameTa || work.zoneNameEn : work.zoneNameEn;
-  const locDistrict = isTamil ? work.districtNameTa || work.districtNameEn : work.districtNameEn;
+  const place = resolveWorkPlace(detailWork, portal, isTamil, streetLabel);
+  const placeEn = resolveWorkPlace(detailWork, portal, false, streetLabel);
+  const placeTa = resolveWorkPlace(detailWork, portal, true, streetLabel);
+  const locTp = place.tpName;
+  const locZone = place.zoneName;
+  const locDistrict = place.districtName;
   const subjectName = isTamil ? work.subjectNameTa || work.subjectNameEn : work.subjectNameEn;
   const categoryName = isTamil ? work.categoryNameTa || work.categoryNameEn : work.categoryNameEn;
   const submitted = formatTo12Hr(work.submittedAt);
@@ -1930,7 +1930,7 @@ export function WorkDetailModal({
   const workRef = work.workId || work.id;
   const photoLabel = current?.name || (isTamil ? 'கள ஆய்வு புகைப்படம்' : 'Field photo');
   const headerPlace = [locTp, locZone, locDistrict].filter(Boolean).join(' · ');
-  const resolvedStreet = streetLabel?.trim() || String(work.streetName || '').trim();
+  const resolvedStreet = place.street;
 
   const markExportImageLoaded = useCallback(() => {
     exportLoadedCount.current += 1;
@@ -2056,14 +2056,14 @@ export function WorkDetailModal({
   const shareConfig = reportShareConfig({ ...portal, settings: liveSettings || portal.settings });
   const reportTheme = useMemo(() => sharePaintToReportTheme(sharePaint), [sharePaint]);
   const shareValues = {
-    Zone_EN: String(work.zoneNameEn || ''),
-    Zone_TA: String(work.zoneNameTa || work.zoneNameEn || ''),
-    District_EN: String(work.districtNameEn || ''),
-    District_TA: String(work.districtNameTa || work.districtNameEn || ''),
-    TownPanchayat_EN: String(work.tpNameEn || ''),
-    TownPanchayat_TA: String(work.tpNameTa || work.tpNameEn || ''),
-    Ward_No: String(work.wardNumber || ''),
-    Street_Name: String(resolvedStreet || work.streetName || ''),
+    Zone_EN: String(placeEn.zoneName || ''),
+    Zone_TA: String(placeTa.zoneName || placeEn.zoneName || ''),
+    District_EN: String(placeEn.districtName || ''),
+    District_TA: String(placeTa.districtName || placeEn.districtName || ''),
+    TownPanchayat_EN: String(placeEn.tpName || ''),
+    TownPanchayat_TA: String(placeTa.tpName || placeEn.tpName || ''),
+    Ward_No: String(place.ward || detailWork.wardNumber || ''),
+    Street_Name: String(resolvedStreet || detailWork.streetName || ''),
     CategoryNameEn: String(work.categoryNameEn || work.subjectNameEn || ''),
     CategoryNameTa: String(work.categoryNameTa || work.categoryNameEn || ''),
     EmployeeName_EN: String(user?.nameEn || user?.name || work.submittedByUserName || ''),
@@ -2213,7 +2213,7 @@ export function WorkDetailModal({
                 variant="brandHeader"
                 isTamil={isTamil}
                 place={headerPlace}
-                wardNumber={work.wardNumber}
+                wardNumber={detailWork.wardNumber || work.wardNumber}
                 streetLabel={resolvedStreet}
                 subjectName={subjectName || ''}
                 categoryName={categoryName || ''}
@@ -2371,7 +2371,7 @@ export function WorkDetailModal({
                   tpName={String(locTp || '')}
                   districtName={String(locDistrict || '')}
                   zoneName={String(locZone || '')}
-                  wardNumber={work.wardNumber}
+                  wardNumber={detailWork.wardNumber || work.wardNumber}
                   streetLabel={resolvedStreet}
                   activityName={categoryName || subjectName || ''}
                   submitted={submitted}
@@ -2404,7 +2404,7 @@ export function WorkDetailModal({
                 <ExportReportHeader
                   isTamil={isTamil}
                   place={headerPlace}
-                  wardNumber={work.wardNumber}
+                  wardNumber={detailWork.wardNumber || work.wardNumber}
                   streetLabel={resolvedStreet}
                   subjectName={subjectName || ''}
                   categoryName={categoryName || ''}

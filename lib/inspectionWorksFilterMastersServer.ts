@@ -1,7 +1,7 @@
 import { getCollectionData } from '@/lib/storage';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
 import { getDb } from '@/lib/repositories/mastersRepository';
-import { isSlimCoreMasters } from '@/lib/productionFlags';
+import { isLiveDataOnly, isSlimCoreMasters } from '@/lib/productionFlags';
 import type { InspectionWorksFilterMasters } from '@/lib/inspectionWorksQueryFilters';
 
 let mastersCache: { data: InspectionWorksFilterMasters; ts: number; remote: boolean } | null = null;
@@ -42,7 +42,9 @@ async function loadMastersFromMongo(): Promise<InspectionWorksFilterMasters | nu
 export async function resolveInspectionFilterMasters(requestOrigin?: string): Promise<InspectionWorksFilterMasters> {
   const now = Date.now();
   const useRemoteGeo = shouldUseRemotePortalApi(requestOrigin);
+  const liveOnly = isLiveDataOnly();
   if (
+    !liveOnly &&
     mastersCache &&
     now - mastersCache.ts < MASTERS_CACHE_TTL_MS &&
     mastersCache.remote === useRemoteGeo
@@ -58,7 +60,7 @@ export async function resolveInspectionFilterMasters(requestOrigin?: string): Pr
   let inspectionCategories = mongoMasters?.inspectionCategories;
   let inspectionFields = mongoMasters?.inspectionFields;
 
-  if (!mongoMasters || !districts?.length || !townPanchayats?.length) {
+  if (!liveOnly && (!mongoMasters || !districts?.length || !townPanchayats?.length)) {
     const [d, z, tp, subj, cat, fld] = await Promise.all([
       getCollectionData('districts'),
       getCollectionData('zones'),
@@ -103,6 +105,6 @@ export async function resolveInspectionFilterMasters(requestOrigin?: string): Pr
     inspectionCategories: inspectionCategories || [],
     inspectionFields: inspectionFields || [],
   };
-  mastersCache = { data, ts: now, remote: useRemoteGeo };
+  if (!liveOnly) mastersCache = { data, ts: now, remote: useRemoteGeo };
   return data;
 }

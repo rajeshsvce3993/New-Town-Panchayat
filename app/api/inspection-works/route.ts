@@ -46,6 +46,7 @@ import {
 import { applyDefaultReportsDateWindow } from '@/lib/inspectionWorksMongoRepository';
 import { aggregateSwmReport, aggregateSwmStreetGroups } from '@/lib/swmReportsAggregate';
 import { rewriteWorkMediaFields, toMediaProxyPath } from '@/lib/s3MediaKey';
+import { isMobileClientRequest } from '@/lib/mobileAppAuth';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -53,7 +54,8 @@ export const dynamic = 'force-dynamic';
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key',
+  'Access-Control-Allow-Headers':
+    'Content-Type, Authorization, x-api-key, X-Client, X-App-Version, X-App-Build, X-App-Language, x-username, x-user-id, Cache-Control',
 };
 
 export async function OPTIONS() {
@@ -194,7 +196,9 @@ export async function GET(req: NextRequest) {
 
     const now = Date.now();
     const reportsGen = getInspectionWorksReportsDataGeneration();
+    const mobileClient = isMobileClientRequest(req);
     if (
+      !mobileClient &&
       cachedWorksList &&
       cachedWorksList.key === cacheKey &&
       cachedWorksList.gen === reportsGen &&
@@ -239,7 +243,7 @@ export async function GET(req: NextRequest) {
             defaultDateWindowApplied,
           },
         };
-        cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
+        if (!mobileClient) cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
         return NextResponse.json(responsePayload, {
           headers: {
             ...CORS_HEADERS,
@@ -266,7 +270,7 @@ export async function GET(req: NextRequest) {
             defaultDateWindowApplied,
           },
         };
-        cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
+        if (!mobileClient) cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
         return NextResponse.json(responsePayload, {
           headers: {
             ...CORS_HEADERS,
@@ -302,7 +306,7 @@ export async function GET(req: NextRequest) {
               defaultDateWindowApplied,
             },
           };
-          cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
+          if (!mobileClient) cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
           return NextResponse.json(responsePayload, {
             headers: {
               ...CORS_HEADERS,
@@ -334,7 +338,7 @@ export async function GET(req: NextRequest) {
             defaultDateWindowApplied,
           },
         };
-        cachedWorksList = { data: splitPayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
+        if (!mobileClient) cachedWorksList = { data: splitPayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
         return NextResponse.json(splitPayload, {
           headers: {
             ...CORS_HEADERS,
@@ -363,7 +367,7 @@ export async function GET(req: NextRequest) {
             defaultDateWindowApplied: defaultDateWindowApplied,
           },
         };
-        cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
+        if (!mobileClient) cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
         return NextResponse.json(responsePayload, {
           headers: {
             ...CORS_HEADERS,
@@ -415,7 +419,7 @@ export async function GET(req: NextRequest) {
               defaultDateWindowApplied: defaultDateWindowApplied,
             },
           };
-          cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
+          if (!mobileClient) cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
           return NextResponse.json(responsePayload, {
             headers: {
               ...CORS_HEADERS,
@@ -606,7 +610,7 @@ export async function GET(req: NextRequest) {
         totalWithoutCategoryFilter: view.totalWithoutCategoryFilter,
       };
       if (view.works.length > 0) {
-        cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
+        if (!mobileClient) cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
       }
       return NextResponse.json(responsePayload, { headers: CORS_HEADERS });
     }
@@ -713,7 +717,7 @@ export async function GET(req: NextRequest) {
       works: normalizedWorks,
     };
     if (normalizedWorks.length > 0) {
-      cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
+      if (!mobileClient) cachedWorksList = { data: responsePayload, timestamp: Date.now(), key: cacheKey, gen: reportsGen };
     }
 
     return NextResponse.json(responsePayload, { headers: CORS_HEADERS });

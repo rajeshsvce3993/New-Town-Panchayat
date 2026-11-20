@@ -58,7 +58,7 @@ function applyPhotoMap(
   uploaded: Record<string, string>
 ): { fieldCopy: Record<string, string>; imageUrl: string } {
   const fieldCopy = { ...(base.fieldsData || {}) };
-  let imageUrl = base.imageUrl || SAMPLE_PHOTO;
+  let imageUrl = base.imageUrl && base.imageUrl !== SAMPLE_PHOTO ? base.imageUrl : '';
   for (const [key, url] of Object.entries(uploaded)) {
     if (key === '__primary__') continue;
     fieldCopy[key] = url;

@@ -191,9 +191,10 @@ export async function resolveInspectionScopeMasters(db: Db, user: any): Promise<
   }
 
   const tpIds = townPanchayats.map((t: any) => norm(t.id)).filter(Boolean);
+  const tpIdIn = [...new Set(tpIds.flatMap((id) => idVariants(id)))];
   const wardFilter =
-    tpIds.length > 0
-      ? { $or: [{ tpId: { $in: tpIds } }, { townPanchayatId: { $in: tpIds } }] }
+    tpIdIn.length > 0
+      ? { $or: [{ tpId: { $in: tpIdIn } }, { townPanchayatId: { $in: tpIdIn } }] }
       : {};
 
   const wardsAndStreets =

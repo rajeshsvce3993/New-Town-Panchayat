@@ -237,7 +237,12 @@ async function getOrLoadEnrichedReportsData(
 ): Promise<LiteWorksLoadResult> {
   const key = reportsDataCacheKey(filter, limit, 0, 0);
   const now = Date.now();
-  if (enrichedReportsCache?.key === key && now - enrichedReportsCache.ts < ENRICHED_REPORTS_CACHE_TTL_MS) {
+  const skipMemCache = !!filter.username || !!filter.includeFields;
+  if (
+    !skipMemCache &&
+    enrichedReportsCache?.key === key &&
+    now - enrichedReportsCache.ts < ENRICHED_REPORTS_CACHE_TTL_MS
+  ) {
     return enrichedReportsCache.data;
   }
 
@@ -246,7 +251,7 @@ async function getOrLoadEnrichedReportsData(
 
   const loadPromise = loadEnrichedLiteWorksForReportsUncached(requestOrigin, filter, limit)
     .then((data) => {
-      enrichedReportsCache = { key, ts: Date.now(), data };
+      if (!skipMemCache) enrichedReportsCache = { key, ts: Date.now(), data };
       return data;
     })
     .finally(() => {

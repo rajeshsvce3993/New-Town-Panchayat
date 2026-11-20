@@ -24,6 +24,7 @@ export interface AppUser {
   districtId?: string;
   tpId?: string;
   townPanchayatId?: string;
+  zoneId?: string;
   scopeType?: string;
   scopeId?: string;
   assignedWards?: string[];
@@ -341,6 +342,7 @@ export interface DistrictModel {
 export interface TownPanchayatModel {
   id: string;
   districtId?: string;
+  zoneId?: string;
   nameEn: string;
   nameTa: string;
   code?: string;
@@ -349,6 +351,7 @@ export interface TownPanchayatModel {
 export interface WardAndStreet {
   id?: string | null;
   tpId?: string | null;
+  townPanchayatId?: string | null;
   tpNameEn?: string | null;
   tpNameTa?: string | null;
   wardNo: string;
@@ -359,6 +362,10 @@ export interface WardAndStreet {
 export interface InspectionWork {
   id: string;
   workId: string;
+  tpId?: string | null;
+  townPanchayatId?: string | null;
+  districtId?: string | null;
+  zoneId?: string | null;
   districtCode?: string;
   tpCode?: string;
   subjectId: string;
@@ -415,6 +422,7 @@ export interface PortalState {
     googleMapsApiKey?: string;
     [key: string]: unknown;
   };
+  validationRules?: Record<string, ValidationRule> | null;
 }
 
 export function portalSubjects(p: PortalState): Subject[] {
@@ -654,4 +662,5 @@ export const emptyPortal = (): PortalState => ({
   categories: [],
   fields: [],
   works: [],
+  validationRules: {},
 });

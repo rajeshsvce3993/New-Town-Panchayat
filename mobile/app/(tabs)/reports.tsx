@@ -14,6 +14,7 @@ import { QUEUE_STATUS, type InspectionWork, type PortalState, type QueuedWorkEnt
 import { todayDdMmYyyy } from '../../src/utils/dates';
 import { normalizeWard, resolveUserTpId } from '../../src/utils/wards';
 import { filterByDateRange, filterUserWorks, sortRecentFirst } from '../../src/utils/workFilters';
+import { resolveWorkPlace } from '../../src/utils/workPlace';
 
 function shortWorkId(workId?: string | null) {
   const raw = String(workId || '').trim();
@@ -22,23 +23,8 @@ function shortWorkId(workId?: string | null) {
   return `${match[1]}${match[2].slice(0, 4)}${match[3]}`;
 }
 
-function localizedStreet(portal: PortalState, street: string, ward: string, isTamil: boolean) {
-  const match =
-    portal.wardsAndStreets?.find(
-      (w) =>
-        w.wardNo === ward &&
-        (w.streetNameEn.trim().toLowerCase() === street.trim().toLowerCase() ||
-          w.streetNameTa?.trim().toLowerCase() === street.trim().toLowerCase())
-    ) ||
-    portal.wardsAndStreets?.find(
-      (w) =>
-        w.streetNameEn.trim().toLowerCase() === street.trim().toLowerCase() ||
-        w.streetNameTa?.trim().toLowerCase() === street.trim().toLowerCase()
-    );
-  if (match) return isTamil ? match.streetNameTa || match.streetNameEn : match.streetNameEn;
-  const s = street.trim().toLowerCase();
-  if (s === 'anna street' || s === 'அண்ணா தெரு') return isTamil ? 'அண்ணா தெரு' : 'Anna Street';
-  return street;
+function localizedStreet(portal: PortalState, work: InspectionWork, isTamil: boolean) {
+  return resolveWorkPlace(work, portal, isTamil).street || String(work.streetName || '').trim();
 }
 
 function queueBadge(status: string, isTamil: boolean) {
@@ -115,25 +101,36 @@ export default function ReportsScreen() {
   const wards = useMemo(() => {
     const uw = (user?.assignedWards || []).map(normalizeWard).filter(Boolean);
     if (uw.length) return uw;
-    const db = [...new Set((portal.wardsAndStreets || []).filter((w) => !tpId || !w.tpId || w.tpId === tpId).map((w) => normalizeWard(w.wardNo)))];
-    return db.length ? db : Array.from({ length: 15 }, (_, i) => String(i + 1));
+    const db = [
+      ...new Set(
+        (portal.wardsAndStreets || [])
+          .filter((w) => !tpId || !w.tpId || w.tpId.toLowerCase() === tpId.toLowerCase())
+          .map((w) => normalizeWard(w.wardNo))
+          .filter((w) => w && w !== '0'),
+      ),
+    ];
+    return db;
   }, [user, portal, tpId]);
 
   const streets = useMemo(() => {
     if (ward === 'all') return [];
-    const fromW = dated.filter((w) => normalizeWard(w.wardNumber) === normalizeWard(ward)).map((w) => localizedStreet(portal, w.streetName, w.wardNumber, isTamil));
+    const fromW = dated.filter((w) => normalizeWard(w.wardNumber) === normalizeWard(ward)).map((w) => localizedStreet(portal, w, isTamil));
     const fromS = (portal.wardsAndStreets || [])
-      .filter((w) => normalizeWard(w.wardNo) === normalizeWard(ward))
+      .filter(
+        (w) =>
+          normalizeWard(w.wardNo) === normalizeWard(ward) &&
+          (!tpId || !w.tpId || w.tpId.toLowerCase() === tpId.toLowerCase()),
+      )
       .map((w) => (isTamil ? w.streetNameTa || w.streetNameEn : w.streetNameEn));
     return [...new Set([...fromW, ...fromS].filter(Boolean))].sort();
-  }, [ward, dated, portal, isTamil]);
+  }, [ward, dated, portal, isTamil, tpId]);
 
   const filtered = useMemo(() => {
     return sortRecentFirst(
       dated.filter((w) => {
         if (!String(w.workId || '').trim()) return false;
         if (ward !== 'all' && normalizeWard(w.wardNumber) !== normalizeWard(ward)) return false;
-        if (street !== 'all' && localizedStreet(portal, w.streetName, w.wardNumber, isTamil) !== street) return false;
+        if (street !== 'all' && localizedStreet(portal, w, isTamil) !== street) return false;
         if (search.trim()) {
           const q = search.toLowerCase();
           return w.workId.toLowerCase().includes(q) || w.streetName.toLowerCase().includes(q) || w.subjectNameEn.toLowerCase().includes(q) || w.subjectNameTa.toLowerCase().includes(q);
@@ -146,7 +143,7 @@ export default function ReportsScreen() {
   const queuedFiltered = useMemo(() => {
     return queued.filter((e) => {
       if (ward !== 'all' && normalizeWard(e.work.wardNumber) !== normalizeWard(ward)) return false;
-      if (street !== 'all' && localizedStreet(portal, e.work.streetName, e.work.wardNumber, isTamil) !== street) return false;
+      if (street !== 'all' && localizedStreet(portal, e.work, isTamil) !== street) return false;
       if (search.trim()) {
         const q = search.toLowerCase();
         return (
@@ -361,7 +358,7 @@ export default function ReportsScreen() {
                         {unsynced ? (isTamil ? 'ஒத்திசைக்கப்படாத பணி' : 'Unsynced work') : shortWorkId(w.workId)}
                       </Text>
                       <Text style={{ fontSize: 11, color: '#64748B', marginTop: 2 }} numberOfLines={1}>
-                        {isTamil ? w.subjectNameTa || w.subjectNameEn : w.subjectNameEn} · {isTamil ? 'வார்டு' : 'Ward'} {w.wardNumber} · {localizedStreet(portal, w.streetName, w.wardNumber, isTamil)}
+                        {isTamil ? w.subjectNameTa || w.subjectNameEn : w.subjectNameEn} · {isTamil ? 'வார்டு' : 'Ward'} {w.wardNumber} · {localizedStreet(portal, w, isTamil)}
                       </Text>
                     </View>
                     <View style={{ backgroundColor: unsynced ? '#FFFBEB' : '#ECFDF5', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 4 }}>
@@ -408,7 +405,7 @@ export default function ReportsScreen() {
         <ScrollView style={styles.list} contentContainerStyle={{ gap: 10, paddingBottom: 8 }}>
           {queuedFiltered.map((e, i) => {
             const b = queueBadge(e.status, isTamil);
-            const streetName = localizedStreet(portal, e.work.streetName, e.work.wardNumber, isTamil);
+            const streetName = localizedStreet(portal, e.work, isTamil);
             const when = new Date(e.createdAt);
             const time = `${String(when.getDate()).padStart(2, '0')}-${String(when.getMonth() + 1).padStart(2, '0')}-${when.getFullYear()}`;
             return (
@@ -444,7 +441,7 @@ export default function ReportsScreen() {
           portal={portal}
           isTamil={isTamil}
           palette={palette}
-          streetLabel={localizedStreet(portal, detail.streetName, detail.wardNumber, isTamil)}
+          streetLabel={localizedStreet(portal, detail, isTamil)}
           onClose={() => setDetail(null)}
         />
       )}

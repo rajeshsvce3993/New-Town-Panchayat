@@ -17,6 +17,7 @@ import {
   workHasMasterTpId,
 } from '@/lib/geoNameMatch';
 import { applyUserPasswordFields, mergeUserRecordPreservingPassword } from '@/lib/userCredentials';
+import { isLiveDataOnly } from '@/lib/productionFlags';
 
 // Storage paths for local fallback
 const STORAGE_DIR = path.join(process.cwd(), 'data');
@@ -1601,10 +1602,10 @@ function normalizeItemFromMongo(key: string, item: any, idx: number): any {
 
   if (key === 'wardsAndStreets') {
     const rawTp = item.tpId || item.tp_id || item.townPanchayatId || item.town_panchayat_id || item.tpName || item.townPanchayat || item.tp || '';
-    const rawWard = item.wardNo ?? item.ward_no ?? item.wardNumber ?? item.ward ?? item.ward_id ?? '1';
+    const rawWard = item.wardNo ?? item.ward_no ?? item.wardNumber ?? item.ward ?? item.ward_id ?? '';
     let cleanWardNo = String(rawWard).trim().replace(/[^0-9]/g, '');
-    if (!cleanWardNo) cleanWardNo = String(rawWard).trim() || '1';
-    const streetNameEn = String(item.streetNameEn || item.streetName || item.street_name || item.nameEn || item.name || item.street || `Street ${idx + 1}`).trim();
+    if (!cleanWardNo) cleanWardNo = String(rawWard).trim();
+    const streetNameEn = String(item.streetNameEn || item.streetName || item.street_name || item.nameEn || item.name || item.street || '').trim();
     const streetNameTa = String(item.streetNameTa || item.street_name_ta || item.nameTa || item.streetTa || streetNameEn).trim();
     const tpNameEn = item.tpNameEn || item.tpName || item.townPanchayat || '';
     const tpNameTa = item.tpNameTa || '';
@@ -1700,6 +1701,7 @@ export async function getCollectionData(key: keyof typeof INITIAL_DATA): Promise
     }
   }
 
+  if (isLiveDataOnly()) return [];
   const localDb = readLocalDb();
   if (localDb && Array.isArray(localDb[key]) && localDb[key].length > 0) {
     return localDb[key];
@@ -2113,14 +2115,27 @@ function buildEnrichMasterLookups(tps: any[], districts: any[], zones: any[], su
   };
 }
 
-// Normalize and enrich inspection works with Town Panchayat, District, Subject, and Category names
+function storedOrMaster(stored: unknown, master: unknown): string {
+  const s = String(stored || '').trim();
+  if (s) return s;
+  return String(master || '').trim();
+}
+
+function liveMasterList(fromMasters: unknown, localFallback: unknown): any[] {
+  if (Array.isArray(fromMasters) && fromMasters.length) return fromMasters;
+  if (isLiveDataOnly()) return [];
+  if (Array.isArray(localFallback) && localFallback.length) return localFallback;
+  return [];
+}
+
+// Fill blank names/ids from live masters only. Never replace a saved work's geo with seed/cache data.
 export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
-  const localDb = masters ? null : readLocalDb();
-  const tps = masters?.townPanchayats || localDb?.townPanchayats || INITIAL_DATA.townPanchayats || [];
-  const districts = masters?.districts || localDb?.districts || INITIAL_DATA.districts || [];
-  const zones = masters?.zones || localDb?.zones || INITIAL_DATA.zones || [];
-  const subjects = masters?.inspectionSubjects || localDb?.inspectionSubjects || INITIAL_DATA.inspectionSubjects || [];
-  const categories = masters?.inspectionCategories || localDb?.inspectionCategories || INITIAL_DATA.inspectionCategories || [];
+  const localDb = masters || isLiveDataOnly() ? null : readLocalDb();
+  const tps = liveMasterList(masters?.townPanchayats, localDb?.townPanchayats);
+  const districts = liveMasterList(masters?.districts, localDb?.districts);
+  const zones = liveMasterList(masters?.zones, localDb?.zones);
+  const subjects = liveMasterList(masters?.inspectionSubjects, localDb?.inspectionSubjects);
+  const categories = liveMasterList(masters?.inspectionCategories, localDb?.inspectionCategories);
   const lookups = buildEnrichMasterLookups(tps, districts, zones, subjects, categories);
 
   return (works || []).map((raw: any) => {
@@ -2181,17 +2196,17 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
         undefined;
     }
 
-    const resolvedSubjectId = subj ? subj.id : (w.subjectId || '');
-    const resolvedSubjectNameEn = subj ? (subj.nameEn || subj.name) : (w.subjectNameEn || '');
-    const resolvedSubjectNameTa = subj ? (subj.nameTa || subj.nameEn) : (w.subjectNameTa || resolvedSubjectNameEn || '');
+    const resolvedSubjectId = storedOrMaster(w.subjectId, subj?.id);
+    const resolvedSubjectNameEn = storedOrMaster(w.subjectNameEn, subj?.nameEn || subj?.name);
+    const resolvedSubjectNameTa = storedOrMaster(w.subjectNameTa, subj?.nameTa || subj?.nameEn || resolvedSubjectNameEn);
 
-    const resolvedCategoryId = cat ? cat.id : (w.categoryId || '');
-    const resolvedCategoryNameEn = cat ? (cat.nameEn || cat.name) : (w.categoryNameEn || '');
-    const resolvedCategoryNameTa = cat ? (cat.nameTa || cat.nameEn) : (w.categoryNameTa || resolvedCategoryNameEn || '');
+    const resolvedCategoryId = storedOrMaster(w.categoryId, cat?.id);
+    const resolvedCategoryNameEn = storedOrMaster(w.categoryNameEn, cat?.nameEn || cat?.name);
+    const resolvedCategoryNameTa = storedOrMaster(w.categoryNameTa, cat?.nameTa || cat?.nameEn || resolvedCategoryNameEn);
 
-    const resolvedTpId = String(tp?.id || w.tpId || w.townPanchayatId || '').trim();
-    const resolvedDistrictId = String(tp?.districtId || dist?.id || w.districtId || '').trim();
-    const resolvedZoneId = String(zone?.id || w.zoneId || tp?.zoneId || dist?.zoneId || '').trim();
+    const resolvedTpId = storedOrMaster(w.tpId || w.townPanchayatId, tp?.id);
+    const resolvedDistrictId = storedOrMaster(w.districtId, tp?.districtId || dist?.id);
+    const resolvedZoneId = storedOrMaster(w.zoneId, zone?.id || tp?.zoneId || dist?.zoneId);
 
     return {
       ...w,
@@ -2201,12 +2216,14 @@ export function normalizeAndEnrichWorks(works: any[], masters?: any): any[] {
       townPanchayatId: resolvedTpId || w.townPanchayatId,
       districtId: resolvedDistrictId || w.districtId,
       zoneId: resolvedZoneId || w.zoneId,
-      tpNameEn: tp?.nameEn || w.tpNameEn || '',
-      tpNameTa: tp?.nameTa || w.tpNameTa || '',
-      districtNameEn: dist?.nameEn || w.districtNameEn || '',
-      districtNameTa: dist?.nameTa || w.districtNameTa || '',
-      zoneNameEn: zone?.nameEn || w.zoneNameEn || '',
-      zoneNameTa: zone?.nameTa || zone?.nameEn || w.zoneNameTa || '',
+      tpNameEn: storedOrMaster(w.tpNameEn, tp?.nameEn),
+      tpNameTa: storedOrMaster(w.tpNameTa, tp?.nameTa),
+      districtNameEn: storedOrMaster(w.districtNameEn, dist?.nameEn),
+      districtNameTa: storedOrMaster(w.districtNameTa, dist?.nameTa),
+      zoneNameEn: storedOrMaster(w.zoneNameEn, zone?.nameEn),
+      zoneNameTa: storedOrMaster(w.zoneNameTa, zone?.nameTa || zone?.nameEn),
+      wardNumber: storedOrMaster(w.wardNumber || w.wardNo || w.ward, ''),
+      streetName: storedOrMaster(w.streetName || w.street, ''),
       subjectId: resolvedSubjectId,
       subjectNameEn: resolvedSubjectNameEn,
       subjectNameTa: resolvedSubjectNameTa,
@@ -2267,8 +2284,8 @@ function aggregateEnrichedWorksForDashboardStats(works: any[]): any[] {
         categoryId,
         categoryNameEn: w.categoryNameEn || '',
         categoryNameTa: w.categoryNameTa || '',
-        subjectNameEn: w.subjectNameEn || 'General Inspection',
-        subjectNameTa: w.subjectNameTa || 'பொது ஆய்வு',
+        subjectNameEn: w.subjectNameEn || '',
+        subjectNameTa: w.subjectNameTa || '',
         zoneId,
         districtId,
         tpId,
@@ -2344,44 +2361,53 @@ function assemblePortalState(parts: {
     inspectionDesignations: parts.inspectionDesignations,
   };
   const enrichedUsers = (parts.inspectionUsers || []).map((u: any) => enrichUserForApp(u, masters));
-  const finalUsers = (parts.users && parts.users.length > 0) ? parts.users : ((localDb.users && localDb.users.length > 0) ? localDb.users : INITIAL_DATA.users);
+  const liveLists = isLiveDataOnly();
+  const pickList = (mongo: any, local: any, seed: any) => {
+    if (Array.isArray(mongo) && mongo.length > 0) return mongo;
+    if (liveLists) return Array.isArray(mongo) ? mongo : [];
+    if (Array.isArray(local) && local.length > 0) return local;
+    return seed || [];
+  };
+  const finalUsers = pickList(parts.users, localDb.users, INITIAL_DATA.users);
   const mongoRoles = Array.isArray(parts.roles) ? parts.roles : [];
   const localRoles = Array.isArray(localDb.roles) ? localDb.roles : [];
   const finalRoles = mongoRoles.length > 0
     ? mongoRoles
-    : (localRoles.length > 0 ? localRoles : INITIAL_DATA.roles);
+    : (liveLists ? [] : (localRoles.length > 0 ? localRoles : INITIAL_DATA.roles));
   const finalEmployees = parts.employees !== undefined
     ? (parts.employees || [])
-    : ((localDb.employees && localDb.employees.length > 0) ? localDb.employees : INITIAL_DATA.employees);
-  const finalTps = (Array.isArray(parts.townPanchayats) && parts.townPanchayats.length > 0) ? parts.townPanchayats : ((Array.isArray(localDb.townPanchayats) && localDb.townPanchayats.length > 0) ? localDb.townPanchayats : INITIAL_DATA.townPanchayats);
-  const finalDistricts = (Array.isArray(parts.districts) && parts.districts.length > 0) ? parts.districts : ((Array.isArray(localDb.districts) && localDb.districts.length > 0) ? localDb.districts : INITIAL_DATA.districts);
-  const finalZones = (Array.isArray(parts.zones) && parts.zones.length > 0) ? parts.zones : ((Array.isArray(localDb.zones) && localDb.zones.length > 0) ? localDb.zones : INITIAL_DATA.zones);
-  const finalWardsAndStreets = (Array.isArray(parts.wardsAndStreets) && parts.wardsAndStreets.length > 0) ? parts.wardsAndStreets : ((Array.isArray(localDb.wardsAndStreets) && localDb.wardsAndStreets.length > 0) ? localDb.wardsAndStreets : INITIAL_DATA.wardsAndStreets);
+    : (liveLists ? [] : ((localDb.employees && localDb.employees.length > 0) ? localDb.employees : INITIAL_DATA.employees));
+  const finalTps = pickList(parts.townPanchayats, localDb.townPanchayats, INITIAL_DATA.townPanchayats);
+  const finalDistricts = pickList(parts.districts, localDb.districts, INITIAL_DATA.districts);
+  const finalZones = pickList(parts.zones, localDb.zones, INITIAL_DATA.zones);
+  const finalWardsAndStreets = pickList(parts.wardsAndStreets, localDb.wardsAndStreets, INITIAL_DATA.wardsAndStreets);
 
   return {
     ...INITIAL_DATA,
-    ...localDb,
+    ...(liveLists ? {} : localDb),
     districts: finalDistricts,
     townPanchayats: finalTps,
     zones: finalZones,
     roles: finalRoles,
     users: finalUsers,
     employees: finalEmployees,
-    inspectionSubjects: (parts.inspectionSubjects && parts.inspectionSubjects.length > 0) ? parts.inspectionSubjects : (localDb.inspectionSubjects || []),
-    inspectionCategories: (parts.inspectionCategories && parts.inspectionCategories.length > 0) ? parts.inspectionCategories : (localDb.inspectionCategories || []),
-    inspectionFields: Array.isArray(parts.inspectionFields) ? parts.inspectionFields : (localDb.inspectionFields || []),
+    inspectionSubjects: pickList(parts.inspectionSubjects, localDb.inspectionSubjects, []),
+    inspectionCategories: pickList(parts.inspectionCategories, localDb.inspectionCategories, []),
+    inspectionFields: pickList(parts.inspectionFields, localDb.inspectionFields, []),
     wardsAndStreets: Array.isArray(parts.wardsAndStreets) ? parts.wardsAndStreets : finalWardsAndStreets,
     inspectionWorks: [],
     inspectionWorkStats: parts.inspectionWorkStats || [],
     inspectionUsers: parts.inspectionUsers !== undefined
       ? enrichedUsers
-      : (localDb.inspectionUsers || []).map((u: any) => enrichUserForApp(u, masters)),
-    inspectionRoles: (parts.inspectionRoles && parts.inspectionRoles.length > 0) ? parts.inspectionRoles : (localDb.inspectionRoles || []),
-    inspectionDesignations: (parts.inspectionDesignations && parts.inspectionDesignations.length > 0) ? parts.inspectionDesignations : (localDb.inspectionDesignations || []),
+      : (liveLists ? [] : (localDb.inspectionUsers || []).map((u: any) => enrichUserForApp(u, masters))),
+    inspectionRoles: pickList(parts.inspectionRoles, localDb.inspectionRoles, []),
+    inspectionDesignations: pickList(parts.inspectionDesignations, localDb.inspectionDesignations, []),
     notifications: parts.notifications || [],
     apkVersions: parts.apkVersions || [],
     userActivities: parts.userActivities || [],
-    settings: { ...INITIAL_DATA.settings, ...(localDb.settings || {}), ...(parts.settings || {}) },
+    settings: liveLists
+      ? { ...(parts.settings || {}) }
+      : { ...INITIAL_DATA.settings, ...(localDb.settings || {}), ...(parts.settings || {}) },
   };
 }
 
@@ -2544,8 +2570,8 @@ function nameInspectionWorkStatsRows(inspectionWorkStats: any[], inspectionSubje
     const cat = categoryById.get(String(row.categoryId || ''));
     return {
       ...row,
-      subjectNameEn: row.subjectNameEn || subj?.nameEn || 'General Inspection',
-      subjectNameTa: row.subjectNameTa || subj?.nameTa || 'பொது ஆய்வு',
+      subjectNameEn: row.subjectNameEn || subj?.nameEn || '',
+      subjectNameTa: row.subjectNameTa || subj?.nameTa || '',
       categoryNameEn: row.categoryNameEn || cat?.nameEn || '',
       categoryNameTa: row.categoryNameTa || cat?.nameTa || '',
     };

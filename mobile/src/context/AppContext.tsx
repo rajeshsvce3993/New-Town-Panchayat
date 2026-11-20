@@ -106,7 +106,7 @@ export interface AppCtx {
   performLogin: (req: LoginRequest) => Promise<LoginResponse>;
   onLoginSuccess: (user: AppUser) => Promise<void>;
   logout: () => Promise<void>;
-  refreshPortal: () => Promise<void>;
+  refreshPortal: () => Promise<PortalState | null>;
   setWorks: React.Dispatch<React.SetStateAction<InspectionWork[]>>;
   updateUserPhoto: (url: string) => Promise<void>;
   saveServerUrl: (url: string) => Promise<void>;
@@ -177,16 +177,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
 
     (async () => {
-      const [url, theme, tamil, u, cached, logo, icon, tone, cachedScope] = await Promise.all([
+      const [url, theme, tamil, u, logo, icon, tone] = await Promise.all([
         prefs.getServerUrl(),
         prefs.getThemeId(),
         prefs.getIsTamil(),
         prefs.getCurrentUser(),
-        prefs.getPortal(),
         prefs.getLoginLogoUrl(),
         prefs.getAppIconUrl(),
         prefs.getTone(),
-        prefs.getUserScope(),
       ]);
       if (cancelled) return;
 
@@ -200,7 +198,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         activeUser = null;
       }
       applyUser(activeUser);
-      if (cached) setPortal(mergeScopeMastersIntoPortal(cached, cachedScope));
       setWorks([]);
       setWorksHydrated(false);
       if (isUsableLogoUrl(logo)) setLoginLogo(logo);
@@ -285,22 +282,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const refreshPortal = useCallback(async () => {
+  const refreshPortal = useCallback(async (): Promise<PortalState | null> => {
     const current = userRef.current;
     if (!current) {
       setWorksHydrated(true);
-      return;
+      return null;
     }
     if (portalRefreshInFlight.current) {
       portalRefreshAgain.current = true;
-      return;
+      return null;
     }
     portalRefreshInFlight.current = true;
     const sid = sessionIdRef.current;
     touch();
     try {
       const remote = await api.bootstrapProductionPortal(current.username, current, { worksLimit: 80 });
-      if (sid !== sessionIdRef.current || !userRef.current) return;
+      if (sid !== sessionIdRef.current || !userRef.current) return null;
       const liveSettings = pickReportSettings(await api.getAppSettings());
       const nextPortal: PortalState = {
         ...remote,
@@ -311,7 +308,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
       setPortal(nextPortal);
       await prefs.setPortal(nextPortal);
-      if (sid !== sessionIdRef.current || !userRef.current) return;
+      if (sid !== sessionIdRef.current || !userRef.current) return nextPortal;
       const remoteWorks = filterUserWorks(portalWorks(remote), current, 'reports').filter((w) =>
         isAssignedWorkId(w.workId)
       );
@@ -356,7 +353,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         await prefs.setLoginLogoUrl(nextLogo);
         setLoginLogo(nextLogo);
       }
-      if (sid !== sessionIdRef.current || !userRef.current) return;
+      if (sid !== sessionIdRef.current || !userRef.current) return nextPortal;
       const liveBeforeProfile = userRef.current;
       if (liveBeforeProfile?.username) {
         try {
@@ -381,7 +378,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           toast('உங்கள் கணக்கு நிர்வாகியால் முடக்கப்பட்டு வெளியேற்றப்பட்டுள்ளது.');
         } else {
           const live = userRef.current;
-          if (!live || sid !== sessionIdRef.current) return;
+          if (!live || sid !== sessionIdRef.current) return nextPortal;
           const photoFile = profilePhotoFile(live);
           let persistent: string | null = null;
           try {
@@ -405,19 +402,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           await prefs.setCurrentUser(safeUser);
           if (sid !== sessionIdRef.current || !userRef.current) {
             await prefs.logoutClear();
-            return;
+            return null;
           }
           applyUser(safeUser);
         }
       }
+      return nextPortal;
     } catch {
-      const cached = await prefs.getPortal();
-      setWorks((prev) =>
-        dedupeInspectionWorks([
-          ...filterUserWorks(portalWorks(cached), current, 'reports'),
-          ...prev,
-        ].filter((w) => isAssignedWorkId(w.workId)))
-      );
+      /* Keep the last live in-memory portal. Never paint disk cache / seed geo. */
+      return null;
     } finally {
       portalRefreshInFlight.current = false;
       setWorksHydrated(true);
@@ -566,13 +559,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (res.userScope) {
           await prefs.setUserScope(res.userScope);
           await prefs.setScopeVersionInt(res.scopeVersion || 1);
-          const masters = mergeScopeMastersIntoPortal(emptyPortal(), res.userScope);
-          setPortal((prev) => mergeScopeMastersIntoPortal(prev, res.userScope));
-          const cached = (await prefs.getPortal()) || emptyPortal();
-          await prefs.setPortal(mergeScopeMastersIntoPortal(cached, res.userScope));
-          if (!masters.fields?.length && !masters.inspectionFields?.length) {
-            /* refreshPortal will load full scope */
-          }
+          const livePortal = mergeScopeMastersIntoPortal(emptyPortal(), res.userScope);
+          setPortal(livePortal);
+          await prefs.setPortal(livePortal);
         }
         return res;
       }
