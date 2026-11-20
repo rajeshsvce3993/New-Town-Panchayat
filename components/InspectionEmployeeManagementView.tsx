@@ -183,9 +183,32 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
   const [tpUsersLoading, setTpUsersLoading] = useState<Record<string, boolean>>({});
   const [inspectionUserTotal, setInspectionUserTotal] = useState<number | null>(null);
 
+  const invalidateTpUserCaches = React.useCallback((tpIds: string[]) => {
+    if (!tpIds.length) return;
+    setUsersByTp((prev) => {
+      const next = { ...prev };
+      tpIds.forEach((id) => delete next[id]);
+      return next;
+    });
+  }, []);
+
+  const refreshInspectionUserDirectory = React.useCallback(async () => {
+    try {
+      const { fetchMastersListTotal, loadAllInspectionUsers } = await import('@/lib/portalMastersClient');
+      const [total, all] = await Promise.all([
+        fetchMastersListTotal('inspectionUsers', { lean: true }),
+        loadAllInspectionUsers({ lean: true }),
+      ]);
+      setInspectionUserTotal(total);
+      if (all.length) setLocalInspectionUsers(all);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const ensureTpUsers = React.useCallback(
-    async (tpId: string, tpNameEn?: string) => {
-      if (!tpId || usersByTp[tpId]) return usersByTp[tpId];
+    async (tpId: string, tpNameEn?: string, force?: boolean) => {
+      if (!tpId || (!force && usersByTp[tpId])) return usersByTp[tpId];
       setTpUsersLoading((prev) => ({ ...prev, [tpId]: true }));
       try {
         const { fetchInspectionUsersForTp } = await import('@/lib/portalMastersClient');
@@ -202,6 +225,17 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     },
     [usersByTp],
   );
+
+  React.useEffect(() => {
+    const onMasters = (ev: Event) => {
+      const key = (ev as CustomEvent<{ key?: string }>)?.detail?.key;
+      if (key && key !== 'inspectionUsers') return;
+      void refreshInspectionUserDirectory();
+      setUsersByTp({});
+    };
+    window.addEventListener('portal:masters-updated', onMasters);
+    return () => window.removeEventListener('portal:masters-updated', onMasters);
+  }, [refreshInspectionUserDirectory]);
 
   const handleZoneTreeClick = (zoneId: string) => {
     const zid = geoEntityId({ id: zoneId });
@@ -652,14 +686,20 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
       return;
     }
 
-    // Check unique username (if not current user being edited)
-    const usernameTaken = inspectionUsers.some((u: any) => 
-      u.id !== editingUserId && u.username?.toLowerCase() === userUsername.trim().toLowerCase()
+    const { loadAllInspectionUsers } = await import('@/lib/portalMastersClient');
+    const directorySnapshot = await loadAllInspectionUsers({ lean: true });
+    const usernameTaken = directorySnapshot.some(
+      (u: any) =>
+        u.id !== editingUserId && u.username?.toLowerCase() === userUsername.trim().toLowerCase(),
     );
     if (usernameTaken) {
       alert(lang === 'ta' ? 'இந்த பயனர்பெயர் ஏற்கனவே பயன்பாட்டில் உள்ளது. வேறு பெயரை தேர்வு செய்யவும்.' : 'This username is already taken. Please choose another.');
       return;
     }
+
+    const selectedTp = townPanchayats.find((tp: any) => geoEntityId(tp) === userTpId);
+    const selectedDist = districts.find((d: any) => geoEntityId(d) === userDistrictId);
+    const selectedZone = zones.find((z: any) => geoEntityId(z) === userZoneId);
 
     // Resolved town panchayat IDs based on scope
     let resolvedTpIds: string[] = [];
@@ -674,68 +714,91 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
       resolvedTpIds = userTpId ? [userTpId] : [];
     }
 
-    if (editingUserId) {
-      // Update existing user
-      const updated = inspectionUsers.map((u: any) => {
-        if (u.id === editingUserId) {
-          return applyUserPasswordFields({
-            ...u,
-            username: userUsername.trim(),
-            nameEn: userNameEn.trim(),
-            nameTa: userNameTa.trim(),
-            mobile: userMobile.trim(),
-            roleId: userRoleId,
-            designationId: userDesigId,
-            scopeType: scopeType,
-            zoneId: userZoneId,
-            districtId: userDistrictId,
-            tpId: userTpId || (resolvedTpIds[0] || ''),
-            townPanchayatIds: resolvedTpIds,
-            selectedTpIds: resolvedTpIds,
-            assignedWards: userSelectedWards.length > 0 ? userSelectedWards : (u.assignedWards || []),
-            selectedWards: userSelectedWards.length > 0 ? userSelectedWards : (u.selectedWards || []),
-            subjectIds: userSubjectIds,
-            assignedSubjects: userSubjectIds,
-            categoryIds: userCategoryIds,
-            assignedCategories: userCategoryIds,
-            updatedAt: new Date().toISOString()
-          }, userPassword.trim());
-        }
-        return u;
-      });
+    const primaryTpId = userTpId || resolvedTpIds[0] || '';
+    const scopeFields = {
+      scopeType,
+      zoneId: userZoneId,
+      districtId: userDistrictId,
+      tpId: primaryTpId,
+      townPanchayatId: primaryTpId,
+      scopeId: primaryTpId,
+      townPanchayatIds: resolvedTpIds,
+      selectedTpIds: resolvedTpIds,
+      townPanchayat: selectedTp?.nameEn || selectedTp?.nameTa || '',
+      townPanchayatTa: selectedTp?.nameTa || selectedTp?.nameEn || '',
+      district: selectedDist?.nameEn || '',
+      districtTa: selectedDist?.nameTa || '',
+      zone: selectedZone?.nameEn || '',
+      zoneTa: selectedZone?.nameTa || '',
+      employeeNameEn: userNameEn.trim(),
+      employeeNameTa: userNameTa.trim(),
+      isInspectionUser: true,
+    };
 
-      await onSaveCollection('inspectionUsers', updated);
+    const affectedTpIds = [...new Set(resolvedTpIds.concat(primaryTpId).filter(Boolean))];
+
+    if (editingUserId) {
+      const existing = directorySnapshot.find((u: any) => u.id === editingUserId) || inspectionUsers.find((u: any) => u.id === editingUserId);
+      const updatedUser = applyUserPasswordFields(
+        {
+          ...existing,
+          ...scopeFields,
+          username: userUsername.trim(),
+          nameEn: userNameEn.trim(),
+          nameTa: userNameTa.trim(),
+          mobile: userMobile.trim(),
+          roleId: userRoleId,
+          designationId: userDesigId,
+          assignedWards: userSelectedWards.length > 0 ? userSelectedWards : (existing?.assignedWards || []),
+          selectedWards: userSelectedWards.length > 0 ? userSelectedWards : (existing?.selectedWards || []),
+          subjectIds: userSubjectIds,
+          assignedSubjects: userSubjectIds,
+          categoryIds: userCategoryIds,
+          assignedCategories: userCategoryIds,
+          updatedAt: new Date().toISOString(),
+        },
+        userPassword.trim(),
+      );
+
+      await onSaveCollection('inspectionUsers', [...directorySnapshot.filter((u: any) => u.id !== editingUserId), updatedUser]);
       rememberUserCredential({ id: editingUserId, username: userUsername.trim() }, userPassword.trim());
       resetUserForm();
+      invalidateTpUserCaches(affectedTpIds);
+      await refreshInspectionUserDirectory();
+      affectedTpIds.forEach((tid) => {
+        if (openTps[tid]) void ensureTpUsers(tid, selectedTp?.nameEn, true);
+      });
     } else {
-      // Create new user
-      const newUser = applyUserPasswordFields({
-        id: 'iu_' + Math.random().toString(36).substr(2, 6),
-        username: userUsername.trim(),
-        nameEn: userNameEn.trim(),
-        nameTa: userNameTa.trim(),
-        mobile: userMobile.trim(),
-        roleId: userRoleId,
-        designationId: userDesigId,
-        scopeType: scopeType,
-        zoneId: userZoneId,
-        districtId: userDistrictId,
-        tpId: userTpId || (resolvedTpIds[0] || ''),
-        townPanchayatIds: resolvedTpIds,
-        selectedTpIds: resolvedTpIds,
-        assignedWards: userSelectedWards,
-        selectedWards: userSelectedWards,
-        subjectIds: userSubjectIds,
-        assignedSubjects: userSubjectIds,
-        categoryIds: userCategoryIds,
-        assignedCategories: userCategoryIds,
-        status: 'Active',
-        createdAt: new Date().toISOString()
-      }, userPassword.trim());
+      const newUser = applyUserPasswordFields(
+        {
+          id: 'iu_' + Math.random().toString(36).substr(2, 6),
+          ...scopeFields,
+          username: userUsername.trim(),
+          nameEn: userNameEn.trim(),
+          nameTa: userNameTa.trim(),
+          mobile: userMobile.trim(),
+          roleId: userRoleId,
+          designationId: userDesigId,
+          assignedWards: userSelectedWards,
+          selectedWards: userSelectedWards,
+          subjectIds: userSubjectIds,
+          assignedSubjects: userSubjectIds,
+          categoryIds: userCategoryIds,
+          assignedCategories: userCategoryIds,
+          status: 'Active',
+          createdAt: new Date().toISOString(),
+        },
+        userPassword.trim(),
+      );
 
-      await onSaveCollection('inspectionUsers', [...inspectionUsers, newUser]);
+      await onSaveCollection('inspectionUsers', [...directorySnapshot, newUser]);
       rememberUserCredential(newUser, userPassword.trim());
       resetUserForm();
+      invalidateTpUserCaches(affectedTpIds);
+      await refreshInspectionUserDirectory();
+      affectedTpIds.forEach((tid) => {
+        if (openTps[tid]) void ensureTpUsers(tid, selectedTp?.nameEn, true);
+      });
     }
   };
 
@@ -768,8 +831,38 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
   };
 
   const handleDeleteUser = async (userId: string) => {
-    const updated = inspectionUsers.filter((u: any) => u.id !== userId);
-    await onSaveCollection('inspectionUsers', updated);
+    const target = inspectionUsers.find((u: any) => u.id === userId);
+    const tpIds = [
+      target?.tpId,
+      target?.townPanchayatId,
+      ...(Array.isArray(target?.selectedTpIds) ? target.selectedTpIds : []),
+    ].filter(Boolean) as string[];
+    try {
+      const res = await fetch('/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          operation: 'deleteCollectionItem',
+          action: 'deleteCollectionItem',
+          key: 'inspectionUsers',
+          itemId: userId,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        alert(json.message || (lang === 'ta' ? 'நீக்க முடியவில்லை' : 'Delete failed'));
+        return;
+      }
+      setLocalInspectionUsers((prev) => prev.filter((u) => u.id !== userId));
+      invalidateTpUserCaches(tpIds);
+      await refreshInspectionUserDirectory();
+      tpIds.forEach((tid) => {
+        if (openTps[tid]) void ensureTpUsers(tid, undefined, true);
+      });
+      window.dispatchEvent(new CustomEvent('portal:masters-updated', { detail: { key: 'inspectionUsers', at: Date.now() } }));
+    } catch {
+      alert(lang === 'ta' ? 'பிணையப் பிழை' : 'Network error');
+    }
   };
 
   // Download Bulk CSV Template pre-filled from a real zone → district → TP chain (lazy geo).
@@ -895,7 +988,8 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
 
         const uploadedRoles = [...inspectionRoles];
         const uploadedDesignations = [...inspectionDesignations];
-        const uploadedUsers = [...inspectionUsers];
+        const { loadAllInspectionUsers } = await import('@/lib/portalMastersClient');
+        const uploadedUsers = await loadAllInspectionUsers({ lean: true });
 
         for (let i = 1; i < lines.length; i++) {
           const values = parseCsvLine(lines[i]);

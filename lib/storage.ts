@@ -3025,15 +3025,27 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
             item.id ? existingById.get(String(item.id)) : undefined
           )
         );
-        await col.deleteMany({});
-        if (mergedItems.length > 0) {
-          await col.insertMany(
-            mergedItems.map((item, idx) => {
-              const { id, _id, ...rest } = item;
-              const itemId = id || (_id ? String(_id) : `${key}_${idx}_${Date.now()}`);
-              return { _id: itemId as any, id: itemId, ...rest };
-            })
-          );
+        const incomingIds = new Set(mergedItems.map((item) => String(item.id || '')).filter(Boolean));
+        const missingFromIncoming = existing.filter((e) => !incomingIds.has(String(e.id || e._id)));
+        const looksLikePartialSave =
+          existing.length > 5 &&
+          missingFromIncoming.length > 0 &&
+          mergedItems.length < existing.length * 0.9;
+
+        if (looksLikePartialSave) {
+          const prefix = key === 'users' ? 'u' : 'iu';
+          await upsertCollectionDocuments(col, mergedItems, prefix);
+        } else {
+          await col.deleteMany({});
+          if (mergedItems.length > 0) {
+            await col.insertMany(
+              mergedItems.map((item, idx) => {
+                const { id, _id, ...rest } = item;
+                const itemId = id || (_id ? String(_id) : `${key}_${idx}_${Date.now()}`);
+                return { _id: itemId as any, id: itemId, ...rest };
+              })
+            );
+          }
         }
       } else {
         if (!Array.isArray(items) || items.length === 0) {
@@ -3052,7 +3064,7 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
       const localDb = readLocalDb();
       if (key === 'inspectionWorks') {
         localDb.inspectionWorks = items.slice(0, 100) as any;
-      } else if (isGeoMasterKey(String(key))) {
+      } else if (isGeoMasterKey(String(key)) || key === 'users' || key === 'inspectionUsers') {
         mergeLocalCollectionItems(localDb, key, items);
       } else {
         localDb[key] = items as any;

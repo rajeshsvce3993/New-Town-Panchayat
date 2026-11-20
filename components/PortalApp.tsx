@@ -672,12 +672,10 @@ export default function PortalApp({ initialUser = null }: { initialUser?: any })
       invalidatePortalBootstrapCache();
       if (key === 'users' || key === 'inspectionUsers') {
         try {
-          const verify = await fetch(`/api/masters/list?collection=${encodeURIComponent(key)}&page=1&limit=2000`, {
-            cache: 'no-store',
-          });
-          const verified = await verify.json();
-          if (verified?.success && Array.isArray(verified.items)) {
-            setState((prev: any) => mergePortalState(prev, { [key]: verified.items }));
+          const { fetchAllMastersList } = await import('@/lib/portalMastersClient');
+          const verified = await fetchAllMastersList(key, { lean: true, pageSize: 1000, maxPages: 50 });
+          if (verified.length) {
+            setState((prev: any) => mergePortalState(prev, { [key]: verified }));
           }
         } catch {
           /* optimistic state already applied */

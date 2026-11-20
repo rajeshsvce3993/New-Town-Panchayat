@@ -46,6 +46,15 @@ export async function fetchMastersList(
   return json?.success && Array.isArray(json.items) ? json.items : [];
 }
 
+/** Full inspection user directory for saves (avoids partial save wiping Mongo). */
+export async function loadAllInspectionUsers(opts?: { lean?: boolean }): Promise<any[]> {
+  return fetchAllMastersList('inspectionUsers', {
+    pageSize: 1000,
+    lean: opts?.lean !== false,
+    maxPages: 50,
+  });
+}
+
 export async function fetchAllMastersList(
   collection: string,
   opts?: { pageSize?: number; lean?: boolean; maxPages?: number },
