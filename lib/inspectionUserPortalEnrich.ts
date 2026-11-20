@@ -29,13 +29,22 @@ export function enrichInspectionUserRow(user: any, masters: InspectionUserGeoMas
     .map(norm)
     .filter(Boolean);
 
-  const matchedTp =
+  let matchedTp =
     tps.find((t) => tpKeys.some((k) => eq(t.id, k) || eq(t.code, k) || eq(t.nameEn, k))) || null;
+
+  if (!matchedTp && norm(user.tpId || user.townPanchayatId)) {
+    matchedTp = {
+      id: norm(user.tpId || user.townPanchayatId),
+      districtId: user.districtId,
+      zoneId: user.zoneId,
+      nameEn: user.townPanchayat || user.tpName,
+      nameTa: user.townPanchayatTa,
+    };
+  }
 
   const districtId = norm(matchedTp?.districtId || user.districtId);
   const matchedDist =
-    districts.find((d) => eq(d.id, districtId) || eq(d.code, districtId) || eq(d.nameEn, user.district)) ||
-    null;
+    districts.find((d) => eq(d.id, districtId) || eq(d.code, districtId)) || null;
 
   const zoneId = norm(matchedZoneId(matchedTp, matchedDist, user, zones));
 
@@ -54,17 +63,19 @@ export function enrichInspectionUserRow(user: any, masters: InspectionUserGeoMas
     tpId: norm(matchedTp?.id || user.tpId || user.townPanchayatId),
     districtId: norm(matchedDist?.id || districtId),
     zoneId,
-    townPanchayat: user.townPanchayat || matchedTp?.nameEn || user.townPanchayat,
-    townPanchayatTa: user.townPanchayatTa || matchedTp?.nameTa || user.townPanchayatTa,
-    district: user.district || matchedDist?.nameEn || user.district,
-    zone: user.zone || zones.find((z) => eq(z.id, zoneId))?.nameEn || user.zone,
+    townPanchayat: matchedTp?.nameEn || user.townPanchayat || user.tpName || '',
+    townPanchayatTa: matchedTp?.nameTa || user.townPanchayatTa || user.townPanchayat || '',
+    district: matchedDist?.nameEn || user.district || '',
+    districtTa: matchedDist?.nameTa || user.districtTa || '',
+    zone: zones.find((z) => eq(z.id, zoneId))?.nameEn || user.zone || '',
+    zoneTa: zones.find((z) => eq(z.id, zoneId))?.nameTa || user.zoneTa || '',
     townPanchayatIds: [...new Set(townPanchayatIds)],
     selectedTpIds: user.selectedTpIds?.length ? user.selectedTpIds : matchedTp?.id ? [matchedTp.id] : [],
   };
 }
 
 function matchedZoneId(tp: any | null, dist: any | null, user: any, zones: any[]): string {
-  const candidates = [user.zoneId, user.zone, tp?.zoneId, dist?.zoneId].map(norm).filter(Boolean);
+  const candidates = [dist?.zoneId, tp?.zoneId, user.zoneId].map(norm).filter(Boolean);
   for (const cand of candidates) {
     const z = zones.find((row) => eq(row.id, cand) || eq(row.nameEn, cand) || eq(row.code, cand));
     if (z?.id) return norm(z.id);

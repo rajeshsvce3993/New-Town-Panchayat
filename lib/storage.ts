@@ -3014,7 +3014,24 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
             })
           );
         }
-      } else if (key === 'users' || key === 'inspectionUsers') {
+      } else if (key === 'inspectionUsers') {
+        const existing = await col.find({}).toArray();
+        const existingById = new Map(
+          existing.map((e: any) => [String(e.id || e._id), e])
+        );
+        const { resolveGeoForUser } = await import('@/lib/domain/geoResolver');
+        const { applyResolvedGeoToInspectionUser } = await import('@/lib/inspectionUserGeoStamp');
+        const mergedItems = [];
+        for (const item of items) {
+          const base = mergeUserRecordPreservingPassword(
+            item,
+            item.id ? existingById.get(String(item.id)) : undefined,
+          );
+          const geo = await resolveGeoForUser(db, base);
+          mergedItems.push(applyResolvedGeoToInspectionUser(base, geo));
+        }
+        await upsertCollectionDocuments(col, mergedItems, 'iu');
+      } else if (key === 'users') {
         const existing = await col.find({}).toArray();
         const existingById = new Map(
           existing.map((e: any) => [String(e.id || e._id), e])
@@ -3033,15 +3050,14 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
           mergedItems.length < existing.length * 0.9;
 
         if (looksLikePartialSave) {
-          const prefix = key === 'users' ? 'u' : 'iu';
-          await upsertCollectionDocuments(col, mergedItems, prefix);
+          await upsertCollectionDocuments(col, mergedItems, 'u');
         } else {
           await col.deleteMany({});
           if (mergedItems.length > 0) {
             await col.insertMany(
               mergedItems.map((item, idx) => {
                 const { id, _id, ...rest } = item;
-                const itemId = id || (_id ? String(_id) : `${key}_${idx}_${Date.now()}`);
+                const itemId = id || (_id ? String(_id) : `users_${idx}_${Date.now()}`);
                 return { _id: itemId as any, id: itemId, ...rest };
               })
             );

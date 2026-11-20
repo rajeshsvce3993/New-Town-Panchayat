@@ -34,12 +34,26 @@ async function findTownPanchayat(db: Db, user: any) {
     if (byId) return byId;
   }
   if (tpName) {
+    const districtHint = normId(user.districtId);
+    const filter: Record<string, unknown> = districtHint ? { districtId: districtHint } : {};
     const rows = await col
+      .find(filter, { maxTimeMS: 4000, projection: { id: 1, nameEn: 1, nameTa: 1, code: 1, districtId: 1, zoneId: 1 } })
+      .limit(districtHint ? 200 : 800)
+      .toArray();
+  const scoped =
+      rows.find(
+        (t: any) =>
+          geoNamesEqual(t.nameEn, tpName) ||
+          geoNamesEqual(t.nameTa, tpName) ||
+          String(t.id || '').toLowerCase() === tpName.toLowerCase(),
+      ) || null;
+    if (scoped || districtHint) return scoped;
+    const all = await col
       .find({}, { maxTimeMS: 4000, projection: { id: 1, nameEn: 1, nameTa: 1, code: 1, districtId: 1, zoneId: 1 } })
       .limit(800)
       .toArray();
     return (
-      rows.find(
+      all.find(
         (t: any) =>
           geoNamesEqual(t.nameEn, tpName) ||
           geoNamesEqual(t.nameTa, tpName) ||

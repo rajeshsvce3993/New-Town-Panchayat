@@ -32,7 +32,8 @@ import {
   ShieldAlert,
   RefreshCw,
   Calendar,
-  ChevronRight
+  ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import {
   applyUserPasswordFields,
@@ -447,7 +448,23 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     if (userDistrictId) void lazyGeo.ensureTownPanchayats(userDistrictId);
   }, [userDistrictId, lazyGeo]);
 
-  const [csvFeedback, setCsvFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  type CsvImportPhase = 'reading' | 'loading' | 'processing' | 'saving' | 'done' | 'error';
+  type CsvImportUi = {
+    phase: CsvImportPhase;
+    fileName: string;
+    totalRows: number;
+    currentRow: number;
+    created: number;
+    updated: number;
+    skippedGeo: number;
+    skippedRows: number;
+    message?: string;
+  };
+  const [csvImportUi, setCsvImportUi] = useState<CsvImportUi | null>(null);
+  const csvImportBusy =
+    csvImportUi &&
+    csvImportUi.phase !== 'done' &&
+    csvImportUi.phase !== 'error';
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchServerLogs = async () => {
@@ -697,9 +714,12 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
       return;
     }
 
-    const selectedTp = townPanchayats.find((tp: any) => geoEntityId(tp) === userTpId);
-    const selectedDist = districts.find((d: any) => geoEntityId(d) === userDistrictId);
-    const selectedZone = zones.find((z: any) => geoEntityId(z) === userZoneId);
+    if (userDistrictId) await lazyGeo.ensureTownPanchayats(userDistrictId);
+    const mastersForStamp = {
+      zones,
+      districts: lazyGeo.allDistricts?.() || districts,
+      townPanchayats: lazyGeo.allTownPanchayats?.() || townPanchayats,
+    };
 
     // Resolved town panchayat IDs based on scope
     let resolvedTpIds: string[] = [];
@@ -715,25 +735,21 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     }
 
     const primaryTpId = userTpId || resolvedTpIds[0] || '';
-    const scopeFields = {
-      scopeType,
-      zoneId: userZoneId,
-      districtId: userDistrictId,
-      tpId: primaryTpId,
-      townPanchayatId: primaryTpId,
-      scopeId: primaryTpId,
-      townPanchayatIds: resolvedTpIds,
-      selectedTpIds: resolvedTpIds,
-      townPanchayat: selectedTp?.nameEn || selectedTp?.nameTa || '',
-      townPanchayatTa: selectedTp?.nameTa || selectedTp?.nameEn || '',
-      district: selectedDist?.nameEn || '',
-      districtTa: selectedDist?.nameTa || '',
-      zone: selectedZone?.nameEn || '',
-      zoneTa: selectedZone?.nameTa || '',
-      employeeNameEn: userNameEn.trim(),
-      employeeNameTa: userNameTa.trim(),
-      isInspectionUser: true,
-    };
+    const { stampInspectionUserFromMasters } = await import('@/lib/inspectionUserGeoStamp');
+    const scopeFields = stampInspectionUserFromMasters(
+      {
+        scopeType,
+        zoneId: userZoneId,
+        districtId: userDistrictId,
+        tpId: primaryTpId,
+        townPanchayatIds: resolvedTpIds,
+        selectedTpIds: resolvedTpIds,
+        employeeNameEn: userNameEn.trim(),
+        employeeNameTa: userNameTa.trim(),
+        isInspectionUser: true,
+      },
+      mastersForStamp,
+    );
 
     const affectedTpIds = [...new Set(resolvedTpIds.concat(primaryTpId).filter(Boolean))];
 
@@ -766,7 +782,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
       invalidateTpUserCaches(affectedTpIds);
       await refreshInspectionUserDirectory();
       affectedTpIds.forEach((tid) => {
-        if (openTps[tid]) void ensureTpUsers(tid, selectedTp?.nameEn, true);
+        if (openTps[tid]) void ensureTpUsers(tid, scopeFields.townPanchayat, true);
       });
     } else {
       const newUser = applyUserPasswordFields(
@@ -797,7 +813,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
       invalidateTpUserCaches(affectedTpIds);
       await refreshInspectionUserDirectory();
       affectedTpIds.forEach((tid) => {
-        if (openTps[tid]) void ensureTpUsers(tid, selectedTp?.nameEn, true);
+        if (openTps[tid]) void ensureTpUsers(tid, scopeFields.townPanchayat, true);
       });
     }
   };
@@ -946,12 +962,45 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     URL.revokeObjectURL(url);
   };
 
+  const dismissCsvImportUi = () => setCsvImportUi(null);
+
+  React.useEffect(() => {
+    if (csvImportUi?.phase !== 'done') return;
+    const t = window.setTimeout(() => setCsvImportUi(null), 20000);
+    return () => window.clearTimeout(t);
+  }, [csvImportUi?.phase]);
+
   // Parse Bulk CSV Upload
   const handleCsvUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file || csvImportBusy) return;
+
+    setCsvImportUi({
+      phase: 'reading',
+      fileName: file.name,
+      totalRows: 0,
+      currentRow: 0,
+      created: 0,
+      updated: 0,
+      skippedGeo: 0,
+      skippedRows: 0,
+    });
 
     const reader = new FileReader();
+    reader.onerror = () => {
+      setCsvImportUi({
+        phase: 'error',
+        fileName: file.name,
+        totalRows: 0,
+        currentRow: 0,
+        created: 0,
+        updated: 0,
+        skippedGeo: 0,
+        skippedRows: 0,
+        message:
+          lang === 'ta' ? 'கோப்பை வாசிக்க முடியவில்லை.' : 'Could not read the selected file.',
+      });
+    };
     reader.onload = async (e) => {
       try {
         let text = (e.target?.result as string) || '';
@@ -960,9 +1009,27 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
         }
         const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l);
         if (lines.length <= 1) {
-          setCsvFeedback({ type: 'error', message: 'The CSV file is empty or missing data rows.' });
+          setCsvImportUi({
+            phase: 'error',
+            fileName: file.name,
+            totalRows: 0,
+            currentRow: 0,
+            created: 0,
+            updated: 0,
+            skippedGeo: 0,
+            skippedRows: 0,
+            message:
+              lang === 'ta'
+                ? 'CSV கோப்பில் தரவு வரிசைகள் இல்லை.'
+                : 'The CSV file is empty or has no data rows.',
+          });
           return;
         }
+
+        const totalRows = lines.length - 1;
+        setCsvImportUi((prev) =>
+          prev ? { ...prev, phase: 'loading', totalRows, currentRow: 0 } : prev,
+        );
 
         const parseCsvLine = (line: string) => {
           const result = [];
@@ -989,11 +1056,27 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
         const uploadedRoles = [...inspectionRoles];
         const uploadedDesignations = [...inspectionDesignations];
         const { loadAllInspectionUsers } = await import('@/lib/portalMastersClient');
+        const { resolveInspectionUserGeoFromCsv, mergeCsvGeoOntoUser } = await import(
+          '@/lib/inspectionUserGeoStamp'
+        );
         const uploadedUsers = await loadAllInspectionUsers({ lean: true });
+
+        let created = 0;
+        let updated = 0;
+        let skippedGeo = 0;
+        let skippedRows = 0;
+
+        setCsvImportUi((prev) => (prev ? { ...prev, phase: 'processing' } : prev));
 
         for (let i = 1; i < lines.length; i++) {
           const values = parseCsvLine(lines[i]);
-          if (values.length < 5) continue;
+          if (values.length < 5) {
+            skippedRows += 1;
+            setCsvImportUi((prev) =>
+              prev ? { ...prev, currentRow: i, skippedRows } : prev,
+            );
+            continue;
+          }
 
           let username = '';
           let password = '';
@@ -1019,7 +1102,13 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
             password = mobile ? `pass${mobile.slice(-4)}` : '';
           }
 
-          if (!empEn || !mobile) continue;
+          if (!empEn || !mobile) {
+            skippedRows += 1;
+            setCsvImportUi((prev) =>
+              prev ? { ...prev, currentRow: i, skippedRows } : prev,
+            );
+            continue;
+          }
 
           // Find or create role
           let roleObj = uploadedRoles.find(r => r.nameEn.toLowerCase() === rEn.toLowerCase());
@@ -1052,30 +1141,18 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
             }
           }
 
-          // Resolve Zone
-          const zoneObj = zones.find((z: any) => zoneEn && (z.nameEn?.toLowerCase() === zoneEn.toLowerCase() || z.nameTa?.toLowerCase() === zoneEn.toLowerCase()));
-          const resolvedZoneId = zoneObj ? zoneObj.id : (zones[0]?.id || '');
-
-          // Resolve District
-          const distObj = districts.find((d: any) => distEn && (d.nameEn?.toLowerCase() === distEn.toLowerCase() || d.nameTa?.toLowerCase() === distEn.toLowerCase()));
-          const resolvedDistrictId = distObj ? distObj.id : (districts.find((d: any) => d.zoneId === resolvedZoneId)?.id || '');
-
-          // Resolve TP IDs: Match by name AND district to avoid duplicate mapping across districts!
-          let resolvedTpIds: string[] = [];
-          if (tpNames) {
-            const names = tpNames.split(',').map(n => n.trim().toLowerCase());
-            townPanchayats.forEach((tp: any) => {
-              const tpNameEnLower = String(tp.nameEn || '').toLowerCase();
-              const tpNameTaLower = String(tp.nameTa || '').toLowerCase();
-              const matchesName = names.includes(tpNameEnLower) || names.includes(tpNameTaLower);
-              const matchesDistrict = !resolvedDistrictId || String(tp.districtId || '').toLowerCase() === String(resolvedDistrictId).toLowerCase();
-              
-              if (matchesName && matchesDistrict) {
-                resolvedTpIds.push(tp.id);
-              }
-            });
-            resolvedTpIds = Array.from(new Set(resolvedTpIds));
+          const csvGeo = await resolveInspectionUserGeoFromCsv({
+            zoneNameEn: zoneEn,
+            districtNameEn: distEn,
+            townPanchayatNames: tpNames,
+          });
+          if ((zoneEn || distEn || tpNames) && !csvGeo) {
+            skippedGeo += 1;
+            console.warn('CSV geo skipped row — no master match:', { line: i + 1, zoneEn, distEn, tpNames });
           }
+          const resolvedZoneId = csvGeo?.zoneId || '';
+          const resolvedDistrictId = csvGeo?.districtId || '';
+          const resolvedTpIds = csvGeo?.selectedTpIds || [];
 
           // Resolve Subject IDs
           const resolvedSubjIds: string[] = [];
@@ -1095,66 +1172,137 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
             (username && u.username?.toLowerCase() === username.toLowerCase()) || u.mobile === mobile
           );
 
+          const geoPayload =
+            csvGeo && (resolvedTpIds.length || resolvedDistrictId || resolvedZoneId)
+              ? {
+                  zoneId: resolvedZoneId,
+                  districtId: resolvedDistrictId,
+                  tpId: resolvedTpIds[0] || '',
+                  townPanchayatIds: resolvedTpIds,
+                  selectedTpIds: resolvedTpIds,
+                  townPanchayat: csvGeo.townPanchayat,
+                  townPanchayatTa: csvGeo.townPanchayatTa,
+                  district: csvGeo.district,
+                  districtTa: csvGeo.districtTa,
+                  zone: csvGeo.zone,
+                  zoneTa: csvGeo.zoneTa,
+                  scopeId: csvGeo.scopeId,
+                }
+              : {};
+
           if (existingUserIndex >= 0) {
-            uploadedUsers[existingUserIndex] = applyUserPasswordFields({
-              ...uploadedUsers[existingUserIndex],
-              username: username || uploadedUsers[existingUserIndex].username || ('insp_' + mobile.slice(-4)),
-              nameEn: empEn,
-              nameTa: empTa || empEn,
-              mobile: mobile,
-              roleId: roleObj?.id || uploadedUsers[existingUserIndex].roleId,
-              designationId: desigObj?.id || uploadedUsers[existingUserIndex].designationId,
-              scopeType: roleObj?.scope || uploadedUsers[existingUserIndex].scopeType || 'single_tp',
-              zoneId: resolvedZoneId || uploadedUsers[existingUserIndex].zoneId,
-              districtId: resolvedDistrictId || uploadedUsers[existingUserIndex].districtId,
-              tpId: resolvedTpIds[0] || uploadedUsers[existingUserIndex].tpId || '',
-              townPanchayatIds: resolvedTpIds.length > 0 ? resolvedTpIds : uploadedUsers[existingUserIndex].townPanchayatIds,
-              selectedTpIds: resolvedTpIds.length > 0 ? resolvedTpIds : uploadedUsers[existingUserIndex].selectedTpIds,
-              assignedWards: resolvedWards.length > 0 ? resolvedWards : uploadedUsers[existingUserIndex].assignedWards,
-              selectedWards: resolvedWards.length > 0 ? resolvedWards : uploadedUsers[existingUserIndex].selectedWards,
-              subjectIds: resolvedSubjIds.length > 0 ? resolvedSubjIds : uploadedUsers[existingUserIndex].subjectIds,
-              status: 'Active',
-              updatedAt: new Date().toISOString()
-            }, password || getUserStoredPassword(uploadedUsers[existingUserIndex]));
+            const merged = mergeCsvGeoOntoUser(
+              applyUserPasswordFields(
+                {
+                  ...uploadedUsers[existingUserIndex],
+                  ...geoPayload,
+                  username: username || uploadedUsers[existingUserIndex].username || ('insp_' + mobile.slice(-4)),
+                  nameEn: empEn,
+                  nameTa: empTa || empEn,
+                  employeeNameEn: empEn,
+                  employeeNameTa: empTa || empEn,
+                  mobile: mobile,
+                  roleId: roleObj?.id || uploadedUsers[existingUserIndex].roleId,
+                  designationId: desigObj?.id || uploadedUsers[existingUserIndex].designationId,
+                  scopeType: roleObj?.scope || uploadedUsers[existingUserIndex].scopeType || 'single_tp',
+                  assignedWards:
+                    resolvedWards.length > 0 ? resolvedWards : uploadedUsers[existingUserIndex].assignedWards,
+                  selectedWards:
+                    resolvedWards.length > 0 ? resolvedWards : uploadedUsers[existingUserIndex].selectedWards,
+                  subjectIds: resolvedSubjIds.length > 0 ? resolvedSubjIds : uploadedUsers[existingUserIndex].subjectIds,
+                  status: 'Active',
+                  updatedAt: new Date().toISOString(),
+                },
+                password || getUserStoredPassword(uploadedUsers[existingUserIndex]),
+              ),
+              csvGeo,
+            );
+            uploadedUsers[existingUserIndex] = merged;
+            updated += 1;
           } else {
-            uploadedUsers.push(applyUserPasswordFields({
-              id: 'iu_' + Math.random().toString(36).substr(2, 6),
-              username: username || ('insp_' + mobile.slice(-4)),
-              nameEn: empEn,
-              nameTa: empTa || empEn,
-              mobile: mobile,
-              roleId: roleObj?.id || '',
-              designationId: desigObj?.id || '',
-              scopeType: roleObj?.scope || 'single_tp',
-              zoneId: resolvedZoneId,
-              districtId: resolvedDistrictId,
-              tpId: resolvedTpIds[0] || '',
-              townPanchayatIds: resolvedTpIds,
-              selectedTpIds: resolvedTpIds,
-              assignedWards: resolvedWards,
-              selectedWards: resolvedWards,
-              subjectIds: resolvedSubjIds,
-              status: 'Active',
-              createdAt: new Date().toISOString()
-            }, password || undefined));
+            uploadedUsers.push(
+              mergeCsvGeoOntoUser(
+                applyUserPasswordFields(
+                  {
+                    id: 'iu_' + Math.random().toString(36).substr(2, 6),
+                    ...geoPayload,
+                    username: username || 'insp_' + mobile.slice(-4),
+                    nameEn: empEn,
+                    nameTa: empTa || empEn,
+                    employeeNameEn: empEn,
+                    employeeNameTa: empTa || empEn,
+                    mobile: mobile,
+                    roleId: roleObj?.id || '',
+                    designationId: desigObj?.id || '',
+                    scopeType: roleObj?.scope || 'single_tp',
+                    assignedWards: resolvedWards,
+                    selectedWards: resolvedWards,
+                    subjectIds: resolvedSubjIds,
+                    status: 'Active',
+                    createdAt: new Date().toISOString(),
+                  },
+                  password || undefined,
+                ),
+                csvGeo,
+              ),
+            );
+            created += 1;
+          }
+
+          if (i % 3 === 0 || i === lines.length - 1) {
+            setCsvImportUi((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    currentRow: i,
+                    created,
+                    updated,
+                    skippedGeo,
+                    skippedRows,
+                  }
+                : prev,
+            );
           }
         }
+
+        setCsvImportUi((prev) => (prev ? { ...prev, phase: 'saving', currentRow: totalRows } : prev));
 
         await onSaveCollection('inspectionRoles', uploadedRoles);
         await onSaveCollection('inspectionDesignations', uploadedDesignations);
         await onSaveCollection('inspectionUsers', uploadedUsers);
+        setUsersByTp({});
+        await refreshInspectionUserDirectory();
 
-        setCsvFeedback({ 
-          type: 'success', 
-          message: lang === 'ta' 
-            ? 'CSV வெற்றிகரமாக பதிவேற்றப்பட்டது! தற்காலிக ஆய்வு ஊழியர்கள் மற்றும் உள்நுழைவு விபரங்கள் புதுப்பிக்கப்பட்டன.' 
-            : 'Inspection users, credentials, and jurisdictions successfully imported/updated from CSV!' 
+        const totalOk = created + updated;
+        setCsvImportUi({
+          phase: 'done',
+          fileName: file.name,
+          totalRows,
+          currentRow: totalRows,
+          created,
+          updated,
+          skippedGeo,
+          skippedRows,
+          message:
+            lang === 'ta'
+              ? `இறக்குமதி முடிந்தது — ${totalOk} பயனர்கள் சேமிக்கப்பட்டன (${created} புதியது, ${updated} புதுப்பிப்பு).`
+              : `Import complete — ${totalOk} user${totalOk === 1 ? '' : 's'} saved (${created} new, ${updated} updated).`,
         });
       } catch (err: any) {
-        setCsvFeedback({ 
-          type: 'error', 
-          message: lang === 'ta' ? 'CSV கோப்பை வாசிப்பதில் பிழை ஏற்பட்டது!' : 'Error parsing CSV file format.' 
-        });
+        setCsvImportUi((prev) => ({
+          phase: 'error',
+          fileName: file.name,
+          totalRows: prev?.totalRows || 0,
+          currentRow: prev?.currentRow || 0,
+          created: prev?.created || 0,
+          updated: prev?.updated || 0,
+          skippedGeo: prev?.skippedGeo || 0,
+          skippedRows: prev?.skippedRows || 0,
+          message:
+            lang === 'ta'
+              ? `பிழை: ${err?.message || 'CSV வடிவம் தவறானது'}`
+              : `Import failed: ${err?.message || 'Invalid CSV format.'}`,
+        }));
       }
     };
     reader.readAsText(file, 'UTF-8');
@@ -1318,11 +1466,24 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-md hover:brightness-110 cursor-pointer"
+              disabled={Boolean(csvImportBusy)}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white shadow-md cursor-pointer ${
+                csvImportBusy ? 'opacity-70 cursor-wait' : 'hover:brightness-110'
+              }`}
               style={{ background: 'var(--theme-accent)' }}
             >
-              <Upload className="h-3 w-3" />
-              {lang === 'ta' ? 'பல்க் பதிவேற்றம்' : 'Bulk CSV Upload'}
+              {csvImportBusy ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Upload className="h-3 w-3" />
+              )}
+              {csvImportBusy
+                ? lang === 'ta'
+                  ? 'பதிவேற்றுகிறது…'
+                  : 'Importing…'
+                : lang === 'ta'
+                  ? 'பல்க் பதிவேற்றம்'
+                  : 'Bulk CSV Upload'}
             </button>
 
             <input
@@ -1347,11 +1508,149 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
           </div>
         </div>
 
-        {csvFeedback && (
-          <div className={`p-3 rounded-xl border flex items-start gap-3 ${csvFeedback.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800'}`}>
-            {csvFeedback.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
-            <p className="text-xs font-medium">{csvFeedback.message}</p>
-          </div>
+        {csvImportUi && csvImportUi.phase !== 'done' && csvImportUi.phase !== 'error' && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="portal-csv-import-banner rounded-xl border border-sky-200 bg-gradient-to-r from-sky-50 to-white p-4 shadow-sm"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700">
+                <Loader2 className="h-5 w-5 animate-spin" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-800">
+                  {lang === 'ta' ? 'பல்க் CSV இறக்குமதி நடந்து கொண்டிருக்கிறது' : 'Bulk CSV import in progress'}
+                </p>
+                <p className="mt-0.5 truncate text-[11px] text-slate-500">{csvImportUi.fileName}</p>
+                <ul className="mt-2 space-y-1 text-[11px] text-slate-600">
+                  <li className={csvImportUi.phase === 'reading' ? 'font-semibold text-sky-800' : ''}>
+                    {lang === 'ta' ? '1. கோப்பை வாசித்தல்' : '1. Reading file'}
+                  </li>
+                  <li className={csvImportUi.phase === 'loading' ? 'font-semibold text-sky-800' : ''}>
+                    {lang === 'ta' ? '2. தற்போதைய பயனர் பட்டியல் ஏற்றம்' : '2. Loading existing users'}
+                  </li>
+                  <li className={csvImportUi.phase === 'processing' ? 'font-semibold text-sky-800' : ''}>
+                    {lang === 'ta' ? '3. வரிசைகள் செயலாக்கம் & புவியியல் பொருத்தம்' : '3. Processing rows & geo matching'}
+                  </li>
+                  <li className={csvImportUi.phase === 'saving' ? 'font-semibold text-sky-800' : ''}>
+                    {lang === 'ta' ? '4. சேவையகத்தில் சேமித்தல்' : '4. Saving to server'}
+                  </li>
+                </ul>
+                {csvImportUi.totalRows > 0 && (
+                  <div className="mt-3">
+                    <div className="mb-1 flex justify-between text-[10px] font-medium text-slate-500">
+                      <span>
+                        {lang === 'ta'
+                          ? `வரிசை ${Math.min(csvImportUi.currentRow, csvImportUi.totalRows)} / ${csvImportUi.totalRows}`
+                          : `Row ${Math.min(csvImportUi.currentRow, csvImportUi.totalRows)} of ${csvImportUi.totalRows}`}
+                      </span>
+                      <span>
+                        {Math.min(
+                          100,
+                          Math.round((csvImportUi.currentRow / csvImportUi.totalRows) * 100) ||
+                            (csvImportUi.phase === 'saving' ? 95 : csvImportUi.phase === 'loading' ? 8 : 2),
+                        )}
+                        %
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-200/80">
+                      <div
+                        className="h-full rounded-full bg-sky-500 transition-all duration-300"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            csvImportUi.phase === 'saving'
+                              ? 98
+                              : csvImportUi.totalRows
+                                ? Math.round((csvImportUi.currentRow / csvImportUi.totalRows) * 92) + 6
+                                : 12,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {csvImportUi && (csvImportUi.phase === 'done' || csvImportUi.phase === 'error') && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`rounded-xl border p-4 shadow-sm ${
+              csvImportUi.phase === 'done'
+                ? 'border-emerald-200 bg-gradient-to-r from-emerald-50 to-white'
+                : 'border-rose-200 bg-gradient-to-r from-rose-50 to-white'
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex items-start gap-3">
+              {csvImportUi.phase === 'done' ? (
+                <CheckCircle className="h-6 w-6 shrink-0 text-emerald-600" />
+              ) : (
+                <AlertCircle className="h-6 w-6 shrink-0 text-rose-600" />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {csvImportUi.phase === 'done'
+                      ? lang === 'ta'
+                        ? 'இறக்குமதி வெற்றிகரமாக முடிந்தது'
+                        : 'Import completed successfully'
+                      : lang === 'ta'
+                        ? 'இறக்குமதி தோல்வியடைந்தது'
+                        : 'Import failed'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={dismissCsvImportUi}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-black/5 hover:text-slate-600"
+                    aria-label={lang === 'ta' ? 'மூடு' : 'Dismiss'}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-600">{csvImportUi.message}</p>
+                {csvImportUi.phase === 'done' && (
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {[
+                      {
+                        label: lang === 'ta' ? 'புதியது' : 'New',
+                        value: csvImportUi.created,
+                      },
+                      {
+                        label: lang === 'ta' ? 'புதுப்பிப்பு' : 'Updated',
+                        value: csvImportUi.updated,
+                      },
+                      {
+                        label: lang === 'ta' ? 'புவி பொருத்தம் தவறு' : 'Geo not matched',
+                        value: csvImportUi.skippedGeo,
+                      },
+                      {
+                        label: lang === 'ta' ? 'தவிர்க்கப்பட்ட வரிசை' : 'Rows skipped',
+                        value: csvImportUi.skippedRows,
+                      },
+                    ].map((stat) => (
+                      <div
+                        key={stat.label}
+                        className="rounded-lg border border-emerald-100 bg-white/80 px-2 py-1.5 text-center"
+                      >
+                        <div className="text-lg font-bold text-slate-800">{stat.value}</div>
+                        <div className="text-[10px] font-medium text-slate-500">{stat.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-2 truncate text-[10px] text-slate-400">{csvImportUi.fileName}</p>
+              </div>
+            </div>
+          </motion.div>
         )}
 
       <div className="portal-dash-toolbar">
