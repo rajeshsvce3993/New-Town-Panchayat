@@ -199,7 +199,11 @@ async function applyInspectionRole(db: Db, user: any): Promise<any> {
   }
 }
 
-export async function resolveInspectionScopeMasters(db: Db, user: any): Promise<InspectionScopeMasters> {
+export async function resolveInspectionScopeMasters(
+  db: Db,
+  user: any,
+  opts?: { includeWards?: boolean },
+): Promise<InspectionScopeMasters> {
   const scoped = await applyInspectionRole(db, user);
   const scopeKind = resolveInspectionScopeKind(scoped);
   let zones: any[] = [];
@@ -273,8 +277,9 @@ export async function resolveInspectionScopeMasters(db: Db, user: any): Promise<
 
   const tpIds = townPanchayats.map((t: any) => norm(t.id)).filter(Boolean);
   const tpIdIn = [...new Set(tpIds.flatMap((id) => idVariants(id)))];
+  const includeWards = opts?.includeWards !== false;
   const wardFilter =
-    tpIdIn.length > 0
+    includeWards && tpIdIn.length > 0
       ? { $or: [{ tpId: { $in: tpIdIn } }, { townPanchayatId: { $in: tpIdIn } }] }
       : {};
 

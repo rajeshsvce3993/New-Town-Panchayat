@@ -1,5 +1,11 @@
 # Agent log
 
+## 2026-11-20 — Faster mobile login
+
+- Login now returns a slim live place payload (zone/district/TP + profile) instead of loading every street, subject, and field before the spinner ends.
+- Duplicate geo/profile lookups and a blocking profile-photo fetch were removed from the sign-in path. Full masters still load after login via `/api/masters/scope`.
+- Tests: `node --test scripts/test-role-place.mjs`. Deploy API, then log out/in.
+
 ## 2026-11-20 — Role District/TP pickers and profile
 
 - Add Work: zonal = two unlocked live dropdowns; multi-TP = district locked, TP changeable; single-TP / field worker = both locked to assigned place.

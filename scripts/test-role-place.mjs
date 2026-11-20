@@ -97,3 +97,12 @@ test('single-tp and field worker stay locked', () => {
 test('district officers follow multi-tp pickers, not zonal', () => {
   assert.equal(resolveInspectionScopeMode({ scopeType: 'district' }, { scopeKind: 'district' }), 'multi_tp');
 });
+
+test('mobile login uses slim scope and skips streets on geo/me', () => {
+  const loginSrc = readFileSync(join(root, 'app/api/auth/login/route.ts'), 'utf8');
+  const liveSrc = readFileSync(join(root, 'lib/services/liveUserScope.ts'), 'utf8');
+  const geoSrc = readFileSync(join(root, 'app/api/geo/me/route.ts'), 'utf8');
+  assert.match(loginSrc, /buildMobileLoginScope/);
+  assert.match(liveSrc, /includeWards: false/);
+  assert.match(geoSrc, /includeWards:\s*false/);
+});

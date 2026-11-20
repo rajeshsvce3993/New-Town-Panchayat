@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMongoClient, getActiveMongoDb, getCollectionData } from '@/lib/storage';
 import { resolveGeoForPortalUser, resolveGeoForUser, type ResolvedPortalGeo } from '@/lib/domain/geoResolver';
-import { buildLiveUserScope, useLiveInspectionScope } from '@/lib/services/liveUserScope';
+import { buildLiveUserScope, buildMobileLoginScope, useLiveInspectionScope } from '@/lib/services/liveUserScope';
 import { isLiveDataOnly } from '@/lib/productionFlags';
 import { recordUserLogin } from '@/lib/userActivity';
 import { logServerProcess } from '@/lib/serverLogger';
@@ -255,22 +255,21 @@ export async function POST(req: NextRequest) {
     const needsInspectionScope =
       mobileClient || sourceCollection === 'inspectionUsers' || (webPortal && sourceCollection === 'users');
     if (needsInspectionScope) {
-      if (useLiveInspectionScope(mobileClient) || isLiveDataOnly()) {
-        userScope = await buildLiveUserScope(scopeKey, mobileClient ? 8_000 : 10_000);
+      if (mobileClient) {
+        userScope = await buildMobileLoginScope(userDoc);
+      } else if (useLiveInspectionScope(mobileClient) || isLiveDataOnly()) {
+        userScope = await buildLiveUserScope(scopeKey, 10_000);
       } else if (!userScope) {
         userScope = await getUserScopeFromCacheOnly(scopeKey);
         if (!userScope) {
-          userScope = await getUserScopeDetailsForLogin(scopeKey, mobileClient ? 8_000 : 12_000);
+          userScope = await getUserScopeDetailsForLogin(scopeKey, 12_000);
         }
       }
     }
 
     let resolvedGeo: Awaited<ReturnType<typeof resolveGeoForUser>> | null = null;
     let resolvedPortalGeo: ResolvedPortalGeo | null = null;
-    if (mongoDb && webPortal && (sourceCollection === 'users' || sourceCollection === 'inspectionUsers')) {
-      resolvedPortalGeo = await resolveGeoForPortalUser(mongoDb, userDoc);
-      resolvedGeo = resolvedPortalGeo;
-    } else if (mongoDb && (sourceCollection === 'inspectionUsers' || sourceCollection === 'users')) {
+    if (!mobileClient && mongoDb && (sourceCollection === 'users' || sourceCollection === 'inspectionUsers')) {
       resolvedPortalGeo = await resolveGeoForPortalUser(mongoDb, userDoc);
       resolvedGeo = resolvedPortalGeo;
     }
@@ -280,7 +279,12 @@ export async function POST(req: NextRequest) {
     const designationId = String(userDoc.designationId || '').trim();
     let roleNameEn = String(userDoc.role || userDoc.roleId || '').trim();
     let roleNameTa = String(userDoc.roleNameTa || '').trim();
-    if (mongoDb) {
+    if (userScope?.profile) {
+      designationNameEn = userScope.profile.designationNameEn || designationNameEn;
+      designationNameTa = userScope.profile.designationNameTa || designationNameTa;
+      roleNameEn = userScope.profile.role || roleNameEn;
+      roleNameTa = userScope.profile.roleNameTa || roleNameTa;
+    } else if (mongoDb) {
       try {
         const profile = await resolveInspectorProfileFromDb(mongoDb, userDoc);
         designationNameEn = profile.designationNameEn || designationNameEn;
@@ -360,17 +364,15 @@ export async function POST(req: NextRequest) {
       returnUser.scopeId = 'all';
     }
 
-    if (mongoDb) {
+    if (userScope?.profile) {
+      Object.assign(returnUser, applyResolvedProfileToUser(returnUser, userScope.profile));
+    } else if (mongoDb) {
       try {
         const profile = await resolveInspectorProfileFromDb(mongoDb, returnUser);
         Object.assign(returnUser, applyResolvedProfileToUser(returnUser, profile));
       } catch {
         /* ignore */
       }
-    }
-
-    if (userScope?.profile) {
-      Object.assign(returnUser, applyResolvedProfileToUser(returnUser, userScope.profile));
     }
 
     if (userScope?.user && (mobileClient || sourceCollection === 'inspectionUsers')) {

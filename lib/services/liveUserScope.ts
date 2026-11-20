@@ -2,6 +2,7 @@ import { getScopeVersionMeta, buildSingleUserScope, type CachedUserScope } from 
 import { findUserForLogin } from '@/lib/loginUserLookup';
 import { getDb } from '@/lib/repositories/mastersRepository';
 import { resolveInspectionScopeMasters } from '@/lib/inspectionScopeMasters';
+import { resolveInspectorProfileFromDb } from '@/lib/inspectionUserProfile';
 import { isLiveDataOnly as liveDataOnlyEnv } from '@/lib/productionFlags';
 import { getCollectionData } from '@/lib/storage';
 
@@ -15,6 +16,84 @@ export function isLiveDataOnly(): boolean {
 export function useLiveInspectionScope(mobileClient?: boolean): boolean {
   if (mobileClient) return true;
   return liveDataOnlyEnv();
+}
+
+function compactGeo(
+  rows: any[],
+  extra?: (r: any) => Record<string, string>,
+): { id: string; nameEn: string; nameTa: string; code?: string; districtId?: string; zoneId?: string }[] {
+  return (rows || [])
+    .map((r) => ({
+      id: String(r.id || ''),
+      nameEn: String(r.nameEn || ''),
+      nameTa: String(r.nameTa || ''),
+      code: r.code ? String(r.code) : undefined,
+      ...(extra ? extra(r) : {}),
+    }))
+    .filter((r) => r.id);
+}
+
+/**
+ * Fast mobile login payload: live zone/district/TP + profile only.
+ * Streets, subjects, and fields load after sign-in via /api/masters/scope.
+ */
+export async function buildMobileLoginScope(userDoc: any): Promise<CachedUserScope | null> {
+  if (!userDoc) return null;
+  const db = await getDb();
+  if (!db) return null;
+
+  const scopeGeo = await resolveInspectionScopeMasters(db, userDoc, { includeWards: false });
+  let profile: Awaited<ReturnType<typeof resolveInspectorProfileFromDb>> | undefined;
+  try {
+    profile = await resolveInspectorProfileFromDb(db, userDoc);
+  } catch {
+    /* optional */
+  }
+
+  const zones = compactGeo(scopeGeo.zones);
+  const districts = compactGeo(scopeGeo.districts, (d) => ({ zoneId: String(d.zoneId || '') }));
+  const townPanchayats = compactGeo(scopeGeo.townPanchayats, (t) => ({
+    districtId: String(t.districtId || ''),
+    zoneId: String(t.zoneId || ''),
+  }));
+  const zone = zones[0];
+  const district = districts[0];
+  const tp = townPanchayats.length === 1 ? townPanchayats[0] : null;
+  const meta = getScopeVersionMeta();
+  const safeUser = { ...userDoc };
+  delete safeUser.password;
+  delete safeUser.passwordHash;
+
+  return {
+    userId: String(userDoc.id || userDoc._id || ''),
+    username: String(userDoc.username || '').trim().toLowerCase(),
+    scopeVersion: meta.version,
+    updatedAt: new Date().toISOString(),
+    scopeType: scopeGeo.scopeKind,
+    scopeKind: scopeGeo.scopeKind,
+    user: safeUser,
+    townPanchayat: {
+      id: tp?.id || '',
+      nameEn: tp?.nameEn || '',
+      nameTa: tp?.nameTa || '',
+      districtId: String(district?.id || tp?.districtId || ''),
+      districtNameEn: district?.nameEn || '',
+      districtNameTa: district?.nameTa || '',
+      zoneId: String(zone?.id || scopeGeo.zoneId || ''),
+      zoneNameEn: zone?.nameEn || '',
+      zoneNameTa: zone?.nameTa || '',
+    },
+    zones,
+    districts,
+    townPanchayats,
+    assignedWards: [],
+    wardsAndStreets: [],
+    subjects: [],
+    categories: [],
+    fields: [],
+    validationRules: {},
+    profile,
+  };
 }
 
 /**

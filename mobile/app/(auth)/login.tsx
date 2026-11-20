@@ -68,10 +68,6 @@ export default function LoginScreen() {
       if (res.success && res.user) {
         await prefs.setSavedUsername(username.trim());
         await prefs.setSavedPassword(password);
-        if (res.userScope) {
-          await prefs.setUserScope(res.userScope);
-          await prefs.setScopeVersionInt(res.scopeVersion || 1);
-        }
         await onLoginSuccess(res.user);
       } else {
         setError(res.message || (isTamil ? 'உள்நுழைவு தோல்வியுற்றது. விவரங்களை சரிபார்க்கவும்.' : 'Login failed. Please check your credentials.'));

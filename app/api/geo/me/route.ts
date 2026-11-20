@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     }
 
     const scopedUser = normalizePortalUserScope(userDoc);
-    const scopeGeo = await resolveInspectionScopeMasters(db, scopedUser);
+    const scopeGeo = await resolveInspectionScopeMasters(db, scopedUser, { includeWards: false });
     const portalGeo = await resolveGeoForPortalUser(db, scopedUser);
     const chainGeo = await resolveGeoForUser(db, scopedUser);
 

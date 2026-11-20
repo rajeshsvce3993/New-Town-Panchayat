@@ -571,17 +571,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const onLoginSuccess = useCallback(async (u: AppUser) => {
-    let photo = (await fetchLiveProfilePhotoUrl(u)) || u.profilePhotoUrl || u.avatarUrl || '';
-    const canonical = photo.includes('amazonaws.com') && photo.includes('?') ? photo.split('?')[0] : photo;
-    const next = canonical ? { ...u, profilePhotoUrl: canonical, avatarUrl: canonical } : u;
-    applyUser(next);
+    applyUser(u);
     setWorks([]);
     setWorksHydrated(false);
-    await prefs.setCurrentUser(next);
+    await prefs.setCurrentUser(u);
     await prefs.setLoginDate(todayYyyyMmDd());
     await prefs.setLoginSessionPeriod(currentLoginSessionPeriod());
     await prefs.setLastInteraction(Date.now());
     lastInteract.current = Date.now();
+    void fetchLiveProfilePhotoUrl(u).then(async (photo) => {
+      const live = userRef.current;
+      if (!live || live.username !== u.username) return;
+      const raw = photo || live.profilePhotoUrl || live.avatarUrl || '';
+      const canonical = raw.includes('amazonaws.com') && raw.includes('?') ? raw.split('?')[0] : raw;
+      if (!canonical || canonical === live.profilePhotoUrl) return;
+      const next = { ...live, profilePhotoUrl: canonical, avatarUrl: canonical };
+      await prefs.setCurrentUser(next);
+      if (userRef.current?.username === u.username) applyUser(next);
+    });
   }, [applyUser]);
 
   const logout = useCallback(async () => {
