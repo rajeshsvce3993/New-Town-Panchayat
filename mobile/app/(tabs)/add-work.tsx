@@ -117,7 +117,7 @@ export default function AddWorkScreen() {
   const [districtId, setDistrictId] = useState('');
   const [tpId, setTpId] = useState('');
 
-  const scopeMode = useMemo(() => resolveInspectionScopeMode(user), [user]);
+  const scopeMode = useMemo(() => resolveInspectionScopeMode(user, portal), [user, portal]);
   const portalDistricts = portal.districts || [];
   const portalTps = portal.townPanchayats || [];
 
@@ -175,7 +175,7 @@ export default function AddWorkScreen() {
   useEffect(() => {
     const dists = portalDistricts;
     const tps = portalTps;
-    const mode = resolveInspectionScopeMode(user);
+    const mode = resolveInspectionScopeMode(user, portal);
     if (mode === 'single_tp') {
       const d =
         user?.districtId ||
@@ -201,7 +201,7 @@ export default function AddWorkScreen() {
     }
     if (dists.length === 1) setDistrictId((prev) => prev || dists[0].id);
     if (!districtId && user?.districtId) setDistrictId(user.districtId);
-  }, [user?.id, user?.scopeType, user?.districtId, user?.selectedTpIds, portalDistricts, portalTps]);
+  }, [user?.id, user?.scopeType, user?.districtId, user?.selectedTpIds, portal.scopeKind, portalDistricts, portalTps]);
 
   useEffect(() => {
     if (scopeMode !== 'zonal') return;

@@ -293,7 +293,12 @@ export async function buildSingleUserScope(
 ): Promise<CachedUserScope> {
   const uId = user.id || user._id ? String(user.id || user._id) : '';
   const username = (user.username || '').trim().toLowerCase();
-  const scopeKind = String(masters.scopeKind || user.scopeType || 'single_tp').toLowerCase();
+  const rawKind = String(masters.scopeKind || user.scopeType || 'single_tp').toLowerCase().replace(/[\s_-]+/g, '_');
+  const scopeKind =
+    rawKind === 'zone' ? 'zonal'
+    : rawKind === 'townpanchayat' || rawKind === 'tp' ? 'single_tp'
+    : rawKind === 'field_workers' ? 'field_worker'
+    : rawKind;
   const scopeTpIdSet = new Set(
     (masters.scopeTpIds?.length ? masters.scopeTpIds : masters.townPanchayats.map((t: any) => t.id))
       .map((id: string) => String(id || '').toLowerCase())

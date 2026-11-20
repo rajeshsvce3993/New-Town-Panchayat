@@ -8,3 +8,4 @@
 ### Fixed
 - Work details no longer display dummy district/TP/ward/street values from portal cache or seed templates.
 - Add Work no longer invents admin wards 1–18 or default subject/category names.
+- Mobile district and town panchayat lists now follow the user’s inspection role (single TP, multi TP, zonal, field worker) instead of a statewide HOD dump.

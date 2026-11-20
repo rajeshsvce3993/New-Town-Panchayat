@@ -41,7 +41,25 @@ export async function buildLiveUserScope(userIdOrUsername: string, maxTimeMS = 1
   }
   if (!foundUser) return null;
 
-  const scopeGeo = await resolveInspectionScopeMasters(db, foundUser);
+  const roles = await db
+    .collection('inspectionRoles')
+    .find({}, { projection: { _id: 0, id: 1, code: 1, scopeType: 1, scope: 1, nameEn: 1 }, maxTimeMS: 4000 })
+    .toArray()
+    .catch(() => [] as any[]);
+  const roleKey = String(foundUser.roleId || foundUser.role || '').toLowerCase().trim();
+  const matchedRole = (roles || []).find(
+    (r: any) =>
+      String(r.id || '').toLowerCase() === roleKey ||
+      String(r.code || '').toLowerCase() === roleKey ||
+      String(r.nameEn || '').toLowerCase() === roleKey,
+  );
+  const userForScope = {
+    ...foundUser,
+    roleId: foundUser.roleId || matchedRole?.id || foundUser.role,
+    scopeType: matchedRole?.scopeType || matchedRole?.scope || foundUser.scopeType,
+  };
+
+  const scopeGeo = await resolveInspectionScopeMasters(db, userForScope);
 
   const [subjects, categories, fields, inspectionRoles, inspectionDesignations] = await Promise.all([
     getCollectionData('inspectionSubjects'),
@@ -53,7 +71,7 @@ export async function buildLiveUserScope(userIdOrUsername: string, maxTimeMS = 1
 
   const meta = getScopeVersionMeta();
   return buildSingleUserScope(
-    foundUser,
+    userForScope,
     {
       townPanchayats: scopeGeo.townPanchayats,
       districts: scopeGeo.districts,

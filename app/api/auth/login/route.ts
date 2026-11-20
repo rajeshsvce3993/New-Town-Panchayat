@@ -305,8 +305,11 @@ export async function POST(req: NextRequest) {
       if (mobileClient) {
         returnUser.assignedWards = userScope.assignedWards || su.assignedWards || returnUser.assignedWards;
         returnUser.selectedWards = userScope.assignedWards || su.selectedWards || returnUser.selectedWards;
-        returnUser.scopeType = userScope.scopeType || su.scopeType || returnUser.scopeType;
+        returnUser.scopeType = userScope.scopeKind || userScope.scopeType || su.scopeType || returnUser.scopeType;
         if (su.selectedTpIds?.length) returnUser.selectedTpIds = su.selectedTpIds;
+        else if (userScope.townPanchayats?.length) {
+          returnUser.selectedTpIds = userScope.townPanchayats.map((t: any) => t.id).filter(Boolean);
+        }
       } else {
         returnUser.designation = su.designation || returnUser.designation;
         returnUser.designationNameEn = su.designationNameEn || returnUser.designationNameEn;
@@ -325,7 +328,7 @@ export async function POST(req: NextRequest) {
         returnUser.selectedTpIds = su.selectedTpIds || returnUser.selectedTpIds;
         returnUser.assignedWards = userScope.assignedWards || su.assignedWards || returnUser.assignedWards;
         returnUser.selectedWards = userScope.assignedWards || su.selectedWards || returnUser.selectedWards;
-        returnUser.scopeType = userScope.scopeType || su.scopeType || returnUser.scopeType;
+        returnUser.scopeType = userScope.scopeKind || userScope.scopeType || su.scopeType || returnUser.scopeType;
       }
     }
 

@@ -1,5 +1,12 @@
 # Agent log
 
+## 2026-11-20 — Role-scoped live districts / TPs
+
+- Inspection role catalog (`role_single_tp`, `role_multi_tp`, `role_zonal`, field worker) now wins over a stale HOD/all `scopeType`.
+- `isHodLikeUser` no longer treats Assistant Director / Zonal Inspector as statewide (the old `role.includes('director')` match).
+- Single-TP and field users load only their assigned TP (id or name). They no longer inherit every TP in the district or zone.
+- Mobile Add Work picker uses live `scopeKind` from `/api/geo/me`.
+
 ## 2026-11-20 — Live-only geo (no fallback names)
 
 - Mobile work details and Add Work dropdowns now use live Mongo names only (`/api/geo/me`, `/api/masters/scope`, saved work document).

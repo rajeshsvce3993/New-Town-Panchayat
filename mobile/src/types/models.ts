@@ -423,6 +423,7 @@ export interface PortalState {
     [key: string]: unknown;
   };
   validationRules?: Record<string, ValidationRule> | null;
+  scopeKind?: string | null;
 }
 
 export function portalSubjects(p: PortalState): Subject[] {

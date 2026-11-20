@@ -243,6 +243,7 @@ export const api = {
       districts?: PortalState['districts'];
       townPanchayats?: PortalState['townPanchayats'];
       username?: string;
+      scopeKind?: string;
     };
     const worksJson = (await worksRes.json().catch(() => ({}))) as { works?: InspectionWork[]; success?: boolean };
 
@@ -313,6 +314,7 @@ export const api = {
       loginLogoUrl: config?.loginLogoUrl || null,
       settings,
       validationRules: scope?.validationRules || {},
+      scopeKind: geoJson.scopeKind || scope?.scopeKind || '',
     };
   },
 

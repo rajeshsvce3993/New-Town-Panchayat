@@ -17,5 +17,6 @@ export function mergeScopeMastersIntoPortal(portal: PortalState, scope?: UserSco
     fields: fields || [],
     wardsAndStreets: scope.wardsAndStreets?.length ? scope.wardsAndStreets : portal.wardsAndStreets,
     validationRules: scope.validationRules || portal.validationRules,
+    scopeKind: scope.scopeKind || portal.scopeKind,
   };
 }

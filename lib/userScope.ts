@@ -1,15 +1,65 @@
+const INSPECTION_FIELD_ROLE_IDS = new Set([
+  'role_single_tp',
+  'role_multi_tp',
+  'role_zonal',
+  'role_field_worker',
+  'role_field_workers',
+  'role_district',
+]);
+
+function roleLabelKey(user: any): string {
+  return String(user?.roleId || user?.role || '')
+    .toLowerCase()
+    .trim();
+}
+
 /** State-wide portal access (all zones / districts / TPs in filters). */
 export function isHodLikeUser(user: any): boolean {
   if (!user) return false;
-  if (String(user.scopeType || '') === 'HOD') return true;
 
-  const r = String(user.roleId || user.role || '').toLowerCase().trim();
+  const roleId = String(user.roleId || '').toLowerCase().trim();
+  if (INSPECTION_FIELD_ROLE_IDS.has(roleId)) return false;
+
+  const st = scopeTypeKey(user.scopeType);
+  if (
+    [
+      'zone',
+      'zonal',
+      'district',
+      'townpanchayat',
+      'single_tp',
+      'multi_tp',
+      'field_worker',
+      'field_workers',
+      'tp',
+    ].includes(st)
+  ) {
+    return false;
+  }
+
+  const r = roleLabelKey(user);
   const u = String(user.username || '').toLowerCase().trim();
+  if (r === 'ad' || r.includes('assistant director') || r.includes('zonal inspector')) return false;
 
-  if (['admin', 'director', 'dtpadmin', 'superadmin', 'super admin', 'state'].includes(r)) return true;
-  if (r.includes('admin') || r.includes('director')) return true;
+  if (st === 'hod' || st === 'state' || st === 'all') return true;
+
+  if (
+    [
+      'admin',
+      'director',
+      'dtpadmin',
+      'superadmin',
+      'super admin',
+      'super_admin',
+      'state',
+      'hod',
+      'admin / director',
+      'admin/director',
+    ].includes(r)
+  ) {
+    return true;
+  }
   if (['dtpadmin', 'admin', 'director'].includes(u)) return true;
-
   return false;
 }
 
@@ -27,9 +77,10 @@ export function isZonalScopedUser(user: any): boolean {
   const st = scopeTypeKey(user.scopeType);
   if (st === 'zone' || st === 'zonal') return true;
 
-  const r = String(user.roleId || user.role || '').toLowerCase();
-  if (r === 'zonal' || (r.includes('zone') && !r.includes('panchayat'))) return true;
-  if (r === 'ad' && (st === 'zone' || st === 'zonal')) return true;
+  const r = roleLabelKey(user);
+  if (r === 'role_zonal' || r === 'zonal' || r === 'ad') return true;
+  if (r.includes('assistant director')) return true;
+  if (r.includes('zone') && !r.includes('panchayat')) return true;
 
   return false;
 }
