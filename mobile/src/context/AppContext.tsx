@@ -27,7 +27,7 @@ import { mergeScopeMastersIntoPortal } from '../utils/portalMasters';
 import { DEFAULT_PALETTE_ID, getPaletteById, type AppPalette } from '../theme/palettes';
 import type { AppUser, InspectionWork, LoginRequest, LoginResponse, PortalState, UserScopeData } from '../types/models';
 import { emptyPortal, portalWorks } from '../types/models';
-import { isAssignedWorkId, isListedWorkId } from '../utils/workSaveResult';
+import { isAssignedWorkId, isListedWork } from '../utils/workSaveResult';
 import { currentLoginSessionPeriod, todayYyyyMmDd } from '../utils/dates';
 
 function toast(msg: string) {
@@ -275,7 +275,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const mergeListedWorks = useCallback((incoming: InspectionWork[]) => {
-    const remoteWorks = incoming.filter((w) => isListedWorkId(w.workId));
+    const remoteWorks = incoming.filter((w) => isListedWork(w));
     const remoteIds = new Set(remoteWorks.map((w) => w.id));
     const remoteWorkIds = new Set(remoteWorks.map((w) => w.workId).filter(Boolean));
     setWorks((prev) => {
@@ -296,7 +296,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...mergedRemote,
         ...prev.filter(
           (w) =>
-            isListedWorkId(w.workId) &&
+            isListedWork(w) &&
             !remoteIds.has(w.id) &&
             !remoteWorkIds.has(w.workId)
         ),
@@ -307,8 +307,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const loadMyWorks = useCallback(async () => {
     const current = userRef.current;
     if (!current?.username) return;
-    const rows = await api.fetchMyInspectionWorks(current, { limit: 200 });
-    mergeListedWorks(rows);
+    try {
+      const rows = await api.fetchMyInspectionWorks(current, { limit: 200 });
+      if (rows.length) mergeListedWorks(rows);
+    } catch {
+      /* keep the current list if All-history fetch fails */
+    }
   }, [mergeListedWorks]);
 
   const refreshPortal = useCallback(async (): Promise<PortalState | null> => {

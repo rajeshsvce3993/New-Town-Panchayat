@@ -17,7 +17,14 @@ export function isLoosePersonName(value?: string | null): boolean {
 }
 
 export function workIdentityKeys(work: any): string[] {
-  return [work?.username, work?.submittedByUserId, work?.submittedByUserName, work?.userId, work?.mobile]
+  return [
+    work?.username,
+    work?.submittedByUserId,
+    work?.submittedByUserName,
+    work?.userId,
+    work?.mobile,
+    work?.employeeId,
+  ]
     .map((v) => normalizeWorkIdentity(v))
     .filter((v) => v && !isLoosePersonName(v));
 }
@@ -64,6 +71,7 @@ export function loginIdentityMongoOr(
       { submittedByUserName: raw },
       { userId: raw },
       { mobile: raw },
+      { employeeId: raw },
     );
     if (lower !== raw) {
       or.push(
@@ -72,6 +80,7 @@ export function loginIdentityMongoOr(
         { submittedByUserName: lower },
         { userId: lower },
         { mobile: lower },
+        { employeeId: lower },
       );
     }
   };
@@ -95,6 +104,24 @@ export function loginIdentityWorkIdRegexOr(login: string): Record<string, unknow
     { workId: { $regex: new RegExp(`WRK-${escapeRegex(uClean)}-`, 'i') } },
     { workId: { $regex: new RegExp(`-${escapeRegex(uClean)}-`, 'i') } },
   ];
+}
+
+/** Mongo lookup keys for a saved work — WRK- and older TP… ids, plus the raw id. */
+export function inspectionWorkLookupKeys(lookupId: string): string[] {
+  const s = String(lookupId || '').trim();
+  if (!s) return [];
+  const keys = new Set<string>([s]);
+  if (/^WRK-/i.test(s)) {
+    const rest = s.replace(/^WRK-/i, '');
+    keys.add(`TP01-${rest}`);
+    keys.add(`TP-${rest}`);
+    keys.add(`TP${rest}`);
+  } else if (/^TP01-/i.test(s)) {
+    keys.add(s.replace(/^TP01-/i, 'WRK-'));
+  } else if (/^TP-/i.test(s)) {
+    keys.add(s.replace(/^TP-/i, 'WRK-'));
+  }
+  return [...keys];
 }
 
 export function workBelongsToUserNeedles(work: any, needles: string[]): boolean {

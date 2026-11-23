@@ -18,7 +18,8 @@ import {
   getCollectionWithAliases,
   LITE_INSPECTION_WORKS_PROJECTION,
 } from '@/lib/storage';
-import { loginIdentityMongoOr, workBelongsToUserNeedles } from '@/lib/inspectionWorkIdentity';
+import { ObjectId } from 'mongodb';
+import { inspectionWorkLookupKeys, loginIdentityMongoOr, workBelongsToUserNeedles } from '@/lib/inspectionWorkIdentity';
 import { enqueueInspectionWork } from '@/lib/serverQueue';
 import { buildLiveUserScope } from '@/lib/services/liveUserScope';
 import { logServerProcess } from '@/lib/serverLogger';
@@ -180,7 +181,16 @@ export async function GET(req: NextRequest) {
       }
       const db = await getActiveMongoDb(client);
       const col = await getCollectionWithAliases(db, 'inspectionWorks');
-      const found = await col.findOne({ $or: [{ id: lookupId }, { workId: lookupId }] });
+      const lookupKeys = inspectionWorkLookupKeys(lookupId);
+      const lookupOr: Record<string, unknown>[] = lookupKeys.flatMap((k) => [{ id: k }, { workId: k }]);
+      if (/^[a-fA-F0-9]{24}$/.test(lookupId)) {
+        try {
+          lookupOr.push({ _id: new ObjectId(lookupId) });
+        } catch {
+          /* not a Mongo object id */
+        }
+      }
+      const found = await col.findOne({ $or: lookupOr });
       if (!found) {
         return NextResponse.json({ success: true, work: null }, { headers: CORS_HEADERS });
       }
@@ -190,7 +200,11 @@ export async function GET(req: NextRequest) {
         {
           success: true,
           work: rewriteWorkMediaFields(
-            { ...rest, id: found.id || found.workId || lookupId },
+            {
+              ...rest,
+              id: found.id || found.workId || lookupId,
+              workId: found.workId || found.id || lookupId,
+            },
             requestOrigin
           ),
         },
@@ -213,9 +227,10 @@ export async function GET(req: NextRequest) {
 
     if (lite) {
       const baseFilter = toInspectionWorksFilterQuery(viewQuery);
-      const filterQuery = viewQuery.allTime
-        ? baseFilter
-        : applyDefaultReportsDateWindow(baseFilter);
+      const filterQuery =
+        viewQuery.allTime || (mobileClient && !!(viewQuery.username || viewQuery.userId))
+          ? baseFilter
+          : applyDefaultReportsDateWindow(baseFilter);
       const defaultDateWindowApplied =
         !viewQuery.allTime &&
         !viewQuery.fromDate &&
@@ -691,15 +706,12 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      let cleanWorkId = String(w.workId || w.id || '').trim();
-      if (cleanWorkId.toUpperCase().startsWith('TP01-') || cleanWorkId.toUpperCase().startsWith('TP-') || cleanWorkId.toUpperCase().startsWith('TP')) {
-        cleanWorkId = cleanWorkId.replace(/^TP01-/i, 'WRK-').replace(/^TP-/i, 'WRK-').replace(/^TP/i, 'WRK-');
-      }
+      const storedWorkId = String(w.workId || w.id || '').trim();
 
       return {
         ...w,
-        id: w.id || cleanWorkId,
-        workId: cleanWorkId,
+        id: w.id || storedWorkId,
+        workId: storedWorkId,
         imageUrl,
         fieldsData,
       };

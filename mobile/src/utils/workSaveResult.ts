@@ -4,13 +4,17 @@ export function isAssignedWorkId(value?: string | null): boolean {
   return /^WRK-/i.test(String(value || '').trim());
 }
 
-/** Saved server work ids shown on dashboard/reports (new WRK- and older TP… ids). */
+/** Saved server work ids shown on dashboard/reports (not the local `work_` draft id). */
 export function isListedWorkId(value?: string | null): boolean {
   const s = String(value || '').trim();
   if (!s) return false;
-  if (/^WRK-/i.test(s)) return true;
-  if (/^TP01-/i.test(s) || /^TP-/i.test(s)) return true;
-  return /^TP\d{8,}$/i.test(s);
+  if (/^work_/i.test(s)) return false;
+  return true;
+}
+
+export function isListedWork(work?: { id?: string | null; workId?: string | null } | null): boolean {
+  if (!work) return false;
+  return isListedWorkId(work.workId) || isListedWorkId(work.id);
 }
 
 export function readAssignedWorkId(payload: {

@@ -33,7 +33,7 @@ import { formatTo12Hr, todayDdMmYyyy } from '../../src/utils/dates';
 import { resolveProfilePlace } from '../../src/utils/profilePlace';
 import { normalizeWard } from '../../src/utils/wards';
 import { filterByDateRange, sortRecentFirst } from '../../src/utils/workFilters';
-import { isListedWorkId } from '../../src/utils/workSaveResult';
+import { isListedWork } from '../../src/utils/workSaveResult';
 
 function withAlpha(hex: string, a: number) {
   const h = hex.replace('#', '');
@@ -164,11 +164,11 @@ export default function DashboardScreen() {
     };
   }, [user?.id, user?.username, user?.profilePhotoUrl, user?.avatarUrl]);
 
-  const userWorks = useMemo(() => works.filter((w) => isListedWorkId(w.workId)), [works]);
+  const userWorks = useMemo(() => works.filter((w) => isListedWork(w)), [works]);
   const filtered = useMemo(() => sortRecentFirst(filterByDateRange(userWorks, fromDate, toDate)), [userWorks, fromDate, toDate]);
   const totalCount = filtered.length;
   const submittedWorks = useMemo(
-    () => filtered.filter((w) => isListedWorkId(w.workId)),
+    () => filtered.filter((w) => isListedWork(w)),
     [filtered]
   );
   const syncedCount = submittedWorks.length;

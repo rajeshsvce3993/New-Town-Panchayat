@@ -39,15 +39,26 @@ test('dashboard and reports keep Today as the default date filter', () => {
   const home = readFileSync(join(root, 'mobile/app/(tabs)/index.tsx'), 'utf8');
   assert.match(reports, /useState\(todayDdMmYyyy\)/);
   assert.match(home, /useState\(todayDdMmYyyy\)/);
-  assert.match(home, /isListedWorkId/);
+  assert.match(home, /isListedWork\(w\)/);
 });
 
-test('refresh keeps old TP work ids on the mobile list', () => {
+test('refresh keeps saved works even when workId is an older TP id or only on id', () => {
   const ctx = readFileSync(join(root, 'mobile/src/context/AppContext.tsx'), 'utf8');
   const save = readFileSync(join(root, 'mobile/src/utils/workSaveResult.ts'), 'utf8');
   assert.match(save, /export function isListedWorkId/);
-  assert.match(ctx, /isListedWorkId\(w\.workId\)/);
+  assert.match(save, /export function isListedWork/);
+  assert.match(ctx, /isListedWork\(w\)/);
   assert.match(save, /isAssignedWorkId/);
+});
+
+test('work details lookup returns any saved work, not only WRK- ids', () => {
+  const client = readFileSync(join(root, 'mobile/src/api/client.ts'), 'utf8');
+  const route = readFileSync(join(root, 'app/api/inspection-works/route.ts'), 'utf8');
+  const identity = readFileSync(join(root, 'lib/inspectionWorkIdentity.ts'), 'utf8');
+  assert.match(client, /if \(fromWork\) return fromWork/);
+  assert.doesNotMatch(client, /if \(fromWork && \/\^WRK-\/i/);
+  assert.match(identity, /export function inspectionWorkLookupKeys/);
+  assert.match(route, /inspectionWorkLookupKeys\(lookupId\)/);
 });
 
 test('mongo login identity uses indexed fields first, workId regex only on miss', () => {

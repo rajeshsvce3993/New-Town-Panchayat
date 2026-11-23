@@ -20,7 +20,14 @@ function isLoosePersonName(value) {
 }
 
 function workIdentityKeys(work) {
-  return [work?.username, work?.submittedByUserId, work?.submittedByUserName, work?.userId, work?.mobile]
+  return [
+    work?.username,
+    work?.submittedByUserId,
+    work?.submittedByUserName,
+    work?.userId,
+    work?.mobile,
+    work?.employeeId,
+  ]
     .map((v) => normalizeWorkIdentity(v))
     .filter((v) => v && !isLoosePersonName(v));
 }
@@ -52,6 +59,14 @@ test('older work stored with mobile still belongs to the same login', () => {
     workId: 'TP01041200001',
   };
   assert.equal(workBelongsToLogin(oldWork, '8870715287'), true);
+});
+
+test('older work stored with employeeId still belongs to the same login', () => {
+  const oldWork = {
+    employeeId: 'EMP001',
+    workId: 'TP01041200001',
+  };
+  assert.equal(workBelongsToLogin(oldWork, 'EMP001'), true);
 });
 
 test('owner list matches either login username or user id', () => {

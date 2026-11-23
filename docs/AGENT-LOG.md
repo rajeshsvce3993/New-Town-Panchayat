@@ -1,5 +1,11 @@
 # Agent log
 
+## 2026-11-23 — All history + work details for older ids
+
+- Details lookup no longer drops a work unless its id is `WRK-`. GET lookup matches `id` / `workId` / Mongo `_id` and WRK↔TP variants, then rewrites media so the modal can show images, table fields, and place.
+- All-history list keeps any saved work (including older rows with only `id`, or mobile/employeeId identity). Lite list stays without `fieldsData` so All does not time out; opening a row hydrates details via lookup.
+- Tests: `node --test scripts/test-mobile-works-list.mjs scripts/test-work-identity.mjs`. Deploy API from repo root (not only `mobile/`), reload Metro, tap All, open a work.
+
 ## 2026-11-23 — All filter loads older works
 
 - All was only filtering the in-memory list, which still held today’s rows. Tapping All now fetches that user’s all-time works (`fetchMyInspectionWorks`) and lists saved WRK-/TP ids without a second identity drop.

@@ -260,7 +260,7 @@ async function loadEnrichedLiteWorksForReportsUncached(
   return {
     enriched: raw.rows.length
       ? mine
-        ? raw.rows.map((w) => rewriteWorkMediaFields(w))
+        ? raw.rows.map((w) => rewriteWorkMediaFields(w, requestOrigin))
         : enrichReportsCandidateRows(raw.rows, filter, raw.masters)
       : [],
     masters: raw.masters,

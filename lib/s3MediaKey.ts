@@ -141,14 +141,29 @@ export function normalizePortalMediaValue(raw: string, origin?: string): string 
   return val;
 }
 
+function asFieldsDataObject(raw: unknown): Record<string, unknown> {
+  if (!raw) return {};
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+    return {};
+  }
+  if (typeof raw === 'object' && !Array.isArray(raw)) return { ...(raw as Record<string, unknown>) };
+  return {};
+}
+
 export function rewriteWorkMediaFields(work: any, origin?: string): any {
   if (!work || typeof work !== 'object') return work;
   const next = { ...work };
   if (typeof next.imageUrl === 'string' && next.imageUrl) {
     next.imageUrl = normalizePortalMediaValue(next.imageUrl, origin);
   }
-  if (next.fieldsData && typeof next.fieldsData === 'object') {
-    const fields = { ...next.fieldsData };
+  if (next.fieldsData) {
+    const fields = asFieldsDataObject(next.fieldsData);
     for (const [k, v] of Object.entries(fields)) {
       if (typeof v !== 'string') continue;
       if (

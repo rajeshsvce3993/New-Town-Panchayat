@@ -4153,7 +4153,11 @@ export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}
         }
       }
 
-      return works.map((w: any) => ({ ...w, id: w.id || (w._id ? String(w._id) : '') }));
+      return works.map((w: any) => {
+        const id = String(w.id || w.workId || (w._id ? String(w._id) : '')).trim();
+        const workId = String(w.workId || w.id || '').trim();
+        return { ...w, id, workId };
+      });
     }
   } catch (err: any) {
     console.warn('[getTargetedInspectionWorks] Error querying MongoDB:', err?.message || err);

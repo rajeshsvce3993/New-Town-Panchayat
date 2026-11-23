@@ -336,13 +336,17 @@ export const api = {
     q.set('lite', '1');
     q.set('limit', String(limit));
     q.set('allTime', '1');
-    const res = await fetchWithTimeout(
-      `${baseUrl}/api/inspection-works?${q.toString()}`,
-      { headers: { ...mobileClientHeaders(), 'Cache-Control': 'no-cache' } },
-      BOOTSTRAP_API_TIMEOUT_MS,
-    );
-    const json = (await res.json().catch(() => ({}))) as { works?: InspectionWork[] };
-    return Array.isArray(json.works) ? json.works : [];
+    try {
+      const res = await fetchWithTimeout(
+        `${baseUrl}/api/inspection-works?${q.toString()}`,
+        { headers: { ...mobileClientHeaders(), 'Cache-Control': 'no-cache' } },
+        REQUEST_TIMEOUT_MS,
+      );
+      const json = (await res.json().catch(() => ({}))) as { works?: InspectionWork[] };
+      return Array.isArray(json.works) ? json.works : [];
+    } catch {
+      return [];
+    }
   },
 
   async getAppSettings(): Promise<Record<string, unknown>> {
@@ -496,11 +500,9 @@ export const api = {
         works?: InspectionWork[] | unknown;
       } | null;
       const fromWork = json?.work && !Array.isArray(json.work) ? json.work : null;
-      if (fromWork && /^WRK-/i.test(String(fromWork.workId || '').trim())) return fromWork;
+      if (fromWork) return fromWork;
       const list = Array.isArray(json?.works) ? json.works : [];
-      const found = list.find((w) => String(w?.id || '') === id || String(w?.workId || '') === id) || null;
-      if (found && /^WRK-/i.test(String(found.workId || '').trim())) return found;
-      return null;
+      return list.find((w) => String(w?.id || '') === id || String(w?.workId || '') === id) || null;
     } catch {
       return null;
     }

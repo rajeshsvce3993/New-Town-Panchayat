@@ -14,7 +14,7 @@ import { QUEUE_STATUS, type InspectionWork, type PortalState, type QueuedWorkEnt
 import { todayDdMmYyyy } from '../../src/utils/dates';
 import { normalizeWard, resolveUserTpId } from '../../src/utils/wards';
 import { filterByDateRange, sortRecentFirst } from '../../src/utils/workFilters';
-import { isListedWorkId } from '../../src/utils/workSaveResult';
+import { isListedWork } from '../../src/utils/workSaveResult';
 import { resolveWorkPlace } from '../../src/utils/workPlace';
 
 function shortWorkId(workId?: string | null) {
@@ -96,7 +96,7 @@ export default function ReportsScreen() {
     }, [works])
   );
 
-  const userWorks = useMemo(() => works.filter((w) => isListedWorkId(w.workId)), [works]);
+  const userWorks = useMemo(() => works.filter((w) => isListedWork(w)), [works]);
   const dated = useMemo(() => filterByDateRange(userWorks, fromDate, toDate), [userWorks, fromDate, toDate]);
   const tpId = resolveUserTpId(user, portal.townPanchayats || []);
   const wards = useMemo(() => {

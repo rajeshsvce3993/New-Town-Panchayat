@@ -711,6 +711,8 @@ function isImageValue(v: string) {
     s.startsWith('/uploads') ||
     s.includes('/api/media') ||
     s.startsWith('inspection/') ||
+    s.includes('amazonaws.com') ||
+    s.includes('s3.') ||
     s.startsWith('data:image/') ||
     s.startsWith('file:') ||
     s.includes('offline_images') ||
@@ -1854,7 +1856,7 @@ export function WorkDetailModal({
         const found = await api.lookupInspectionWork(id);
         if (!live || !found) continue;
         setDetailWork((prev) => mergeLookedUpWorkPlace(prev, found));
-        break;
+        if (found.fieldsData && Object.keys(found.fieldsData).length) break;
       }
     })();
     return () => {
