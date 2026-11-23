@@ -169,7 +169,7 @@ function loadMongoUri() {
   } catch {
     /* local settings optional */
   }
-  return 'mongodb://127.0.0.1:27018/dtp_enterprise';
+  return 'mongodb://127.0.0.1:27017/dtp_enterprise';
 }
 
 async function findById(col, id) {
