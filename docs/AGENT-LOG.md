@@ -1,5 +1,17 @@
 # Agent log
 
+## 2026-11-23 — Field-worker ward picker on create user
+
+- Creating a field-worker inspection user now loads wards for the selected TP from `/api/masters/geo` (`ensureWards`). Portal state no longer has a full `wardsAndStreets` dump, so the old in-memory list was empty.
+- Role scope also treats `role_field_worker` / `field_workers` as field worker so the ward selector actually appears.
+- Tests: inspect `InspectionEmployeeManagementView` ward load path. Deploy web, then open Field staff → create user → Field Worker → pick TP.
+
+## 2026-11-23 — Web portal role-scoped works
+
+- Zonal / multi-TP / HOD reports were locked to a leftover `portalScope.tpId` when that TP still existed in masters, so work lists and details loaded the wrong place (or none).
+- Role-resolved scope now wins: zonal = zone only, multi-TP = district, single-TP/field = assigned TP. Web login no longer copies leftover TP onto zonal users.
+- Tests: `node --test scripts/test-role-place.mjs`. Deploy API/web, then log out/in on the portal.
+
 ## 2026-11-23 — DB repair for mismatched work geo
 
 - Replaced the unsafe geo repair (it stamped `selectedTpIds[0]` onto every work, including zonal leftover TPs).

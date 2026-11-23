@@ -164,10 +164,6 @@ function scopeIdsFromSnap(snap: any): PortalFilterScope | null {
   };
 }
 
-function eqId(a: unknown, b: unknown): boolean {
-  return String(a ?? '').toLowerCase().trim() === String(b ?? '').toLowerCase().trim();
-}
-
 /** Resolve scope from user record + geo masters (ignores stale portalScope snapshot). */
 function resolvePortalFilterScopeIds(user: any, masters: PortalGeoMasters): PortalFilterScope {
   if (!user || isHodLikeUser(user)) {
@@ -269,45 +265,28 @@ function resolvePortalFilterScopeIds(user: any, masters: PortalGeoMasters): Port
 
 /**
  * Scope ids for dashboard KPIs and inspection-works API.
- * When geo masters are loaded, stale login snapshots that point at unknown TPs are discarded.
+ * Role-resolved place always wins. A leftover portalScope TP must not lock
+ * zonal / multi-TP / HOD users to one town panchayat.
  */
 export function getPortalFilterScopeIds(user: any, masters: PortalGeoMasters = {}): PortalFilterScope {
   const resolved = resolvePortalFilterScopeIds(user, masters);
+  if (isHodLikeUser(user)) {
+    return { tpId: null, districtId: null, zoneId: null };
+  }
+  if (isZonalScopedUser(user)) {
+    return { tpId: null, districtId: null, zoneId: resolved.zoneId };
+  }
+  const st = scopeTypeKey(user?.scopeType);
+  const role = String(user?.roleId || user?.role || '').toLowerCase();
+  if (st === 'multi_tp' || st === 'district' || role === 'role_multi_tp' || role === 'role_district') {
+    return { tpId: null, districtId: resolved.districtId, zoneId: resolved.zoneId };
+  }
+  if (resolved.tpId || resolved.districtId || resolved.zoneId) return resolved;
   const fromSnap = scopeIdsFromSnap(user?.portalScope);
   if (!fromSnap) return resolved;
-
-  const tps = masters.townPanchayats || [];
-  const districts = masters.districts || [];
-  const zones = masters.zones || [];
-
-  if (fromSnap.tpId) {
-    if (tps.length > 0) {
-      const snapValid = tps.some((t) => eqId(t.id, fromSnap.tpId));
-      if (snapValid) return fromSnap;
-    } else if (resolved.tpId && !eqId(resolved.tpId, fromSnap.tpId)) {
-      return resolved;
-    } else {
-      return fromSnap;
-    }
+  if (fromSnap.tpId && (isZonalScopedUser(user) || isHodLikeUser(user))) {
+    return { tpId: null, districtId: null, zoneId: fromSnap.zoneId || resolved.zoneId };
   }
-
-  if (fromSnap.districtId) {
-    if (districts.length > 0) {
-      if (districts.some((d) => eqId(d.id, fromSnap.districtId))) return fromSnap;
-    } else {
-      return fromSnap;
-    }
-  }
-
-  if (fromSnap.zoneId) {
-    if (zones.length > 0) {
-      if (zones.some((z) => eqId(z.id, fromSnap.zoneId))) return fromSnap;
-    } else {
-      return fromSnap;
-    }
-  }
-
-  if (resolved.tpId || resolved.districtId || resolved.zoneId) return resolved;
   return fromSnap;
 }
 

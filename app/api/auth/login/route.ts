@@ -6,7 +6,7 @@ import { isLiveDataOnly } from '@/lib/productionFlags';
 import { recordUserLogin } from '@/lib/userActivity';
 import { logServerProcess } from '@/lib/serverLogger';
 import { postRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
-import { isHodLikeUser, normalizePortalSessionUser, normalizePortalUserScope } from '@/lib/userScope';
+import { isHodLikeUser, isZonalScopedUser, normalizePortalSessionUser, normalizePortalUserScope } from '@/lib/userScope';
 import { isMobileClientRequest, mobileLoginDeniedMessage, userMayUseMobileApp } from '@/lib/mobileAppAuth';
 import { isWebPortalClientRequest } from '@/lib/portalWebAuth';
 import { getUserScopeDetailsForLogin, getUserScopeFromCacheOnly } from '@/lib/userScopeCache';
@@ -395,9 +395,16 @@ export async function POST(req: NextRequest) {
         returnUser.zone = su.zone || returnUser.zone;
         returnUser.zoneTa = su.zoneTa || returnUser.zoneTa;
         returnUser.zoneId = su.zoneId || returnUser.zoneId;
-        returnUser.tpId = su.tpId ?? returnUser.tpId ?? '';
-        returnUser.townPanchayatId = su.townPanchayatId ?? returnUser.townPanchayatId ?? '';
-        returnUser.selectedTpIds = su.selectedTpIds || returnUser.selectedTpIds;
+        const zonalOrHod = isZonalScopedUser(returnUser) || isHodLikeUser(returnUser);
+        if (zonalOrHod) {
+          returnUser.tpId = '';
+          returnUser.townPanchayatId = '';
+          returnUser.selectedTpIds = [];
+        } else {
+          returnUser.tpId = su.tpId ?? returnUser.tpId ?? '';
+          returnUser.townPanchayatId = su.townPanchayatId ?? returnUser.townPanchayatId ?? '';
+          returnUser.selectedTpIds = su.selectedTpIds || returnUser.selectedTpIds;
+        }
         returnUser.assignedWards = userScope.assignedWards || su.assignedWards || returnUser.assignedWards;
         returnUser.selectedWards = userScope.assignedWards || su.selectedWards || returnUser.selectedWards;
         returnUser.scopeType = userScope.scopeKind || userScope.scopeType || su.scopeType || returnUser.scopeType;

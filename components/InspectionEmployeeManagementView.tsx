@@ -102,6 +102,25 @@ interface InspectionEmployeeManagementViewProps {
   onSaveCollection: (key: string, data: any[]) => Promise<void>;
 }
 
+function normalizeInspectionUserScope(role: any): 'zonal' | 'single_tp' | 'multi_tp' | 'field_worker' {
+  const raw = String(role?.scope || role?.scopeType || role?.id || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[\s-]+/g, '_');
+  if (raw.includes('field_worker')) return 'field_worker';
+  if (raw === 'zonal' || raw === 'zone' || raw === 'role_zonal') return 'zonal';
+  if (raw === 'multi_tp' || raw === 'district' || raw === 'role_multi_tp' || raw === 'role_district') return 'multi_tp';
+  if (raw === 'single_tp' || raw === 'townpanchayat' || raw === 'role_single_tp') return 'single_tp';
+  return 'single_tp';
+}
+
+function wardNoFromStreetRow(row: any): string {
+  return String(row?.wardNo ?? row?.wardNumber ?? row?.ward ?? '')
+    .trim()
+    .replace(/[^0-9]/g, '')
+    .replace(/^0+/, '');
+}
+
 export default function InspectionEmployeeManagementView({ state, lang, onSaveCollection }: InspectionEmployeeManagementViewProps) {
   const [activeTab, setActiveTab] = useState<'employees' | 'roles' | 'designations' | 'sessions' | 'server_logs'>('employees');
   const [employeeViewMode, setEmployeeViewMode] = useState<'tree' | 'table'>('tree');
@@ -448,6 +467,10 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
     if (userDistrictId) void lazyGeo.ensureTownPanchayats(userDistrictId);
   }, [userDistrictId, lazyGeo]);
 
+  React.useEffect(() => {
+    if (userTpId) void lazyGeo.ensureWards(userTpId);
+  }, [userTpId, lazyGeo]);
+
   type CsvImportPhase = 'reading' | 'loading' | 'processing' | 'saving' | 'done' | 'error';
   type CsvImportUi = {
     phase: CsvImportPhase;
@@ -683,8 +706,7 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
 
     // Role Scope validation
     const currentRole = inspectionRoles.find((r: any) => r.id === userRoleId);
-    const rawScope = currentRole?.scope || currentRole?.scopeType || 'single_tp';
-    const scopeType = rawScope === 'field_workers' ? 'field_worker' : rawScope;
+    const scopeType = normalizeInspectionUserScope(currentRole);
 
     if (scopeType === 'zonal' && !userZoneId) {
       alert(lang === 'ta' ? 'மண்டலப் பயனருக்கு மண்டலத்தைத் தேர்வு செய்யவும்.' : 'Please select a Zone for Zonal user.');
@@ -1995,27 +2017,24 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
 
           {activeTab === 'employees' && (() => {
             const currentRole = inspectionRoles.find((r: any) => r.id === userRoleId);
-            const rawScope = currentRole?.scope || currentRole?.scopeType || 'single_tp';
-            const scopeType = rawScope === 'field_workers' ? 'field_worker' : rawScope;
+            const scopeType = normalizeInspectionUserScope(currentRole);
 
-            // Calculate known wards for selected TP - only show created wards for selected TP
             const targetTp = townPanchayats.find((tp: any) => tp.id === userTpId);
-            const matchingWards = (wardsAndStreets || []).filter((ws: any) => 
-              (ws.tpId && ws.tpId === userTpId) || 
-              (ws.townPanchayatId && ws.townPanchayatId === userTpId) ||
-              (targetTp && (
-                String(ws.tpId || '').toLowerCase() === String(targetTp.id || '').toLowerCase() ||
-                String(ws.tpNameEn || '').toLowerCase() === String(targetTp.nameEn || '').toLowerCase() ||
-                String(ws.tpId || '').toLowerCase() === String(targetTp.nameEn || '').toLowerCase()
-              ))
+            const liveWardRows = userTpId ? lazyGeo.wardsForTp(userTpId) : [];
+            const matchingWards = (liveWardRows.length ? liveWardRows : wardsAndStreets || []).filter((ws: any) =>
+              liveWardRows.length
+                ? true
+                : (ws.tpId && ws.tpId === userTpId) ||
+                  (ws.townPanchayatId && ws.townPanchayatId === userTpId) ||
+                  (targetTp &&
+                    (String(ws.tpId || '').toLowerCase() === String(targetTp.id || '').toLowerCase() ||
+                      String(ws.tpNameEn || '').toLowerCase() === String(targetTp.nameEn || '').toLowerCase() ||
+                      String(ws.tpId || '').toLowerCase() === String(targetTp.nameEn || '').toLowerCase())),
             );
             const knownWardsForTp: string[] = Array.from<string>(
-              new Set(
-                matchingWards
-                  .map((ws: any) => String(ws.wardNo || ws.wardNumber))
-                  .filter((w: string) => w && w !== 'undefined' && w !== 'null')
-              )
+              new Set(matchingWards.map(wardNoFromStreetRow).filter((w: string) => w && w !== 'undefined' && w !== 'null')),
             ).sort((a: any, b: any) => Number(a) - Number(b));
+            const wardsLoading = !!userTpId && lazyGeo.isLoading(`wards:${userTpId}`);
 
             return (
               <form onSubmit={handleAddOrUpdateUser} className="space-y-3">
@@ -2436,12 +2455,65 @@ export default function InspectionEmployeeManagementView({ state, lang, onSaveCo
                             </span>
                           </label>
 
-                          {knownWardsForTp.length === 0 ? (
-                            <p className="portal-wt-note">
-                              {userTpId 
-                                ? (lang === 'ta' ? 'தேர்ந்தெடுக்கப்பட்ட பேரூராட்சியில் வார்டுகள் எதுவும் உருவாக்கப்படவில்லை. வார்டு மற்றும் தெரு மாஸ்டர் மேலாண்மை பிரிவில் வார்டுகளை உருவாக்கவும்.' : 'No wards have been created yet for this Town Panchayat. Please create wards in Ward & Street Master Management.')
-                                : (lang === 'ta' ? 'முதலில் பேரூராட்சியை தேர்வு செய்யவும்.' : 'Please select a Town Panchayat first.')}
+                          {wardsLoading ? (
+                            <p className="portal-wt-note inline-flex items-center gap-2">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              {lang === 'ta' ? 'வார்டுகள் ஏற்றப்படுகின்றன…' : 'Loading wards for this Town Panchayat…'}
                             </p>
+                          ) : knownWardsForTp.length === 0 ? (
+                            <div className="space-y-2">
+                              <p className="portal-wt-note">
+                                {userTpId
+                                  ? lang === 'ta'
+                                    ? 'இந்த பேரூராட்சிக்கு வார்டு பட்டியல் இல்லை. கீழே வார்டு எண்ணை உள்ளிடவும் அல்லது வார்டு மற்றும் தெரு மாஸ்டரில் உருவாக்கவும்.'
+                                    : 'No ward list loaded for this Town Panchayat. Enter ward numbers below, or create them in Ward & Street Master.'
+                                  : lang === 'ta'
+                                    ? 'முதலில் பேரூராட்சியை தேர்வு செய்யவும்.'
+                                    : 'Please select a Town Panchayat first.'}
+                              </p>
+                              {!!userTpId && (
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    value={customWardInput}
+                                    onChange={(e) => setCustomWardInput(e.target.value)}
+                                    placeholder={lang === 'ta' ? 'எ.கா. 1, 2, 4' : 'e.g. 1, 2, 4'}
+                                    className="flex-1"
+                                  />
+                                  <button
+                                    type="button"
+                                    className="portal-wt-link"
+                                    onClick={() => {
+                                      const extra = customWardInput
+                                        .split(/[,\s]+/)
+                                        .map((w) => w.replace(/[^0-9]/g, '').replace(/^0+/, ''))
+                                        .filter(Boolean);
+                                      if (!extra.length) return;
+                                      setUserSelectedWards(Array.from(new Set([...userSelectedWards, ...extra])));
+                                      setCustomWardInput('');
+                                    }}
+                                  >
+                                    {lang === 'ta' ? 'சேர்' : 'Add'}
+                                  </button>
+                                </div>
+                              )}
+                              {userSelectedWards.length > 0 && (
+                                <div className="portal-dash-pills flex-wrap">
+                                  {userSelectedWards.map((wardNum) => (
+                                    <button
+                                      key={wardNum}
+                                      type="button"
+                                      className="portal-dash-pill is-active"
+                                      onClick={() =>
+                                        setUserSelectedWards(userSelectedWards.filter((w) => w !== wardNum))
+                                      }
+                                    >
+                                      {lang === 'ta' ? `வார்டு ${wardNum}` : `Ward ${wardNum}`}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           ) : (
                             <div className="space-y-2">
                               <div className="portal-dash-pills flex-wrap">

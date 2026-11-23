@@ -98,6 +98,16 @@ test('district officers follow multi-tp pickers, not zonal', () => {
   assert.equal(resolveInspectionScopeMode({ scopeType: 'district' }, { scopeKind: 'district' }), 'multi_tp');
 });
 
+test('web portal does not lock zonal users to a leftover snapshot TP', () => {
+  const scopeSrc = readFileSync(join(root, 'lib/userScope.ts'), 'utf8');
+  const loginSrc = readFileSync(join(root, 'app/api/auth/login/route.ts'), 'utf8');
+  const reportsSrc = readFileSync(join(root, 'components/InspectionReportsView.tsx'), 'utf8');
+  assert.match(scopeSrc, /Role-resolved place always wins/);
+  assert.doesNotMatch(scopeSrc, /if \(snapValid\) return fromSnap/);
+  assert.match(loginSrc, /zonalOrHod/);
+  assert.match(reportsSrc, /zonal && p\.scopeZoneId/);
+});
+
 test('mobile login uses slim scope and skips streets on geo/me', () => {
   const loginSrc = readFileSync(join(root, 'app/api/auth/login/route.ts'), 'utf8');
   const liveSrc = readFileSync(join(root, 'lib/services/liveUserScope.ts'), 'utf8');

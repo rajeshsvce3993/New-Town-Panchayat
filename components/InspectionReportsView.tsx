@@ -1902,7 +1902,9 @@ export default function InspectionReportsView({
       if (p.adminFilterFieldId) qParams.set('adminFieldId', p.adminFilterFieldId);
       if (p.adminFilterValue) qParams.set('adminFieldValue', p.adminFilterValue);
       if (!isAdminOrDirector) {
-        if (p.scopeTpId) qParams.set('scopeTpId', p.scopeTpId);
+        const zonal = isZonalScopedUser(currentUser);
+        if (zonal && p.scopeZoneId) qParams.set('scopeZoneId', p.scopeZoneId);
+        else if (!zonal && p.scopeTpId) qParams.set('scopeTpId', p.scopeTpId);
         else if (p.scopeDistrictId) qParams.set('scopeDistrictId', p.scopeDistrictId);
         else if (p.scopeZoneId) qParams.set('scopeZoneId', p.scopeZoneId);
       }
@@ -1934,7 +1936,7 @@ export default function InspectionReportsView({
       }
       return qParams;
     },
-    [isAdminOrDirector, state.townPanchayats, state.districts, state.zones, embedMode, activeTab]
+    [isAdminOrDirector, currentUser, state.townPanchayats, state.districts, state.zones, embedMode, activeTab]
   );
 
   const applyCountsPayload = React.useCallback((json: any) => {

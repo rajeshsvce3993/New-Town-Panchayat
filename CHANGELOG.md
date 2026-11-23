@@ -6,6 +6,8 @@
 - Inspection geo (district, town panchayat, ward, street) is live Mongo data only. Placeholder names and seed/cache fallbacks are not shown on mobile or written onto new works.
 
 ### Fixed
+- Creating a field-worker inspection user now shows ward selection for the chosen town panchayat (live wards from Mongo, not the empty portal street dump).
+- Web portal inspection reports and work details now follow the user’s role place (zone / district / assigned TP). A leftover login snapshot TP no longer hides or remaps another area’s works.
 - Existing inspection works with leftover wrong zone/district/TP can be repaired from Mongo (`scripts/repair-inspection-works-geo.mjs`, dry-run by default). Zonal/multi-TP works are not forced onto a leftover default TP.
 - Add Work now requires a live GPS fix: the app asks for location permission and will not save a work with placeholder coordinates.
 - Reports and work details show the zone, district, town panchayat, ward, and street stored on that work. Leftover portal TP rows are not used to fill a different place.
