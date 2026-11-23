@@ -1,5 +1,10 @@
 # Agent log
 
+## 2026-11-23 — All filter loads older works
+
+- All was only filtering the in-memory list, which still held today’s rows. Tapping All now fetches that user’s all-time works (`fetchMyInspectionWorks`) and lists saved WRK-/TP ids without a second identity drop.
+- Tests: `node --test scripts/test-mobile-works-list.mjs`. Deploy API, reload Metro, tap All on dashboard/reports.
+
 ## 2026-11-23 — Older works load like new ones
 
 - New saves store username/user id; older rows often stored mobile / employee id / WRK- only. My-works now queries those aliases (from the login + inspectionUsers) and merges WRK- id hits, so old and new rows for that user load together.

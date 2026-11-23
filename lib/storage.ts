@@ -4138,7 +4138,7 @@ export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}
           ...loginIdentityWorkIdRegexOr(String(userId || '')),
           ...loginIdentityWorkIdRegexOr(String(mobile || '')),
         ];
-        if (regexOr.length && works.length < maxLim) {
+        if (regexOr.length) {
           const extra = await col.find({ $or: regexOr }, proj).sort({ _id: -1 }).limit(maxLim).toArray();
           const seen = new Set(works.map((w: any) => String(w.workId || w.id || '')));
           for (const row of extra) {

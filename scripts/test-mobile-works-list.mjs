@@ -16,7 +16,15 @@ test('mobile bootstrap fetches the user works all-time, not today only', () => {
   assert.match(client, /allTime=1/);
   assert.match(client, /userId=/);
   assert.match(client, /mobile=/);
+  assert.match(client, /fetchMyInspectionWorks/);
   assert.doesNotMatch(client, /includeFields=1&allTime=1/);
+});
+
+test('All date chip reloads that user full history', () => {
+  const home = readFileSync(join(root, 'mobile/app/(tabs)/index.tsx'), 'utf8');
+  const reports = readFileSync(join(root, 'mobile/app/(tabs)/reports.tsx'), 'utf8');
+  assert.match(home, /void loadMyWorks\(\)/);
+  assert.match(reports, /void loadMyWorks\(\)/);
 });
 
 test('username lite load uses targeted identity query, not everyone-today fallback', () => {

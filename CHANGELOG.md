@@ -6,7 +6,7 @@
 - Inspection geo (district, town panchayat, ward, street) is live Mongo data only. Placeholder names and seed/cache fallbacks are not shown on mobile or written onto new works.
 
 ### Fixed
-- Mobile dashboard and reports keep **Today** as the default date filter (All is still a chip). That user’s older works load the same way as new saves (username, user id, mobile, employee id, WRK- id), not only rows written by the new save path.
+- Tapping **All** on mobile dashboard/reports fetches that user’s full history. Today remains the default date chip.
 - Saving a work stamps zone, district, and town panchayat from the selected master id. Leftover inspector TP is not copied when the work already has a place id.
 - Creating a field-worker inspection user now shows ward selection for the chosen town panchayat (live wards from Mongo, not the empty portal street dump).
 - Web portal inspection reports and work details now follow the user’s role place (zone / district / assigned TP). A leftover login snapshot TP no longer hides or remaps another area’s works.
