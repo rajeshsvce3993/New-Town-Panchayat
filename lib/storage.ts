@@ -4058,6 +4058,7 @@ const MOBILE_LITE_WORK_PROJECTION = {
   imageUrl: 1,
   imageCaption: 1,
   documentUrl: 1,
+  fieldsData: 1,
   latitude: 1,
   longitude: 1,
 } as const;

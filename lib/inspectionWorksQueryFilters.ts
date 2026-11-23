@@ -642,8 +642,9 @@ export function filterInspectionWorksPostMongo(
     list = list.filter((w) => !isFallbackInspectionWork(w));
   }
   const { fromDate, toDate, dateParam, street, search, adminFieldId, adminFieldValue, categoryId } = query;
+  const skipDateWindow = !!(query.username || query.userId || query.mobile);
 
-  if (fromDate || toDate) {
+  if (!skipDateWindow && (fromDate || toDate)) {
     list = list.filter((w) => {
       const itemYmd = workSubmittedYmd(w);
       if (!itemYmd) return false;
@@ -651,7 +652,7 @@ export function filterInspectionWorksPostMongo(
       if (toDate && itemYmd > toDate) return false;
       return true;
     });
-  } else if (dateParam) {
+  } else if (!skipDateWindow && dateParam) {
     const targetYmd = extractCalendarDateYMD(dateParam) || dateParam;
     list = list.filter((w) => {
       const itemYmd = workSubmittedYmd(w);

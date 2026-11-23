@@ -29,9 +29,13 @@ test('All date chip reloads that user full history', () => {
 
 test('username lite load uses targeted identity query, not everyone-today fallback', () => {
   const loader = readFileSync(join(root, 'lib/inspectionWorksLiteLoader.ts'), 'utf8');
+  const route = readFileSync(join(root, 'app/api/inspection-works/route.ts'), 'utf8');
+  const filters = readFileSync(join(root, 'lib/inspectionWorksQueryFilters.ts'), 'utf8');
   assert.match(loader, /myWorksOnly/);
   assert.match(loader, /getTargetedInspectionWorks\(\{/);
   assert.match(loader, /userId: filter\.userId/);
+  assert.match(route, /mongo-user-all-time/);
+  assert.match(filters, /skipDateWindow/);
 });
 
 test('dashboard and reports keep Today as the default date filter', () => {

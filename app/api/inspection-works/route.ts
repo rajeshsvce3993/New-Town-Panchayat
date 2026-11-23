@@ -135,6 +135,8 @@ export async function GET(req: NextRequest) {
     const employeeId = viewQuery.employeeId;
     const lite = viewQuery.lite;
     const lookupId = String(searchParams.get('lookupId') || '').trim();
+    const myWorksList =
+      !!(username || userId || mobile) && !zoneId && !districtId && !tpId;
 
     if (searchParams.get('refreshRemote') === '1') {
       invalidateRemoteInspectionWorksCache();
@@ -143,7 +145,8 @@ export async function GET(req: NextRequest) {
     }
 
     // APP_ENV=prod on this PC → production API (production Mongo). Never use laptop Mongo.
-    if (shouldUseRemotePortalApi(requestOrigin)) {
+    // Lookup + officer my-works stay on this server so All-history and details are not today-windowed.
+    if (shouldUseRemotePortalApi(requestOrigin) && !lookupId && !myWorksList) {
       const qs = searchParams.toString();
       const remote = await fetchRemotePortalJson(
         `/api/inspection-works${qs ? `?${qs}` : ''}`,
@@ -215,6 +218,37 @@ export async function GET(req: NextRequest) {
     const now = Date.now();
     const reportsGen = getInspectionWorksReportsDataGeneration();
     const mobileClient = isMobileClientRequest(req);
+
+    if (myWorksList && (lite || mobileClient)) {
+      const cap = viewQuery.limit > 0 ? Math.min(Math.max(viewQuery.limit, 1), 200) : 200;
+      const targeted = await getTargetedInspectionWorks({
+        username: username || undefined,
+        userId: userId || undefined,
+        mobile: mobile || undefined,
+        employeeId: employeeId || undefined,
+        limit: cap,
+        lite: true,
+      });
+      const works = (targeted || []).map((w: any) =>
+        rewriteWorkMediaFields(
+          {
+            ...w,
+            id: w.id || w.workId,
+            workId: w.workId || w.id,
+          },
+          requestOrigin
+        )
+      );
+      return NextResponse.json(
+        {
+          success: true,
+          count: works.length,
+          works,
+          meta: { querySource: 'mongo-user-all-time', defaultDateWindowApplied: false },
+        },
+        { headers: CORS_HEADERS }
+      );
+    }
     if (
       !mobileClient &&
       cachedWorksList &&
