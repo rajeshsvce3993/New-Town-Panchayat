@@ -1,4 +1,5 @@
 import { extractCalendarDateYMD, extractInspectionDateMs } from '@/lib/inspectionDate';
+import { workBelongsToLogin } from '@/lib/inspectionWorkIdentity';
 import { scalarFieldAnswer } from '@/lib/yesNoAnswer';
 
 export type InspectionWorksFilterQuery = {
@@ -162,10 +163,7 @@ function workMatchesWard(w: any, ward: string): boolean {
 }
 
 function workMatchesUsername(w: any, username: string): boolean {
-  const uLower = String(username).toLowerCase();
-  const u = String(w.submittedByUserName || w.username || w.submittedByUserId || '').toLowerCase();
-  const wid = String(w.workId || '').toLowerCase();
-  return u === uLower || u.includes(uLower) || wid.includes(`-${uLower}-`);
+  return workBelongsToLogin(w, username);
 }
 
 export function isFallbackInspectionWork(w: any): boolean {
@@ -492,10 +490,8 @@ export function workMatchesUserScope(w: any, query: InspectionWorksFilterQuery, 
     const uZone = String(scopeZoneId).toLowerCase();
     const zones = ctx.zones || [];
     if (zones.length === 0) {
-      const wZoneName = String(w.zoneNameEn || w.zone || '').toLowerCase();
-      if (wZoneName && wZoneName !== uZone && !wZoneName.includes(uZone) && !uZone.includes(wZoneName)) {
-        return false;
-      }
+      const wZoneName = String(w.zoneNameEn || w.zone || w.zoneId || '').toLowerCase();
+      if (!wZoneName || (wZoneName !== uZone && !wZoneName.includes(uZone))) return false;
     } else if (!workMatchesZone(w, scopeZoneId, ctx)) {
       return false;
     }

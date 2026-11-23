@@ -1,4 +1,3 @@
-import * as Location from 'expo-location';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, BackHandler, Linking, Platform, ToastAndroid } from 'react-native';
 import { api, getApiBaseUrl, isRemotePhotoUrl, setApiBaseUrl, setMobileApiLanguage } from '../api/client';
@@ -218,14 +217,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         else setTimeout(fn, 400);
       };
       runAfterIdle(() => {
-        void (async () => {
-          try {
-            await Location.requestForegroundPermissionsAsync();
-            await requestNotificationPermission();
-          } catch {
-            /* first-install prompts — must not block splash */
-          }
-        })();
+        void requestNotificationPermission().catch(() => undefined);
       });
 
       void (async () => {

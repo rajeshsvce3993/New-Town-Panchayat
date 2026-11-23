@@ -1,5 +1,6 @@
 import type { AppUser, InspectionWork } from '../types/models';
 import { endOfDayMs, parseInspectionDateMillis, startOfDayMs } from './dates';
+import { workBelongsToUser } from './workIdentity';
 
 function isFallbackInspectionWork(w: InspectionWork): boolean {
   const sName = String(w.subjectNameEn || '').trim().toLowerCase();
@@ -22,24 +23,6 @@ function isFallbackInspectionWork(w: InspectionWork): boolean {
   );
 }
 
-function workBelongsToUser(work: InspectionWork, user: AppUser): boolean {
-  const uId = String(user.id || '').trim().toLowerCase();
-  const uName = String(user.username || '').trim().toLowerCase();
-  const uDisplayName = String(user.name || '').trim().toLowerCase();
-  const uEmpId = String(user.employeeId || '').trim().toLowerCase();
-  const subId = String(work.submittedByUserId || '').trim().toLowerCase();
-  const subName = String(work.submittedByUserName || '').trim().toLowerCase();
-  const wUser = String((work as { username?: string }).username || '').trim().toLowerCase();
-  const workId = String(work.workId || '').trim().toLowerCase();
-  if (!workId) return false;
-
-  if (uId && (subId === uId || subId === `user_${uId}` || uId === `user_${subId}`)) return true;
-  if (uEmpId && (subId === uEmpId || subName === uEmpId)) return true;
-  if (uName && (subId === uName || subName === uName || wUser === uName)) return true;
-  if (uDisplayName && subName === uDisplayName) return true;
-  if (uName && (workId.includes(`wrk-${uName}-`) || workId.includes(`-${uName}-`))) return true;
-  return false;
-}
 
 export function filterUserWorks(works: InspectionWork[], user: AppUser | null | undefined, _mode: 'dashboard' | 'reports'): InspectionWork[] {
   if (!user) return [];

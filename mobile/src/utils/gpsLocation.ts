@@ -14,7 +14,8 @@ function roundCoord(n: number) {
 }
 
 export function isPlaceholderCoord(lat?: number | null, lng?: number | null): boolean {
-  if (lat == null || lng == null) return true;
+  if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return true;
+  if (Math.abs(lat) < 0.00001 && Math.abs(lng) < 0.00001) return true;
   return Math.abs(lat - DEFAULT_LAT) < 0.00005 && Math.abs(lng - DEFAULT_LNG) < 0.00005;
 }
 
@@ -67,7 +68,7 @@ async function readCurrent(timeoutMs: number): Promise<GpsFix | null> {
     const loc = await withTimeout(
       Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Highest,
-        mayShowUserSettingsDialog: false,
+        mayShowUserSettingsDialog: true,
       }),
       timeoutMs
     );

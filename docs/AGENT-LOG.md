@@ -1,5 +1,25 @@
 # Agent log
 
+## 2026-11-23 — DB repair for mismatched work geo
+
+- Replaced the unsafe geo repair (it stamped `selectedTpIds[0]` onto every work, including zonal leftover TPs).
+- New `scripts/repair-inspection-works-geo.mjs` is role-aware and identity-only: single-TP/field worker leftover TP → assigned TP; multi-TP / zonal keep a TP that is in their assigned list/zone and restamp district/zone/street from masters. Dry-run by default; `--apply` writes.
+- Tests: `node --test scripts/test-repair-work-geo.mjs`. Run dry-run on the server with `MONGODB_URI`, then `--apply` if the sample rows look correct.
+
+## 2026-11-23 — Mandatory GPS and work-document place
+
+- Add Work now prompts for location (OS Allow dialog + settings) and blocks continue/submit until a live GPS fix is captured. Placeholder Chengalpattu coords are no longer used. Offline queue/sync files were not changed.
+- Reports/details show zone, district, TP, ward, and street from the saved work document. Portal is not used to infer district/zone from a leftover TP id.
+- POST `/api/inspection-works` validates against live Mongo `buildLiveUserScope`, not `user_scope_cache`.
+- Tests: `node --test scripts/test-work-place-gps.mjs scripts/test-work-identity.mjs scripts/test-role-place.mjs`. Deploy API, reload the app, log out/in, allow location on Add Work.
+
+## 2026-11-23 — Work identity and place mapping
+
+- Root cause: works were matched by officer display name, and save-path geo overwrote the selected TP with leftover inspector district/TP (Theni user seeing Tiruvannamalai works).
+- Login identity (`username` / `id` / mobile) is now the only list key. Display names are ignored.
+- Add Work now sends `tpId` / `districtId` / `zoneId`; stamp uses those ids and fills inspector TP only for true single-TP users with no selected TP.
+- Tests: `node --test scripts/test-work-identity.mjs scripts/test-role-place.mjs`. Deploy API, then rebuild/reload the app and log out/in.
+
 ## 2026-11-20 — Faster mobile login
 
 - Login now returns a slim live place payload (zone/district/TP + profile) instead of loading every street, subject, and field before the spinner ends.

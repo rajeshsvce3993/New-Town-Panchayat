@@ -390,6 +390,7 @@ export interface InspectionWork {
   documentName?: string | null;
   documentUrl?: string | null;
   submittedAt: string;
+  username?: string;
   submittedByUserName: string;
   submittedByUserId: string;
   status?: string;

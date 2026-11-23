@@ -102,8 +102,6 @@ export default function AddWorkScreen() {
   const [photos, setPhotos] = useState<Record<string, string>>({});
   const [primaryPhoto, setPrimaryPhoto] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
-  const [lat, setLat] = useState(12.7244);
-  const [lng, setLng] = useState(80.1873);
   const [gpsOk, setGpsOk] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submitInFlightRef = useRef(false);
@@ -289,29 +287,24 @@ export default function AddWorkScreen() {
       if (!result.ok) {
         setGpsOk(false);
         if (result.reason === 'permission') {
-          if (forSubmit && lastGpsFixRef.current) {
-            /* submit will use last known coords */
-          } else if (forSubmit) {
-            if (!opts?.silent) {
-              toast(isTamil ? 'ஜிபிஎஸ் அனுமதி தேவை — அனுமதிக்கவும்' : 'Location permission is required — please allow access');
-            }
+          lastGpsFixRef.current = null;
+          if (!opts?.silent || forSubmit) {
+            toast(isTamil ? 'ஜிபிஎஸ் அனுமதி தேவை — அனுமதிக்கவும்' : 'Location permission is required — please allow access');
             openLocationSettings(isTamil);
-          } else if (!opts?.silent) toast(isTamil ? 'GPS அனுமதி தேவை' : 'GPS location permission is required');
+          }
         } else if (result.reason === 'disabled') {
-          if (forSubmit && lastGpsFixRef.current) {
-            /* submit will use last known coords */
-          } else if (forSubmit && !opts?.silent) {
-            openLocationSettings(isTamil);
-          } else if (!opts?.silent) {
+          lastGpsFixRef.current = null;
+          if (!opts?.silent || forSubmit) {
             toast(
               isTamil ? 'உங்கள் சாதனத்தின் ஜிபிஎஸ் முடக்கப்பட்டுள்ளது' : 'Location services are turned off on your device'
             );
+            openLocationSettings(isTamil);
           }
-        } else if (!opts?.silent) {
+        } else if (!opts?.silent || forSubmit) {
           toast(
             isTamil
-              ? 'GPS fix தயாராகவில்லை. வெளியில் சிறிது நேரம் காத்து மீண்டும் Submit செய்யவும்.'
-              : 'GPS fix not ready yet. Wait in open sky for a moment, then tap Submit again.'
+              ? 'GPS இடம் கிடைக்கவில்லை. வெளியில் சிறிது நேரம் காத்திருந்து மீண்டும் முயற்சிக்கவும்.'
+              : 'GPS fix not ready yet. Wait in open sky for a moment, then try again.'
           );
         }
         return null;
@@ -319,8 +312,6 @@ export default function AddWorkScreen() {
 
       const { fix } = result;
       lastGpsFixRef.current = fix;
-      setLat(fix.lat);
-      setLng(fix.lng);
       setGpsOk(true);
       if (!opts?.silent && !forSubmit) {
         const acc = fix.accuracy != null ? ` (±${Math.round(fix.accuracy * 10) / 10}m)` : '';
@@ -350,8 +341,6 @@ export default function AddWorkScreen() {
               const fix = gpsFixFromLocation(loc);
               if (isPlaceholderCoord(fix.lat, fix.lng)) return;
               lastGpsFixRef.current = fix;
-              setLat(fix.lat);
-              setLng(fix.lng);
               setGpsOk(true);
             }
           );
@@ -424,10 +413,21 @@ export default function AddWorkScreen() {
       );
       return;
     }
-    const liveGps = await acquireGps({ forSubmit: true, silent: true });
-    const fallbackFix = lastGpsFixRef.current;
-    const submitLat = liveGps?.lat ?? fallbackFix?.lat ?? lat;
-    const submitLng = liveGps?.lng ?? fallbackFix?.lng ?? lng;
+    const liveGps = await acquireGps({ forSubmit: true, silent: false });
+    const submitLat = liveGps?.lat;
+    const submitLng = liveGps?.lng;
+    if (
+      submitLat == null ||
+      submitLng == null ||
+      isPlaceholderCoord(submitLat, submitLng)
+    ) {
+      toast(
+        isTamil
+          ? 'பணியைச் சேர்க்க ஜிபிஎஸ் இடம் கட்டாயம். இருப்பிட அனுமதியை அனுமதிக்கவும்.'
+          : 'GPS location is required to add work. Please allow location access.'
+      );
+      return;
+    }
     const err = validateVisibleFields({
       fields: visible,
       values: { ...values, ...Object.fromEntries(Object.entries(photos).map(([k, u]) => [k, u])) },
@@ -474,6 +474,9 @@ export default function AddWorkScreen() {
     const ids = nextWorkId(user, portal, ward, { districtId, tpId: activeTpId });
     let actualWorkId = '';
     const { zoneNameEn: zoneName, districtNameEn: districtName, tpNameEn: tpName } = geoLabels;
+    const pickedTp = portalTps.find((t) => t.id === activeTpId);
+    const pickedDist = portalDistricts.find((d) => d.id === districtId);
+    const zoneId = String(pickedTp?.zoneId || pickedDist?.zoneId || user?.zoneId || '').trim();
     const fieldCopy = { ...values };
     let s3 = '';
     const clientWorkId = ensureDraftClientWorkId();
@@ -492,6 +495,10 @@ export default function AddWorkScreen() {
     const newWork: InspectionWork = {
       id: clientWorkId,
       workId: actualWorkId,
+      tpId: activeTpId,
+      townPanchayatId: activeTpId,
+      districtId,
+      zoneId,
       districtCode: ids.distCode,
       tpCode: ids.townCode,
       subjectId,
@@ -514,7 +521,8 @@ export default function AddWorkScreen() {
       imageUrl: s3,
       imageCaption: caption || `Field verification confirmed at Ward ${ward} ${street}.`,
       submittedAt: now12Hr(),
-      submittedByUserName: user?.name || user?.username || 'Field Inspector',
+      username: user?.username || '',
+      submittedByUserName: user?.username || user?.name || 'Field Inspector',
       submittedByUserId: user?.id || user?.username || '',
       status: 'Pending',
     };
@@ -791,8 +799,12 @@ export default function AddWorkScreen() {
           <Pressable
             style={[styles.step, step === 2 && [styles.stepActive, { backgroundColor: palette.primaryContainer, borderColor: palette.primary }]]}
             onPress={() => {
-              ensureDraftClientWorkId();
-              setStep(2);
+              void (async () => {
+                const gps = await acquireGps({ silent: false });
+                if (!gps || isPlaceholderCoord(gps.lat, gps.lng)) return;
+                ensureDraftClientWorkId();
+                setStep(2);
+              })();
             }}
           >
             <View style={[styles.num, { backgroundColor: step === 2 ? palette.primary : '#E2E8F0' }]}>
@@ -856,7 +868,38 @@ export default function AddWorkScreen() {
                 <Ionicons name="layers-outline" size={15} color={palette.primary} />
               </View>
               <Text style={styles.sectionTitle}>{isTamil ? 'பொருள் & வார்டு' : 'Subject & location'}</Text>
+              <Pressable
+                onPress={() => {
+                  void acquireGps({ silent: false });
+                }}
+                style={[styles.gpsChip, { backgroundColor: gpsOk ? '#ECFDF5' : '#FEF3C7' }]}
+              >
+                <Ionicons name="locate" size={12} color={gpsOk ? '#047857' : '#B45309'} />
+                <Text style={{ color: gpsOk ? '#047857' : '#B45309', fontSize: 10, fontWeight: '700', marginLeft: 4 }}>
+                  {gpsOk
+                    ? isTamil
+                      ? 'ஜிபிஎஸ் தயார்'
+                      : 'GPS ready'
+                    : isTamil
+                      ? 'இருப்பிடம் அனுமதி'
+                      : 'Allow location'}
+                </Text>
+              </Pressable>
             </View>
+            {!gpsOk && (
+              <Pressable
+                onPress={() => {
+                  void acquireGps({ silent: false });
+                }}
+                style={[styles.scopeAlert, { marginBottom: 10, paddingVertical: 10 }]}
+              >
+                <Text style={{ fontSize: 12, color: '#92400E', textAlign: 'center', fontWeight: '700' }}>
+                  {isTamil
+                    ? 'பணி சேர்க்க ஜிபிஎஸ் இருப்பிடம் கட்டாயம். அனுமதிக்க இங்கே தட்டவும்.'
+                    : 'GPS location is mandatory to add work. Tap here to allow location.'}
+                </Text>
+              </Pressable>
+            )}
             {dropdown(
               isTamil ? 'மாவட்டம் (District)' : 'Select District',
               districtId,
@@ -931,13 +974,23 @@ export default function AddWorkScreen() {
             <Pressable
               style={[styles.next, { backgroundColor: scopeMissing ? '#94A3B8' : palette.primary }]}
               onPress={() => {
-                if (scopeMissing) {
-                  toast(isTamil ? 'வரம்பு பதிவிறக்கப்படவில்லை. ஆய்வு தொடர முடியாது!' : 'No scope downloaded. Cannot continue!');
-                  return;
-                }
-                void acquireGps({ silent: true });
-                ensureDraftClientWorkId();
-                setStep(2);
+                void (async () => {
+                  if (scopeMissing) {
+                    toast(isTamil ? 'வரம்பு பதிவிறக்கப்படவில்லை. ஆய்வு தொடர முடியாது!' : 'No scope downloaded. Cannot continue!');
+                    return;
+                  }
+                  const gps = await acquireGps({ silent: false });
+                  if (!gps || isPlaceholderCoord(gps.lat, gps.lng)) {
+                    toast(
+                      isTamil
+                        ? 'பணி சேர்க்க ஜிபிஎஸ் இருப்பிடம் கட்டாயம். அனுமதிக்கவும்.'
+                        : 'GPS location is required to add work. Please allow access.'
+                    );
+                    return;
+                  }
+                  ensureDraftClientWorkId();
+                  setStep(2);
+                })();
               }}
             >
               <Text style={styles.btnPrimaryText}>
@@ -962,12 +1015,17 @@ export default function AddWorkScreen() {
                 <Ionicons name="create-outline" size={15} color={palette.primary} />
               </View>
               <Text style={styles.sectionTitle}>{isTamil ? 'பணி விவரம்' : 'Work detail'}</Text>
-              <View style={[styles.gpsChip, { backgroundColor: gpsOk ? '#ECFDF5' : '#FFFBEB' }]}>
+              <Pressable
+                onPress={() => {
+                  void acquireGps({ silent: false });
+                }}
+                style={[styles.gpsChip, { backgroundColor: gpsOk ? '#ECFDF5' : '#FEF3C7' }]}
+              >
                 <Ionicons name="locate" size={12} color={gpsOk ? '#047857' : '#B45309'} />
                 <Text style={{ color: gpsOk ? '#047857' : '#B45309', fontSize: 10, fontWeight: '700', marginLeft: 4 }}>
-                  {gpsOk ? 'GPS' : 'GPS …'}
+                  {gpsOk ? (isTamil ? 'ஜிபிஎஸ் தயார்' : 'GPS ready') : isTamil ? 'இருப்பிடம் அனுமதி' : 'Allow location'}
                 </Text>
-              </View>
+              </Pressable>
             </View>
             {!visible.length && (
               <View style={styles.fieldCard}>

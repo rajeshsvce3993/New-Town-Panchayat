@@ -193,7 +193,7 @@ export async function stampInspectionWorkStreet(
 
   inspector = await enrichInspectorForStreet(db, inspector);
 
-  const tpId = String(work.tpId || work.townPanchayatId || inspector?.tpId || inspector?.townPanchayatId || '').trim();
+  const tpId = String(work.tpId || work.townPanchayatId || '').trim();
   if (!tpId) return work;
 
   if (inspector && assignedWardSet(inspector).size === 0) {

@@ -45,22 +45,25 @@ function preferLive(found?: string | null, prev?: string | null): string {
 export function mergeLookedUpWorkPlace(prev: InspectionWork, found: InspectionWork): InspectionWork {
   const a = prev as GeoWork;
   const b = found as GeoWork;
+  const foundTpId = key(b.tpId || b.townPanchayatId);
+  const samePlace = !!foundTpId && foundTpId === key(a.tpId || a.townPanchayatId);
   return {
     ...prev,
+    ...found,
     fieldsData: { ...(prev.fieldsData || {}), ...(found.fieldsData || {}) },
     imageUrl: found.imageUrl || prev.imageUrl,
     tpId: b.tpId || a.tpId,
     townPanchayatId: b.townPanchayatId || a.townPanchayatId,
     districtId: b.districtId || a.districtId,
     zoneId: b.zoneId || a.zoneId,
-    wardNumber: preferLive(found.wardNumber, prev.wardNumber),
-    streetName: preferLive(found.streetName, prev.streetName),
-    tpNameEn: preferLive(found.tpNameEn, prev.tpNameEn),
-    tpNameTa: preferLive(found.tpNameTa, prev.tpNameTa),
-    districtNameEn: preferLive(found.districtNameEn, prev.districtNameEn),
-    districtNameTa: preferLive(found.districtNameTa, prev.districtNameTa),
-    zoneNameEn: preferLive(found.zoneNameEn, prev.zoneNameEn),
-    zoneNameTa: preferLive(found.zoneNameTa, prev.zoneNameTa),
+    wardNumber: preferLive(found.wardNumber, samePlace ? prev.wardNumber : ''),
+    streetName: preferLive(found.streetName, samePlace ? prev.streetName : ''),
+    tpNameEn: preferLive(found.tpNameEn, samePlace ? prev.tpNameEn : ''),
+    tpNameTa: preferLive(found.tpNameTa, samePlace ? prev.tpNameTa : ''),
+    districtNameEn: preferLive(found.districtNameEn, samePlace ? prev.districtNameEn : ''),
+    districtNameTa: preferLive(found.districtNameTa, samePlace ? prev.districtNameTa : ''),
+    zoneNameEn: preferLive(found.zoneNameEn, samePlace ? prev.zoneNameEn : ''),
+    zoneNameTa: preferLive(found.zoneNameTa, samePlace ? prev.zoneNameTa : ''),
   };
 }
 
@@ -71,14 +74,16 @@ export function resolveWorkPlace(
   streetHint?: string,
 ): { tpName: string; districtName: string; zoneName: string; ward: string; street: string } {
   const row = work as GeoWork;
+  const workTp = liveName(isTamil, work.tpNameTa, work.tpNameEn);
+  const workDistrict = liveName(isTamil, work.districtNameTa, work.districtNameEn);
+  const workZone = liveName(isTamil, work.zoneNameTa, work.zoneNameEn);
   const tp = findById(portal.townPanchayats, row.tpId) || findById(portal.townPanchayats, row.townPanchayatId);
-  const district = findById(portal.districts, row.districtId) || findById(portal.districts, tp?.districtId);
-  const zone = findById(portal.zones, row.zoneId) || findById(portal.zones, tp?.zoneId || district?.zoneId);
+  const district = findById(portal.districts, row.districtId);
+  const zone = findById(portal.zones, row.zoneId);
 
-  const tpName = liveName(isTamil, work.tpNameTa, work.tpNameEn) || liveName(isTamil, tp?.nameTa, tp?.nameEn);
-  const districtName =
-    liveName(isTamil, work.districtNameTa, work.districtNameEn) || liveName(isTamil, district?.nameTa, district?.nameEn);
-  const zoneName = liveName(isTamil, work.zoneNameTa, work.zoneNameEn) || liveName(isTamil, zone?.nameTa, zone?.nameEn);
+  const tpName = workTp || liveName(isTamil, tp?.nameTa, tp?.nameEn);
+  const districtName = workDistrict || liveName(isTamil, district?.nameTa, district?.nameEn);
+  const zoneName = workZone || liveName(isTamil, zone?.nameTa, zone?.nameEn);
 
   const ward = String(work.wardNumber || '').trim();
   const rawStreet = String(streetHint || work.streetName || '').trim();
@@ -91,7 +96,7 @@ export function resolveWorkPlace(
     streetNameTa?: string | null;
   }>;
   const sameTp = (s: { tpId?: string | null; townPanchayatId?: string | null }) =>
-    !tpId || key(s.tpId) === key(tpId) || key(s.townPanchayatId) === key(tpId);
+    !!tpId && (key(s.tpId) === key(tpId) || key(s.townPanchayatId) === key(tpId));
   const streetRow = streets.find(
     (s) =>
       sameTp(s) &&

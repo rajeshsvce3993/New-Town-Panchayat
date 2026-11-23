@@ -6,27 +6,21 @@ function norm(v: unknown): string {
   return String(v ?? '').trim();
 }
 
-function inspectorTpIds(inspector: any): string[] {
-  if (!inspector) return [];
-  return [
-    ...new Set(
-      [
-        inspector.tpId,
-        inspector.townPanchayatId,
-        inspector.scopeId,
-        ...(Array.isArray(inspector.selectedTpIds) ? inspector.selectedTpIds : []),
-        ...(Array.isArray(inspector.townPanchayatIds) ? inspector.townPanchayatIds : []),
-      ]
-        .map(norm)
-        .filter(Boolean),
-    ),
-  ];
-}
-
 function isSingleTpScope(inspector: any): boolean {
   const st = norm(inspector?.scopeType).toLowerCase().replace(/[\s-]+/g, '_');
-  if (st === 'single_tp' || st === 'field_worker' || st === 'townpanchayat' || st === 'tp') return true;
-  return inspectorTpIds(inspector).length === 1;
+  const role = norm(inspector?.roleId || inspector?.role).toLowerCase();
+  if (['zonal', 'zone', 'hod', 'district', 'multi_tp'].includes(st)) return false;
+  if (['role_zonal', 'role_multi_tp', 'role_district'].includes(role)) return false;
+  return (
+    st === 'single_tp' ||
+    st === 'field_worker' ||
+    st === 'field_workers' ||
+    st === 'townpanchayat' ||
+    st === 'tp' ||
+    role === 'role_single_tp' ||
+    role === 'role_field_worker' ||
+    role === 'role_field_workers'
+  );
 }
 
 /** Load only the geo chain needed for one work (not full master scan). */
@@ -98,7 +92,8 @@ export function applyInspectorGeoToWork(work: any, geo: Awaited<ReturnType<typeo
 }
 
 /**
- * Authoritative work geo: submitter's inspectionUsers row → TP → district → zone, then stampWorkGeoFromMasters.
+ * Authoritative work geo: the place selected on the work wins.
+ * Inspector leftover TP/district is used only when the work has no TP and the user is single-TP.
  */
 export async function stampInspectionWorkGeo(
   db: Db,
@@ -108,38 +103,24 @@ export async function stampInspectionWorkGeo(
   if (!work || typeof work !== 'object') return work;
 
   let seeded = { ...work };
-  let masters = { townPanchayats: [] as any[], districts: [] as any[], zones: [] as any[] };
+  const workTpId = norm(work.tpId || work.townPanchayatId);
+  const inspectorMayFill = !workTpId && !!inspector && isSingleTpScope(inspector);
 
-  if (inspector) {
+  if (inspectorMayFill) {
     const geo = await resolveGeoForUser(db, inspector);
-    if (isSingleTpScope(inspector) && geo.tpId) {
-      seeded = applyInspectorGeoToWork(seeded, geo);
-      masters = await loadGeoMastersForWorkStamp(db, {
-        tpId: geo.tpId,
-        districtId: geo.districtId,
-        zoneId: geo.zoneId,
-      });
-      return stampWorkGeoFromMasters(seeded, { ...masters, inspector });
-    }
-    if (geo.tpId || geo.districtId || geo.zoneId) {
-      seeded = applyInspectorGeoToWork(seeded, geo);
-      masters = await loadGeoMastersForWorkStamp(db, {
-        tpId: geo.tpId || seeded.tpId,
-        districtId: geo.districtId || seeded.districtId,
-        zoneId: geo.zoneId || seeded.zoneId,
-      });
-    }
+    if (geo.tpId) seeded = applyInspectorGeoToWork(seeded, geo);
   }
 
-  if (!masters.townPanchayats.length && norm(seeded.tpId || seeded.townPanchayatId)) {
-    masters = await loadGeoMastersForWorkStamp(db, {
-      tpId: norm(seeded.tpId || seeded.townPanchayatId),
-      districtId: norm(seeded.districtId),
-      zoneId: norm(seeded.zoneId),
-    });
-  }
+  const masters = await loadGeoMastersForWorkStamp(db, {
+    tpId: norm(seeded.tpId || seeded.townPanchayatId),
+    districtId: norm(seeded.districtId),
+    zoneId: norm(seeded.zoneId),
+  });
 
-  return stampWorkGeoFromMasters(seeded, { ...masters, inspector: inspector || undefined });
+  return stampWorkGeoFromMasters(seeded, {
+    ...masters,
+    inspector: inspectorMayFill ? inspector : undefined,
+  });
 }
 
 export function workSubmitKeysForUser(user: any): string[] {

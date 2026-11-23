@@ -18,8 +18,9 @@ import {
   getCollectionWithAliases,
   LITE_INSPECTION_WORKS_PROJECTION,
 } from '@/lib/storage';
+import { workBelongsToLogin } from '@/lib/inspectionWorkIdentity';
 import { enqueueInspectionWork } from '@/lib/serverQueue';
-import { getUserScopeDetails } from '@/lib/userScopeCache';
+import { buildLiveUserScope } from '@/lib/services/liveUserScope';
 import { logServerProcess } from '@/lib/serverLogger';
 import { getAppEnv, logPortalEnvironmentOnce } from '@/lib/appEnvironment';
 import { fetchRemotePortalJson, shouldUseRemotePortalApi } from '@/lib/remotePortalApi';
@@ -661,12 +662,7 @@ export async function GET(req: NextRequest) {
       });
     }
     if (username) {
-      const uLower = username.toLowerCase();
-      filtered = filtered.filter((w: any) => {
-        const u = String(w.submittedByUserName || w.username || w.submittedByUserId || '').toLowerCase();
-        const wid = String(w.workId || '').toLowerCase();
-        return u === uLower || u.includes(uLower) || wid.includes(`-${uLower}-`);
-      });
+      filtered = filtered.filter((w: any) => workBelongsToLogin(w, username));
     }
 
     const origin = requestOrigin;
@@ -772,8 +768,7 @@ export async function POST(req: NextRequest) {
       data.submittedByUserName || data.username
     );
 
-    // Validate user scope and fields from live Mongo scope (or legacy cache when LIVE_DATA_ONLY=0)
-    const userScope = await getUserScopeDetails(username);
+    const userScope = await buildLiveUserScope(username, 10_000);
     const isAdmin = ['admin', 'dtpadmin', 'director'].includes(username.toLowerCase());
 
     if (!userScope && !isAdmin) {

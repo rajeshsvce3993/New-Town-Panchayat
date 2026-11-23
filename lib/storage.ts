@@ -18,6 +18,7 @@ import {
 } from '@/lib/geoNameMatch';
 import { applyUserPasswordFields, mergeUserRecordPreservingPassword } from '@/lib/userCredentials';
 import { isLiveDataOnly } from '@/lib/productionFlags';
+import { isLoosePersonName, workBelongsToLogin } from '@/lib/inspectionWorkIdentity';
 
 // Storage paths for local fallback
 const STORAGE_DIR = path.join(process.cwd(), 'data');
@@ -3427,17 +3428,24 @@ export async function syncIssueToS3(issue: any) {
 // Resolve canonical username for an inspection user (from DB or fallback)
 export async function resolveInspectionUsername(userId?: string, userName?: string): Promise<string> {
   const candidate = (userName || userId || '').trim();
+  const identityKeys = [userId, userName]
+    .map((v) => String(v || '').trim())
+    .filter((v) => v && !isLoosePersonName(v));
 
   try {
     const client = await getMongoClient();
     if (client) {
       const db = client.db('dtp_enterprise');
       const orQueries: any[] = [];
-      if (userId && String(userId).trim()) {
-        orQueries.push({ id: String(userId).trim() }, { username: String(userId).trim() }, { employeeId: String(userId).trim() });
-      }
-      if (userName && String(userName).trim()) {
-        orQueries.push({ username: String(userName).trim() }, { name: String(userName).trim() }, { nameEn: String(userName).trim() });
+      for (const k of identityKeys) {
+        orQueries.push(
+          { id: k },
+          { username: k },
+          { username: k.toLowerCase() },
+          { mobile: k },
+          { phone: k },
+          { employeeId: k },
+        );
       }
       if (orQueries.length > 0) {
         const found = await db.collection('inspectionUsers').findOne({ $or: orQueries })
@@ -3460,8 +3468,16 @@ export async function resolveInspectionUsername(userId?: string, userName?: stri
       ...(localDb.employees || [])
     ];
     const found = allUsers.find((u: any) =>
-      (userId && (u.id === userId || u.username?.toLowerCase() === String(userId).toLowerCase() || u.employeeId === userId)) ||
-      (userName && (u.username?.toLowerCase() === String(userName).toLowerCase() || u.name?.toLowerCase() === String(userName).toLowerCase() || u.nameEn?.toLowerCase() === String(userName).toLowerCase()))
+      identityKeys.some((k) => {
+        const n = k.toLowerCase();
+        return (
+          String(u.id || '').toLowerCase() === n ||
+          String(u.username || '').toLowerCase() === n ||
+          String(u.mobile || '') === k ||
+          String(u.phone || '') === k ||
+          String(u.employeeId || '').toLowerCase() === n
+        );
+      })
     );
     if (found && found.username) {
       const u = String(found.username).toLowerCase().replace(/[^a-z0-9_-]/g, '');
@@ -4105,10 +4121,6 @@ export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}
               const docU = String(userDoc.username).toLowerCase();
               orConditions.push({ username: docU }, { submittedByUserName: docU }, { submittedByUserId: docU });
             }
-            if (userDoc.name || userDoc.nameEn) {
-              const docName = String(userDoc.name || userDoc.nameEn).trim();
-              orConditions.push({ submittedByUserName: docName });
-            }
             if (userDoc.mobile) {
               orConditions.push({ submittedByUserName: String(userDoc.mobile) }, { username: String(userDoc.mobile) });
             }
@@ -4161,9 +4173,7 @@ export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}
     if (username) {
       const uLower = String(username).trim().toLowerCase();
       works = works.filter((w: any) => {
-        const u = String(w.submittedByUserName || w.username || w.submittedByUserId || '').toLowerCase();
-        const wid = String(w.workId || '').toLowerCase();
-        return u === uLower || (userId && String(w.submittedByUserId) === String(userId)) || wid.includes(`-${uLower}-`);
+        return workBelongsToLogin(w, username) || (!!userId && workBelongsToLogin(w, String(userId)));
       });
     } else if (tpId) {
       const sTp = String(tpId).trim().toLowerCase();
