@@ -99,6 +99,9 @@ function reportsDataCacheKey(filter: InspectionWorksFilterQuery, limit: number, 
     tpId: filter.tpId ?? '',
     ward: filter.ward ?? '',
     username: filter.username ?? '',
+    userId: filter.userId ?? '',
+    mobile: filter.mobile ?? '',
+    employeeId: filter.employeeId ?? '',
     subjectId: filter.subjectId ?? '',
     categoryId: filter.categoryId ?? '',
     street: filter.street ?? '',
@@ -153,7 +156,7 @@ async function loadRawLiteWorksForReports(
   limit: number
 ): Promise<RawLiteLoadResult> {
   const myWorksOnly =
-    !!filter.username &&
+    !!(filter.username || filter.userId || filter.mobile) &&
     !filter.zoneId &&
     !filter.districtId &&
     !filter.tpId &&
@@ -162,9 +165,12 @@ async function loadRawLiteWorksForReports(
     !filter.scopeDistrictId;
 
   if (myWorksOnly) {
-    const cap = limit > 0 ? Math.min(Math.max(limit, 1), 80) : 80;
+    const cap = limit > 0 ? Math.min(Math.max(limit, 1), 200) : 80;
     const targeted = await getTargetedInspectionWorks({
       username: filter.username || undefined,
+      userId: filter.userId || undefined,
+      mobile: filter.mobile || undefined,
+      employeeId: filter.employeeId || undefined,
       limit: cap,
       lite: true,
     });
@@ -246,8 +252,17 @@ async function loadEnrichedLiteWorksForReportsUncached(
   limit: number
 ): Promise<LiteWorksLoadResult> {
   const raw = await loadRawLiteWorksForReports(requestOrigin, filter, limit);
+  const mine =
+    !!(filter.username || filter.userId || filter.mobile) &&
+    !filter.zoneId &&
+    !filter.districtId &&
+    !filter.tpId;
   return {
-    enriched: raw.rows.length ? enrichReportsCandidateRows(raw.rows, filter, raw.masters) : [],
+    enriched: raw.rows.length
+      ? mine
+        ? raw.rows.map((w) => rewriteWorkMediaFields(w))
+        : enrichReportsCandidateRows(raw.rows, filter, raw.masters)
+      : [],
     masters: raw.masters,
     source: raw.source,
     truncated: raw.truncated,

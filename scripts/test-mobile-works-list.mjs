@@ -8,28 +8,29 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('username my-works lists skip the default today date window', () => {
   const repo = readFileSync(join(root, 'lib/inspectionWorksMongoRepository.ts'), 'utf8');
-  assert.match(repo, /if \(filter\.username\) return filter;/);
+  assert.match(repo, /if \(filter\.username \|\| filter\.userId\) return filter;/);
 });
 
 test('mobile bootstrap fetches the user works all-time, not today only', () => {
   const client = readFileSync(join(root, 'mobile/src/api/client.ts'), 'utf8');
-  assert.match(client, /lite=1&limit=\$\{worksLimit\}&allTime=1/);
+  assert.match(client, /allTime=1/);
+  assert.match(client, /userId=/);
+  assert.match(client, /mobile=/);
   assert.doesNotMatch(client, /includeFields=1&allTime=1/);
 });
 
 test('username lite load uses targeted identity query, not everyone-today fallback', () => {
   const loader = readFileSync(join(root, 'lib/inspectionWorksLiteLoader.ts'), 'utf8');
   assert.match(loader, /myWorksOnly/);
-  assert.match(loader, /getTargetedInspectionWorks\(\{\s*username: filter\.username/);
+  assert.match(loader, /getTargetedInspectionWorks\(\{/);
+  assert.match(loader, /userId: filter\.userId/);
 });
 
-test('dashboard and reports default to All dates so old works are visible', () => {
+test('dashboard and reports keep Today as the default date filter', () => {
   const reports = readFileSync(join(root, 'mobile/app/(tabs)/reports.tsx'), 'utf8');
   const home = readFileSync(join(root, 'mobile/app/(tabs)/index.tsx'), 'utf8');
-  assert.match(reports, /useState\(''\)/);
-  assert.doesNotMatch(reports, /useState\(todayDdMmYyyy\)/);
-  assert.match(home, /useState\(''\)/);
-  assert.doesNotMatch(home, /useState\(todayDdMmYyyy\)/);
+  assert.match(reports, /useState\(todayDdMmYyyy\)/);
+  assert.match(home, /useState\(todayDdMmYyyy\)/);
   assert.match(home, /isListedWorkId/);
 });
 
@@ -49,5 +50,5 @@ test('mongo login identity uses indexed fields first, workId regex only on miss'
   assert.match(identity, /export function loginIdentityWorkIdRegexOr/);
   assert.match(storage, /loginIdentityMongoOr\(uStr/);
   assert.match(storage, /loginIdentityWorkIdRegexOr/);
-  assert.match(route, /loginIdentityMongoOr\(username\)/);
+  assert.match(route, /loginIdentityMongoOr\(username \|\| '', \{ userId, mobile, employeeId \}\)/);
 });

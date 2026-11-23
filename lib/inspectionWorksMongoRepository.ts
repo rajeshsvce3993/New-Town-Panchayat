@@ -127,7 +127,7 @@ export function tpIdsForZone(zoneId: string, masters: InspectionWorksFilterMaste
 export function applyDefaultReportsDateWindow(filter: InspectionWorksFilterQuery): InspectionWorksFilterQuery {
   if (filter.fromDate || filter.toDate || filter.dateParam) return filter;
   // Officer / mobile "my works" lists are all-time unless the client sent dates.
-  if (filter.username) return filter;
+  if (filter.username || filter.userId) return filter;
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kolkata',
     year: 'numeric',
@@ -239,8 +239,12 @@ export function buildInspectionWorksMongoMatch(
     });
   }
 
-  if (filter.username) {
-    const identityOr = loginIdentityMongoOr(filter.username);
+  if (filter.username || filter.userId) {
+    const identityOr = loginIdentityMongoOr(filter.username || '', {
+      userId: filter.userId,
+      mobile: filter.mobile,
+      employeeId: filter.employeeId,
+    });
     if (identityOr.length) and.push({ $or: identityOr });
   }
 

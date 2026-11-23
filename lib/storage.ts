@@ -1752,8 +1752,8 @@ export function enrichUserForApp(user: any, masters?: any): any {
     if (!rawDistStr) return null;
     return (
       districts.find((d: any) =>
-        String(d.id || '').toLowerCase() === rawDistStr ||
-        String(d._id || '').toLowerCase() === rawDistStr ||
+    String(d.id || '').toLowerCase() === rawDistStr ||
+    String(d._id || '').toLowerCase() === rawDistStr ||
         geoNamesEqual(d.nameEn, rawDist) ||
         geoNamesEqual(d.nameTa, rawDist),
       ) || null
@@ -1786,11 +1786,11 @@ export function enrichUserForApp(user: any, masters?: any): any {
     const rawZoneStr = cand.toLowerCase();
     matchedZone = zones.find(
       (z: any) =>
-        String(z.id || '').toLowerCase() === rawZoneStr ||
-        String(z._id || '').toLowerCase() === rawZoneStr ||
+    String(z.id || '').toLowerCase() === rawZoneStr ||
+    String(z._id || '').toLowerCase() === rawZoneStr ||
         geoNamesEqual(z.nameEn, cand) ||
         geoNamesEqual(z.nameTa, cand),
-    );
+  );
     if (matchedZone) break;
   }
 
@@ -2274,12 +2274,12 @@ export async function fetchAllLiteInspectionWorksFromMongo(): Promise<any[] | nu
     const db = await getActiveMongoDb(client);
     const col = await getCollectionWithAliases(db, 'inspectionWorks');
     const items = await col
-      .find({}, { projection: LITE_INSPECTION_WORKS_PROJECTION })
+          .find({}, { projection: LITE_INSPECTION_WORKS_PROJECTION })
       .sort({ _id: -1 })
-      .toArray();
+          .toArray();
     if (!items.length) return null;
     return items.map((item: any) => {
-      const { _id, ...rest } = item;
+        const { _id, ...rest } = item;
       return { id: item.id || item.workId || (_id ? _id.toString() : ''), ...rest };
     });
   } catch (err) {
@@ -3055,9 +3055,9 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
         if (mergedItems.length > 0) {
           await col.insertMany(
             mergedItems.map((item, idx) => {
-              const { id, _id, ...rest } = item;
+            const { id, _id, ...rest } = item;
               const itemId = id || (_id ? String(_id) : `role_${idx}`);
-              return { _id: itemId as any, id: itemId, ...rest };
+            return { _id: itemId as any, id: itemId, ...rest };
             })
           );
         }
@@ -3099,22 +3099,22 @@ export async function saveCollectionData(key: keyof typeof INITIAL_DATA, items: 
         if (looksLikePartialSave) {
           await upsertCollectionDocuments(col, mergedItems, 'u');
         } else {
-          await col.deleteMany({});
-          if (mergedItems.length > 0) {
-            await col.insertMany(
-              mergedItems.map((item, idx) => {
-                const { id, _id, ...rest } = item;
+        await col.deleteMany({});
+        if (mergedItems.length > 0) {
+          await col.insertMany(
+            mergedItems.map((item, idx) => {
+              const { id, _id, ...rest } = item;
                 const itemId = id || (_id ? String(_id) : `users_${idx}_${Date.now()}`);
-                return { _id: itemId as any, id: itemId, ...rest };
-              })
-            );
+              return { _id: itemId as any, id: itemId, ...rest };
+            })
+          );
           }
         }
       } else {
         if (!Array.isArray(items) || items.length === 0) {
           console.warn(`[saveCollectionData] Refusing empty wipe for ${String(key)}`);
-        } else {
-          await col.deleteMany({});
+      } else {
+        await col.deleteMany({});
           await col.insertMany(items.map(item => {
             const { id, _id, ...rest } = item;
             const itemId = id || (_id ? String(_id) : `item_${Date.now()}`);
@@ -3747,12 +3747,12 @@ export async function uploadInspectionMediaToS3(
   );
   if (put.ok) {
     const url = `https://${put.bucket}.s3.${put.region}.amazonaws.com/${s3Key}`;
-    return {
-      success: true,
-      url,
-      s3Key,
-      message: `Successfully saved to AWS S3 at ${s3Key}`,
-    };
+      return {
+        success: true,
+        url,
+        s3Key,
+        message: `Successfully saved to AWS S3 at ${s3Key}`,
+      };
   }
 
   if (allowLocalInspectionUploadFallback(options?.requestOrigin)) {
@@ -4015,6 +4015,8 @@ export async function getNextWorkId(prefixOrUsername: string): Promise<string> {
 export interface TargetedWorksQuery {
   username?: string;
   userId?: string;
+  mobile?: string;
+  employeeId?: string;
   tpId?: string;
   tpNameEn?: string;
   limit?: number;
@@ -4062,7 +4064,7 @@ const MOBILE_LITE_WORK_PROJECTION = {
 
 // Fetch targeted inspection works directly using indexed MongoDB queries (<5ms)
 export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}): Promise<any[]> {
-  const { username, userId, tpId, tpNameEn, limit = 80, todayOnly, lite } = params;
+  const { username, userId, mobile, employeeId, tpId, tpNameEn, limit = 80, todayOnly, lite } = params;
   try {
     const client = await getMongoClient();
     if (client) {
@@ -4070,9 +4072,39 @@ export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}
       const col = await getCollectionWithAliases(db, 'inspectionWorks');
       const orConditions: any[] = [];
 
-      if (username || userId) {
-        const uStr = String(username || '').trim();
-        orConditions.push(...loginIdentityMongoOr(uStr, { userId: userId ? String(userId) : null }));
+      if (username || userId || mobile) {
+        const uStr = String(username || mobile || '').trim();
+        const uLower = uStr.toLowerCase();
+        orConditions.push(
+          ...loginIdentityMongoOr(uStr, {
+            userId: userId ? String(userId) : null,
+            mobile: mobile || null,
+            employeeId: employeeId || null,
+          })
+        );
+        try {
+          const userDoc =
+            (await db.collection('inspectionUsers').findOne({
+              $or: [
+                { username: uLower },
+                { mobile: uStr },
+                { employeeId: uStr },
+                ...(userId ? [{ id: String(userId) }] : []),
+              ],
+            })) ||
+            (await db.collection('users').findOne({
+              $or: [{ username: uLower }, { mobile: uStr }],
+            }));
+          if (userDoc) {
+            orConditions.push(
+              ...loginIdentityMongoOr(String(userDoc.username || ''), {
+                userId: userDoc.id || userDoc._id ? String(userDoc.id || userDoc._id) : null,
+                mobile: userDoc.mobile || null,
+                employeeId: userDoc.employeeId || null,
+              })
+            );
+          }
+        } catch (_) {}
       }
 
       if (orConditions.length === 0 && tpId) {
@@ -4100,10 +4132,24 @@ export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}
       const proj = lite ? { projection: MOBILE_LITE_WORK_PROJECTION } : undefined;
       let works = await col.find(query, proj).sort({ _id: -1 }).limit(maxLim).toArray();
 
-      if (!works.length && (username || userId)) {
-        const regexOr = loginIdentityWorkIdRegexOr(String(username || userId || ''));
-        if (regexOr.length) {
-          works = await col.find({ $or: regexOr }, proj).sort({ _id: -1 }).limit(maxLim).toArray();
+      if (username || userId || mobile) {
+        const regexOr = [
+          ...loginIdentityWorkIdRegexOr(String(username || '')),
+          ...loginIdentityWorkIdRegexOr(String(userId || '')),
+          ...loginIdentityWorkIdRegexOr(String(mobile || '')),
+        ];
+        if (regexOr.length && works.length < maxLim) {
+          const extra = await col.find({ $or: regexOr }, proj).sort({ _id: -1 }).limit(maxLim).toArray();
+          const seen = new Set(works.map((w: any) => String(w.workId || w.id || '')));
+          for (const row of extra) {
+            const key = String(row.workId || row.id || '');
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            works.push(row);
+          }
+          works = works
+            .sort((a: any, b: any) => String(b._id || '').localeCompare(String(a._id || '')))
+            .slice(0, maxLim);
         }
       }
 

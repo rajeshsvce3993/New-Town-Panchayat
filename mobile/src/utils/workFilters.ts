@@ -26,7 +26,7 @@ function isFallbackInspectionWork(w: InspectionWork): boolean {
 
 export function filterUserWorks(works: InspectionWork[], user: AppUser | null | undefined, _mode: 'dashboard' | 'reports'): InspectionWork[] {
   if (!user) return [];
-  return works.filter((work) => !isFallbackInspectionWork(work) && workBelongsToUser(work, user));
+  return works.filter((work) => workBelongsToUser(work, user));
 }
 
 export function filterByDateRange(works: InspectionWork[], fromDateStr: string, toDateStr: string): InspectionWork[] {

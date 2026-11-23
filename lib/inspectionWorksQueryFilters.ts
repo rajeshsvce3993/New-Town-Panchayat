@@ -1,5 +1,5 @@
 import { extractCalendarDateYMD, extractInspectionDateMs } from '@/lib/inspectionDate';
-import { workBelongsToLogin } from '@/lib/inspectionWorkIdentity';
+import { workBelongsToLogin, workBelongsToUserNeedles } from '@/lib/inspectionWorkIdentity';
 import { scalarFieldAnswer } from '@/lib/yesNoAnswer';
 
 export type InspectionWorksFilterQuery = {
@@ -11,6 +11,9 @@ export type InspectionWorksFilterQuery = {
   tpId?: string | null;
   ward?: string | null;
   username?: string | null;
+  userId?: string | null;
+  mobile?: string | null;
+  employeeId?: string | null;
   subjectId?: string | null;
   categoryId?: string | null;
   street?: string | null;
@@ -559,6 +562,9 @@ export function filterInspectionWorksByQuery(
     tpId,
     ward,
     username,
+    userId,
+    mobile,
+    employeeId,
     subjectId,
     categoryId,
     street,
@@ -567,7 +573,9 @@ export function filterInspectionWorksByQuery(
     adminFieldValue,
   } = query;
 
-  list = list.filter((w) => !isFallbackInspectionWork(w));
+  if (!username && !userId && !mobile) {
+    list = list.filter((w) => !isFallbackInspectionWork(w));
+  }
   list = list.filter((w) => workMatchesUserScope(w, query, ctx));
 
   if (fromDate || toDate) {
@@ -600,8 +608,9 @@ export function filterInspectionWorksByQuery(
   if (ward) {
     list = list.filter((w) => workMatchesWard(w, ward));
   }
-  if (username) {
-    list = list.filter((w) => workMatchesUsername(w, username));
+  if (username || userId || mobile || employeeId) {
+    const needles = [username, userId, mobile, employeeId].filter(Boolean) as string[];
+    list = list.filter((w) => workBelongsToUserNeedles(w, needles));
   }
   if (subjectId) {
     list = list.filter((w) => workMatchesSubject(w, subjectId, ctx));
@@ -628,7 +637,10 @@ export function filterInspectionWorksPostMongo(
   query: InspectionWorksFilterQuery,
   ctx: InspectionWorksFilterMasters = {}
 ): any[] {
-  let list = (Array.isArray(works) ? works : []).filter((w) => !isFallbackInspectionWork(w));
+  let list = Array.isArray(works) ? works : [];
+  if (!query.username && !query.userId) {
+    list = list.filter((w) => !isFallbackInspectionWork(w));
+  }
   const { fromDate, toDate, dateParam, street, search, adminFieldId, adminFieldValue, categoryId } = query;
 
   if (fromDate || toDate) {
@@ -676,7 +688,9 @@ export function buildInspectionWorksViewResponse(
     rowsOnly?: boolean;
   }
 ): InspectionWorksViewResult {
-  const baseList = (Array.isArray(rawWorks) ? rawWorks : []).filter((w) => !isFallbackInspectionWork(w));
+  const baseList = (Array.isArray(rawWorks) ? rawWorks : []).filter(
+    (w) => query.username || query.userId || !isFallbackInspectionWork(w)
+  );
 
   let withoutCategory: any[];
   let works: any[] = [];

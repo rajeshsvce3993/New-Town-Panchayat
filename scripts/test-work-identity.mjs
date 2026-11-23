@@ -46,6 +46,24 @@ test('Theni login does not receive Thiruvannamalai works by display name', () =>
   assert.equal(workBelongsToLogin(foreignWork, 'Ramesh Kumar'), false);
 });
 
+test('older work stored with mobile still belongs to the same login', () => {
+  const oldWork = {
+    submittedByUserName: '8870715287',
+    workId: 'TP01041200001',
+  };
+  assert.equal(workBelongsToLogin(oldWork, '8870715287'), true);
+});
+
+test('owner list matches either login username or user id', () => {
+  const ownById = {
+    submittedByUserId: 'iu_theni',
+    submittedByUserName: 'Ramesh Kumar',
+    workId: 'TP01041200001',
+  };
+  assert.equal(workBelongsToLogin(ownById, 'iu_theni'), true);
+  assert.equal(workBelongsToLogin(ownById, '8870715287'), false);
+});
+
 test('exact username / user id still match the owner', () => {
   const own = {
     username: '8870715287',

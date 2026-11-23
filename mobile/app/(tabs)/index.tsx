@@ -64,8 +64,8 @@ export default function DashboardScreen() {
   const { user, palette, isTamil, works, worksHydrated, appIcon, loginLogo, setBrandingUrls, portal } = useApp();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  const [fromDate, setFromDate] = useState(todayDdMmYyyy);
+  const [toDate, setToDate] = useState(todayDdMmYyyy);
   const [picker, setPicker] = useState<'from' | 'to' | null>(null);
   const [queue, setQueue] = useState<QueuedWorkEntry[]>([]);
   const [photo, setPhoto] = useState<string | null>(effectivePhotoUrl(user));

@@ -288,7 +288,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const sid = sessionIdRef.current;
     touch();
     try {
-      const remote = await api.bootstrapProductionPortal(current.username, current, { worksLimit: 80 });
+      const remote = await api.bootstrapProductionPortal(current.username, current, { worksLimit: 200 });
       if (sid !== sessionIdRef.current || !userRef.current) return null;
       const liveSettings = pickReportSettings(await api.getAppSettings());
       const nextPortal: PortalState = {

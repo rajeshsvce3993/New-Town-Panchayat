@@ -1,5 +1,16 @@
 # Agent log
 
+## 2026-11-23 — Older works load like new ones
+
+- New saves store username/user id; older rows often stored mobile / employee id / WRK- only. My-works now queries those aliases (from the login + inspectionUsers) and merges WRK- id hits, so old and new rows for that user load together.
+- Dashboard/Reports still default to **Today**. Tap **All** to see older dates. Deploy API, reload Metro, log out/in.
+
+## 2026-11-23 — Unique-user works list, Today default restored
+
+- Dashboard/Reports default date filter is **Today** again (All remains a chip). The All default was only a workaround and is reverted.
+- Mobile my-works query now matches the login **username and user id**. Owner lists no longer drop rows tagged General Inspection / Field Check. Identity is still login-only (not display name).
+- Tests: `node --test scripts/test-mobile-works-list.mjs`. Reload Metro, deploy API, log out/in.
+
 ## 2026-11-23 — Mobile my-works list and geo stamp
 
 - Mobile “my works” was today-only (`applyDefaultReportsDateWindow` + dashboard/reports defaulting to Today) and then dropped old `TP…` ids (`isAssignedWorkId`). Username GET now skips the today window, bootstrap sends `allTime=1`, targeted identity query is used (no everyone-today fallback), and `isListedWorkId` keeps WRK- and old TP ids. Offline queue still uses WRK- for sync confirmation.

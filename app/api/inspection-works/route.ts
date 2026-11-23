@@ -18,7 +18,7 @@ import {
   getCollectionWithAliases,
   LITE_INSPECTION_WORKS_PROJECTION,
 } from '@/lib/storage';
-import { loginIdentityMongoOr, workBelongsToLogin } from '@/lib/inspectionWorkIdentity';
+import { loginIdentityMongoOr, workBelongsToUserNeedles } from '@/lib/inspectionWorkIdentity';
 import { enqueueInspectionWork } from '@/lib/serverQueue';
 import { buildLiveUserScope } from '@/lib/services/liveUserScope';
 import { logServerProcess } from '@/lib/serverLogger';
@@ -129,6 +129,9 @@ export async function GET(req: NextRequest) {
     const zoneId = viewQuery.zoneId;
     const ward = viewQuery.ward;
     const username = viewQuery.username;
+    const userId = viewQuery.userId;
+    const mobile = viewQuery.mobile;
+    const employeeId = viewQuery.employeeId;
     const lite = viewQuery.lite;
     const lookupId = String(searchParams.get('lookupId') || '').trim();
 
@@ -400,18 +403,18 @@ export async function GET(req: NextRequest) {
               });
 
         if (view.works.length > 0 || (loaded.total ?? 0) > 0 || viewQuery.rowsOnly) {
-          const responsePayload = {
-            success: true,
-            count: view.works.length,
+      const responsePayload = {
+        success: true,
+        count: view.works.length,
             total: loaded.total ?? view.works.length,
             page: loaded.page ?? page,
             pageSize: loaded.pageSize ?? pageSize,
-            works: view.works,
+        works: view.works,
             ...(viewQuery.rowsOnly
               ? {}
               : {
-                  categoryCounts: view.categoryCounts,
-                  totalWithoutCategoryFilter: view.totalWithoutCategoryFilter,
+        categoryCounts: view.categoryCounts,
+        totalWithoutCategoryFilter: view.totalWithoutCategoryFilter,
                 }),
             remoteTotal: loaded.total ?? loaded.enriched.length,
             meta: {
@@ -514,8 +517,8 @@ export async function GET(req: NextRequest) {
             $or: [{ ward: String(ward) }, { wardNumber: String(ward) }, { wardNo: String(ward) }]
           });
         }
-        if (username) {
-          const identityOr = loginIdentityMongoOr(username);
+        if (username || userId || mobile) {
+          const identityOr = loginIdentityMongoOr(username || '', { userId, mobile, employeeId });
           if (identityOr.length) andConditions.push({ $or: identityOr });
         }
 
@@ -580,6 +583,9 @@ export async function GET(req: NextRequest) {
       const limitParam = searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : 0;
       works = (await getTargetedInspectionWorks({
         username: username || undefined,
+        userId: userId || undefined,
+        mobile: mobile || undefined,
+        employeeId: employeeId || undefined,
         tpId: tpId || undefined,
         limit: limitParam > 0 ? limitParam : 100000
       })) || [];
@@ -652,8 +658,9 @@ export async function GET(req: NextRequest) {
         return itemWard === normWard;
       });
     }
-    if (username) {
-      filtered = filtered.filter((w: any) => workBelongsToLogin(w, username));
+    if (username || userId || mobile || employeeId) {
+      const needles = [username, userId, mobile, employeeId].filter(Boolean) as string[];
+      filtered = filtered.filter((w: any) => workBelongsToUserNeedles(w, needles));
     }
 
     const origin = requestOrigin;

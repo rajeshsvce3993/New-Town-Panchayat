@@ -48,31 +48,37 @@ function escapeRegex(value: string): string {
 /** Indexed identity $or. No regex — use this on the mobile list hot path. */
 export function loginIdentityMongoOr(
   login: string,
-  extra?: { userId?: string | null; mobile?: string | null }
+  extra?: { userId?: string | null; mobile?: string | null; employeeId?: string | null }
 ): Record<string, unknown>[] {
-  const uStr = String(login || '').trim();
-  const uLower = uStr.toLowerCase();
+  const seen = new Set<string>();
   const or: Record<string, unknown>[] = [];
-  const push = (field: string, value: string) => {
-    if (!value) return;
-    or.push({ [field]: value });
-    const lower = value.toLowerCase();
-    if (lower !== value) or.push({ [field]: lower });
+  const pushValue = (value: string) => {
+    const raw = String(value || '').trim();
+    if (!raw || isLoosePersonName(raw)) return;
+    const lower = raw.toLowerCase();
+    if (seen.has(lower)) return;
+    seen.add(lower);
+    or.push(
+      { username: raw },
+      { submittedByUserId: raw },
+      { submittedByUserName: raw },
+      { userId: raw },
+      { mobile: raw },
+    );
+    if (lower !== raw) {
+      or.push(
+        { username: lower },
+        { submittedByUserId: lower },
+        { submittedByUserName: lower },
+        { userId: lower },
+        { mobile: lower },
+      );
+    }
   };
-  if (uStr) {
-    push('username', uStr);
-    push('submittedByUserId', uStr);
-    push('submittedByUserName', uStr);
-  }
-  const extraId = String(extra?.userId || '').trim();
-  if (extraId && extraId.toLowerCase() !== uLower) {
-    push('submittedByUserId', extraId);
-  }
-  const extraMobile = String(extra?.mobile || '').trim();
-  if (extraMobile && extraMobile.toLowerCase() !== uLower) {
-    push('username', extraMobile);
-    push('submittedByUserName', extraMobile);
-  }
+  pushValue(login);
+  pushValue(extra?.userId || '');
+  pushValue(extra?.mobile || '');
+  pushValue(extra?.employeeId || '');
   return or;
 }
 
