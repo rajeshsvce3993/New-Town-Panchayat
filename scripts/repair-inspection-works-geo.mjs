@@ -2,15 +2,15 @@
  * Repair inspectionWorks whose zone / district / TP / ward / street drifted from the
  * submitter's assigned Mongo place. Does not use user_scope_cache or display names.
  *
- * Dry-run (default — no writes):
- *   node scripts/repair-inspection-works-geo.mjs
- *   node scripts/repair-inspection-works-geo.mjs 8870715287
+ * Dry-run (default — no writes). On EC2 always load production .env:
+ *   node --env-file=.env scripts/repair-inspection-works-geo.mjs
+ *   node --env-file=.env scripts/repair-inspection-works-geo.mjs 8870715287
  *
  * Apply:
- *   node scripts/repair-inspection-works-geo.mjs --apply
- *   node scripts/repair-inspection-works-geo.mjs 8870715287 --apply
+ *   node --env-file=.env scripts/repair-inspection-works-geo.mjs --apply
+ *   node --env-file=.env scripts/repair-inspection-works-geo.mjs 8870715287 --apply
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MongoClient } from 'mongodb';
@@ -161,15 +161,47 @@ export function streetPatchFromRows(work, rows) {
   return patch;
 }
 
-function loadMongoUri() {
-  if (process.env.MONGODB_URI) return process.env.MONGODB_URI;
-  try {
-    const db = JSON.parse(readFileSync(join(root, 'data/db.json'), 'utf8'));
-    if (db?.settings?.mongodbUri) return db.settings.mongodbUri;
-  } catch {
-    /* local settings optional */
+function loadDotEnvFile(file) {
+  if (!existsSync(file)) return;
+  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const text = line.trim();
+    if (!text || text.startsWith('#')) continue;
+    const eq = text.indexOf('=');
+    if (eq < 1) continue;
+    const name = text.slice(0, eq).trim();
+    let value = text.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (!process.env[name]) process.env[name] = value;
   }
-  return 'mongodb://127.0.0.1:27017/dtp_enterprise';
+}
+
+function mongoHostLabel(uri) {
+  try {
+    const normalized = String(uri)
+      .replace(/^mongodb\+srv:\/\//i, 'https://')
+      .replace(/^mongodb:\/\//i, 'http://');
+    const parsed = new URL(normalized);
+    return `${parsed.hostname}${parsed.port ? `:${parsed.port}` : ''}${parsed.pathname || ''}`;
+  } catch {
+    return '(unparseable Mongo URI)';
+  }
+}
+
+function loadMongoUri() {
+  loadDotEnvFile(join(root, '.env'));
+  loadDotEnvFile(join(process.cwd(), '.env'));
+  const uri = String(process.env.MONGODB_URI || '').trim();
+  if (!uri) {
+    throw new Error(
+      'MONGODB_URI is not set. From the app directory run: node --env-file=.env scripts/repair-inspection-works-geo.mjs 8870715287',
+    );
+  }
+  return uri;
 }
 
 async function findById(col, id) {
@@ -233,7 +265,8 @@ async function main() {
   const apply = process.argv.includes('--apply');
   const onlyUsername = process.argv.slice(2).find((arg) => arg && arg !== '--apply') || '';
   const uri = loadMongoUri();
-  const client = new MongoClient(uri);
+  console.log(`Connecting Mongo ${mongoHostLabel(uri)} (dry-run=${!apply})`);
+  const client = new MongoClient(uri, { serverSelectionTimeoutMS: 12_000 });
   await client.connect();
   const db = client.db();
 
