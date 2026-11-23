@@ -13,7 +13,8 @@ import { prefs } from '../../src/storage/preferences';
 import { QUEUE_STATUS, type InspectionWork, type PortalState, type QueuedWorkEntry } from '../../src/types/models';
 import { todayDdMmYyyy } from '../../src/utils/dates';
 import { normalizeWard, resolveUserTpId } from '../../src/utils/wards';
-import { filterByDateRange, filterUserWorks, sortRecentFirst } from '../../src/utils/workFilters';
+import { filterByDateRange, sortRecentFirst } from '../../src/utils/workFilters';
+import { isListedWorkId } from '../../src/utils/workSaveResult';
 import { resolveWorkPlace } from '../../src/utils/workPlace';
 
 function shortWorkId(workId?: string | null) {
@@ -45,7 +46,7 @@ function queueBadge(status: string, isTamil: boolean) {
 }
 
 export default function ReportsScreen() {
-  const { user, palette, isTamil, works, portal, appIcon } = useApp();
+  const { user, palette, isTamil, works, portal, appIcon, loadMyWorks } = useApp();
   const insets = useSafeAreaInsets();
   const heroEnd = palette.isGradient && palette.gradientColors[1] ? palette.gradientColors[1] : palette.secondary;
   const [tab, setTab] = useState(0);
@@ -95,7 +96,7 @@ export default function ReportsScreen() {
     }, [works])
   );
 
-  const userWorks = useMemo(() => filterUserWorks(works, user, 'reports'), [works, user]);
+  const userWorks = useMemo(() => works.filter((w) => isListedWorkId(w.workId)), [works]);
   const dated = useMemo(() => filterByDateRange(userWorks, fromDate, toDate), [userWorks, fromDate, toDate]);
   const tpId = resolveUserTpId(user, portal.townPanchayats || []);
   const wards = useMemo(() => {
@@ -226,6 +227,7 @@ export default function ReportsScreen() {
               onPress={() => {
                 setFromDate('');
                 setToDate('');
+                void loadMyWorks();
               }}
             >
               <Text style={{ fontSize: 11, fontWeight: '700', color: !fromDate && !toDate ? '#fff' : '#334155' }}>{isTamil ? 'அனைத்தும்' : 'All'}</Text>

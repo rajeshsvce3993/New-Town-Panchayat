@@ -20,7 +20,6 @@ import {
 } from '../services/notifications';
 import { syncPendingWorks } from '../services/queueSync';
 import { dedupeInspectionWorks } from '../utils/dedupeWorks';
-import { filterUserWorks } from '../utils/workFilters';
 import { prefs, profilePhotoFile } from '../storage/preferences';
 import { fetchLiveProfilePhotoUrl } from '../services/userProfilePhoto';
 import { mergeLiveProfileOntoUser } from '../utils/userProfileMerge';
@@ -106,6 +105,7 @@ export interface AppCtx {
   onLoginSuccess: (user: AppUser) => Promise<void>;
   logout: () => Promise<void>;
   refreshPortal: () => Promise<PortalState | null>;
+  loadMyWorks: () => Promise<void>;
   setWorks: React.Dispatch<React.SetStateAction<InspectionWork[]>>;
   updateUserPhoto: (url: string) => Promise<void>;
   saveServerUrl: (url: string) => Promise<void>;
@@ -274,6 +274,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const mergeListedWorks = useCallback((incoming: InspectionWork[]) => {
+    const remoteWorks = incoming.filter((w) => isListedWorkId(w.workId));
+    const remoteIds = new Set(remoteWorks.map((w) => w.id));
+    const remoteWorkIds = new Set(remoteWorks.map((w) => w.workId).filter(Boolean));
+    setWorks((prev) => {
+      const prevById = new Map(prev.map((w) => [w.id, w]));
+      const prevByWorkId = new Map(prev.filter((w) => w.workId).map((w) => [w.workId, w]));
+      const mergedRemote = remoteWorks.map((rw) => {
+        const local = prevByWorkId.get(rw.workId) || prevById.get(rw.id);
+        const localFields = local?.fieldsData && Object.keys(local.fieldsData).length ? local.fieldsData : null;
+        const remoteFields = rw.fieldsData && Object.keys(rw.fieldsData).length ? rw.fieldsData : null;
+        if (!localFields) return rw;
+        return {
+          ...rw,
+          fieldsData: { ...localFields, ...(remoteFields || {}) },
+          imageUrl: rw.imageUrl || local?.imageUrl,
+        };
+      });
+      return dedupeInspectionWorks([
+        ...mergedRemote,
+        ...prev.filter(
+          (w) =>
+            isListedWorkId(w.workId) &&
+            !remoteIds.has(w.id) &&
+            !remoteWorkIds.has(w.workId)
+        ),
+      ]);
+    });
+  }, []);
+
+  const loadMyWorks = useCallback(async () => {
+    const current = userRef.current;
+    if (!current?.username) return;
+    const rows = await api.fetchMyInspectionWorks(current, { limit: 200 });
+    mergeListedWorks(rows);
+  }, [mergeListedWorks]);
+
   const refreshPortal = useCallback(async (): Promise<PortalState | null> => {
     const current = userRef.current;
     if (!current) {
@@ -301,35 +338,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setPortal(nextPortal);
       await prefs.setPortal(nextPortal);
       if (sid !== sessionIdRef.current || !userRef.current) return nextPortal;
-      const remoteWorks = filterUserWorks(portalWorks(remote), current, 'reports').filter((w) =>
-        isListedWorkId(w.workId)
-      );
-      const remoteIds = new Set(remoteWorks.map((w) => w.id));
-      const remoteWorkIds = new Set(remoteWorks.map((w) => w.workId).filter(Boolean));
-      setWorks((prev) => {
-        const prevById = new Map(prev.map((w) => [w.id, w]));
-        const prevByWorkId = new Map(prev.filter((w) => w.workId).map((w) => [w.workId, w]));
-        const mergedRemote = remoteWorks.map((rw) => {
-          const local = prevByWorkId.get(rw.workId) || prevById.get(rw.id);
-          const localFields = local?.fieldsData && Object.keys(local.fieldsData).length ? local.fieldsData : null;
-          const remoteFields = rw.fieldsData && Object.keys(rw.fieldsData).length ? rw.fieldsData : null;
-          if (!localFields) return rw;
-          return {
-            ...rw,
-            fieldsData: { ...localFields, ...(remoteFields || {}) },
-            imageUrl: rw.imageUrl || local?.imageUrl,
-          };
-        });
-        return dedupeInspectionWorks([
-          ...mergedRemote,
-          ...prev.filter(
-            (w) =>
-              isListedWorkId(w.workId) &&
-              !remoteIds.has(w.id) &&
-              !remoteWorkIds.has(w.workId)
-          ),
-        ]);
-      });
+      mergeListedWorks(portalWorks(remote));
       const resolve = (raw?: string | null) => {
         if (!raw?.trim()) return '';
         if (raw.startsWith('http')) return raw;
@@ -411,7 +420,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         void refreshPortal();
       }
     }
-  }, [touch, applyUser]);
+  }, [touch, applyUser, mergeListedWorks]);
 
   useEffect(() => {
     if (!ready || !user?.username) return;
@@ -657,6 +666,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       onLoginSuccess,
       logout,
       refreshPortal,
+      loadMyWorks,
       setWorks,
       updateUserPhoto,
       saveServerUrl,
@@ -700,6 +710,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       onLoginSuccess,
       logout,
       refreshPortal,
+      loadMyWorks,
       update,
       updateUserPhoto,
       saveServerUrl,

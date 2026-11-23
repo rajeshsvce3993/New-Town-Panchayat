@@ -324,6 +324,27 @@ export const api = {
     };
   },
 
+  async fetchMyInspectionWorks(user: AppUser, opts?: { limit?: number }): Promise<InspectionWork[]> {
+    const limit = Math.min(Math.max(opts?.limit ?? 200, 20), 200);
+    const u = String(user?.username || '').trim();
+    if (!u) return [];
+    const q = new URLSearchParams();
+    q.set('username', u);
+    if (user.id) q.set('userId', String(user.id));
+    if (user.mobile) q.set('mobile', String(user.mobile));
+    if (user.employeeId) q.set('employeeId', String(user.employeeId));
+    q.set('lite', '1');
+    q.set('limit', String(limit));
+    q.set('allTime', '1');
+    const res = await fetchWithTimeout(
+      `${baseUrl}/api/inspection-works?${q.toString()}`,
+      { headers: { ...mobileClientHeaders(), 'Cache-Control': 'no-cache' } },
+      BOOTSTRAP_API_TIMEOUT_MS,
+    );
+    const json = (await res.json().catch(() => ({}))) as { works?: InspectionWork[] };
+    return Array.isArray(json.works) ? json.works : [];
+  },
+
   async getAppSettings(): Promise<Record<string, unknown>> {
     try {
       const live = await fetchWithTimeout(

@@ -32,7 +32,7 @@ import {
 import { formatTo12Hr, todayDdMmYyyy } from '../../src/utils/dates';
 import { resolveProfilePlace } from '../../src/utils/profilePlace';
 import { normalizeWard } from '../../src/utils/wards';
-import { filterByDateRange, filterUserWorks, sortRecentFirst } from '../../src/utils/workFilters';
+import { filterByDateRange, sortRecentFirst } from '../../src/utils/workFilters';
 import { isListedWorkId } from '../../src/utils/workSaveResult';
 
 function withAlpha(hex: string, a: number) {
@@ -61,7 +61,7 @@ function queueStatusColor(status: string) {
 
 
 export default function DashboardScreen() {
-  const { user, palette, isTamil, works, worksHydrated, appIcon, loginLogo, setBrandingUrls, portal } = useApp();
+  const { user, palette, isTamil, works, worksHydrated, appIcon, loginLogo, setBrandingUrls, portal, loadMyWorks } = useApp();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [fromDate, setFromDate] = useState(todayDdMmYyyy);
@@ -164,7 +164,7 @@ export default function DashboardScreen() {
     };
   }, [user?.id, user?.username, user?.profilePhotoUrl, user?.avatarUrl]);
 
-  const userWorks = useMemo(() => filterUserWorks(works, user, 'dashboard'), [works, user]);
+  const userWorks = useMemo(() => works.filter((w) => isListedWorkId(w.workId)), [works]);
   const filtered = useMemo(() => sortRecentFirst(filterByDateRange(userWorks, fromDate, toDate)), [userWorks, fromDate, toDate]);
   const totalCount = filtered.length;
   const submittedWorks = useMemo(
@@ -449,6 +449,7 @@ export default function DashboardScreen() {
                   onPress={() => {
                     setFromDate('');
                     setToDate('');
+                    void loadMyWorks();
                   }}
                 >
                   <Text style={{ fontSize: 11, fontWeight: '700', color: allDates ? '#fff' : '#334155' }}>{isTamil ? 'அனைத்தும்' : 'All'}</Text>
