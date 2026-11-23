@@ -219,7 +219,7 @@ export const api = {
       this.getAppSettings(),
       this.getMobileConfig(),
       fetchWithTimeout(
-        `${baseUrl}/api/inspection-works?username=${encodeURIComponent(u)}&lite=1&limit=${worksLimit}&includeFields=1`,
+        `${baseUrl}/api/inspection-works?username=${encodeURIComponent(u)}&lite=1&limit=${worksLimit}&allTime=1`,
         { headers: { ...mobileClientHeaders(), 'Cache-Control': 'no-cache' } },
         BOOTSTRAP_API_TIMEOUT_MS,
       ),

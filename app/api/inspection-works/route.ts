@@ -18,7 +18,7 @@ import {
   getCollectionWithAliases,
   LITE_INSPECTION_WORKS_PROJECTION,
 } from '@/lib/storage';
-import { workBelongsToLogin } from '@/lib/inspectionWorkIdentity';
+import { loginIdentityMongoOr, workBelongsToLogin } from '@/lib/inspectionWorkIdentity';
 import { enqueueInspectionWork } from '@/lib/serverQueue';
 import { buildLiveUserScope } from '@/lib/services/liveUserScope';
 import { logServerProcess } from '@/lib/serverLogger';
@@ -515,17 +515,8 @@ export async function GET(req: NextRequest) {
           });
         }
         if (username) {
-          const uStr = String(username).trim();
-          andConditions.push({
-            $or: [
-              { submittedByUserName: uStr },
-              { submittedByUserName: uStr.toLowerCase() },
-              { username: uStr },
-              { username: uStr.toLowerCase() },
-              { submittedByUserId: uStr },
-              { submittedByUserName: { $regex: new RegExp(`^${uStr}$`, 'i') } },
-            ]
-          });
+          const identityOr = loginIdentityMongoOr(username);
+          if (identityOr.length) andConditions.push({ $or: identityOr });
         }
 
         // Lite/report responses apply date filters in memory (Asia/Kolkata calendar dates).

@@ -1,4 +1,5 @@
 import type { InspectionWorksFilterMasters, InspectionWorksFilterQuery } from '@/lib/inspectionWorksQueryFilters';
+import { loginIdentityMongoOr } from '@/lib/inspectionWorkIdentity';
 import {
   getActiveMongoDb,
   getCollectionWithAliases,
@@ -125,6 +126,8 @@ export function tpIdsForZone(zoneId: string, masters: InspectionWorksFilterMaste
 
 export function applyDefaultReportsDateWindow(filter: InspectionWorksFilterQuery): InspectionWorksFilterQuery {
   if (filter.fromDate || filter.toDate || filter.dateParam) return filter;
+  // Officer / mobile "my works" lists are all-time unless the client sent dates.
+  if (filter.username) return filter;
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Kolkata',
     year: 'numeric',
@@ -237,18 +240,8 @@ export function buildInspectionWorksMongoMatch(
   }
 
   if (filter.username) {
-    const u = normId(filter.username);
-    const lower = u.toLowerCase();
-    and.push({
-      $or: [
-        { submittedByUserName: u },
-        { submittedByUserName: lower },
-        { username: u },
-        { username: lower },
-        { submittedByUserId: u },
-        { submittedByUserName: { $regex: new RegExp(`^${u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
-      ],
-    });
+    const identityOr = loginIdentityMongoOr(filter.username);
+    if (identityOr.length) and.push({ $or: identityOr });
   }
 
   if (filter.subjectId) {

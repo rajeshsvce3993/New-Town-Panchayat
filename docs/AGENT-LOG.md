@@ -1,5 +1,12 @@
 # Agent log
 
+## 2026-11-23 — Mobile my-works list and geo stamp
+
+- Mobile “my works” was today-only (`applyDefaultReportsDateWindow` + dashboard/reports defaulting to Today) and then dropped old `TP…` ids (`isAssignedWorkId`). Username GET now skips the today window, bootstrap sends `allTime=1`, targeted identity query is used (no everyone-today fallback), and `isListedWorkId` keeps WRK- and old TP ids. Offline queue still uses WRK- for sync confirmation.
+- Geo stamp `byId` matches any master id (not only `tp_`/`z_`/`d_`). Inspector leftover TP is not applied when the work already has a `tpId`.
+- Tests: `node --test scripts/test-mobile-works-list.mjs scripts/test-stamp-work-geo.mjs scripts/test-work-identity.mjs`. Deploy API, then log out/in on the app (APK only if you need the All-dates default and `allTime=1`; API deploy covers the today-window hide).
+- Login list query is indexed identity only (80 rows, no fieldsData, no master scan, no workId regex unless the first query is empty).
+
 ## 2026-11-23 — Field-worker ward picker on create user
 
 - Creating a field-worker inspection user now loads wards for the selected TP from `/api/masters/geo` (`ensureWards`). Portal state no longer has a full `wardsAndStreets` dump, so the old in-memory list was empty.

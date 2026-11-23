@@ -18,7 +18,7 @@ import {
 } from '@/lib/geoNameMatch';
 import { applyUserPasswordFields, mergeUserRecordPreservingPassword } from '@/lib/userCredentials';
 import { isLiveDataOnly } from '@/lib/productionFlags';
-import { isLoosePersonName, workBelongsToLogin } from '@/lib/inspectionWorkIdentity';
+import { isLoosePersonName, loginIdentityMongoOr, loginIdentityWorkIdRegexOr, workBelongsToLogin } from '@/lib/inspectionWorkIdentity';
 
 // Storage paths for local fallback
 const STORAGE_DIR = path.join(process.cwd(), 'data');
@@ -4056,7 +4056,6 @@ const MOBILE_LITE_WORK_PROJECTION = {
   imageUrl: 1,
   imageCaption: 1,
   documentUrl: 1,
-  fieldsData: 1,
   latitude: 1,
   longitude: 1,
 } as const;
@@ -4073,66 +4072,7 @@ export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}
 
       if (username || userId) {
         const uStr = String(username || '').trim();
-        const uLower = uStr.toLowerCase();
-        const uClean = uLower.replace(/^tp01/g, '').replace(/^tp/g, '').replace(/[^a-z0-9_-]/g, '');
-
-        if (uStr) {
-          orConditions.push(
-            { submittedByUserName: uStr },
-            { submittedByUserName: uLower },
-            { username: uStr },
-            { username: uLower },
-            { submittedByUserId: uStr },
-            { submittedByUserId: uLower }
-          );
-        }
-
-        if (userId) {
-          orConditions.push(
-            { submittedByUserId: String(userId) },
-            { submittedByUserId: String(userId).toLowerCase() },
-            { id: String(userId) }
-          );
-        }
-
-        if (uClean) {
-          orConditions.push({ workId: { $regex: new RegExp(`WRK-${uClean}-`, 'i') } });
-          orConditions.push({ workId: { $regex: new RegExp(`-${uClean}-`, 'i') } });
-        }
-
-        // Search in inspectionUsers or users collection to find user's other aliases (name, mobile, employeeId)
-        try {
-          const userDoc = await db.collection('inspectionUsers').findOne({
-            $or: [
-              { username: uLower },
-              { mobile: uStr },
-              { employeeId: uStr },
-              ...(userId ? [{ id: String(userId) }] : [])
-            ]
-          }) || await db.collection('users').findOne({
-            $or: [
-              { username: uLower },
-              { mobile: uStr }
-            ]
-          });
-
-          if (userDoc) {
-            if (userDoc.username) {
-              const docU = String(userDoc.username).toLowerCase();
-              orConditions.push({ username: docU }, { submittedByUserName: docU }, { submittedByUserId: docU });
-            }
-            if (userDoc.mobile) {
-              orConditions.push({ submittedByUserName: String(userDoc.mobile) }, { username: String(userDoc.mobile) });
-            }
-            if (userDoc.employeeId) {
-              orConditions.push({ submittedByUserId: String(userDoc.employeeId) });
-            }
-            if (userDoc.id || userDoc._id) {
-              const docId = String(userDoc.id || userDoc._id);
-              orConditions.push({ submittedByUserId: docId });
-            }
-          }
-        } catch (_) {}
+        orConditions.push(...loginIdentityMongoOr(uStr, { userId: userId ? String(userId) : null }));
       }
 
       if (orConditions.length === 0 && tpId) {
@@ -4157,8 +4097,15 @@ export async function getTargetedInspectionWorks(params: TargetedWorksQuery = {}
       }
 
       const maxLim = Math.min(Math.max(limit > 0 ? limit : 80, 1), 200);
-      const findCursor = col.find(query, lite ? { projection: MOBILE_LITE_WORK_PROJECTION } : undefined);
-      const works = await findCursor.sort({ _id: -1 }).limit(maxLim).toArray();
+      const proj = lite ? { projection: MOBILE_LITE_WORK_PROJECTION } : undefined;
+      let works = await col.find(query, proj).sort({ _id: -1 }).limit(maxLim).toArray();
+
+      if (!works.length && (username || userId)) {
+        const regexOr = loginIdentityWorkIdRegexOr(String(username || userId || ''));
+        if (regexOr.length) {
+          works = await col.find({ $or: regexOr }, proj).sort({ _id: -1 }).limit(maxLim).toArray();
+        }
+      }
 
       return works.map((w: any) => ({ ...w, id: w.id || (w._id ? String(w._id) : '') }));
     }
@@ -4420,7 +4367,7 @@ async function stampWorkGeoForSave(work: any): Promise<any> {
     townPanchayats,
     districts,
     zones,
-    inspector: inspector || undefined,
+    inspector: workHasMasterTpId(canonical) ? undefined : inspector || undefined,
   });
 }
 

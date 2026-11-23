@@ -52,8 +52,8 @@ export default function ReportsScreen() {
   const [search, setSearch] = useState('');
   const [ward, setWard] = useState('all');
   const [street, setStreet] = useState('all');
-  const [fromDate, setFromDate] = useState(todayDdMmYyyy);
-  const [toDate, setToDate] = useState(todayDdMmYyyy);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [picker, setPicker] = useState<'from' | 'to' | null>(null);
   const [detail, setDetail] = useState<InspectionWork | null>(null);
   const [queued, setQueued] = useState<QueuedWorkEntry[]>([]);

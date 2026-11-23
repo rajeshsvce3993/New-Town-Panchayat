@@ -152,6 +152,31 @@ async function loadRawLiteWorksForReports(
   filter: InspectionWorksFilterQuery,
   limit: number
 ): Promise<RawLiteLoadResult> {
+  const myWorksOnly =
+    !!filter.username &&
+    !filter.zoneId &&
+    !filter.districtId &&
+    !filter.tpId &&
+    !filter.scopeTpId &&
+    !filter.scopeZoneId &&
+    !filter.scopeDistrictId;
+
+  if (myWorksOnly) {
+    const cap = limit > 0 ? Math.min(Math.max(limit, 1), 80) : 80;
+    const targeted = await getTargetedInspectionWorks({
+      username: filter.username || undefined,
+      limit: cap,
+      lite: true,
+    });
+    return {
+      rows: targeted || [],
+      masters: {},
+      source: targeted?.length ? 'mongo-scoped' : 'empty',
+      truncated: false,
+      appliedDateWindow: false,
+    };
+  }
+
   const masters = await resolveInspectionFilterMasters(requestOrigin);
   const projection = reportsMongoProjection(filter);
 

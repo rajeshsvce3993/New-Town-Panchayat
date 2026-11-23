@@ -28,7 +28,7 @@ import { mergeScopeMastersIntoPortal } from '../utils/portalMasters';
 import { DEFAULT_PALETTE_ID, getPaletteById, type AppPalette } from '../theme/palettes';
 import type { AppUser, InspectionWork, LoginRequest, LoginResponse, PortalState, UserScopeData } from '../types/models';
 import { emptyPortal, portalWorks } from '../types/models';
-import { isAssignedWorkId } from '../utils/workSaveResult';
+import { isAssignedWorkId, isListedWorkId } from '../utils/workSaveResult';
 import { currentLoginSessionPeriod, todayYyyyMmDd } from '../utils/dates';
 
 function toast(msg: string) {
@@ -302,7 +302,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       await prefs.setPortal(nextPortal);
       if (sid !== sessionIdRef.current || !userRef.current) return nextPortal;
       const remoteWorks = filterUserWorks(portalWorks(remote), current, 'reports').filter((w) =>
-        isAssignedWorkId(w.workId)
+        isListedWorkId(w.workId)
       );
       const remoteIds = new Set(remoteWorks.map((w) => w.id));
       const remoteWorkIds = new Set(remoteWorks.map((w) => w.workId).filter(Boolean));
@@ -324,7 +324,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           ...mergedRemote,
           ...prev.filter(
             (w) =>
-              isAssignedWorkId(w.workId) &&
+              isListedWorkId(w.workId) &&
               !remoteIds.has(w.id) &&
               !remoteWorkIds.has(w.workId)
           ),
