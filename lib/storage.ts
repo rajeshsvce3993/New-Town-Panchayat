@@ -4285,9 +4285,9 @@ const INSPECTOR_GEO_TTL_MS = 5 * 60 * 1000;
 const INSPECTOR_GEO_CACHE_MAX = 200;
 
 async function findInspectorForGeoStamp(work: any): Promise<any | null> {
-  const keys = [work?.submittedByUserId, work?.submittedByUserName, work?.username, work?.userId]
+  const keys = [work?.username, work?.submittedByUserId, work?.userId, work?.mobile]
     .map((value) => String(value || '').trim())
-    .filter(Boolean);
+    .filter((value) => value && !isLoosePersonName(value));
   if (!keys.length) return null;
   const cacheKey = keys.join('|').toLowerCase();
   const cached = inspectorGeoCache.get(cacheKey);
@@ -4314,6 +4314,8 @@ async function findInspectorForGeoStamp(work: any): Promise<any | null> {
             zoneId: 1,
             tpCode: 1,
             scopeType: 1,
+            role: 1,
+            roleId: 1,
             assignedWards: 1,
             selectedWards: 1,
           },

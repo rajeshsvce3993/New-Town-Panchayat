@@ -27,11 +27,27 @@ function idVariants(id: string): string[] {
 }
 
 function userTownPanchayatIds(user: any): string[] {
+  const st = scopeTypeKey(user?.scopeType);
+  const role = inspectionRoleKey(user);
+  const single = norm(user.tpId || user.townPanchayatId || user.assignedTpId);
+  if (
+    st === 'single_tp' ||
+    st === 'field_worker' ||
+    st === 'field_workers' ||
+    st === 'townpanchayat' ||
+    st === 'tp' ||
+    role === 'role_single_tp' ||
+    role === 'role_field_worker' ||
+    role === 'role_field_workers' ||
+    role === 'single_tp' ||
+    role === 'field_worker'
+  ) {
+    return single ? [single] : [];
+  }
   const fromArrays = [
     ...(Array.isArray(user.townPanchayatIds) ? user.townPanchayatIds : []),
     ...(Array.isArray(user.selectedTpIds) ? user.selectedTpIds : []),
   ].map(norm).filter(Boolean);
-  const single = norm(user.tpId || user.townPanchayatId || user.assignedTpId);
   return [...new Set(single ? [single, ...fromArrays] : fromArrays)];
 }
 
@@ -48,7 +64,7 @@ function uniqueById(rows: any[]): any[] {
 }
 
 function inspectionRoleKey(user: any): string {
-  return String(user?.roleId || '')
+  return String(user?.roleId || user?.role || '')
     .toLowerCase()
     .trim()
     .replace(/[\s_-]+/g, '_');
@@ -62,7 +78,13 @@ export function resolveInspectionScopeKind(user: any): InspectionScopeKind {
   if (roleKey === 'role_field_worker' || roleKey === 'role_field_workers' || st === 'field_worker' || st === 'field_workers') {
     return 'field_worker';
   }
-  if (roleKey === 'role_single_tp' || st === 'single_tp' || st === 'townpanchayat' || st === 'tp') {
+  if (
+    roleKey === 'role_single_tp' ||
+    roleKey === 'single_tp' ||
+    st === 'single_tp' ||
+    st === 'townpanchayat' ||
+    st === 'tp'
+  ) {
     return 'single_tp';
   }
   if (roleKey === 'role_multi_tp' || st === 'multi_tp') return 'multi_tp';

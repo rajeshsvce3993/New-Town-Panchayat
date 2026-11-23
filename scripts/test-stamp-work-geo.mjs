@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,4 +54,12 @@ test('inspector leftover TP is not copied when the work already has a tpId', () 
   assert.equal(stamped.tpId, 'unknown-selected-tp');
   assert.notEqual(stamped.tpId, 'tp_leftover');
   assert.notEqual(stamped.districtId, 'dist_tvmalai');
+});
+
+test('single-TP save overwrites leftover Kilpennathur tpId with assigned place', () => {
+  const geo = readFileSync(join(root, 'lib/inspectionWorkGeoStamp.ts'), 'utf8');
+  const scope = readFileSync(join(root, 'lib/inspectionScopeMasters.ts'), 'utf8');
+  assert.match(geo, /inspectorAssignedWins/);
+  assert.match(geo, /export function isSingleTpScope/);
+  assert.match(scope, /return single \? \[single\] : \[\]/);
 });

@@ -1,5 +1,10 @@
 # Agent log
 
+## 2026-11-23 — Theni/Thevaram single-TP leftover Kilpennathur
+
+- Login `8870715287` is Theni / Theni / Thevaram. Saves were keeping leftover Kilpennathur `tpId` on the work. Single-TP stamp now always writes the assigned place; scope lists only `tpId` (not leftover `selectedTpIds`). Repair script also restores login username on those rows so last-week works list.
+- Tests: `node --test scripts/test-stamp-work-geo.mjs scripts/test-work-identity.mjs`. Deploy API, then on production Mongo: `node --env-file=.env scripts/repair-inspection-works-geo.mjs 8870715287 --apply`.
+
 ## 2026-11-23 — All history + work details for older ids
 
 - Details lookup no longer drops a work unless its id is `WRK-`. GET lookup matches `id` / `workId` / Mongo `_id` and WRK↔TP variants, then rewrites media so the modal can show images, table fields, and place.

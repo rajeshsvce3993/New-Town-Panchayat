@@ -99,7 +99,7 @@ test('source no longer uses includes() username matching or name-based inspector
   assert.match(filters, /workBelongsToLogin/);
   assert.doesNotMatch(filters, /u\.includes\(uLower\)/);
   assert.doesNotMatch(storage, /nameEn: String\(userName\)/);
-  assert.match(geo, /inspectorMayFill/);
+  assert.match(geo, /inspectorAssignedWins/);
   assert.match(mobile, /workBelongsToUser/);
   assert.match(addWork, /tpId: activeTpId/);
   assert.match(addWork, /username: user\?\.username/);

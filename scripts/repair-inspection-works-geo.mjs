@@ -104,6 +104,20 @@ export function geoDiffers(work, patch) {
   return Object.keys(patch).some((field) => norm(work?.[field]) !== norm(patch[field]));
 }
 
+export function identityPatchFromUser(work, user) {
+  const patch = {};
+  const username = norm(user?.username);
+  const userId = norm(user?.id);
+  const mobile = norm(user?.mobile);
+  if (username && key(work?.username) !== key(username)) patch.username = username;
+  const owner = key(work?.submittedByUserId);
+  if (userId && owner !== key(userId) && owner !== key(username) && owner !== key(mobile)) {
+    patch.submittedByUserId = userId;
+  }
+  if (mobile && !norm(work?.mobile)) patch.mobile = mobile;
+  return patch;
+}
+
 export function pickTargetTp(work, allowedTps, scope) {
   if (!allowedTps.length) return null;
   const workTpId = norm(work?.tpId || work?.townPanchayatId);
@@ -256,7 +270,12 @@ export async function planWorkRepair(db, work, user, allowedTps, scope) {
   const geo = geoPatchFromMasters(target, dist, zone);
   const streets = await streetRowsForTp(db, target.id);
   const street = streetPatchFromRows(work, streets);
-  const patch = { ...(geoDiffers(work, geo) ? geo : {}), ...(street && geoDiffers(work, street) ? street : {}) };
+  const identity = identityPatchFromUser(work, user);
+  const patch = {
+    ...(geoDiffers(work, geo) ? geo : {}),
+    ...(street && geoDiffers(work, street) ? street : {}),
+    ...identity,
+  };
   if (!Object.keys(patch).length) return { skip: 'already_correct' };
   return { patch, targetTp: target.nameEn || target.id };
 }

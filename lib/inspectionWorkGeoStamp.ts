@@ -6,21 +6,34 @@ function norm(v: unknown): string {
   return String(v ?? '').trim();
 }
 
-function isSingleTpScope(inspector: any): boolean {
+export function isSingleTpScope(inspector: any): boolean {
   const st = norm(inspector?.scopeType).toLowerCase().replace(/[\s-]+/g, '_');
-  const role = norm(inspector?.roleId || inspector?.role).toLowerCase();
+  const role = norm(inspector?.roleId || inspector?.role).toLowerCase().replace(/[\s-]+/g, '_');
   if (['zonal', 'zone', 'hod', 'district', 'multi_tp'].includes(st)) return false;
-  if (['role_zonal', 'role_multi_tp', 'role_district'].includes(role)) return false;
-  return (
+  if (['role_zonal', 'role_multi_tp', 'role_district', 'zonal'].includes(role)) return false;
+  if (
     st === 'single_tp' ||
     st === 'field_worker' ||
     st === 'field_workers' ||
     st === 'townpanchayat' ||
-    st === 'tp' ||
+    st === 'tp'
+  ) {
+    return true;
+  }
+  if (
     role === 'role_single_tp' ||
     role === 'role_field_worker' ||
-    role === 'role_field_workers'
-  );
+    role === 'role_field_workers' ||
+    role === 'single_tp' ||
+    role === 'field_worker'
+  ) {
+    return true;
+  }
+  const tp = norm(inspector?.tpId || inspector?.townPanchayatId);
+  const selected = Array.isArray(inspector?.selectedTpIds)
+    ? inspector.selectedTpIds.map((id: unknown) => norm(id)).filter(Boolean)
+    : [];
+  return !!tp && selected.length <= 1;
 }
 
 /** Load only the geo chain needed for one work (not full master scan). */
@@ -92,8 +105,9 @@ export function applyInspectorGeoToWork(work: any, geo: Awaited<ReturnType<typeo
 }
 
 /**
- * Authoritative work geo: the place selected on the work wins.
- * Inspector leftover TP/district is used only when the work has no TP and the user is single-TP.
+ * Authoritative work geo: single-TP / field-worker always uses the inspector's assigned
+ * Theni/Thevaram (etc.) place. Leftover Kilpennathur tpId on the payload is overwritten.
+ * Zonal / multi-TP keep the TP selected on the work.
  */
 export async function stampInspectionWorkGeo(
   db: Db,
@@ -103,10 +117,9 @@ export async function stampInspectionWorkGeo(
   if (!work || typeof work !== 'object') return work;
 
   let seeded = { ...work };
-  const workTpId = norm(work.tpId || work.townPanchayatId);
-  const inspectorMayFill = !workTpId && !!inspector && isSingleTpScope(inspector);
+  const inspectorAssignedWins = !!inspector && isSingleTpScope(inspector);
 
-  if (inspectorMayFill) {
+  if (inspectorAssignedWins) {
     const geo = await resolveGeoForUser(db, inspector);
     if (geo.tpId) seeded = applyInspectorGeoToWork(seeded, geo);
   }
@@ -119,7 +132,7 @@ export async function stampInspectionWorkGeo(
 
   return stampWorkGeoFromMasters(seeded, {
     ...masters,
-    inspector: inspectorMayFill ? inspector : undefined,
+    inspector: inspectorAssignedWins ? inspector : undefined,
   });
 }
 
